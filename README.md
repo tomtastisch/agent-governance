@@ -21,10 +21,18 @@ agent-governance/
 ├── profile/
 │   ├── profile.md       # nutzerspezifisch (nicht veröffentlichen, .gitignore)
 │   └── profile.example.md
-└── tools/
-    ├── tools.toml       # Werkzeug-Manifest (common + je Harness)
-    └── Brewfile
+├── tools/
+│   ├── tools.toml       # Werkzeug-Manifest (common + je Harness)
+│   └── Brewfile
+└── templates/           # kopierfertige Verdrahtungsdateien für die Harness-Homes
+    ├── CLAUDE.md        # → ~/.claude/CLAUDE.md
+    ├── AGENTS.md        # → ~/.codex/AGENTS.md
+    └── claude-agents/   # → ~/.claude/agents/ (Subagent-Wrapper AK/ST/QA/SEC)
 ```
+
+Die Verdrahtungsdateien selbst liegen bewusst nicht aktiv im Repo, sondern im jeweiligen
+Harness-Home (`~/.claude/`, `~/.codex/`) — nur dort werden sie automatisch geladen; im Repo
+wären sie totes Duplikat (Drift-Quelle). `templates/` enthält die kopierfertigen Vorlagen.
 
 ## Port-Vertrag
 
@@ -51,14 +59,12 @@ Das Profil liefert `user`, `stack`, `language`, optional `palette`, `prefs`.
 2. `profile/profile.example.md` → `profile/profile.md` kopieren und ausfüllen.
 3. Werkzeuge: `brew bundle --file=tools/Brewfile` (bzw. Paketmanager des Systems);
    Harness-Abschnitt in `tools/tools.toml` befolgen.
-4. Harness verdrahten (genau eine Stelle):
-   - Claude Code: `~/.claude/CLAUDE.md` mit drei Imports anlegen
-     (`@~/agent-governance/core/core.md`, `@~/agent-governance/adapters/claude.md`,
-     `@~/agent-governance/profile/profile.md`) und die Subagent-Wrapper nach
-     `~/.claude/agents/` legen (siehe `adapters/claude.md`).
-   - Codex: `~/.codex/AGENTS.md` anlegen, das als verbindliche erste Aktion das Lesen von
-     Kern, `adapters/codex.md` und Profil anweist.
-   - Anderer Harness: neuen Adapter nach dem Port-Vertrag schreiben; der Kern bleibt unverändert.
+4. Harness verdrahten (genau eine Stelle, Vorlagen in `templates/`):
+   - Claude Code: `templates/CLAUDE.md` → `~/.claude/CLAUDE.md` kopieren und
+     `templates/claude-agents/*` → `~/.claude/agents/` (Subagent-Wrapper AK/ST/QA/SEC).
+   - Codex: `templates/AGENTS.md` → `~/.codex/AGENTS.md` kopieren.
+   - Anderer Harness: neuen Adapter nach dem Port-Vertrag schreiben und eine analoge
+     Einstiegsdatei im Home des Harness anlegen; der Kern bleibt unverändert.
 5. Erweitern statt ändern: neue Rollen als Datei unter `core/roles/` plus Zeile in Kern §6;
    neue Harnesse als Adapter. Der Kern ändert sich nur, wenn sich eine Regel selbst ändert.
 
