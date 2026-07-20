@@ -24,10 +24,12 @@ agent-governance/
 ├── tools/
 │   ├── tools.toml       # Werkzeug-Manifest (common + je Harness)
 │   └── Brewfile
-└── templates/           # kopierfertige Verdrahtungsdateien für die Harness-Homes
-    ├── CLAUDE.md        # → ~/.claude/CLAUDE.md
-    ├── AGENTS.md        # → ~/.codex/AGENTS.md
-    └── claude-agents/   # → ~/.claude/agents/ (Subagent-Wrapper AK/ST/QA/SEC)
+├── templates/           # kopierfertige Verdrahtungsdateien für die Harness-Homes
+│   ├── README.md        # Zuordnungstabelle Vorlage → Zielort + Root-Pfad-Regeln
+│   ├── CLAUDE.md        # → ~/.claude/CLAUDE.md
+│   ├── AGENTS.md        # → ~/.codex/AGENTS.md
+│   └── claude-agents/   # → ~/.claude/agents/ (Subagent-Wrapper AK/ST/QA/SEC)
+└── INSTALL.md           # gehärteter Install-Prompt (ein Prompt für alle Harnesse)
 ```
 
 Die Verdrahtungsdateien selbst liegen bewusst nicht aktiv im Repo, sondern im jeweiligen
@@ -55,7 +57,13 @@ Das Profil liefert `user`, `stack`, `language`, optional `palette`, `prefs`.
 
 ## Übernahme (für Dritte)
 
-1. Verzeichnis nach `~/agent-governance` klonen/kopieren.
+Schnellster Weg: den Install-Prompt aus [INSTALL.md](INSTALL.md) unverändert an den Agenten des
+Ziel-Harness geben — ein Prompt für alle Harnesse; er erkennt den Harness, legt die Dateien laut
+[templates/README.md](templates/README.md) ab, substituiert abweichende Root-Pfade und
+verifiziert fail-closed. Manuell:
+
+1. Verzeichnis nach `~/agent-governance` klonen/kopieren (abweichendes Root: Pfad-Liste in
+   `templates/README.md`, Abschnitt „Root-Pfad" beachten).
 2. `profile/profile.example.md` → `profile/profile.md` kopieren und ausfüllen.
 3. Werkzeuge: `brew bundle --file=tools/Brewfile` (bzw. Paketmanager des Systems);
    Harness-Abschnitt in `tools/tools.toml` befolgen.
