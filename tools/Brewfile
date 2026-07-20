@@ -1,0 +1,6 @@
+# Harness-unabhängige CLI-Werkzeuge (tools.toml [common])
+brew "git"
+brew "gh"
+brew "jq"
+brew "gum"
+brew "shellcheck"
