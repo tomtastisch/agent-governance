@@ -164,6 +164,22 @@ gesichert/wahrscheinlich/unklar (§2, §4) gilt trotzdem.
   Diese Governance-Struktur selbst folgt demselben Schnitt: Kern (dieses Dokument) — Ports
   (`[BINDING:*]`/`[PROFILE:*]`-Schlüssel) — Adapter (je Harness) — genau eine
   Verdrahtungsstelle je Harness (dessen Einstiegsdatei).
+- Architekturvertrag — verbindliche Konkretisierung des hexagonalen Schnitts über die Kurzfassung
+  hinaus; gilt harness-übergreifend, da Teil dieses Kerns:
+  1. Vertragsmodul: genau ein Modul enthält alle Ports, Domänen- und Fehlertypen, ohne fachliche
+     oder technische Abhängigkeit; es ist das einzige Modul, das jedes andere kennen darf.
+  2. Blindheit: ein Fachmodul referenziert ausschließlich das Vertragsmodul, niemals ein anderes
+     Fachmodul. Die Blindheit wird mechanisch erzwungen, wo die Plattform es erlaubt
+     (compilergeprüft), sonst durch harte, fehlschlagende Bau-Regeln — nie nur durch Konvention.
+  3. Laufzeitbindung: die Zuordnung Port→Implementierung entsteht erst zur Laufzeit über einen
+     Dienstlader oder Service-Discovery, gesteuert vom SSOT. Die eine Verdrahtungsstelle kennt keine
+     Implementierung namentlich; Adapter mit eigenen Abhängigkeiten melden sich über eine Fabrik an,
+     die ihre benötigten Ports deklariert, woraus sich die Erzeugungsreihenfolge ergibt.
+  4. Ersetzbarkeit: jeder Adapter ist austauschbar, ohne Kern oder Konsumenten zu ändern;
+     konkurrieren mehrere Implementierungen eines Ports, entscheidet Priorität oder Konfiguration.
+  5. Sichtbarkeitsvertrag: fehlt ein Modul, fehlt die zugehörige Fähigkeit sichtbar gemeldet, nie
+     als stiller Ausfall. „nicht verfügbar", „nicht konfiguriert" und „greift nicht" sind strikt von
+     „leer" zu unterscheiden; Fehler sind typisiert und benennen ihre Ursache.
 - Namen funktionsbasiert und selbsterklärend; keine projektfremden Fantasienamen.
 - Governance-Artefakte (Architektur-Regeln, automatische Checks, ADRs) müssen real greifen —
   keine vakuum-grünen Regeln (§11).
