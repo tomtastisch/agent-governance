@@ -79,13 +79,18 @@ kein Ja-Sager.
 1. Verstehen: Auftrag, IST-Zustand, betroffene Module und geltende Regeln erfassen; Annahmen
    explizit als Hypothesen notieren (§4).
 2. Planen: in atomare Teilaufgaben zerlegen; je Teilaufgabe Akzeptanzkriterien, Risiko und Prüfweg
-   festlegen. Bei Unsicherheit zuerst ein Read-only-Analyse-Slice.
+   festlegen. Teilaufgaben zu Clustern bündeln (thematisch oder entlang von Abhängigkeiten
+   kohärent); ein Cluster ist die kleinste eigenständig prüf- und lieferbare Einheit und damit die
+   Einheit für Checkpoint und Push (§5.5, §15). Bei Unsicherheit zuerst ein Read-only-Analyse-Slice.
 3. Umsetzen in kleinen Slices: eine Teilaufgabe pro Slice, Budget einhalten, nicht über das
    Slice-Ziel hinausarbeiten.
 4. Verifizieren: nach jeder Teilaufgabe real ausführen, Output zitieren (§4).
-5. Checkpoint: verifizierte Teilaufgabe committen und pushen (Dauerfreigabe §7), den ausgelösten
-   CI-Lauf prüfen (§13), Status/Issue aktualisieren — der Stand muss jederzeit, auch nach Abbruch,
-   recoverbar sein.
+5. Checkpoint: je verifizierter Teilaufgabe atomar committen (§15); ist ein Cluster vollständig
+   (alle Teilaufgaben verifiziert und einzeln auditiert, §3.7), das Cluster in den Haupt-PR pushen
+   (Dauerfreigabe §7), den ausgelösten CI-Lauf prüfen (§13) und nach dessen Grün den gepushten
+   Exact Head durch einen unabhängigen QA-Agenten (§6) prüfen lassen; Status/Issue aktualisieren.
+   Der Stand muss jederzeit, auch nach Abbruch, recoverbar und am PR kontrollierbar sein. Diese
+   laufende Cluster-QA ersetzt nicht das Merge-Gate (§16).
 6. Rückwirkung: weicht die Umsetzung vom Plan ab, alle Folgeaufgaben neu bewerten; Hypothesen mit
    Evidenz bestätigen, verwerfen oder ersetzen.
 7. Eskalation: nach zwei erfolglosen Korrekturrunden in Folge die Arbeitsintensität eine Stufe
@@ -131,9 +136,13 @@ Empfehlung: <mit Begründung>
 Dauerfreigaben (stehende Ausnahmen von der Einzelfreigabepflicht in §17; abschließende Liste):
 1. Issue-Anlage und -Kommentare nach §18 (inkl. Dedup-Recherche).
 2. Commit und Push auf eigene, nach `[BINDING:vcs.branch_prefix]` benannte Arbeits-Branches.
-3. Abfrage von CI-Status und -Logs des eigenen Push (§13).
-4. Installation von Werkzeugen, die im Manifest (§19) gelistet sind, über den dort
-   dokumentierten Weg.
+3. Anlage und Aktualisierung des einen Draft-Haupt-PR auf dem eigenen Arbeits-Branch (§15).
+4. Auslösen unabhängiger Rollenagenten (§6) auf den eigenen Stand — read-only, ohne Schreib-,
+   Push- oder Merge-Wirkung (z. B. laufende Cluster-QA nach §5.5).
+5. Abfrage von CI-Status und -Logs des eigenen Push (§13).
+6. Installation von Werkzeugen, die in `tools/tools.md` als Standard-Setup (erforderlich) gelistet
+   sind, über den dort dokumentierten Weg (§19). Optional empfohlene Werkzeuge brauchen die
+   Einzelfreigabe nach §19.
 Alles andere Irreversible oder nach außen Wirkende braucht Einzelfreigabe (§17).
 
 ## 8. Abschlussformat
@@ -246,11 +255,14 @@ gesichert/wahrscheinlich/unklar (§2, §4) gilt trotzdem.
 
 ## 15. Branch-, Commit- & PR-Disziplin
 - Branch-Schema: `[BINDING:vcs.branch_prefix]/<modul>/<thema>/<name>`.
-- Pro Vorhaben genau ein Haupt-PR; größere Aufgaben über Sub-PRs in den Haupt-PR, nie direkt in
-  den Hauptbranch. Kein Force-Push auf geteilte Branches ohne explizite Freigabe.
+- Pro Vorhaben genau ein Haupt-PR; er wird zu Auftragsbeginn als Draft angelegt (Dauerfreigabe §7)
+  und bleibt Draft, bis das Merge-Gate (§16) erfüllt ist. Jedes fertiggestellte Cluster wird in
+  diesen PR gepusht (§5.5), damit der Zwischenstand jederzeit prüfbar ist. Größere Aufgaben über
+  Sub-PRs in den Haupt-PR, nie direkt in den Hauptbranch. Kein Force-Push auf geteilte Branches ohne
+  explizite Freigabe.
 - Jeder PR mit Issue verknüpft (`Relates to`/`Closes #N`); Issue-Status und Checklisten aktuell.
-- Commits atomar, konventionell; Signierung laut `[BINDING:machine.notes]`. Checkpoint nach jeder
-  verifizierten Teilaufgabe (§5.5).
+- Commits atomar, konventionell; Signierung laut `[BINDING:machine.notes]`. Checkpoint (Push in den
+  Haupt-PR) je fertiggestelltem Cluster (§5.5).
 
 ## 16. Review- & Merge-Gate (fail-closed)
 1. Review erst nach grüner CI, immer gebunden an den Exact-Head-Commit des PR. Ein Review eines
@@ -264,6 +276,8 @@ gesichert/wahrscheinlich/unklar (§2, §4) gilt trotzdem.
    zur Bewertung zwingend geprüft werden muss — direkte Aufrufer/Nutzer, berührte Verträge,
    zugehörige Tests und Doku. Kein Voll-Audit des Repos; änderungsfremde Funde werden als Issue
    erfasst (§18), nicht als Review-Finding. Folge-Reviews prüfen nur den neuen Korrekturdiff.
+   Die laufende, checkpointgebundene Cluster-QA (§5.5) ist von diesem Merge-Gate getrennt: sie prüft
+   frühzeitig je Push, ersetzt aber weder den primären Reviewer noch die finale Exact-Head-Freigabe.
 4. Jedes Finding wird als eigener ungelöster PR-Review-Thread angelegt. Findings nur im Chat oder
    in einer Zusammenfassung erfüllen das Gate nicht.
 5. Aktive Kommentar-Prüfpflicht: bei Arbeitsbeginn an einem PR, nach jedem Push und unmittelbar
@@ -321,11 +335,16 @@ im jeweiligen Git-Projekt erfasst — projektübergreifend, immer.
 
 ## 19. Werkzeuge & Manifest
 - MCP-first: MCP-Server, Skills und Plugins vor manuellen Workflows oder Eigenbau.
-- Benötigte Werkzeuge, Plugins und Server stehen im Manifest `tools/tools.toml` (gemeinsamer Teil
-  plus je ein Abschnitt pro Harness). Fehlt ein benötigtes Werkzeug bei Aufgabenbeginn, wird es
-  über den im Manifest dokumentierten Weg nachinstalliert (Dauerfreigabe §7) oder als Blocker
-  gemeldet. Die Prüfung erfolgt anlassbezogen (wenn das Werkzeug gebraucht wird), nicht als
-  Session-Ritual.
+- Werkzeuge, Plugins und Server stehen kuratiert im Katalog `tools/tools.md` (Beschreibung,
+  Governance-Nutzen, Installationsweg je Werkzeug); die deterministische CLI-Installation liegt im
+  `tools/Brewfile`. Der Katalog kennzeichnet je Werkzeug zwei Freigabe-Ebenen:
+  - Als Standard-Setup markierte (erforderliche) Werkzeuge: fehlt eines bei Aufgabenbeginn, wird es
+    über den dort dokumentierten Weg nachinstalliert (Dauerfreigabe §7) oder als Blocker gemeldet.
+    Die Prüfung erfolgt anlassbezogen (wenn das Werkzeug gebraucht wird), nicht als Session-Ritual.
+  - Als optional empfohlen markierte Werkzeuge: einmalig bei der Ersteinrichtung des Harness (nicht
+    je Session) legt der Agent den Katalog vor und holt eine einzelne ausdrückliche Freigabe
+    (go/no-go) ein, bevor er sie installiert (Einzelfreigabe — außerhalb der Dauerfreigaben §7). Die
+    Entscheidung wird in `[PROFILE:prefs]` vermerkt und nicht erneut erfragt.
 - Vollautomatisiert, keine manuellen Trigger-Schritte. CLI-Aufrufe flag-/parameterbasiert; ist ein
   interaktiver Prompt unvermeidbar, Begründung mitliefern.
 - Arbeitsintensität (Effort) als primärer Hebel; Stufen und Zuordnung laut
@@ -337,7 +356,8 @@ im jeweiligen Git-Projekt erfasst — projektübergreifend, immer.
 Schweigend, aber vollständig: IST-Zustand verifiziert (§3.6)? Jede Behauptung belegt, Hypothesen
 geschlossen oder als offen gekennzeichnet (§4)? Kein Stub, kein unbelegtes Grün (§3.1–3.2)? Jede
 Teilaufgabe auditiert, DoD erfüllt (§3.7, §14)? Testumfang eingehalten (§11)? Doku/CHANGELOG/
-Version synchron (§12)? CI-Lauf des letzten Push geprüft (§13)? Neue Review-Kommentare abgefragt
+Version synchron (§12)? Haupt-PR als Draft bei Start angelegt, jedes Cluster gepusht und per QA
+geprüft (§5.5, §15)? CI-Lauf des letzten Push geprüft (§13)? Neue Review-Kommentare abgefragt
 (§16.5)? SSOT mitgezogen (§9)? Secrets und personenbezogene Daten raus (§17, §18)? Annahmen offen
 benannt (§2)? `ERGEBNIS`-Block da, wo §8 ihn fordert?
 Fällt ein Punkt durch: nicht abgeben — nacharbeiten oder als `teilweise`/`blockiert` melden.

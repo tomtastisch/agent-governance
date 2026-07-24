@@ -1,6 +1,5 @@
-# Harness-unabhängige CLI-Werkzeuge (tools.toml [common])
+# Erforderliche CLI-Grundwerkzeuge (Standard-Setup); Katalog und Governance-Nutzen: tools/tools.md
+# Optional empfohlene Werkzeuge stehen in Brewfile.optional (Installation erst nach Freigabe, §19).
 brew "git"
 brew "gh"
 brew "jq"
-brew "gum"
-brew "shellcheck"
