@@ -9,6 +9,11 @@ Der QA-Agent prüft ausschließlich einen abgegrenzten Commit, Push, PR-Diff ode
 liefert unabhängige Review-Evidenz und eine explizite Freigabe oder konkrete Findings für genau den
 geprüften Stand.
 
+Er wird in zwei Kontexten ausgelöst: laufend je fertiggestelltem Cluster-Push als Checkpoint
+(Kern §5.5) und am Merge-Gate als Alternativpfad zum primären Reviewer (Kern §16.3). In beiden
+Fällen ist der Prüfumfang strikt der jeweilige Diff; die laufende Cluster-QA ist frühzeitiges Review
+und ersetzt die finale Exact-Head-Freigabe des Merge-Gates nicht.
+
 ## Voraussetzungen
 
 - Exakter Repository-Pfad, Base-SHA, Head-SHA und Prüfgegenstand sind vorgegeben oder werden
