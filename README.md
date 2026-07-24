@@ -29,6 +29,8 @@ agent-governance/
 │   ├── CLAUDE.md        # → ~/.claude/CLAUDE.md
 │   ├── AGENTS.md        # → ~/.codex/AGENTS.md
 │   └── claude-agents/   # → ~/.claude/agents/ (Subagent-Wrapper AK/ST/QA/SEC)
+├── tests/               # Konsistenz-/Drift-Tests + advisory Link-Check (Kern §9/§11/§13)
+├── .github/workflows/   # CI-Pipeline (ci.yml)
 └── INSTALL.md           # gehärteter Install-Prompt (ein Prompt für alle Harnesse)
 ```
 
@@ -76,6 +78,25 @@ verifiziert fail-closed. Manuell:
      Einstiegsdatei im Home des Harness anlegen; der Kern bleibt unverändert.
 5. Erweitern statt ändern: neue Rollen als Datei unter `core/roles/` plus Zeile in Kern §6;
    neue Harnesse als Adapter. Der Kern ändert sich nur, wenn sich eine Regel selbst ändert.
+
+## Konsistenz-Sicherung (CI)
+
+Die SSOT- und Driftfreiheits-Zusagen (Kern §9) sind mechanisch überprüft, nicht nur Konvention —
+Governance-Artefakte müssen real greifen (§9, §11). `tests/test_governance.py` (stdlib-`unittest`,
+ohne Fremdabhängigkeiten) fällt aus, sobald eine Quelle gegen eine andere driftet:
+
+- jede im Kern genutzte `[BINDING:*]`/`[PROFILE:*]` ist im Port-Vertrag bzw. Profil deklariert und
+  in jedem Adapter realisiert (kein nicht deklarierter oder unrealisierter Port);
+- jeder `§`-Verweis in Kern, Rollen und Katalog zeigt auf einen existierenden Abschnitt;
+- alle Rollen (AK/ST/QA/SEC) haben Erweiterung und Subagent-Wrapper und stehen in §6;
+- der Kern bleibt pfadfrei (Root-Pfad nur in Adaptern/Templates);
+- `tools/tools.md` bleibt ohne Handpflege synchron: jedes `Brewfile`-Paket ist dort dokumentiert,
+  jeder Werkzeug-Eintrag trägt Freigabe-Kennzeichnung und Installationsblock, kein Verweis auf das
+  entfernte alte Manifest bleibt zurück.
+
+`tests/check_links.py` prüft zusätzlich die Erreichbarkeit der Katalog-Links — netzabhängig und
+daher advisory (§13). Die Pipeline (`.github/workflows/ci.yml`) trennt beides klar: blockierende
+Konsistenz-Tests, advisory Link-Check. Lokal: `python3 -m unittest discover -s tests`.
 
 ## Prinzipien der Struktur selbst
 

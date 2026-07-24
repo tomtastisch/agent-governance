@@ -1,4 +1,4 @@
-# Harness-unabhängige CLI-Werkzeuge (tools.toml [common])
+# Harness-unabhängige CLI-Werkzeuge; Katalog und Governance-Nutzen: tools/tools.md
 brew "git"
 brew "gh"
 brew "jq"
