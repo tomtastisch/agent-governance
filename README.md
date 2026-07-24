@@ -22,8 +22,8 @@ agent-governance/
 │   ├── profile.md       # nutzerspezifisch (nicht veröffentlichen, .gitignore)
 │   └── profile.example.md
 ├── tools/
-│   ├── tools.toml       # Werkzeug-Manifest (common + je Harness)
-│   └── Brewfile
+│   ├── tools.md         # Werkzeug-Katalog (SSOT): Beschreibung, Governance-Nutzen, Install-Weg
+│   └── Brewfile         # deterministische CLI-Installation (brew bundle)
 ├── templates/           # kopierfertige Verdrahtungsdateien für die Harness-Homes
 │   ├── README.md        # Zuordnungstabelle Vorlage → Zielort + Root-Pfad-Regeln
 │   ├── CLAUDE.md        # → ~/.claude/CLAUDE.md
@@ -50,7 +50,7 @@ Der Kern referenziert ausschließlich benannte Schlüssel; jeder Adapter MUSS si
 | `effort.mapping` | Stufen der Arbeitsintensität und ihre Zuordnung |
 | `net.policy` | Egress-Regeln inkl. freigegebener CI-Abfragen |
 | `machine.notes` | Maschinen-/Harness-Besonderheiten (z. B. Commit-Signierung) |
-| `tools.install` | Installationsweg für das Manifest `tools/tools.toml` |
+| `tools.install` | Installationsweg für den Werkzeug-Katalog `tools/tools.md` |
 | `native.enforced` | Kernregeln, die der Harness bereits nativ erzwingt |
 
 Das Profil liefert `user`, `stack`, `language`, optional `palette`, `prefs`.
@@ -65,8 +65,9 @@ verifiziert fail-closed. Manuell:
 1. Verzeichnis nach `~/agent-governance` klonen/kopieren (abweichendes Root: Pfad-Liste in
    `templates/README.md`, Abschnitt „Root-Pfad" beachten).
 2. `profile/profile.example.md` → `profile/profile.md` kopieren und ausfüllen.
-3. Werkzeuge: `brew bundle --file=tools/Brewfile` (bzw. Paketmanager des Systems);
-   Harness-Abschnitt in `tools/tools.toml` befolgen.
+3. Werkzeuge: `brew bundle --file=tools/Brewfile` (bzw. Paketmanager des Systems); Katalog
+   `tools/tools.md` durchgehen — Standard-Setup installieren, optional empfohlene erst nach
+   Freigabe (Kern §19).
 4. Harness verdrahten (genau eine Stelle, Vorlagen in `templates/`):
    - Claude Code: `templates/CLAUDE.md` → `~/.claude/CLAUDE.md` kopieren und
      `templates/claude-agents/*` → `~/.claude/agents/` (Subagent-Wrapper AK/ST/QA/SEC).

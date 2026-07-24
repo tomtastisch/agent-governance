@@ -140,8 +140,9 @@ Dauerfreigaben (stehende Ausnahmen von der Einzelfreigabepflicht in §17; abschl
 4. Auslösen unabhängiger Rollenagenten (§6) auf den eigenen Stand — read-only, ohne Schreib-,
    Push- oder Merge-Wirkung (z. B. laufende Cluster-QA nach §5.5).
 5. Abfrage von CI-Status und -Logs des eigenen Push (§13).
-6. Installation von Werkzeugen, die im Manifest (§19) gelistet sind, über den dort
-   dokumentierten Weg.
+6. Installation von Werkzeugen, die in `tools/tools.md` als Standard-Setup (erforderlich) gelistet
+   sind, über den dort dokumentierten Weg (§19). Optional empfohlene Werkzeuge brauchen die
+   Einzelfreigabe nach §19.
 Alles andere Irreversible oder nach außen Wirkende braucht Einzelfreigabe (§17).
 
 ## 8. Abschlussformat
@@ -334,11 +335,16 @@ im jeweiligen Git-Projekt erfasst — projektübergreifend, immer.
 
 ## 19. Werkzeuge & Manifest
 - MCP-first: MCP-Server, Skills und Plugins vor manuellen Workflows oder Eigenbau.
-- Benötigte Werkzeuge, Plugins und Server stehen im Manifest `tools/tools.toml` (gemeinsamer Teil
-  plus je ein Abschnitt pro Harness). Fehlt ein benötigtes Werkzeug bei Aufgabenbeginn, wird es
-  über den im Manifest dokumentierten Weg nachinstalliert (Dauerfreigabe §7) oder als Blocker
-  gemeldet. Die Prüfung erfolgt anlassbezogen (wenn das Werkzeug gebraucht wird), nicht als
-  Session-Ritual.
+- Werkzeuge, Plugins und Server stehen kuratiert im Katalog `tools/tools.md` (Beschreibung,
+  Governance-Nutzen, Installationsweg je Werkzeug); die deterministische CLI-Installation liegt im
+  `tools/Brewfile`. Der Katalog kennzeichnet je Werkzeug zwei Freigabe-Ebenen:
+  - Als Standard-Setup markierte (erforderliche) Werkzeuge: fehlt eines bei Aufgabenbeginn, wird es
+    über den dort dokumentierten Weg nachinstalliert (Dauerfreigabe §7) oder als Blocker gemeldet.
+    Die Prüfung erfolgt anlassbezogen (wenn das Werkzeug gebraucht wird), nicht als Session-Ritual.
+  - Als optional empfohlen markierte Werkzeuge: einmalig bei der Ersteinrichtung des Harness (nicht
+    je Session) legt der Agent den Katalog vor und holt eine einzelne ausdrückliche Freigabe
+    (go/no-go) ein, bevor er sie installiert (Einzelfreigabe — außerhalb der Dauerfreigaben §7). Die
+    Entscheidung wird in `[PROFILE:prefs]` vermerkt und nicht erneut erfragt.
 - Vollautomatisiert, keine manuellen Trigger-Schritte. CLI-Aufrufe flag-/parameterbasiert; ist ein
   interaktiver Prompt unvermeidbar, Begründung mitliefern.
 - Arbeitsintensität (Effort) als primärer Hebel; Stufen und Zuordnung laut
