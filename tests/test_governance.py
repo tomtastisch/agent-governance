@@ -62,6 +62,7 @@ README = read("README.md")
 PROFILE_EX = read("profile/profile.example.md")
 TOOLS = read("tools/tools.md")
 BREW = read("tools/Brewfile")
+BREW_OPT = read("tools/Brewfile.optional")
 TPL_CLAUDE = read("templates/CLAUDE.md")
 
 ROLES = ("ak", "st", "qa", "sec")
@@ -163,11 +164,26 @@ class ToolsCatalog(unittest.TestCase):
         for rel in tracked_markdown(exclude=("tools/tools.md",)):
             self.assertNotIn("tools.toml", read(rel), f"{rel} verweist noch auf das entfernte tools.toml")
 
-    def test_brewfile_packages_documented(self):
-        pkgs = re.findall(r'brew\s+"([^"]+)"', BREW)
-        self.assertTrue(pkgs, "Brewfile enthält keine Pakete")
-        for pkg in pkgs:
-            self.assertIn(f"`{pkg}`", TOOLS, f"Brewfile-Paket '{pkg}' ist in tools/tools.md nicht dokumentiert")
+    def test_brewfiles_documented_and_correctly_classified(self):
+        # Der Standard-Pfad (Brewfile) darf keine freigabepflichtigen (optionalen) Werkzeuge
+        # mitziehen: Pflichtpakete stehen als erforderlich, optionale als optional in tools.md.
+        cli = get_section(TOOLS, "## CLI-Grundwerkzeuge")
+        self.assertTrue(cli, "Abschnitt '## CLI-Grundwerkzeuge' in tools/tools.md fehlt")
+        req_line = next((ln for ln in cli.splitlines() if "erforderlich" in ln), "")
+        opt_line = next((ln for ln in cli.splitlines() if "Optional empfohlen" in ln), "")
+        req_doc = set(re.findall(r"`([^`]+)`", req_line))
+        opt_doc = set(re.findall(r"`([^`]+)`", opt_line))
+        req_pkgs = set(re.findall(r'brew\s+"([^"]+)"', BREW))
+        opt_pkgs = set(re.findall(r'brew\s+"([^"]+)"', BREW_OPT))
+        self.assertTrue(req_pkgs, "Erforderliches Brewfile enthält keine Pakete")
+        both = req_pkgs & opt_pkgs
+        self.assertFalse(both, f"Paket in erforderlichem UND optionalem Brewfile: {both}")
+        for pkg in req_pkgs:
+            self.assertIn(pkg, req_doc,
+                          f"Pflichtpaket '{pkg}' ist in tools/tools.md nicht als erforderlich dokumentiert")
+        for pkg in opt_pkgs:
+            self.assertIn(pkg, opt_doc,
+                          f"Optionales Paket '{pkg}' ist in tools/tools.md nicht als optional dokumentiert")
 
     def test_every_tool_entry_is_complete(self):
         # Jeder ###-Eintrag braucht eine Freigabe-Kennzeichnung und einen Installationsblock.

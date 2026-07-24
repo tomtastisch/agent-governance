@@ -153,12 +153,20 @@ https://github.com/upstash/context7
 
 ## CLI-Grundwerkzeuge
 
-`git`, `gh` und `jq` (erforderlich) sowie `gum` und `shellcheck` (optional) werden deterministisch
-über das `Brewfile` installiert; sie sind die Basis für Versionskontrolle, GitHub-CLI-Zugriffe und
-JSON-Verarbeitung in der Pipeline.
+Standard-Setup (erforderlich): `git`, `gh`, `jq` — Basis für Versionskontrolle, GitHub-CLI-Zugriffe
+und JSON-Verarbeitung. Deterministisch über das erforderliche `Brewfile` (installiert ausschließlich
+diese Pflichtwerkzeuge):
 
 ```
 brew bundle --file=tools/Brewfile
+```
+
+Optional empfohlen: `gum` (Terminal-Progress) und `shellcheck` (Shell-Linting, stützt §11). Sie
+stehen bewusst in einem separaten Brewfile und werden erst nach Freigabe (Kern §19) installiert,
+damit der Standard-Pfad keine freigabepflichtigen Werkzeuge mitzieht:
+
+```
+brew bundle --file=tools/Brewfile.optional
 ```
 
 ## Installations- und Freigabe-Hinweise

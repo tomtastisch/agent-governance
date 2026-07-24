@@ -67,9 +67,9 @@ verifiziert fail-closed. Manuell:
 1. Verzeichnis nach `~/agent-governance` klonen/kopieren (abweichendes Root: Pfad-Liste in
    `templates/README.md`, Abschnitt „Root-Pfad" beachten).
 2. `profile/profile.example.md` → `profile/profile.md` kopieren und ausfüllen.
-3. Werkzeuge: `brew bundle --file=tools/Brewfile` (bzw. Paketmanager des Systems); Katalog
-   `tools/tools.md` durchgehen — Standard-Setup installieren, optional empfohlene erst nach
-   Freigabe (Kern §19).
+3. Werkzeuge: `brew bundle --file=tools/Brewfile` installiert nur die Pflichtwerkzeuge (bzw.
+   Paketmanager des Systems); Katalog `tools/tools.md` durchgehen — optional empfohlene erst nach
+   Freigabe (Kern §19), CLI-seitig über `tools/Brewfile.optional`.
 4. Harness verdrahten (genau eine Stelle, Vorlagen in `templates/`):
    - Claude Code: `templates/CLAUDE.md` → `~/.claude/CLAUDE.md` kopieren und
      `templates/claude-agents/*` → `~/.claude/agents/` (Subagent-Wrapper AK/ST/QA/SEC).

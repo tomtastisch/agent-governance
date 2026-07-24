@@ -63,12 +63,13 @@ SCHRITT 3 — Harness verdrahten (Zuordnung: ROOT/templates/README.md)
 Backup-Pflicht und ROOT-Substitution aus Härtung/Schritt 1c beachten.
 
 SCHRITT 4 — Werkzeuge
-Lies ROOT/tools/tools.md. Installiere die als Standard-Setup (erforderlich) markierten
-CLI-Grundwerkzeuge über den dokumentierten Weg (brew bundle --file=ROOT/tools/Brewfile bzw. der
-Paketmanager des Systems). Für optional empfohlene Werkzeuge: lege dem Nutzer den Katalog kurz vor
-und hole eine einzelne go/no-go-Freigabe ein, bevor du etwas installierst; halte die Entscheidung
-im Profil (prefs) fest. Was du nicht selbst installieren kannst (Plugins, MCP-Server), liste mit dem
-jeweiligen Installationsweg aus tools.md als Handlungsanweisung für den Nutzer auf.
+Lies ROOT/tools/tools.md. Installiere die erforderlichen CLI-Grundwerkzeuge über den dokumentierten
+Weg (brew bundle --file=ROOT/tools/Brewfile bzw. der Paketmanager des Systems) — das erforderliche
+Brewfile enthält ausschließlich Pflichtwerkzeuge. Für optional empfohlene Werkzeuge (u. a.
+ROOT/tools/Brewfile.optional, Plugins, MCP-Server): lege dem Nutzer den Katalog kurz vor und hole
+eine einzelne go/no-go-Freigabe ein, bevor du etwas installierst; halte die Entscheidung im Profil
+(prefs) fest. Was du nicht selbst installieren kannst, liste mit dem jeweiligen Installationsweg aus
+tools.md als Handlungsanweisung für den Nutzer auf.
 
 SCHRITT 5 — Verifikation (fail-closed)
 a) Lies jede geschriebene Zieldatei zurück und prüfe: alle referenzierten Pfade (Imports bzw.

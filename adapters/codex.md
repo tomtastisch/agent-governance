@@ -16,7 +16,7 @@ zu lesen).
 | `effort.mapping` | Codex-Effort `low → medium → high → xhigh`. Analyse/Doku low, Implementierung medium, Architektur/Review/CI-Fix high, kritisches Sparring xhigh. Read-only-Modus für alles, was nicht schreiben muss. |
 | `net.policy` | Netzwerkzugriff in isolierten Läufen standardmäßig aus; je Aufgabe dokumentiert freigeben. Immer freigegeben: CI-Status/-Logs des eigenen Push via `gh` (Kern §13). |
 | `machine.notes` | git-Signing auf diesem Mac: `commit.gpgsign=true` + SSH-Key mit Passphrase. Nicht-interaktiv schlägt `git commit` ohne entsperrten `ssh-agent` fehl → Key vorher laden; `--no-gpg-sign` nur mit expliziter Freigabe. `gum` für Terminal-Progress. |
-| `tools.install` | CLI-Tools: `brew bundle --file=~/agent-governance/tools/Brewfile`. MCP-Server: `~/.codex/config.toml`, Abschnitt `[mcp_servers]`. Katalog mit Beschreibung und Installationsweg je Werkzeug: `tools/tools.md`. |
+| `tools.install` | CLI-Pflichtwerkzeuge: `brew bundle --file=~/agent-governance/tools/Brewfile`; optional empfohlene erst nach Freigabe (§19) via `Brewfile.optional`. MCP-Server: `~/.codex/config.toml`, Abschnitt `[mcp_servers]`. Katalog mit Beschreibung und Installationsweg je Werkzeug: `tools/tools.md`. |
 
 ## Nativ erzwungene Kernregeln (`native.enforced`)
 

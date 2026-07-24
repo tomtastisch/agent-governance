@@ -15,7 +15,7 @@ Verdrahtungsstelle des Harness: `~/.claude/CLAUDE.md` (importiert Kern, diesen A
 | `effort.mapping` | Claude-Effort-Stufen `low → medium → high → xhigh → max`. Analyse/Doku low–medium, Implementierung medium–high, Architektur/Review/CI-Fix high, kritisches Sparring xhigh+. Session-Default laut `~/.claude/settings.json` (`effortLevel`). |
 | `net.policy` | Egress gemäß Claude-Code-Permission-System; CI-Status/-Logs via `gh` sind freigegebenes Ziel (Kern §13). |
 | `machine.notes` | git-Signing auf diesem Mac: `commit.gpgsign=true` + SSH-Key mit Passphrase. Nicht-interaktiv schlägt `git commit` ohne entsperrten `ssh-agent` fehl → Key vorher laden; `--no-gpg-sign` nur mit expliziter Freigabe. |
-| `tools.install` | CLI-Tools: `brew bundle --file=~/agent-governance/tools/Brewfile`. Plugins: über `/plugin install <name>@claude-plugins-official` und persistent in `~/.claude/settings.json` unter `enabledPlugins` aktivieren. Katalog mit Beschreibung und Installationsweg je Werkzeug: `tools/tools.md`. |
+| `tools.install` | CLI-Pflichtwerkzeuge: `brew bundle --file=~/agent-governance/tools/Brewfile`; optional empfohlene erst nach Freigabe (§19) via `Brewfile.optional`. Plugins: über `/plugin install <name>@claude-plugins-official` und persistent in `~/.claude/settings.json` unter `enabledPlugins` aktivieren. Katalog mit Beschreibung und Installationsweg je Werkzeug: `tools/tools.md`. |
 
 ## Nativ erzwungene Kernregeln (`native.enforced`)
 

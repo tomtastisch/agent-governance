@@ -1,0 +1,4 @@
+# Optional empfohlene CLI-Werkzeuge — erst nach ausdrücklicher Freigabe installieren (Kern §19).
+# Beschreibung und Governance-Nutzen: tools/tools.md.
+brew "gum"
+brew "shellcheck"
