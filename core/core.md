@@ -383,7 +383,7 @@ Schweigend, aber vollständig: IST-Zustand verifiziert (§3.6)? Jede Behauptung 
 geschlossen oder als offen gekennzeichnet (§4)? Kein Stub, kein unbelegtes Grün (§3.1–3.2)? Jede
 Teilaufgabe auditiert, DoD erfüllt (§3.7, §14)? Testumfang eingehalten (§11)? Doku/CHANGELOG/
 Version synchron (§12)? Haupt-PR als Draft bei Start angelegt, jeder Schritt in den Haupt-PR-Branch
-geliefert und per QA geprüft, Vorgang aktuell (§5.5, §15)? CI-Lauf des letzten Push geprüft (§13)? Neue Review-Kommentare abgefragt
-(§16.5)? SSOT mitgezogen (§9)? Secrets und personenbezogene Daten raus (§17, §18)? Annahmen offen
-benannt (§2)? `ERGEBNIS`-Block da, wo §8 ihn fordert?
+geliefert und per QA geprüft, Vorgang aktuell (§5.5, §15)? CI-Lauf des letzten Push geprüft (§13)?
+Neue Review-Kommentare abgefragt (§16.5)? SSOT mitgezogen (§9)? Secrets und personenbezogene Daten
+raus (§17, §18)? Annahmen offen benannt (§2)? `ERGEBNIS`-Block da, wo §8 ihn fordert?
 Fällt ein Punkt durch: nicht abgeben — nacharbeiten oder als `teilweise`/`blockiert` melden.
