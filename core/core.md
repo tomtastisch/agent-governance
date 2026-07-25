@@ -81,14 +81,16 @@ kein Ja-Sager.
 2. Planen: in atomare Teilaufgaben zerlegen; je Teilaufgabe Akzeptanzkriterien, Risiko und Prüfweg
    festlegen. Teilaufgaben zu Clustern bündeln (thematisch oder entlang von Abhängigkeiten
    kohärent); ein Cluster ist die kleinste eigenständig prüf- und lieferbare Einheit und damit die
-   Einheit für Checkpoint und Push (§5.5, §15). Bei Unsicherheit zuerst ein Read-only-Analyse-Slice.
+   Einheit für Checkpoint und Lieferung (§5.5, §15). Ein Cluster entspricht einem Schritt der
+   Schritt-Checkliste des Vorgangs (§15). Bei Unsicherheit zuerst ein Read-only-Analyse-Slice.
 3. Umsetzen in kleinen Slices: eine Teilaufgabe pro Slice, Budget einhalten, nicht über das
    Slice-Ziel hinausarbeiten.
 4. Verifizieren: nach jeder Teilaufgabe real ausführen, Output zitieren (§4).
 5. Checkpoint: je verifizierter Teilaufgabe atomar committen (§15); ist ein Cluster vollständig
-   (alle Teilaufgaben verifiziert und einzeln auditiert, §3.7), das Cluster in den Haupt-PR pushen
-   (Dauerfreigabe §7), den ausgelösten CI-Lauf prüfen (§13) und nach dessen Grün den gepushten
-   Exact Head durch einen unabhängigen QA-Agenten (§6) prüfen lassen; Status/Issue aktualisieren.
+   (alle Teilaufgaben verifiziert und einzeln auditiert, §3.7), das Cluster in den Haupt-PR-Branch
+   liefern (Sub-PR oder Checkpoint-Push, §15; Dauerfreigabe §7), den ausgelösten CI-Lauf prüfen
+   (§13) und nach dessen Grün den gelieferten Exact Head durch einen unabhängigen QA-Agenten (§6)
+   prüfen lassen; den Schritt im Vorgang als erledigt vermerken (§15).
    Der Stand muss jederzeit, auch nach Abbruch, recoverbar und am PR kontrollierbar sein. Diese
    laufende Cluster-QA ersetzt nicht das Merge-Gate (§16).
 6. Rückwirkung: weicht die Umsetzung vom Plan ab, alle Folgeaufgaben neu bewerten; Hypothesen mit
@@ -113,7 +115,7 @@ Der primäre Agent ist Executor. Unabhängige Rollen werden strikt geroutet:
 - Vor Arbeitsbeginn liest jeder Rollenagent dieses Kernregelwerk, die projekt-lokalen Regeln und
   seine vollständige Rollenerweiterung.
 - Rollenerweiterungen konkretisieren nur und dürfen übergeordnete Regeln nicht lockern. Rollen
-  werden im selben Vorhaben nicht vermischt; niemand prüft die eigene Arbeit oder triagiert das
+  werden im selben Vorgang nicht vermischt; niemand prüft die eigene Arbeit oder triagiert das
   eigene Finding.
 - Kann der Harness keinen sauberen unabhängigen Rollenkontext bereitstellen, ist das ein Blocker
   (§7) — die Rolle wird nicht ersatzweise im Executor-Kontext simuliert.
@@ -135,7 +137,7 @@ Empfehlung: <mit Begründung>
 
 Dauerfreigaben (stehende Ausnahmen von der Einzelfreigabepflicht in §17; abschließende Liste):
 1. Issue-Anlage und -Kommentare nach §18 (inkl. Dedup-Recherche).
-2. Commit und Push auf eigene, nach `[BINDING:vcs.branch_prefix]` benannte Arbeits-Branches.
+2. Commit und Push auf eigene, nach dem Branch-Schema (§15) benannte Arbeits-Branches.
 3. Anlage und Aktualisierung des einen Draft-Haupt-PR auf dem eigenen Arbeits-Branch (§15).
 4. Auslösen unabhängiger Rollenagenten (§6) auf den eigenen Stand — read-only, ohne Schreib-,
    Push- oder Merge-Wirkung (z. B. laufende Cluster-QA nach §5.5).
@@ -250,21 +252,45 @@ gesichert/wahrscheinlich/unklar (§2, §4) gilt trotzdem.
 - Mindestens ein echter Unit-Test pro neuer Methode/Funktion im selben PR; alle zutreffenden
   Testarten aus §11 abgedeckt, plus Abschlussnachweis fürs Gesamtthema.
 - Vollständige Suite real ausgeführt und zitiert; bei Refactor/Entfernung Regressionsnachweis.
-- CI-Pipeline grün (§13). Doku, CHANGELOG und Version synchron (§12); Issue und Checklisten aktuell.
+- CI-Pipeline grün (§13). Doku, CHANGELOG und Version synchron (§12); Vorgang und Schritt-Checkliste
+  aktuell (§15).
 - Keine offenen TODO/Stubs im Liefergegenstand; keine unbelegte Behauptung (§4).
 
 ## 15. Branch-, Commit- & PR-Disziplin
-- Branch-Schema: `[BINDING:vcs.branch_prefix]/<modul>/<thema>/<name>`.
-- Pro Vorhaben genau ein Haupt-PR; er wird zu Auftragsbeginn als Draft angelegt (Dauerfreigabe §7)
-  und bleibt Draft, bis das Merge-Gate (§16) erfüllt ist. Jedes fertiggestellte Cluster wird in
-  diesen PR gepusht (§5.5), damit der Zwischenstand jederzeit prüfbar ist. Größere Aufgaben über
-  Sub-PRs in den Haupt-PR, nie direkt in den Hauptbranch. Kein Force-Push auf geteilte Branches ohne
-  explizite Freigabe.
-- Jeder PR mit Issue verknüpft (`Relates to`/`Closes #N`); Issue-Status und Checklisten aktuell.
-- Commits atomar, konventionell; Signierung laut `[BINDING:machine.notes]`. Checkpoint (Push in den
-  Haupt-PR) je fertiggestelltem Cluster (§5.5).
+- Branch-Schema: `<tag>/<modul>/<thema>/<name>`. `<tag>` ist genau einer der in
+  `core/branch-tags.toml` definierten Tags (geschlossene Liste = Conventional-Commit-Typen) und
+  benennt die fachliche Art der Änderung, nicht den Agenten (dessen Herkunft steht in den
+  Commit-Metadaten). Zuordnung Arbeit→Tag nach dem `description`-Kriterium des Tags; bei gemischten
+  Änderungen gewinnt der dominante Typ. Kein Tag außerhalb der Liste; ist keiner eindeutig, gilt der
+  `default` der Datei, bei echter Unentscheidbarkeit §7. `<thema>/<name>` müssen den Branch eindeutig
+  halten (kein Agenten-Präfix mehr als Namensraum). Derselbe `<tag>` erscheint konsistent auch im
+  PR-Titel und in den Commit-Präfixen.
+- Vorgang: die Aufgabenquelle als Tracking-Artefakt — GitHub-Issue, Ticket (z. B. Jira/Linear) oder
+  Vergleichbares, je nachdem woher die Aufgabe kommt. Ein Vorgang trägt eine Schritt-Checkliste als
+  fachliche Gesamtspezifikation und bleibt über die gesamte Umsetzung genau ein Vorgang (nicht je
+  Schritt ein neuer). Nebenbei entdeckte reproduzierbare Defekte bleiben davon getrennt und werden
+  als eigenes Issue nach §18 erfasst.
+- Pro Vorgang genau ein Haupt-PR auf einem Integrations-/Feature-Branch; er wird zu Auftragsbeginn
+  als Draft angelegt (Dauerfreigabe §7) und bleibt Draft, bis das Merge-Gate (§16) erfüllt ist.
+- Jeder Schritt (= ein Cluster, §5.2) wird in den Haupt-PR-Branch geliefert — bevorzugt als kleiner
+  Sub-PR, für triviale Schritte alternativ als Checkpoint-Push (§5.5); nie direkt in den Hauptbranch
+  (main). Jeder erledigte Schritt wird im Vorgang vermerkt („Schritt X ✓ via Sub-PR #N", bei
+  Checkpoint-Push mit Commit-SHA).
+- Zwischen-Sub-PRs mergen in den Haupt-PR-Branch, nicht nach main. Daher muss nicht jeder einzelne
+  Schritt schon für sich main-tauglich/fail-closed sein — nur der Haupt-PR am Ende (§16). Das
+  erlaubt feinere Schnitte, ohne halbfertige Zustände auf main zu tragen; unfertige Stände bleiben
+  auf den Feature-Branch begrenzt.
+- Verknüpfung: jeder PR ist mit dem Vorgang verknüpft (bei Git-Issues `Relates to`/`Closes #N`,
+  sonst per Ticket-Referenz); Schritt-Checkliste und Vorgangsstatus bleiben aktuell. Der Merge des
+  Haupt-PRs schließt den Vorgang vollständig ab.
+- Kein Force-Push auf geteilte Branches ohne explizite Freigabe.
+- Commits atomar, konventionell; Signierung laut `[BINDING:machine.notes]`. Checkpoint (Lieferung in
+  den Haupt-PR-Branch) je fertiggestelltem Schritt (§5.5).
 
 ## 16. Review- & Merge-Gate (fail-closed)
+Dieses Gate regelt den Merge des Haupt-PRs nach main. Zwischen-Sub-PRs in den Haupt-PR-Branch
+unterliegen der laufenden Cluster-QA (§5.5), nicht diesem Gate; main-Tauglichkeit wird einmal am
+Haupt-PR erzwungen, nicht je Schritt.
 1. Review erst nach grüner CI, immer gebunden an den Exact-Head-Commit des PR. Ein Review eines
    älteren Heads ist keine Merge-Evidenz.
 2. Primärer Reviewer ist `[BINDING:review.primary]`. Ist er nicht verfügbar, wird der Zustand
@@ -307,7 +333,7 @@ sie vollumfänglich selbst einzuhalten:
   Advisory-Scan ersetzt kein autoritatives CVSS-Gate (SEC-Agent, §6).
 - Integritäts-/Prüfsummenprüfung vor jedem sicherheitsrelevanten Schreibvorgang.
 - Irreversible oder nach außen wirkende Aktionen (Publish, Deploy, Löschen, Senden) nur nach
-  expliziter Freigabe; eine Freigabe gilt für genau diesen Vorgang. Ausnahmen ausschließlich die
+  expliziter Freigabe; eine Freigabe gilt für genau diese Aktion. Ausnahmen ausschließlich die
   Dauerfreigaben in §7.
 - Vor Löschen oder Überschreiben das Ziel real ansehen; widerspricht der Fund der Beschreibung,
   anhalten und melden statt fortfahren.
@@ -356,8 +382,8 @@ im jeweiligen Git-Projekt erfasst — projektübergreifend, immer.
 Schweigend, aber vollständig: IST-Zustand verifiziert (§3.6)? Jede Behauptung belegt, Hypothesen
 geschlossen oder als offen gekennzeichnet (§4)? Kein Stub, kein unbelegtes Grün (§3.1–3.2)? Jede
 Teilaufgabe auditiert, DoD erfüllt (§3.7, §14)? Testumfang eingehalten (§11)? Doku/CHANGELOG/
-Version synchron (§12)? Haupt-PR als Draft bei Start angelegt, jedes Cluster gepusht und per QA
-geprüft (§5.5, §15)? CI-Lauf des letzten Push geprüft (§13)? Neue Review-Kommentare abgefragt
-(§16.5)? SSOT mitgezogen (§9)? Secrets und personenbezogene Daten raus (§17, §18)? Annahmen offen
-benannt (§2)? `ERGEBNIS`-Block da, wo §8 ihn fordert?
+Version synchron (§12)? Haupt-PR als Draft bei Start angelegt, jeder Schritt in den Haupt-PR-Branch
+geliefert und per QA geprüft, Vorgang aktuell (§5.5, §15)? CI-Lauf des letzten Push geprüft (§13)?
+Neue Review-Kommentare abgefragt (§16.5)? SSOT mitgezogen (§9)? Secrets und personenbezogene Daten
+raus (§17, §18)? Annahmen offen benannt (§2)? `ERGEBNIS`-Block da, wo §8 ihn fordert?
 Fällt ein Punkt durch: nicht abgeben — nacharbeiten oder als `teilweise`/`blockiert` melden.

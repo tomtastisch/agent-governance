@@ -8,10 +8,19 @@ die SSOT-Zusagen des Kerns ohne menschliche Pflege überprüfbar halten.
 
 Ausführung ohne Fremdabhängigkeiten:
     python3 -m unittest discover -s tests
+
+Die `core/branch-tags.toml`-Validierung nutzt das stdlib-Modul `tomllib` (Python 3.11+); auf
+älteren Interpretern überspringt sich nur dieser Prüfblock sauber, die übrigen Checks laufen
+weiter. CI pinnt 3.11 und erzwingt daher die volle Prüfung.
 """
 import os
 import re
 import unittest
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python < 3.11: nur die TOML-Prüfung entfällt, Rest läuft weiter.
+    tomllib = None
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -23,6 +32,11 @@ def read(rel):
 
 def exists(rel):
     return os.path.exists(os.path.join(ROOT, rel))
+
+
+def load_toml(rel):
+    with open(os.path.join(ROOT, rel), "rb") as fh:
+        return tomllib.load(fh)
 
 
 def tracked_markdown(exclude=()):
@@ -210,6 +224,58 @@ class Templates(unittest.TestCase):
                                 "profile/profile.example.md fehlt")
             else:
                 self.assertTrue(exists(imp), f"Import {imp} in templates/CLAUDE.md zeigt ins Leere")
+
+
+class BranchTags(unittest.TestCase):
+    """`core/branch-tags.toml` ist wohlgeformt, git-ref-sicher und driftfrei mit dem Kern (§15)."""
+
+    TAG_RE = re.compile(r"^[a-z][a-z0-9-]*$")
+    TOML_REL = "core/branch-tags.toml"
+
+    def setUp(self):
+        if tomllib is None:
+            self.skipTest("tomllib erfordert Python 3.11+; TOML-Validierung nur dort")
+        self.assertTrue(exists(self.TOML_REL), f"{self.TOML_REL} fehlt")
+        self.data = load_toml(self.TOML_REL)
+        self.entries = self.data.get("tags", [])
+
+    def test_has_entries(self):
+        self.assertTrue(self.entries, "core/branch-tags.toml enthält keine [[tags]]-Einträge")
+
+    def test_entries_complete(self):
+        for i, e in enumerate(self.entries):
+            for field in ("tag", "name", "description"):
+                val = e.get(field)
+                self.assertTrue(isinstance(val, str) and val.strip(),
+                                f"[[tags]]-Eintrag #{i} ohne nicht-leeres Feld '{field}'")
+
+    def test_tags_ref_safe(self):
+        for e in self.entries:
+            tag = e.get("tag", "")
+            self.assertRegex(tag, self.TAG_RE,
+                             f"Tag '{tag}' ist nicht git-ref-sicher (Kleinbuchstaben/Ziffern/'-', "
+                             f"Beginn mit Buchstabe)")
+
+    def test_tags_unique(self):
+        tags = [e.get("tag") for e in self.entries]
+        dupes = {t for t in tags if tags.count(t) > 1}
+        self.assertFalse(dupes, f"Doppelte Tags in core/branch-tags.toml: {dupes}")
+
+    def test_default_refers_to_existing_tag(self):
+        default = self.data.get("default")
+        self.assertTrue(default, "core/branch-tags.toml deklariert keinen 'default'-Tag")
+        self.assertIn(default, {e.get("tag") for e in self.entries},
+                      f"'default = \"{default}\"' zeigt auf keinen definierten Tag")
+
+    def test_core_references_tag_file(self):
+        self.assertIn(self.TOML_REL, CORE,
+                      "Kern §15 verweist nicht auf core/branch-tags.toml (Drift)")
+
+    def test_retired_binding_absent(self):
+        # Der abgelöste Agenten-Präfix-Port darf nirgends mehr referenziert werden.
+        for rel in ("core/core.md", "README.md", "adapters/claude.md", "adapters/codex.md"):
+            self.assertNotIn("vcs.branch_prefix", read(rel),
+                             f"{rel} verweist noch auf den abgelösten Port vcs.branch_prefix")
 
 
 if __name__ == "__main__":
