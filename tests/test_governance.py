@@ -8,11 +8,19 @@ die SSOT-Zusagen des Kerns ohne menschliche Pflege überprüfbar halten.
 
 Ausführung ohne Fremdabhängigkeiten:
     python3 -m unittest discover -s tests
+
+Die `core/branch-tags.toml`-Validierung nutzt das stdlib-Modul `tomllib` (Python 3.11+); auf
+älteren Interpretern überspringt sich nur dieser Prüfblock sauber, die übrigen Checks laufen
+weiter. CI pinnt 3.11 und erzwingt daher die volle Prüfung.
 """
 import os
 import re
-import tomllib
 import unittest
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python < 3.11: nur die TOML-Prüfung entfällt, Rest läuft weiter.
+    tomllib = None
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -225,6 +233,8 @@ class BranchTags(unittest.TestCase):
     TOML_REL = "core/branch-tags.toml"
 
     def setUp(self):
+        if tomllib is None:
+            self.skipTest("tomllib erfordert Python 3.11+; TOML-Validierung nur dort")
         self.assertTrue(exists(self.TOML_REL), f"{self.TOML_REL} fehlt")
         self.data = load_toml(self.TOML_REL)
         self.entries = self.data.get("tags", [])

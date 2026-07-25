@@ -97,7 +97,8 @@ ohne Fremdabhängigkeiten) fällt aus, sobald eine Quelle gegen eine andere drif
 - `core/branch-tags.toml` ist wohlgeformt und git-ref-sicher: Tags eindeutig, Zeichensatz
   ref-tauglich, `tag`/`name`/`description` je Eintrag gesetzt, `default` verweist auf einen
   existierenden Tag, der Kern verweist auf die Datei, und der abgelöste Agenten-Präfix-Port taucht
-  in Kern, Port-Vertrag und Adaptern nicht mehr auf.
+  in Kern, Port-Vertrag und Adaptern nicht mehr auf (nutzt stdlib-`tomllib`, Python 3.11+; auf
+  älteren Interpretern überspringt sich nur dieser Block, CI pinnt 3.11 und erzwingt ihn).
 
 `tests/check_links.py` prüft zusätzlich die Erreichbarkeit der Katalog-Links — netzabhängig und
 daher advisory (§13). Die Pipeline (`.github/workflows/ci.yml`) trennt beides klar: blockierende
