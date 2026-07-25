@@ -11,7 +11,6 @@ Verdrahtungsstelle des Harness: `~/.claude/CLAUDE.md` (importiert Kern, diesen A
 | `governance.root` | `~/agent-governance` |
 | `roles.mechanism` | Claude-Subagenten (Agent-Tool). Registriert unter `~/.claude/agents/{ak,st,qa,sec}-agent.md`; jeder Subagent startet mit sauberem Kontext und lädt Kern + Rollenerweiterung + Profil selbst. |
 | `review.primary` | GitHub Copilot Code Review am PR; Alternativpfad: QA-Subagent nach Kern §16.3 (z. B. via `/code-review`). |
-| `vcs.branch_prefix` | `claude` |
 | `effort.mapping` | Claude-Effort-Stufen `low → medium → high → xhigh → max`. Analyse/Doku low–medium, Implementierung medium–high, Architektur/Review/CI-Fix high, kritisches Sparring xhigh+. Session-Default laut `~/.claude/settings.json` (`effortLevel`). |
 | `net.policy` | Egress gemäß Claude-Code-Permission-System; CI-Status/-Logs via `gh` sind freigegebenes Ziel (Kern §13). |
 | `machine.notes` | git-Signing auf diesem Mac: `commit.gpgsign=true` + SSH-Key mit Passphrase. Nicht-interaktiv schlägt `git commit` ohne entsperrten `ssh-agent` fehl → Key vorher laden; `--no-gpg-sign` nur mit expliziter Freigabe. |

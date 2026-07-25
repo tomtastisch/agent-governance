@@ -12,7 +12,6 @@ zu lesen).
 | `governance.root` | `~/agent-governance` |
 | `roles.mechanism` | Separate Codex-Session bzw. `codex exec`-Lauf mit frischem, chatfreiem Kontext je Rolle; Orchestrierung wahlweise über den codex-orchestrator-MCP. Jeder Rollenagent lädt Kern + Rollenerweiterung + Profil selbst. |
 | `review.primary` | GitHub Copilot Code Review am PR; Alternativpfad: QA-Agent nach Kern §16.3. |
-| `vcs.branch_prefix` | `codex` |
 | `effort.mapping` | Codex-Effort `low → medium → high → xhigh`. Analyse/Doku low, Implementierung medium, Architektur/Review/CI-Fix high, kritisches Sparring xhigh. Read-only-Modus für alles, was nicht schreiben muss. |
 | `net.policy` | Netzwerkzugriff in isolierten Läufen standardmäßig aus; je Aufgabe dokumentiert freigeben. Immer freigegeben: CI-Status/-Logs des eigenen Push via `gh` (Kern §13). |
 | `machine.notes` | git-Signing auf diesem Mac: `commit.gpgsign=true` + SSH-Key mit Passphrase. Nicht-interaktiv schlägt `git commit` ohne entsperrten `ssh-agent` fehl → Key vorher laden; `--no-gpg-sign` nur mit expliziter Freigabe. `gum` für Terminal-Progress. |

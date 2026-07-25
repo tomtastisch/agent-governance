@@ -135,7 +135,7 @@ Empfehlung: <mit Begründung>
 
 Dauerfreigaben (stehende Ausnahmen von der Einzelfreigabepflicht in §17; abschließende Liste):
 1. Issue-Anlage und -Kommentare nach §18 (inkl. Dedup-Recherche).
-2. Commit und Push auf eigene, nach `[BINDING:vcs.branch_prefix]` benannte Arbeits-Branches.
+2. Commit und Push auf eigene, nach dem Branch-Schema (§15) benannte Arbeits-Branches.
 3. Anlage und Aktualisierung des einen Draft-Haupt-PR auf dem eigenen Arbeits-Branch (§15).
 4. Auslösen unabhängiger Rollenagenten (§6) auf den eigenen Stand — read-only, ohne Schreib-,
    Push- oder Merge-Wirkung (z. B. laufende Cluster-QA nach §5.5).
@@ -254,7 +254,14 @@ gesichert/wahrscheinlich/unklar (§2, §4) gilt trotzdem.
 - Keine offenen TODO/Stubs im Liefergegenstand; keine unbelegte Behauptung (§4).
 
 ## 15. Branch-, Commit- & PR-Disziplin
-- Branch-Schema: `[BINDING:vcs.branch_prefix]/<modul>/<thema>/<name>`.
+- Branch-Schema: `<tag>/<modul>/<thema>/<name>`. `<tag>` ist genau einer der in
+  `core/branch-tags.toml` definierten Tags (geschlossene Liste = Conventional-Commit-Typen) und
+  benennt die fachliche Art der Änderung, nicht den Agenten (dessen Herkunft steht in den
+  Commit-Metadaten). Zuordnung Arbeit→Tag nach dem `description`-Kriterium des Tags; bei gemischten
+  Änderungen gewinnt der dominante Typ. Kein Tag außerhalb der Liste; ist keiner eindeutig, gilt der
+  `default` der Datei, bei echter Unentscheidbarkeit §7. `<thema>/<name>` müssen den Branch eindeutig
+  halten (kein Agenten-Präfix mehr als Namensraum). Derselbe `<tag>` erscheint konsistent auch im
+  PR-Titel und in den Commit-Präfixen.
 - Pro Vorhaben genau ein Haupt-PR; er wird zu Auftragsbeginn als Draft angelegt (Dauerfreigabe §7)
   und bleibt Draft, bis das Merge-Gate (§16) erfüllt ist. Jedes fertiggestellte Cluster wird in
   diesen PR gepusht (§5.5), damit der Zwischenstand jederzeit prüfbar ist. Größere Aufgaben über

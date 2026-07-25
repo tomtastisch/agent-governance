@@ -10,6 +10,7 @@ genau eine Verdrahtungsstelle je Harness. SSOT: jede Regel steht genau einmal.
 agent-governance/
 ├── core/
 │   ├── core.md          # Kernregelwerk — harness-agnostisch, keine Pfade, keine Personendaten
+│   ├── branch-tags.toml # Branch-/PR-Tags (SSOT): tag/name/description je Änderungstyp
 │   └── roles/           # Rollenerweiterungen (nur im jeweiligen Rollenagenten laden)
 │       ├── ak.md        # Architektur & Kontext (read-only Analyse, Drift-Audits)
 │       ├── st.md        # Scope-Triage neuer Befunde (Issue-Dokumentation)
@@ -30,6 +31,7 @@ agent-governance/
 │   ├── AGENTS.md        # → ~/.codex/AGENTS.md
 │   └── claude-agents/   # → ~/.claude/agents/ (Subagent-Wrapper AK/ST/QA/SEC)
 ├── tests/               # Konsistenz-/Drift-Tests + advisory Link-Check (Kern §9/§11/§13)
+├── docs/decisions/      # Entscheidungssätze (ADR): Begründung struktureller Änderungen
 ├── .github/workflows/   # CI-Pipeline (ci.yml)
 └── INSTALL.md           # gehärteter Install-Prompt (ein Prompt für alle Harnesse)
 ```
@@ -48,7 +50,6 @@ Der Kern referenziert ausschließlich benannte Schlüssel; jeder Adapter MUSS si
 | `governance.root` | Wurzelpfad dieser Struktur (einzige Pfadangabe) |
 | `roles.mechanism` | Wie ein sauberer, unabhängiger Rollenkontext erzeugt wird |
 | `review.primary` | Primärer unabhängiger Reviewer für das Merge-Gate |
-| `vcs.branch_prefix` | Branch-Präfix des Agenten |
 | `effort.mapping` | Stufen der Arbeitsintensität und ihre Zuordnung |
 | `net.policy` | Egress-Regeln inkl. freigegebener CI-Abfragen |
 | `machine.notes` | Maschinen-/Harness-Besonderheiten (z. B. Commit-Signierung) |
@@ -92,7 +93,11 @@ ohne Fremdabhängigkeiten) fällt aus, sobald eine Quelle gegen eine andere drif
 - der Kern bleibt pfadfrei (Root-Pfad nur in Adaptern/Templates);
 - `tools/tools.md` bleibt ohne Handpflege synchron: jedes `Brewfile`-Paket ist dort dokumentiert,
   jeder Werkzeug-Eintrag trägt Freigabe-Kennzeichnung und Installationsblock, kein Verweis auf das
-  entfernte alte Manifest bleibt zurück.
+  entfernte alte Manifest bleibt zurück;
+- `core/branch-tags.toml` ist wohlgeformt und git-ref-sicher: Tags eindeutig, Zeichensatz
+  ref-tauglich, `tag`/`name`/`description` je Eintrag gesetzt, `default` verweist auf einen
+  existierenden Tag, der Kern verweist auf die Datei, und der abgelöste Agenten-Präfix-Port taucht
+  in Kern, Port-Vertrag und Adaptern nicht mehr auf.
 
 `tests/check_links.py` prüft zusätzlich die Erreichbarkeit der Katalog-Links — netzabhängig und
 daher advisory (§13). Die Pipeline (`.github/workflows/ci.yml`) trennt beides klar: blockierende
