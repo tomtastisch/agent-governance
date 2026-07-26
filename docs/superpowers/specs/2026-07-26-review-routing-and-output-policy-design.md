@@ -132,7 +132,8 @@ Bei `completed_review_context` wird das referenzierte Review erst **nach** erfol
 Pin-Prüfung read-only über GitHub erneut geladen. Es muss Copilot, `COMMENTED`, Review-ID,
 Review-Commit und Zeitpunkt exakt bestätigen. Das API-Review kann Principal und Reviewmodus nicht
 selbst binden und darf daher niemals allein oder für einen anderen Principal/Modus Capability
-erzeugen.
+erzeugen. Die API-Review-ID wird nur akzeptiert, wenn ihr konkreter Typ `int` ist; `bool`, Float,
+String, `null` und andere Formen werden abgelehnt.
 
 `ProbeRequest` transportiert dafür nur eine nicht vertrauenswürdige Referenz. Er kann weder
 `trust`, erwarteten Digest noch Issuer setzen. `OperatorEvidenceTrustPort` liefert den externen
@@ -620,9 +621,10 @@ Bei `manual` ist `--requester` Pflicht; bei `automatic` wird der PR-Autor read-o
 angegebenen PR ermittelt. Eine Capability-Referenz ist ausschließlich ein nicht
 vertrauenswürdiges Operator-Artefakt. Der CLI besitzt keine Flags für Quelle, Trust, Issuer,
 Pin-Quelle oder erwartete Digests. `OperatorEvidenceTrustPort` wird ausschließlich programmatisch
-über `CliDependencies` injiziert; die normale Source-Checkout-CLI besitzt keine Pins. Fehlt die
-Referenz, scheitert ihre Verifikation oder passt Principal/Repository/Reviewmodus nicht, bleibt
-`copilot_usable = false`.
+über `CliDependencies` injiziert. `RuntimeRegistry.bootstrap` übernimmt exakt diese Instanz und
+verdrahtet sie in Capability-Verifier, Block-Verifier und Probe; kein Adapter-Fallback darf sie
+ersetzen. Die normale Source-Checkout-CLI besitzt keine Pins. Fehlt die Referenz, scheitert ihre
+Verifikation oder passt Principal/Repository/Reviewmodus nicht, bleibt `copilot_usable = false`.
 
 Der Composition Root löst Ports ausschließlich über die generische Runtime-Registry auf. Policy
 und Risikoklassifikation kennen weder `gh` noch HTTP; `__main__.py` importiert keine
@@ -691,6 +693,9 @@ Adapterimplementierung.
 
 `remaining` ist nur eine Zahl, wenn `used` und das tatsächlich geltende `limit` belastbar bekannt
 sind. Das Feld beeinflusst `copilot_usable` und die Route nicht.
+`capability_evidence.status` wird ausschließlich aus der geschlossenen
+`CapabilityVerification` abgeleitet. Es existiert kein zweites setzbares Statusfeld; Trust,
+Evidenzpräsenz und ein positiver `copilot_usable`-Wert müssen konstruktiv zur Verification passen.
 
 ### 9.3 Route-JSON
 
@@ -985,8 +990,9 @@ Mindestens:
 19. Dasselbe API-Review kann nicht für einen anderen Principal oder Reviewmodus positiv werden.
 20. Capability- und Block-Verifierfehler besitzen dieselbe Routing-Priorität wie übrige
     Permission-, Rate-, Provider-, Timeout- und Malformed/Incomplete-Fehler.
-21. API-/Provider-Blockquellen und `bool` als Schema-, PR- oder Review-ID werden fail-closed
-    abgelehnt; eine Actions-Billing-Lock-Annotation ist kein Copilot-Block.
+21. API-/Provider-Blockquellen und `bool` als Schema- oder PR-ID werden fail-closed abgelehnt;
+    eine API-Review-ID ist nur bei `type(id) is int` gültig; eine Actions-Billing-Lock-Annotation
+    ist kein Copilot-Block.
 22. Checkpoint-Matrix für alle vier Risiken und beide Verwendbarkeitswerte; `false` verlangt
     ausnahmslos QA.
 23. Final-Matrix für alle vier Risiken und beide Verwendbarkeitswerte.
@@ -1034,6 +1040,10 @@ Mindestens:
     kann `installed` vortäuschen.
 54. Evidence-Validator und Output-Policy werden über ihre typisierten Ports aufgelöst; GitHub-
     Command/Status/Clock/Probe/PR-State-Fakes erfüllen exakt die geschlossenen Signaturen.
+55. Registry-Bootstrap erhält die Identität eines injizierten `OperatorEvidenceTrustPort` bis in
+    beide Verifier und einen positiven, vollständig gefakten Registry-Level-Probe.
+56. `ProbeReport` leitet Capability-Status aus der Verification ab und lehnt
+    `dataclasses.replace`-Mismatchfälle für Status, Trust, Evidenz, Präsenz und Verwendbarkeit ab.
 
 ## 13. Umsetzungsschnitt
 

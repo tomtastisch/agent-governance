@@ -721,6 +721,50 @@ class GitHubProbeTest(unittest.TestCase):
             self.assertNotIn(forbidden, serialized.lower())
         self.assertNotIn("untrusted", serialized.lower())
 
+    def test_capability_status_is_derived_and_replace_mismatches_fail_closed(self):
+        valid, _ = self.probe(
+            personal_replies(),
+            request(capability_reference=capability_reference()),
+        )
+        absent, _ = self.probe(personal_replies())
+
+        self.assertNotIn("capability_status", valid.__dataclass_fields__)
+        self.assertEqual(valid.capability_status, "valid")
+        self.assertEqual(absent.capability_status, "absent")
+        self.assertEqual(
+            valid.to_dict()["capability_evidence"]["status"],
+            "valid",
+        )
+        with self.assertRaises(TypeError):
+            replace(valid, capability_status="absent")
+        with self.assertRaises(ValueError):
+            replace(
+                valid,
+                capability_verification=absent.capability_verification,
+            )
+        with self.assertRaises(ValueError):
+            replace(
+                valid.capability_verification,
+                trust=EvidenceTrust.UNVERIFIED,
+            )
+        with self.assertRaises(ValueError):
+            replace(
+                valid.capability_verification,
+                evidence=None,
+            )
+        with self.assertRaises(ValueError):
+            replace(
+                absent.capability_verification,
+                trust=EvidenceTrust.VERIFIED,
+            )
+        with self.assertRaises(ValueError):
+            replace(
+                valid,
+                signals=replace(valid.signals, capability=None),
+            )
+        with self.assertRaises(ValueError):
+            replace(absent, copilot_usable=True)
+
     def test_block_json_has_separate_verified_pin_provenance(self):
         report, _ = self.probe(
             personal_replies(),

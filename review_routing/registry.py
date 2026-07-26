@@ -15,6 +15,8 @@ from review_routing.contracts import (
     DuplicateProviderError,
     InvalidFactoryError,
     MissingProviderError,
+    OperatorEvidencePin,
+    OperatorEvidenceTrustPort,
     RuntimeProvenance,
     RuntimeTrust,
     RuntimeTrustConfig,
@@ -23,6 +25,13 @@ from review_routing.contracts import (
 )
 
 T = TypeVar("T")
+
+
+class DevelopmentOperatorEvidenceTrust(OperatorEvidenceTrustPort):
+    """Source-Checkout-Default ohne externen Operator-Pin."""
+
+    def load(self, source_reference: str) -> OperatorEvidencePin | None:
+        return None
 
 
 class RuntimeRegistry:
@@ -46,6 +55,12 @@ class RuntimeRegistry:
         manifest = cls._parse_manifest(runtime_bytes)
         provenance = cls._runtime_provenance(runtime_bytes, dependencies)
         registry = cls(provenance)
+        registry._resolved[OperatorEvidenceTrustPort] = (
+            dependencies.operator_evidence_trust_port
+            if dependencies is not None
+            and dependencies.operator_evidence_trust_port is not None
+            else DevelopmentOperatorEvidenceTrust()
+        )
         for module_name in manifest["modules"]:
             module = importlib.import_module(module_name)
             factory_builder = getattr(module, "factory", None)

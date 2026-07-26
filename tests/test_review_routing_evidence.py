@@ -170,16 +170,18 @@ class ReviewCommand:
         state: str = "COMMENTED",
         commit_id: str = HEAD_SHA,
         submitted_at: str = "2026-07-26T11:59:00Z",
+        review_id: object = 41,
     ):
         self.state = state
         self.commit_id = commit_id
         self.submitted_at = submitted_at
+        self.review_id = review_id
         self.calls = []
 
     def run(self, argv, timeout_seconds):
         self.calls.append(argv)
         payload = {
-            "id": 41,
+            "id": self.review_id,
             "user": {"login": "copilot-pull-request-reviewer[bot]"},
             "state": self.state,
             "commit_id": self.commit_id,
@@ -406,6 +408,36 @@ class CompletedReviewContextTest(unittest.TestCase):
                 )
                 self.assertEqual(result.status, EvidenceVerificationStatus.INVALID)
                 self.assertEqual(command.calls, [])
+
+    def test_api_review_id_requires_the_exact_integer_type(self):
+        for api_review_id in (True, False, 41.0, "41", None, [], {}):
+            with self.subTest(api_review_id=api_review_id):
+                document = completed_review_document()
+                content = canonical(document)
+                command = ReviewCommand(review_id=api_review_id)
+                verifier = CapabilityEvidenceVerifier(
+                    command,
+                    FixedTrust(
+                        {
+                            "operator_capability_20260726": pin_for(
+                                "operator_capability_20260726",
+                                content,
+                            )
+                        }
+                    ),
+                )
+
+                result = verifier.verify(
+                    capability_reference(content),
+                    REPOSITORY,
+                    principal(),
+                    "manual",
+                    NOW,
+                )
+
+                self.assertEqual(result.status, EvidenceVerificationStatus.INVALID)
+                self.assertEqual(result.trust, EvidenceTrust.UNVERIFIED)
+                self.assertIsNone(result.evidence)
 
 
 class OperatorBlockTrustTest(unittest.TestCase):

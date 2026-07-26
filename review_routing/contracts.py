@@ -758,8 +758,7 @@ class ProbeReport:
     billing_model: str
     technical_status: DiagnosticStatus
     technical_error: ProbeTechnicalError | None
-    capability_status: str
-    capability_verification: CapabilityVerification | None = None
+    capability_verification: CapabilityVerification
     block_verification: BlockVerification | None = None
     evidence: tuple[str, ...] = ()
     warnings: tuple[str, ...] = ()
@@ -774,13 +773,16 @@ class ProbeReport:
             raise ValueError("review_mode must be manual or automatic")
         if self.billing_model not in {"ai_credits", "premium_requests", "unknown"}:
             raise ValueError("billing_model is not supported")
-        if self.capability_status not in {"absent", "invalid", "expired", "valid"}:
-            raise ValueError("capability_status is not supported")
-        if (
-            self.capability_verification is not None
-            and self.capability_verification.evidence != self.signals.capability
-        ):
+        if not isinstance(self.capability_verification, CapabilityVerification):
+            raise ValueError("capability_verification must be a CapabilityVerification")
+        if self.capability_verification.evidence != self.signals.capability:
             raise ValueError("capability verification must match probe signals")
+        if (
+            self.copilot_usable
+            and self.capability_verification.status
+            is not EvidenceVerificationStatus.VERIFIED
+        ):
+            raise ValueError("copilot_usable requires a verified capability")
         if (
             self.block_verification is not None
             and self.block_verification.evidence != self.signals.verified_block
@@ -804,6 +806,15 @@ class ProbeReport:
     @property
     def observed_at(self) -> datetime:
         return self.signals.observed_at
+
+    @property
+    def capability_status(self) -> str:
+        return {
+            EvidenceVerificationStatus.ABSENT: "absent",
+            EvidenceVerificationStatus.INVALID: "invalid",
+            EvidenceVerificationStatus.EXPIRED: "expired",
+            EvidenceVerificationStatus.VERIFIED: "valid",
+        }[self.capability_verification.status]
 
     def to_dict(self) -> dict[str, object]:
         """Serialisiert ausschließlich den geschlossenen, sanitisierten Probe-Vertrag."""

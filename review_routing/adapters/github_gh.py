@@ -320,18 +320,6 @@ def _number(value: object, field_name: str, *, optional: bool = False) -> float 
     return float(value)
 
 
-def _capability_status(
-    verification: CapabilityVerification,
-) -> str:
-    if verification.status is EvidenceVerificationStatus.ABSENT:
-        return "absent"
-    if verification.status is EvidenceVerificationStatus.EXPIRED:
-        return "expired"
-    if verification.status is EvidenceVerificationStatus.INVALID:
-        return "invalid"
-    return "valid"
-
-
 def _canonical_digest(document: Mapping[str, object]) -> str:
     canonical = json.dumps(
         document,
@@ -399,13 +387,6 @@ def _invalid_capability(
         pin_source=pin_source,
         evidence=None,
     )
-
-
-class DevelopmentOperatorEvidenceTrust(OperatorEvidenceTrustPort):
-    """Source-Checkout-Default ohne externen Operator-Pin."""
-
-    def load(self, source_reference: str) -> OperatorEvidencePin | None:
-        return None
 
 
 class CapabilityEvidenceVerifier(CapabilityEvidenceVerifierPort):
@@ -489,7 +470,7 @@ class CapabilityEvidenceVerifier(CapabilityEvidenceVerifierPort):
             return _invalid_capability(reference)
         user = response["user"]
         if (
-            isinstance(response["id"], bool)
+            type(response["id"]) is not int
             or response["id"] != review_id
             or not isinstance(user, dict)
             or user.get("login") not in COPILOT_REVIEWERS
@@ -1076,7 +1057,6 @@ class GitHubGhProbe(ProbePort, PullRequestStatePort):
                     evidence=None,
                 )
             )
-        capability_status = _capability_status(capability_verification)
         capability = capability_verification.evidence
         verified_block = block_verification.evidence
         if verified_block is not None:
@@ -1206,7 +1186,6 @@ class GitHubGhProbe(ProbePort, PullRequestStatePort):
             billing_model=billing_model,
             technical_status=technical_status,
             technical_error=technical_error_code,
-            capability_status=capability_status,
             capability_verification=capability_verification,
             block_verification=block_verification,
             evidence=("github_api", "github_status"),
@@ -1220,21 +1199,22 @@ class GitHubFactory:
         CommandPort,
         StatusPort,
         ClockPort,
-        OperatorEvidenceTrustPort,
         CapabilityEvidenceVerifierPort,
         BlockEvidenceVerifierPort,
         ProbePort,
         PullRequestStatePort,
     )
-    required_ports: tuple[type[object], ...] = ()
+    required_ports = (OperatorEvidenceTrustPort,)
 
     def build(self, dependencies: Mapping[type[object], object]) -> Mapping[type[object], object]:
-        if dependencies:
-            raise ValueError("GitHub factory expects no dependencies")
+        if set(dependencies) != {OperatorEvidenceTrustPort}:
+            raise ValueError("GitHub factory expects exactly the operator trust port")
+        operator_trust = dependencies[OperatorEvidenceTrustPort]
+        if not isinstance(operator_trust, OperatorEvidenceTrustPort):
+            raise ValueError("GitHub factory requires an OperatorEvidenceTrustPort")
         command = SubprocessCommand()
         clock = SystemClock()
         status = GitHubStatus(clock=clock)
-        operator_trust = DevelopmentOperatorEvidenceTrust()
         capability_verifier = CapabilityEvidenceVerifier(
             command=command,
             operator_trust=operator_trust,
@@ -1251,7 +1231,6 @@ class GitHubFactory:
             CommandPort: command,
             StatusPort: status,
             ClockPort: clock,
-            OperatorEvidenceTrustPort: operator_trust,
             CapabilityEvidenceVerifierPort: capability_verifier,
             BlockEvidenceVerifierPort: block_verifier,
             ProbePort: probe,

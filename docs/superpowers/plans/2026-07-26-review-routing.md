@@ -441,6 +441,8 @@ git commit -m "feat(governance): classify review risk deterministically"
   verified evidence is reconstructed inside these ports.
 - Adds `OperatorEvidenceTrustPort.load(...)`. Only an externally provided `publisher_app` or
   `installed_config` digest pin can verify evidence; no CLI value is trusted as a pin.
+- `RuntimeRegistry.bootstrap(CliDependencies(...))` preserves the exact injected
+  `OperatorEvidenceTrustPort` instance and supplies it to both verifiers and the resulting probe.
 - Adds
   `PullRequestStatePort.load(
       repository: str,
@@ -484,10 +486,13 @@ Cover:
   `operator_setting` or `completed_review_context`;
 - `completed_review_context` revalidation against GitHub bot, `COMMENTED`, PR, review ID,
   review commit and timestamp only after the external pin matches;
+- the API review ID has exactly the integer type; bool, float, string and null fail closed;
 - an identical API review cannot verify another principal or review mode;
 - API-/provider block sources and bool schema/PR/review IDs fail closed;
 - capability/block verifier errors drive routing precedence;
 - Actions billing-lock annotations do not assert Copilot blocks;
+- `ProbeReport.capability_status` is derived from `CapabilityVerification`; replace-based status,
+  trust, evidence, presence and usability mismatches fail closed;
 - interim/multiple `gh api --include` HTTP blocks and safe known stderr diagnostics;
 - endpoint selection and API version header;
 - no raw stderr/header/token material in `ProbeReport.to_dict()`.

@@ -35,7 +35,10 @@ Actions-Billing-Lock-Annotationen sind keine Copilot-Blockadeevidenz. `OperatorE
 liefert den Pin ausschließlich programmatisch über `CliDependencies`; die Source-Checkout-CLI
 kennt keine Pins und besitzt keine Trust-/Digest-Override-Flags. Verifizierte Evidenz trägt
 zwingend `pin_source=publisher_app|installed_config`; abwesende, ungültige und abgelaufene Evidenz
-bleibt `unverified`. Eine gleich alte oder neuere verifizierte Blockade schlägt eine Capability;
+bleibt `unverified`. `RuntimeRegistry.bootstrap` verdrahtet exakt die injizierte Trust-Port-Instanz
+in beide Verifier und den daraus gebauten Probe. Der öffentliche Capability-Status wird
+ausschließlich aus `CapabilityVerification` abgeleitet und ist kein unabhängig setzbares Feld.
+Eine gleich alte oder neuere verifizierte Blockade schlägt eine Capability;
 ein danach abgeschlossenes Review schlägt die ältere Blockade. Technische Permission-, Rate- und
 Providerfehler, auch aus den beiden Verifiern, haben Vorrang vor beiden Caches. Abgelaufene Evidenz
 bleibt ohne Routingwirkung.
