@@ -7,6 +7,7 @@ import tomllib
 
 from review_routing.contracts import (
     AdapterFactory,
+    canonical_policy_digest,
     ConfigPort,
     GatePublisher,
     PathMarker,
@@ -50,6 +51,7 @@ class TomlConfig(ConfigPort):
             routes=MappingProxyType(routes),
             required_checks=tuple(required_checks),
             publisher=publisher,
+            policy_digest=canonical_policy_digest(raw),
         )
 
     def _parse_risk(self, risk: object) -> tuple[dict[str, int], list[PathMarker]]:

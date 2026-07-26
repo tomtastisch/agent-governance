@@ -69,6 +69,7 @@ class RoutingPolicyFileTest(unittest.TestCase):
         self.assertEqual(config.schema_version, 1)
         self.assertEqual(config.routes["checkpoint"][True]["low"], "local_checks")
         self.assertEqual(config.routes["final_exact_head"][False]["critical"], "qa_sec")
+        self.assertRegex(config.policy_digest, r"^sha256:[0-9a-f]{64}$")
 
     def test_parser_rejects_runtime_injection_before_any_factory_is_loaded(self):
         policy = (ROOT / "core/review-routing.toml").read_text(encoding="utf-8")
@@ -136,7 +137,10 @@ class RuntimeBootstrapTest(unittest.TestCase):
 
         self.assertEqual(set(raw), {"schema_version", "modules"})
         self.assertEqual(raw["schema_version"], 1)
-        self.assertEqual(raw["modules"], ["review_routing.adapters.toml_config"])
+        self.assertEqual(
+            raw["modules"],
+            ["review_routing.adapters.toml_config", "review_routing.policy"],
+        )
 
     def test_bootstrap_resolves_toml_config_from_the_packaged_manifest(self):
         registry = RuntimeRegistry.bootstrap(None)

@@ -53,9 +53,10 @@ class ImportBoundaryTest(unittest.TestCase):
     def test_contracts_imports_no_project_module(self):
         self.assertEqual(imported_review_routing_modules(ROOT / "review_routing/contracts.py"), set())
 
-    def test_registry_and_toml_adapter_import_only_contracts(self):
+    def test_registry_policy_and_toml_adapter_import_only_contracts(self):
         for relative_path in (
             "review_routing/registry.py",
+            "review_routing/policy.py",
             "review_routing/adapters/toml_config.py",
         ):
             with self.subTest(relative_path=relative_path):
@@ -94,6 +95,12 @@ class RegistryFailureTest(unittest.TestCase):
         self.assertIs(get_origin(hints["port"]), type)
         self.assertEqual(getattr(requested_type, "__name__", None), "T")
         self.assertIs(hints["return"], requested_type)
+
+    def test_bootstrap_resolves_the_policy_port(self):
+        from review_routing.contracts import RoutingPolicyPort
+        from review_routing.policy import RoutingPolicy
+
+        self.assertIsInstance(RuntimeRegistry.bootstrap(None).resolve(RoutingPolicyPort), RoutingPolicy)
 
 
 if __name__ == "__main__":
