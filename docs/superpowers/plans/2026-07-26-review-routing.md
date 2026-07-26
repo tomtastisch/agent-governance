@@ -562,6 +562,7 @@ git commit -S -m "feat(governance): probe Copilot availability read only"
       operator_evidence_trust_port: OperatorEvidenceTrustPort,
       probe: ProbePort,
       pull_request_state: PullRequestStatePort,
+      reviewer_availability: ReviewerAvailabilityPort,
       config: ConfigPort,
       policy_source: PolicySourcePort,
       diff_source: DiffSourcePort,
@@ -587,7 +588,16 @@ list/SHA or policy source from head/worktree must fail with `31`. An explicitly 
 diagnostic mode may accept SHAs but must serialize `gate_eligible = false`.
 Tests also prove that only an externally pinned matching runtime digest can produce
 `runtime_trust=installed`; the normal source-checkout CLI dependency is development-only.
-Argparse exposes no runtime-trust/digest override flag.
+Argparse exposes no runtime-trust/digest override flag, setzt `allow_abbrev=False` am Haupt- und
+an jedem Unterparser und akzeptiert keine abgekürzten Langoptionen.
+
+`route` akzeptiert keine Probe-Datei. Es lädt zuerst den PR-State, baut daraus samt Reviewmodus,
+Requester/PR, optionalen Selektoren und untrusted Capability-Referenz eine frische
+`ProbeRequest`, ruft `ProbePort.probe()` genau einmal auf und verwirft Reports mit abweichendem
+Request-Digest, PR, Principal, Modus oder Zeitfenster. `ProbeReport` bindet
+`pull_request_number`, `request_digest` und `valid_until` konstruktiv. QA-/SEC-Verfügbarkeit
+stammt ausschließlich aus dem programmatisch injizierten, zeit- und Exact-Head-gebundenen
+`ReviewerAvailabilityPort`; es gibt keine `--qa-available`-/`--sec-available`-Flags.
 
 - [ ] **Step 2: Run and confirm RED**
 
@@ -601,7 +611,11 @@ python3 -m unittest tests.test_review_routing_cli \
 The JSON object includes `schema_version`, `observed_at`, repository, context, model, usage,
 signals, routing status, binary usability, evidence and warnings. Write diagnostics only inside
 the JSON; stdout contains no progress prose. Invalid invocations use exit `31` with a sanitized
-JSON error. `route` serializes trusted policy provenance and `diff_digest`. The Composition Root
+JSON error. `route` serializes trusted policy provenance and `diff_digest`. Da Task 5 noch keine
+belastbare Coverage und keinen belegten Copilot-Reviewmodus besitzt, serialisiert es immer
+`copilot_coverage_complete=null`, `copilot_review_mode=unknown`,
+`decision_stage=preliminary`, `gate_status=evidence_validation_pending`,
+`gate_eligible=false` und `dispatch_permitted=false`. The Composition Root
 resolves every adapter through `RuntimeRegistry` and imports no concrete adapter module; extend
 the architecture test accordingly.
 
@@ -665,9 +679,18 @@ name and deterministic policy/evidence digests. Also cover a route policy-digest
 an empty trusted required-check policy, a spoofed same-name check from the wrong app slug and an
 attempt to inject required check names through evidence. Cover a policy changed only on head,
 missing Basispolicy during bootstrap, missing/extra/changed diff files, rename/copy source-path
-evasion, diff-digest mismatch, changed risk/security result and changed route/reviewer set. Cover
+evasion, diff-digest mismatch, changed risk/security result and an unzulässiges Entfernen
+risiko-/security-/fallback-/correction-bedingter Reviewer. Cover
 caller-selected SHAs versus API PR state, changed Base-Ref/Head between route and validate and
 offline `gate_eligible = false`.
+
+Task 6 lädt PR-State, Policy, Diff, Risiko und eine frische Probe erneut, erhebt erstmals echte
+Coverage sowie den tatsächlichen Reviewmodus und ruft danach die Policy neu auf. Die
+Task-5-Reviewer-Menge ist keine finale Sollmenge und wird nicht als Gleichheitsinvariante
+übernommen. QA darf nur entfernt werden, wenn sie in Task 5 ausschließlich wegen unbekannter
+Coverage beziehungsweise unbekanntem Modus ergänzt wurde und Task 6
+`coverage_complete=true` plus `full` positiv belegt; Risiko-, Security-, Fallback- und
+Correction-QA bleibt.
 
 - [ ] **Step 2: Run and confirm RED**
 
@@ -692,8 +715,10 @@ Only all required reviewers + all policy-required successful checks from their e
 sources + zero unresolved threads is valid.
 Recompute risk and routing from `trusted_diff` and `trusted_config`; require exact equality with
 the decision's repository, SHAs, runtime provenance/digest, policy provenance/digest, diff digest,
-risk, security flag, route and reviewer set. Every file from the trusted diff must have positive
-coverage by the route's reviewer set. The result includes repo, PR, base/head, trusted runtime and
+risk and security flag. Recompute the first gate-fähige route and reviewer set from fresh
+usability, actual coverage and actual review mode instead of requiring blind equality with Task
+5's preliminary route. Every file from the trusted diff must have positive coverage by the final
+route's reviewer set. The result includes repo, PR, base/head, trusted runtime and
 policy source/path/digests, diff digest, evidence digest, reviewer sets and observation time.
 Define a
 `GatePublisherPort.publish(result: GateResult) -> PublicationReceipt` in contracts but provide no
@@ -770,9 +795,10 @@ README/INSTALL/tools include:
 
 ```bash
 python3 -m review_routing probe --repo OWNER/REPO --json
-python3 -m review_routing route --probe-file probe.json \
+python3 -m review_routing route \
   --repo OWNER/REPO \
-  --pull-request NUMBER --purpose final_exact_head \
+  --pull-request NUMBER --review-mode manual --requester USER \
+  --purpose final_exact_head \
   --repo-path /absolute/path/to/checkout \
   --json
 python3 -m unittest discover -s tests -v

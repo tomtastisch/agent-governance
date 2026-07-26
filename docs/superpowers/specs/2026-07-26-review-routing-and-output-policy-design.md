@@ -296,9 +296,12 @@ Fake-Ports; reale Tests lösen keine GitHub-Anfrage aus.
 Der kanonische SHA-256-`diff_digest` des vollständigen `DiffSnapshot` wird in jede
 `RouteDecision` übernommen. `validate` erhebt denselben Diff über den vertrauenswürdigen Port
 erneut und nutzt injizierte `RiskClassifierPort`- und `RoutingPolicyPort`-Verträge zur erneuten
-Klassifikation und Entscheidung. Es vergleicht Repository, SHAs, Digest, Risiko,
-`security_relevant`, Route und Reviewer-Menge. Eine ausgelassene Datei, ein versteckter alter
-Rename-/Copy-Pfad oder eine abweichende Klassifikation macht das Gate ungültig.
+Klassifikation und Entscheidung. Es vergleicht Repository, SHAs, Digest, Risiko und
+`security_relevant`. Route und Reviewer-Menge werden erstmals gate-fähig aus der erneut
+erhobenen Probe sowie der tatsächlichen Coverage und dem tatsächlichen Reviewmodus berechnet,
+nicht blind mit der vorläufigen Task-5-Menge verglichen. Eine ausgelassene Datei, ein versteckter
+alter Rename-/Copy-Pfad, eine abweichende Klassifikation oder das unzulässige Entfernen
+risiko-/security-/fallback-/correction-bedingter Reviewer macht das Gate ungültig.
 
 ### 4.3 Reviewer-Routen
 
@@ -597,9 +600,11 @@ python3 -m review_routing probe \
   --capability-reference CAPABILITY-REFERENCE.json \
   --json
 python3 -m review_routing route \
-  --probe-file PROBE.json \
   --repo OWNER/REPO \
   --pull-request NUMBER \
+  --review-mode manual \
+  --requester USER \
+  --capability-reference CAPABILITY-REFERENCE.json \
   --purpose final_exact_head \
   --repo-path /absolute/path/to/checkout \
   --json
@@ -626,6 +631,14 @@ verdrahtet sie in Capability-Verifier, Block-Verifier und Probe; kein Adapter-Fa
 ersetzen. Die normale Source-Checkout-CLI besitzt keine Pins. Fehlt die Referenz, scheitert ihre
 Verifikation oder passt Principal/Repository/Reviewmodus nicht, bleibt `copilot_usable = false`.
 
+`route` akzeptiert kein zuvor geschriebenes Probe-JSON als Autorität. Der Befehl lädt zuerst den
+aktuellen PR-State, bindet daraus Repository und PR an eine neue `ProbeRequest`, ruft
+`ProbePort.probe()` genau einmal auf und akzeptiert den Report nur bei identischem
+`request_digest`, PR, Principal, Reviewmodus und aktueller Gültigkeitszeit. `--probe-file`,
+`--qa-available` und `--sec-available` sind ungültig. QA-/SEC-Verfügbarkeit stammt ausschließlich
+aus einem programmatisch injizierten `ReviewerAvailabilityPort`; fehlende, abgelaufene, fremde,
+`unavailable`- oder `unknown`-Evidenz gilt als nicht verfügbar.
+
 Der Composition Root löst Ports ausschließlich über die generische Runtime-Registry auf. Policy
 und Risikoklassifikation kennen weder `gh` noch HTTP; `__main__.py` importiert keine
 Adapterimplementierung.
@@ -637,6 +650,9 @@ Adapterimplementierung.
   "schema_version": 1,
   "observed_at": "2026-07-26T00:00:00Z",
   "repository": "owner/repository",
+  "pull_request_number": null,
+  "request_digest": "sha256:...",
+  "valid_until": "2026-07-26T00:05:00Z",
   "review_mode": "manual",
   "requester": "requester",
   "pull_request_author": null,
@@ -714,6 +730,11 @@ Evidenzpräsenz und ein positiver `copilot_usable`-Wert müssen konstruktiv zur 
     "reasons": ["high_changed_lines"]
   },
   "copilot_usable": true,
+  "copilot_coverage_complete": null,
+  "copilot_review_mode": "unknown",
+  "probe_request_digest": "sha256:...",
+  "probe_observed_at": "2026-07-26T00:00:00Z",
+  "probe_valid_until": "2026-07-26T00:05:00Z",
   "required_reviewers": ["copilot", "qa"],
   "route": "copilot_qa",
   "policy_source_ref": "BASE",
@@ -725,14 +746,27 @@ Evidenzpräsenz und ein positiver `copilot_usable`-Wert müssen konstruktiv zur 
   "diff_mode": "merge_base_to_head",
   "rename_detection": "disabled",
   "copy_detection": "disabled",
-  "gate_eligible": true,
+  "decision_stage": "preliminary",
+  "gate_status": "evidence_validation_pending",
+  "gate_eligible": false,
   "merge_evidence_required": true,
   "dispatch_permitted": false
 }
 ```
 
-`dispatch_permitted` bleibt in diesem read-only Werkzeug immer `false`. Die Ausgabe ist ein Plan,
-keine Freigabe zum Auslösen kostenpflichtiger Reviews.
+Task 5 kennt weder Exact-Head-Dateiabdeckung noch den tatsächlich erreichten Copilot-Reviewmodus.
+Deshalb bleiben `copilot_coverage_complete = null`, `copilot_review_mode = unknown`,
+`decision_stage = preliminary`, `gate_status = evidence_validation_pending`,
+`gate_eligible = false` und `dispatch_permitted = false`. Die Ausgabe ist ein konservativer Plan,
+keine Freigabe zum Auslösen kostenpflichtiger Reviews und kein Gate-Ergebnis.
+
+Task 6 erhebt PR-State, Basispolicy, vollständigen Diff, Risiko, frische Probe, Dateiabdeckung und
+Reviewmodus erneut und trifft damit die erste gate-fähige Policyentscheidung. Sie vergleicht die
+gebundene Provenienz, SHAs, Digests und das neu berechnete Risiko, übernimmt aber nicht blind die
+vorläufige Task-5-Reviewer-Menge. QA darf nur entfallen, wenn sie dort ausschließlich wegen
+unbekannter Coverage beziehungsweise unbekanntem Modus hinzukam und Task 6
+`coverage_complete=true` sowie `full` belegt; Risiko-, Security-, Fallback- und Correction-QA
+bleibt erhalten.
 
 ### 9.4 Exitcodes
 
@@ -1024,8 +1058,9 @@ Mindestens:
     Merge-Base→Head, mehrdeutige Rename-/Copy-Kandidaten werden als Delete+Add klassifiziert.
 46. Fehlende/zusätzliche/veränderte Diff-Datei oder abweichender `diff_digest` macht das Gate
     ungültig.
-47. Validate klassifiziert den vertrauenswürdig erhobenen Diff erneut und vergleicht Risiko,
-    Security-Flag, Route und Reviewer-Menge exakt.
+47. Validate klassifiziert den vertrauenswürdig erhobenen Diff erneut, vergleicht Risiko und
+    Security-Flag exakt und berechnet Route/Reviewer mit echter Coverage und echtem Reviewmodus
+    neu; nur ausschließlich vorläufige Coverage-/Mode-QA darf bei positivem Vollbeleg entfallen.
 48. Gate-fähige Route übernimmt Base-Ref/Base-SHA/Head-SHA aus PR-Metadaten und verwirft
     caller-selektierte SHAs.
 49. Wechsel von Base-Ref oder Head zwischen Route und Validate macht die Evidenz ungültig;

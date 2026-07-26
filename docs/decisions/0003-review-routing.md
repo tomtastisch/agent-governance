@@ -56,6 +56,20 @@ Adaptermodule. Eine externe, passende Publisher-/Installations-Pinbindung kann d
 Ein Organisations-Seat-`404` oder eine bloße Mitgliedschaft erzeugt keinen persönlichen
 Fallbackkontext, sondern `unknown`.
 
+Eine gespeicherte Probe-Ausgabe ist Diagnose und niemals Routingautorität. `route` lädt zuerst den
+aktuellen PR-State, erzeugt daraus eine vollständig digest-gebundene `ProbeRequest`, führt den
+Probe-Port genau einmal frisch aus und prüft den Report gegen Request, PR, Principal, Reviewmodus
+und Gültigkeitszeit. Reviewer-Verfügbarkeit für QA und SEC wird ausschließlich über aktuelle,
+Exact-Head- und Purpose-gebundene `ReviewerAvailabilityPort`-Evidenz aus dem Harness bestimmt;
+CLI-Flags oder Umgebungsvariablen dürfen sie nicht behaupten.
+
+Die Task-5-Route ist ausdrücklich `preliminary`: Coverage ist unbekannt, der Copilot-Reviewmodus
+ist `unknown`, und `gate_eligible` sowie `dispatch_permitted` bleiben falsch. Erst Task 6 erhebt
+Coverage und Modus erneut und trifft die erste gate-fähige Policyentscheidung. Dabei wird die
+vorläufige Reviewer-Menge nicht blind konserviert; QA darf nur entfallen, wenn sie ausschließlich
+wegen der zuvor unbekannten Coverage beziehungsweise des unbekannten Modus hinzukam und nun
+vollständige Abdeckung im Modus `full` positiv belegt ist.
+
 ## Konsequenzen
 
 Die Routingentscheidung ist reproduzierbar und fail-closed. Kandidatenpolicy kann keine

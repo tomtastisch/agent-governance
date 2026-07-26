@@ -159,6 +159,16 @@ class Reviewer(str, Enum):
     SEC = "sec"
 
 
+class ReviewerAvailabilityStatus(str, Enum):
+    AVAILABLE = "available"
+    UNAVAILABLE = "unavailable"
+    UNKNOWN = "unknown"
+
+
+class ReviewerAvailabilitySource(str, Enum):
+    HARNESS_RUNTIME = "harness_runtime"
+
+
 class PullRequestStateSource(str, Enum):
     GITHUB_API = "github_api"
 
@@ -703,6 +713,14 @@ class ProbeSignals:
     verified_block: VerifiedBlockEvidence | None = None
 
     def __post_init__(self) -> None:
+        for field_name in ("usage_status", "provider_status", "permission_status"):
+            if not isinstance(getattr(self, field_name), DiagnosticStatus):
+                raise ValueError(f"{field_name} must be a DiagnosticStatus")
+        if self.billing_status is not None and not isinstance(
+            self.billing_status,
+            DiagnosticStatus,
+        ):
+            raise ValueError("billing_status must be a DiagnosticStatus or absent")
         require_repository(self.repository)
         if self.review_mode not in {"manual", "automatic"}:
             raise ValueError("review_mode must be manual or automatic")
@@ -716,6 +734,43 @@ class ProbeSignals:
             self.observed_at,
         ):
             raise ValueError("verified_block must match the authoritative probe context")
+
+    def classify_usability(self) -> tuple[bool, DiagnosticStatus]:
+        """Leitet die einzige zulässige Verwendbarkeitsentscheidung aus den Signalen ab."""
+        precedence = (
+            DiagnosticStatus.BUDGET_BLOCKED,
+            DiagnosticStatus.QUOTA_EXHAUSTED,
+            DiagnosticStatus.RATE_LIMITED,
+            DiagnosticStatus.PROVIDER_UNAVAILABLE,
+            DiagnosticStatus.PERMISSION_DENIED,
+            DiagnosticStatus.UNKNOWN,
+            DiagnosticStatus.LOW_BUDGET,
+            DiagnosticStatus.AVAILABLE,
+        )
+        technical_statuses = (
+            self.usage_status,
+            self.provider_status,
+            self.permission_status,
+        )
+        status = next(candidate for candidate in precedence if candidate in technical_statuses)
+        if status not in {DiagnosticStatus.AVAILABLE, DiagnosticStatus.LOW_BUDGET}:
+            return False, status
+        block = self.verified_block
+        if block is not None and (
+            self.capability is None
+            or block.observed_at >= self.capability.observed_at
+        ):
+            if block.kind is BlockEvidenceKind.QUOTA_EXHAUSTED:
+                return False, DiagnosticStatus.QUOTA_EXHAUSTED
+            return False, DiagnosticStatus.BUDGET_BLOCKED
+        if self.capability is None or not self.capability.is_valid_for(
+            self.repository,
+            self.principal,
+            self.review_mode,
+            self.observed_at,
+        ):
+            return False, DiagnosticStatus.UNKNOWN
+        return True, status
 
 
 @dataclass(frozen=True)
@@ -759,6 +814,9 @@ class ProbeReport:
     technical_status: DiagnosticStatus
     technical_error: ProbeTechnicalError | None
     capability_verification: CapabilityVerification
+    pull_request_number: int | None
+    request_digest: str
+    valid_until: datetime
     block_verification: BlockVerification | None = None
     evidence: tuple[str, ...] = ()
     warnings: tuple[str, ...] = ()
@@ -773,6 +831,16 @@ class ProbeReport:
             raise ValueError("review_mode must be manual or automatic")
         if self.billing_model not in {"ai_credits", "premium_requests", "unknown"}:
             raise ValueError("billing_model is not supported")
+        if self.pull_request_number is not None and (
+            isinstance(self.pull_request_number, bool)
+            or not isinstance(self.pull_request_number, int)
+            or self.pull_request_number <= 0
+        ):
+            raise ValueError("pull_request_number must be a positive integer or absent")
+        _require_digest(self.request_digest, "request_digest")
+        _iso_z(self.valid_until)
+        if not self.observed_at < self.valid_until <= self.billing_principal.expires_at:
+            raise ValueError("valid_until must follow observation within principal validity")
         if not isinstance(self.capability_verification, CapabilityVerification):
             raise ValueError("capability_verification must be a CapabilityVerification")
         if self.capability_verification.evidence != self.signals.capability:
@@ -783,6 +851,9 @@ class ProbeReport:
             is not EvidenceVerificationStatus.VERIFIED
         ):
             raise ValueError("copilot_usable requires a verified capability")
+        expected_usable, expected_status = self.signals.classify_usability()
+        if self.copilot_usable is not expected_usable or self.routing_status is not expected_status:
+            raise ValueError("probe result must match the deterministic signal classification")
         if (
             self.block_verification is not None
             and self.block_verification.evidence != self.signals.verified_block
@@ -793,10 +864,58 @@ class ProbeReport:
             ProbeTechnicalError,
         ):
             raise ValueError("technical_error must be a ProbeTechnicalError or absent")
+        expected_technical_status = {
+            None: DiagnosticStatus.AVAILABLE,
+            ProbeTechnicalError.PERMISSION_DENIED: DiagnosticStatus.PERMISSION_DENIED,
+            ProbeTechnicalError.RATE_LIMITED: DiagnosticStatus.RATE_LIMITED,
+            ProbeTechnicalError.PROVIDER_UNAVAILABLE: DiagnosticStatus.PROVIDER_UNAVAILABLE,
+            ProbeTechnicalError.TIMEOUT: DiagnosticStatus.PROVIDER_UNAVAILABLE,
+            ProbeTechnicalError.UNKNOWN_CONTEXT: DiagnosticStatus.UNKNOWN,
+            ProbeTechnicalError.INCOMPLETE_RESPONSE: DiagnosticStatus.UNKNOWN,
+        }[self.technical_error]
+        if self.technical_status is not expected_technical_status:
+            raise ValueError("technical_status must match technical_error")
+        if self.copilot_usable and (
+            self.technical_error is not None
+            or self.technical_status is not DiagnosticStatus.AVAILABLE
+        ):
+            raise ValueError("copilot_usable requires a fully positive technical result")
+        if (
+            self.technical_error is not None
+            and self.routing_status is not expected_technical_status
+        ):
+            raise ValueError("technical failures must control the routing status")
         if self.signals.principal.identity != self.billing_principal.identity:
             raise ValueError("signals and report must use the same billing principal")
         if self.signals.repository != self.repository or self.signals.review_mode != self.review_mode:
             raise ValueError("signals must be bound to the report context")
+        if self.review_mode == "manual":
+            if (
+                self.requester != self.billing_principal.requester
+                or not self.requester
+                or self.pull_request_author is not None
+            ):
+                raise ValueError("manual report must bind the authoritative requester")
+        elif (
+            self.pull_request_number is None
+            or self.requester is not None
+            or self.pull_request_author != self.billing_principal.pull_request_author
+            or (
+                self.technical_error is None
+                and not self.pull_request_author
+            )
+        ):
+            raise ValueError("automatic report must bind pull request and author")
+        capability = self.capability_verification.evidence
+        if capability is not None and self.valid_until > capability.expires_at:
+            raise ValueError("report validity must not outlive capability evidence")
+        verified_block = (
+            self.block_verification.evidence
+            if self.block_verification is not None
+            else None
+        )
+        if verified_block is not None and self.valid_until > verified_block.expires_at:
+            raise ValueError("report validity must not outlive block evidence")
         for field_name in ("evidence", "warnings"):
             values = tuple(getattr(self, field_name))
             for item in values:
@@ -825,6 +944,7 @@ class ProbeReport:
             "schema_version": self.schema_version,
             "observed_at": _iso_z(self.observed_at),
             "repository": self.repository,
+            "pull_request_number": self.pull_request_number,
             "review_mode": self.review_mode,
             "requester": self.requester,
             "pull_request_author": self.pull_request_author,
@@ -861,6 +981,8 @@ class ProbeReport:
                 "api_status": self.signals.permission_status.value,
             },
             "routing_status": self.routing_status.value,
+            "request_digest": self.request_digest,
+            "valid_until": _iso_z(self.valid_until),
             "technical_status": self.technical_status.value,
             "technical_error": self.technical_error.value if self.technical_error is not None else None,
             "copilot_usable": self.copilot_usable,
@@ -1058,6 +1180,143 @@ class ProbeRequest:
             BlockEvidenceReference,
         ):
             raise ValueError("block_reference must be a BlockEvidenceReference")
+
+    @property
+    def request_digest(self) -> str:
+        """Bindet den vollständigen Probe-Kontext einschließlich untrusted Artefaktbytes."""
+
+        def reference_document(
+            reference: CapabilityEvidenceReference | BlockEvidenceReference | None,
+        ) -> object:
+            if reference is None:
+                return None
+            return {
+                "artifact_digest": "sha256:"
+                + hashlib.sha256(reference.artifact).hexdigest(),
+                "principal_identity": list(reference.principal_identity),
+                "repository": reference.repository,
+                "review_mode": reference.review_mode,
+                "schema_version": reference.schema_version,
+                "source": reference.source.value,
+                "source_reference": reference.source_reference,
+            }
+
+        document = {
+            "block_reference": reference_document(self.block_reference),
+            "capability_reference": reference_document(self.capability_reference),
+            "cost_center": self.cost_center,
+            "enterprise": self.enterprise,
+            "manual_requester": self.manual_requester,
+            "organization": self.organization,
+            "pull_request_number": self.pull_request_number,
+            "repository": self.repository,
+            "review_mode": self.review_mode,
+            "schema_version": 1,
+        }
+        canonical = json.dumps(
+            document,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+@dataclass(frozen=True)
+class ReviewerAvailabilityEvidence:
+    """Zeitlich und kontextuell gebundene Harness-Evidenz für genau einen Reviewer."""
+
+    reviewer: Reviewer
+    status: ReviewerAvailabilityStatus
+    repository: str
+    pull_request_number: int
+    head_sha: str
+    purpose: ReviewPurpose
+    observed_at: datetime
+    expires_at: datetime
+    source: ReviewerAvailabilitySource
+    reason: str
+
+    def __post_init__(self) -> None:
+        if self.reviewer not in {Reviewer.QA, Reviewer.SEC}:
+            raise ValueError("reviewer availability is supported only for qa and sec")
+        if not isinstance(self.status, ReviewerAvailabilityStatus):
+            raise ValueError("status must be a ReviewerAvailabilityStatus")
+        require_repository(self.repository)
+        if (
+            isinstance(self.pull_request_number, bool)
+            or not isinstance(self.pull_request_number, int)
+            or self.pull_request_number <= 0
+        ):
+            raise ValueError("pull_request_number must be a positive integer")
+        require_full_sha(self.head_sha, "head_sha")
+        if not isinstance(self.purpose, ReviewPurpose):
+            raise ValueError("purpose must be a ReviewPurpose")
+        _iso_z(self.observed_at)
+        _iso_z(self.expires_at)
+        if self.expires_at <= self.observed_at:
+            raise ValueError("expires_at must be after observed_at")
+        if self.source is not ReviewerAvailabilitySource.HARNESS_RUNTIME:
+            raise ValueError("reviewer availability source must be harness_runtime")
+        _require_code(self.reason, "reason")
+
+    def is_available_for(
+        self,
+        repository: str,
+        pull_request_number: int,
+        head_sha: str,
+        purpose: ReviewPurpose,
+        now: datetime,
+    ) -> bool:
+        """Akzeptiert ausschließlich aktuelle Exact-Context-Evidenz mit Status available."""
+        _iso_z(now)
+        return (
+            self.status is ReviewerAvailabilityStatus.AVAILABLE
+            and self.repository == repository
+            and self.pull_request_number == pull_request_number
+            and self.head_sha == head_sha
+            and self.purpose is purpose
+            and self.observed_at <= now < self.expires_at
+        )
+
+
+@dataclass(frozen=True)
+class ReviewerAvailabilitySnapshot:
+    """Geschlossener, programmatic-only Snapshot ohne CLI-Überschreibungen."""
+
+    evidence: tuple[ReviewerAvailabilityEvidence, ...] = ()
+
+    def __post_init__(self) -> None:
+        evidence = tuple(self.evidence)
+        if not all(isinstance(item, ReviewerAvailabilityEvidence) for item in evidence):
+            raise ValueError("evidence must contain ReviewerAvailabilityEvidence values")
+        reviewers = tuple(item.reviewer for item in evidence)
+        if len(set(reviewers)) != len(reviewers):
+            raise ValueError("reviewer availability evidence must be unique per reviewer")
+        object.__setattr__(self, "evidence", evidence)
+
+    def is_available(
+        self,
+        reviewer: Reviewer,
+        repository: str,
+        pull_request_number: int,
+        head_sha: str,
+        purpose: ReviewPurpose,
+        now: datetime,
+    ) -> bool:
+        if reviewer not in {Reviewer.QA, Reviewer.SEC}:
+            return False
+        return any(
+            item.reviewer is reviewer
+            and item.is_available_for(
+                repository,
+                pull_request_number,
+                head_sha,
+                purpose,
+                now,
+            )
+            for item in self.evidence
+        )
 
 
 @dataclass(frozen=True)
@@ -1411,6 +1670,18 @@ class PullRequestStatePort(ABC):
         """Lädt Base-Ref sowie vollständige Base-/Head-SHAs aus der GitHub-API."""
 
 
+class ReviewerAvailabilityPort(ABC):
+    @abstractmethod
+    def load(
+        self,
+        repository: str,
+        pull_request_number: int,
+        head_sha: str,
+        purpose: ReviewPurpose,
+    ) -> ReviewerAvailabilitySnapshot:
+        """Lädt die programmatic-only QA-/SEC-Verfügbarkeit für den Exact-Head-Kontext."""
+
+
 @dataclass(frozen=True)
 class CliDependencies:
     """Programmatic-only Grenze für externe, vertrauenswürdige Abhängigkeiten."""
@@ -1419,6 +1690,7 @@ class CliDependencies:
     operator_evidence_trust_port: OperatorEvidenceTrustPort | None = None
     probe: ProbePort | None = None
     pull_request_state: PullRequestStatePort | None = None
+    reviewer_availability: ReviewerAvailabilityPort | None = None
     config: ConfigPort | None = None
     policy_source: PolicySourcePort | None = None
     diff_source: DiffSourcePort | None = None
@@ -1430,6 +1702,7 @@ class CliDependencies:
             "operator_evidence_trust_port": OperatorEvidenceTrustPort,
             "probe": ProbePort,
             "pull_request_state": PullRequestStatePort,
+            "reviewer_availability": ReviewerAvailabilityPort,
             "config": ConfigPort,
             "policy_source": PolicySourcePort,
             "diff_source": DiffSourcePort,

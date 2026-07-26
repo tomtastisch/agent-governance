@@ -66,6 +66,7 @@ API_VERSION = "2026-03-10"
 STATUS_URL = "https://www.githubstatus.com/api/v2/components.json"
 DEFAULT_TIMEOUT_SECONDS = 10.0
 PRINCIPAL_VALIDITY = timedelta(minutes=15)
+REPORT_VALIDITY = timedelta(minutes=5)
 COPILOT_REVIEWERS = {
     "copilot-pull-request-reviewer[bot]",
     "github-copilot[bot]",
@@ -1059,6 +1060,18 @@ class GitHubGhProbe(ProbePort, PullRequestStatePort):
             )
         capability = capability_verification.evidence
         verified_block = block_verification.evidence
+        for verifier_error in (capability_error, block_error):
+            if verifier_error is None:
+                continue
+            verifier_status = _diagnostic_for_error(verifier_error)
+            if verifier_status is DiagnosticStatus.PERMISSION_DENIED:
+                permission_status = verifier_status
+            else:
+                provider_status = next(
+                    status
+                    for status in _STATUS_PRECEDENCE
+                    if status in {provider_status, verifier_status}
+                )
         if verified_block is not None:
             billing_status = (
                 DiagnosticStatus.QUOTA_EXHAUSTED
@@ -1077,41 +1090,7 @@ class GitHubGhProbe(ProbePort, PullRequestStatePort):
             observed_at=observed_at,
             verified_block=verified_block,
         )
-        technical_statuses = (
-            usage_status,
-            provider_status,
-            permission_status,
-            *(
-                (_diagnostic_for_error(capability_error),)
-                if capability_error is not None
-                else ()
-            ),
-            *(
-                (_diagnostic_for_error(block_error),)
-                if block_error is not None
-                else ()
-            ),
-        )
-        routing_status = next(
-            status for status in _STATUS_PRECEDENCE if status in technical_statuses
-        )
-        copilot_usable = False
-        if routing_status in {DiagnosticStatus.AVAILABLE, DiagnosticStatus.LOW_BUDGET}:
-            if capability is None or not capability.is_valid_for(
-                request.repository,
-                principal,
-                request.review_mode,
-                observed_at,
-            ):
-                routing_status = DiagnosticStatus.UNKNOWN
-            elif (
-                verified_block is not None
-                and verified_block.observed_at >= capability.observed_at
-            ):
-                assert billing_status is not None
-                routing_status = billing_status
-            else:
-                copilot_usable = True
+        copilot_usable, routing_status = signals.classify_usability()
 
         errors = tuple(
             error
@@ -1168,6 +1147,14 @@ class GitHubGhProbe(ProbePort, PullRequestStatePort):
             technical_error_code = ProbeTechnicalError.UNKNOWN_CONTEXT
         else:
             technical_error_code = None
+        validity_candidates = [
+            observed_at + REPORT_VALIDITY,
+            principal.expires_at,
+        ]
+        if capability is not None:
+            validity_candidates.append(capability.expires_at)
+        if verified_block is not None:
+            validity_candidates.append(verified_block.expires_at)
         return ProbeReport(
             copilot_usable=copilot_usable,
             routing_status=routing_status,
@@ -1187,6 +1174,9 @@ class GitHubGhProbe(ProbePort, PullRequestStatePort):
             technical_status=technical_status,
             technical_error=technical_error_code,
             capability_verification=capability_verification,
+            pull_request_number=request.pull_request_number,
+            request_digest=request.request_digest,
+            valid_until=min(validity_candidates),
             block_verification=block_verification,
             evidence=("github_api", "github_status"),
             warnings=(),

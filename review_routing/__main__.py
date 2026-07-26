@@ -27,13 +27,14 @@ from review_routing.contracts import (
     PullRequestStatePort,
     PullRequestStateSource,
     RiskAssessment,
+    Reviewer,
+    ReviewerAvailabilitySnapshot,
     ReviewPurpose,
     ReviewRequest,
     ReviewRoute,
     RiskClassifierPort,
     RouteDecision,
     RoutingPolicyPort,
-    RuntimeTrust,
     require_full_sha,
     require_repository,
 )
@@ -57,10 +58,14 @@ class JsonArgumentParser(argparse.ArgumentParser):
 
 
 def _parser() -> JsonArgumentParser:
-    parser = JsonArgumentParser(prog="review-routing", add_help=False)
+    parser = JsonArgumentParser(
+        prog="review-routing",
+        add_help=False,
+        allow_abbrev=False,
+    )
     commands = parser.add_subparsers(dest="command", required=True)
 
-    probe = commands.add_parser("probe", add_help=False)
+    probe = commands.add_parser("probe", add_help=False, allow_abbrev=False)
     probe.add_argument("--repo", required=True)
     probe.add_argument("--review-mode", choices=("manual", "automatic"), required=True)
     probe.add_argument("--requester")
@@ -71,10 +76,15 @@ def _parser() -> JsonArgumentParser:
     probe.add_argument("--capability-reference")
     probe.add_argument("--json", action="store_true", required=True)
 
-    route = commands.add_parser("route", add_help=False)
-    route.add_argument("--probe-file", required=True)
+    route = commands.add_parser("route", add_help=False, allow_abbrev=False)
     route.add_argument("--repo", required=True)
     route.add_argument("--pull-request", type=int, required=True)
+    route.add_argument("--review-mode", choices=("manual", "automatic"), required=True)
+    route.add_argument("--requester")
+    route.add_argument("--organization")
+    route.add_argument("--enterprise")
+    route.add_argument("--cost-center")
+    route.add_argument("--capability-reference")
     route.add_argument(
         "--purpose",
         choices=(
@@ -85,8 +95,6 @@ def _parser() -> JsonArgumentParser:
         required=True,
     )
     route.add_argument("--repo-path", required=True)
-    route.add_argument("--qa-available", choices=("true", "false"), default="true")
-    route.add_argument("--sec-available", choices=("true", "false"), default="true")
     route.add_argument("--json", action="store_true", required=True)
     return parser
 
@@ -225,29 +233,10 @@ def _run_probe(
     stdout: TextIO,
 ) -> int:
     probe = _resolve(dependencies.probe, registry, ProbePort)
+    clock = _resolve(dependencies.clock, registry, ClockPort)
     request = _probe_request(arguments)
     report = probe.probe(request)
-    if (
-        not isinstance(report, ProbeReport)
-        or report.repository != request.repository
-        or report.review_mode != request.review_mode
-        or (
-            request.review_mode == "manual"
-            and (
-                report.requester != request.manual_requester
-                or report.pull_request_author is not None
-            )
-        )
-        or (
-            request.review_mode == "automatic"
-            and (
-                report.requester is not None
-                or not isinstance(report.pull_request_author, str)
-                or not report.pull_request_author
-            )
-        )
-    ):
-        raise CliInputError("probe returned an invalid report")
+    _validate_probe_report(report, request, clock.now())
     payload = report.to_dict()
     if not isinstance(payload, dict):
         raise CliInputError("probe returned an invalid report")
@@ -255,69 +244,57 @@ def _run_probe(
     return _probe_exit(report)
 
 
-_PROBE_KEYS = {
-    "schema_version",
-    "observed_at",
-    "repository",
-    "review_mode",
-    "requester",
-    "pull_request_author",
-    "billing_principal",
-    "billing_context",
-    "billing_model",
-    "usage",
-    "signals",
-    "routing_status",
-    "technical_status",
-    "technical_error",
-    "copilot_usable",
-    "capability_evidence",
-    "block_evidence",
-    "evidence",
-    "warnings",
-}
-
-
-def _probe_usability(path_value: str, repository: str) -> bool:
-    document, _raw = _read_json(path_value)
+def _validate_probe_report(
+    report: object,
+    request: ProbeRequest,
+    now: datetime,
+    state: PullRequestState | None = None,
+) -> ProbeReport:
+    """Bindet einen frischen Portbericht an Request, Uhr und optionalen API-PR-State."""
     if (
-        set(document) != _PROBE_KEYS
-        or type(document.get("schema_version")) is not int
-        or document.get("schema_version") != 1
+        not isinstance(report, ProbeReport)
+        or report.repository != request.repository
+        or report.review_mode != request.review_mode
+        or report.pull_request_number != request.pull_request_number
+        or report.request_digest != request.request_digest
+        or not report.observed_at <= now < report.valid_until
+        or not report.billing_principal.is_valid_at(now)
     ):
-        raise CliInputError("probe document has an unsupported schema")
-    if document.get("repository") != repository:
-        raise CliInputError("probe repository does not match")
-    usable = document.get("copilot_usable")
-    if type(usable) is not bool:
-        raise CliInputError("probe usability must be boolean")
-    try:
-        routing_status = DiagnosticStatus(document["routing_status"])  # type: ignore[arg-type]
-    except (KeyError, TypeError, ValueError) as error:
-        raise CliInputError("probe routing status is invalid") from error
-    capability = document.get("capability_evidence")
-    signals = document.get("signals")
-    if not isinstance(capability, dict) or not isinstance(signals, dict):
-        raise CliInputError("probe evidence is incomplete")
-    if usable:
+        raise CliInputError("probe returned an invalid report")
+    if request.review_mode == "manual":
         if (
-            routing_status not in {
-                DiagnosticStatus.AVAILABLE,
-                DiagnosticStatus.LOW_BUDGET,
-            }
-            or document.get("technical_error") is not None
-            or capability.get("status") != "valid"
-            or capability.get("trust") != "verified"
-            or signals.get("provider_status") != DiagnosticStatus.AVAILABLE.value
-            or signals.get("api_status") != DiagnosticStatus.AVAILABLE.value
-            or signals.get("usage_status")
-            not in {
-                DiagnosticStatus.AVAILABLE.value,
-                DiagnosticStatus.LOW_BUDGET.value,
-            }
+            report.requester != request.manual_requester
+            or report.billing_principal.requester != request.manual_requester
+            or report.pull_request_author is not None
         ):
-            raise CliInputError("positive probe evidence is inconsistent")
-    return usable
+            raise CliInputError("probe returned an invalid manual principal")
+    elif (
+        report.requester is not None
+        or not report.pull_request_author
+        or state is not None
+        and (
+            report.pull_request_author != state.author
+            or report.billing_principal.pull_request_author != state.author
+        )
+    ):
+        raise CliInputError("probe returned an invalid automatic principal")
+    if report.copilot_usable:
+        reference = request.capability_reference
+        verification = report.capability_verification
+        if (
+            reference is None
+            or reference.repository != request.repository
+            or reference.review_mode != request.review_mode
+            or reference.principal_identity != report.billing_principal.identity
+            or verification.source_reference != reference.source_reference
+            or verification.evidence is None
+            or verification.evidence.repository != request.repository
+            or verification.evidence.review_mode != request.review_mode
+            or verification.evidence.principal.identity
+            != report.billing_principal.identity
+        ):
+            raise CliInputError("positive probe evidence is not request-bound")
+    return report
 
 
 def _validated_pr_state(value: object, repository: str, pull_request_number: int) -> PullRequestState:
@@ -351,8 +328,8 @@ def _route_payload(
     snapshot: DiffSnapshot,
     assessment: RiskAssessment,
     decision: RouteDecision,
+    report: ProbeReport,
     observed_at: datetime,
-    gate_eligible: bool,
 ) -> dict[str, object]:
     return {
         "schema_version": 1,
@@ -372,6 +349,11 @@ def _route_payload(
             "reasons": list(assessment.reasons),
         },
         "copilot_usable": decision.copilot_usable,
+        "copilot_coverage_complete": None,
+        "copilot_review_mode": "unknown",
+        "probe_request_digest": report.request_digest,
+        "probe_observed_at": _iso_z(report.observed_at),
+        "probe_valid_until": _iso_z(report.valid_until),
         "required_reviewers": sorted(
             reviewer.value for reviewer in decision.required_reviewers
         ),
@@ -385,7 +367,9 @@ def _route_payload(
         "diff_mode": snapshot.diff_mode.value,
         "rename_detection": snapshot.rename_detection.value,
         "copy_detection": snapshot.copy_detection.value,
-        "gate_eligible": gate_eligible,
+        "decision_stage": "preliminary",
+        "gate_status": "evidence_validation_pending",
+        "gate_eligible": False,
         "merge_evidence_required": arguments.purpose != ReviewPurpose.CHECKPOINT.value,
         "dispatch_permitted": False,
     }
@@ -411,10 +395,14 @@ def _run_route(
         purpose = ReviewPurpose(arguments.purpose)
         if purpose is ReviewPurpose.CORRECTION:
             raise ValueError("correction requires prior exact-head evidence")
+        if arguments.review_mode == "manual":
+            if not arguments.requester:
+                raise ValueError("manual route requires requester")
+        elif arguments.requester is not None:
+            raise ValueError("automatic route forbids requester")
     except (TypeError, ValueError) as error:
         raise CliInputError("route request is invalid") from error
 
-    copilot_usable = _probe_usability(arguments.probe_file, arguments.repo)
     pull_request_state = _resolve(
         dependencies.pull_request_state,
         registry,
@@ -424,6 +412,57 @@ def _run_route(
         pull_request_state.load(arguments.repo, arguments.pull_request),
         arguments.repo,
         arguments.pull_request,
+    )
+    try:
+        probe_request = ProbeRequest(
+            repository=state.repository,
+            review_mode=arguments.review_mode,
+            manual_requester=arguments.requester,
+            pull_request_number=state.pull_request_number,
+            organization=arguments.organization,
+            enterprise=arguments.enterprise,
+            cost_center=arguments.cost_center,
+            capability_reference=_capability_reference(
+                arguments.capability_reference,
+            ),
+        )
+    except (TypeError, ValueError) as error:
+        raise CliInputError("route probe request is invalid") from error
+    probe = _resolve(dependencies.probe, registry, ProbePort)
+    report = probe.probe(probe_request)
+    clock = _resolve(dependencies.clock, registry, ClockPort)
+    observed_at = clock.now()
+    report = _validate_probe_report(
+        report,
+        probe_request,
+        observed_at,
+        state,
+    )
+    availability_snapshot = ReviewerAvailabilitySnapshot()
+    if dependencies.reviewer_availability is not None:
+        availability_snapshot = dependencies.reviewer_availability.load(
+            state.repository,
+            state.pull_request_number,
+            state.head_sha,
+            purpose,
+        )
+        if not isinstance(availability_snapshot, ReviewerAvailabilitySnapshot):
+            raise CliInputError("reviewer availability has an invalid type")
+    qa_available = availability_snapshot.is_available(
+        Reviewer.QA,
+        state.repository,
+        state.pull_request_number,
+        state.head_sha,
+        purpose,
+        observed_at,
+    )
+    sec_available = availability_snapshot.is_available(
+        Reviewer.SEC,
+        state.repository,
+        state.pull_request_number,
+        state.head_sha,
+        purpose,
+        observed_at,
     )
     policy_source = _resolve(dependencies.policy_source, registry, PolicySourcePort)
     document = policy_source.read_at_commit(
@@ -462,11 +501,11 @@ def _run_route(
         head_sha=state.head_sha,
         purpose=purpose,
         assessment=assessment,
-        copilot_usable=copilot_usable,
-        copilot_coverage_complete=True,
-        copilot_review_mode="full",
-        qa_available=arguments.qa_available == "true",
-        sec_available=arguments.sec_available == "true",
+        copilot_usable=report.copilot_usable,
+        copilot_coverage_complete=None,
+        copilot_review_mode="unknown",
+        qa_available=qa_available,
+        sec_available=sec_available,
         policy_source_ref=state.api_base_sha,
         policy_source_path=str(POLICY_PATH),
         runtime_digest=runtime.digest,
@@ -475,20 +514,14 @@ def _run_route(
         prior_reviewers=frozenset(),
     )
     decision = registry.resolve(RoutingPolicyPort).route(request, config)
-    gate_eligible = (
-        runtime.trust is RuntimeTrust.INSTALLED
-        and document.trust is DocumentTrust.COMMIT_OBJECT
-        and decision.route is not ReviewRoute.BLOCKER
-    )
-    clock = _resolve(dependencies.clock, registry, ClockPort)
     payload = _route_payload(
         arguments=arguments,
         state=state,
         snapshot=snapshot,
         assessment=assessment,
         decision=decision,
-        observed_at=clock.now(),
-        gate_eligible=gate_eligible,
+        report=report,
+        observed_at=observed_at,
     )
     _write_json(stdout, payload)
     return 30 if decision.route is ReviewRoute.BLOCKER else 0

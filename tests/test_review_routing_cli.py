@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import redirect_stderr
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 import hashlib
 from io import StringIO
@@ -15,6 +16,9 @@ import unittest
 from review_routing.contracts import (
     BillingContext,
     BillingPrincipal,
+    BlockEvidenceKind,
+    BlockEvidenceSource,
+    BlockVerification,
     CapabilityArtifactKind,
     CapabilityEvidence,
     CapabilityEvidenceSource,
@@ -45,11 +49,19 @@ from review_routing.contracts import (
     PullRequestState,
     PullRequestStatePort,
     PullRequestStateSource,
+    Reviewer,
+    ReviewerAvailabilityEvidence,
+    ReviewerAvailabilityPort,
+    ReviewerAvailabilitySnapshot,
+    ReviewerAvailabilitySource,
+    ReviewerAvailabilityStatus,
+    ReviewPurpose,
     ReviewRoute,
     RuntimeTrustConfig,
     RuntimeTrustPort,
     RuntimeTrustSource,
     Usage,
+    VerifiedBlockEvidence,
 )
 
 
@@ -88,13 +100,20 @@ class FakeOperatorTrust(OperatorEvidenceTrustPort):
 
 
 class FakeProbe(ProbePort):
-    def __init__(self, report: ProbeReport):
+    def __init__(self, report: ProbeReport, *, bind_request: bool = True):
         self.report = report
+        self.bind_request = bind_request
         self.requests: list[ProbeRequest] = []
 
     def probe(self, request: ProbeRequest) -> ProbeReport:
         self.requests.append(request)
-        return self.report
+        if not self.bind_request:
+            return self.report
+        return replace(
+            self.report,
+            pull_request_number=request.pull_request_number,
+            request_digest=request.request_digest,
+        )
 
 
 class FakePullRequestState(PullRequestStatePort):
@@ -174,8 +193,56 @@ class FakeDiffSource(DiffSourcePort):
 
 
 class FakeClock(ClockPort):
+    def __init__(self, now: datetime = NOW):
+        self.current = now
+
     def now(self) -> datetime:
-        return NOW
+        return self.current
+
+
+class FakeReviewerAvailability(ReviewerAvailabilityPort):
+    def __init__(
+        self,
+        *,
+        qa: ReviewerAvailabilityStatus = ReviewerAvailabilityStatus.AVAILABLE,
+        sec: ReviewerAvailabilityStatus = ReviewerAvailabilityStatus.AVAILABLE,
+        repository: str = REPOSITORY,
+        head_sha: str = HEAD_SHA,
+        observed_at: datetime = NOW,
+        expires_at: datetime = NOW + timedelta(minutes=5),
+    ):
+        self.statuses = {Reviewer.QA: qa, Reviewer.SEC: sec}
+        self.repository = repository
+        self.head_sha = head_sha
+        self.observed_at = observed_at
+        self.expires_at = expires_at
+        self.calls: list[tuple[str, int, str, ReviewPurpose]] = []
+
+    def load(
+        self,
+        repository: str,
+        pull_request_number: int,
+        head_sha: str,
+        purpose: ReviewPurpose,
+    ) -> ReviewerAvailabilitySnapshot:
+        self.calls.append((repository, pull_request_number, head_sha, purpose))
+        return ReviewerAvailabilitySnapshot(
+            evidence=tuple(
+                ReviewerAvailabilityEvidence(
+                    reviewer=reviewer,
+                    status=status,
+                    repository=self.repository,
+                    pull_request_number=pull_request_number,
+                    head_sha=self.head_sha,
+                    purpose=purpose,
+                    observed_at=self.observed_at,
+                    expires_at=self.expires_at,
+                    source=ReviewerAvailabilitySource.HARNESS_RUNTIME,
+                    reason="harness_role_context",
+                )
+                for reviewer, status in self.statuses.items()
+            )
+        )
 
 
 def principal(review_mode: str = "manual") -> BillingPrincipal:
@@ -197,7 +264,14 @@ def probe_report(
     routing_status: DiagnosticStatus | None = None,
     technical_error: ProbeTechnicalError | None = None,
     review_mode: str = "manual",
+    request: ProbeRequest | None = None,
 ) -> ProbeReport:
+    request = request or ProbeRequest(
+        repository=REPOSITORY,
+        review_mode=review_mode,
+        manual_requester="tom" if review_mode == "manual" else None,
+        pull_request_number=5 if review_mode == "automatic" else None,
+    )
     billing_principal = principal(review_mode)
     capability = (
         CapabilityEvidence(
@@ -273,6 +347,36 @@ def probe_report(
         principal=billing_principal,
         review_mode=review_mode,
         observed_at=NOW,
+        verified_block=(
+            VerifiedBlockEvidence(
+                schema_version=1,
+                kind=BlockEvidenceKind.BUDGET_BLOCKED,
+                repository=REPOSITORY,
+                principal_identity=billing_principal.identity,
+                review_mode=review_mode,
+                observed_at=NOW - timedelta(seconds=15),
+                expires_at=NOW + timedelta(minutes=10),
+                source=BlockEvidenceSource.OPERATOR_PINNED,
+                source_reference="verified_block",
+                artifact_digest="sha256:" + "e" * 64,
+                pin_source=RuntimeTrustSource.INSTALLED_CONFIG,
+            )
+            if routing_status is DiagnosticStatus.BUDGET_BLOCKED
+            else None
+        ),
+    )
+    block_verification = (
+        BlockVerification(
+            status=EvidenceVerificationStatus.VERIFIED,
+            trust=EvidenceTrust.VERIFIED,
+            source=signals.verified_block.source,
+            source_reference=signals.verified_block.source_reference,
+            artifact_digest=signals.verified_block.artifact_digest,
+            pin_source=signals.verified_block.pin_source,
+            evidence=signals.verified_block,
+        )
+        if signals.verified_block is not None
+        else None
     )
     return ProbeReport(
         copilot_usable=usable,
@@ -293,7 +397,11 @@ def probe_report(
         technical_status=technical_status,
         technical_error=technical_error,
         capability_verification=verification,
+        block_verification=block_verification,
         evidence=("github_api",),
+        pull_request_number=request.pull_request_number,
+        request_digest=request.request_digest,
+        valid_until=NOW + timedelta(minutes=5),
     )
 
 
@@ -304,18 +412,22 @@ def dependencies(
     diff_source: DiffSourcePort | None = None,
     policy_source: PolicySourcePort | None = None,
     pull_request_state: PullRequestStatePort | None = None,
+    reviewer_availability: ReviewerAvailabilityPort | None = None,
+    probe: ProbePort | None = None,
+    clock: ClockPort | None = None,
 ) -> CliDependencies:
     from review_routing.adapters.toml_config import TomlConfig
 
     return CliDependencies(
         runtime_trust_port=FakeRuntimeTrust(installed),
         operator_evidence_trust_port=FakeOperatorTrust(),
-        probe=FakeProbe(report),
+        probe=probe or FakeProbe(report),
         pull_request_state=pull_request_state or FakePullRequestState(),
         config=TomlConfig(),
         policy_source=policy_source or FakePolicySource(),
         diff_source=diff_source or FakeDiffSource(),
-        clock=FakeClock(),
+        clock=clock or FakeClock(),
+        reviewer_availability=reviewer_availability,
     )
 
 
@@ -565,6 +677,7 @@ class CliDependencyContractTest(unittest.TestCase):
             "policy_source",
             "diff_source",
             "clock",
+            "reviewer_availability",
         )
 
         for field_name in fields:
@@ -572,46 +685,206 @@ class CliDependencyContractTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     CliDependencies(**{field_name: object()})
 
+    def test_probe_request_digest_binds_every_routing_context_field(self):
+        base = ProbeRequest(
+            repository=REPOSITORY,
+            review_mode="manual",
+            manual_requester="tom",
+            pull_request_number=5,
+        )
+        changed = (
+            replace(base, manual_requester="other"),
+            replace(base, pull_request_number=6),
+            replace(base, organization="organization"),
+        )
+
+        self.assertRegex(base.request_digest, r"^sha256:[0-9a-f]{64}$")
+        self.assertEqual(base.request_digest, replace(base).request_digest)
+        self.assertEqual(len({base.request_digest, *(item.request_digest for item in changed)}), 4)
+
+    def test_probe_report_rejects_digest_time_status_and_usability_mismatches(self):
+        request = ProbeRequest(
+            repository=REPOSITORY,
+            review_mode="manual",
+            manual_requester="tom",
+            pull_request_number=5,
+        )
+        report = probe_report(usable=False, request=request)
+
+        with self.assertRaises(ValueError):
+            replace(report, request_digest="forged")
+        with self.assertRaises(ValueError):
+            replace(report, valid_until=report.observed_at)
+        with self.assertRaises(ValueError):
+            replace(report, copilot_usable=True)
+        unbound_manual_principal = replace(report.billing_principal, requester=None)
+        with self.assertRaises(ValueError):
+            replace(
+                report,
+                requester=None,
+                billing_principal=unbound_manual_principal,
+                signals=replace(
+                    report.signals,
+                    principal=unbound_manual_principal,
+                ),
+            )
+        with self.assertRaises(ValueError):
+            replace(
+                probe_report(usable=True, request=request),
+                technical_error=ProbeTechnicalError.PERMISSION_DENIED,
+                technical_status=DiagnosticStatus.PERMISSION_DENIED,
+            )
+        with self.assertRaises(ValueError):
+            replace(
+                report,
+                technical_error=ProbeTechnicalError.PERMISSION_DENIED,
+                technical_status=DiagnosticStatus.PERMISSION_DENIED,
+            )
+        with self.assertRaises(ValueError):
+            replace(
+                probe_report(
+                    usable=False,
+                    request=request,
+                    technical_error=ProbeTechnicalError.PERMISSION_DENIED,
+                ),
+                technical_error=None,
+            )
+
+    def test_reviewer_availability_is_exactly_context_and_time_bound(self):
+        current = ReviewerAvailabilityEvidence(
+            reviewer=Reviewer.QA,
+            status=ReviewerAvailabilityStatus.AVAILABLE,
+            repository=REPOSITORY,
+            pull_request_number=5,
+            head_sha=HEAD_SHA,
+            purpose=ReviewPurpose.CHECKPOINT,
+            observed_at=NOW,
+            expires_at=NOW + timedelta(minutes=5),
+            source=ReviewerAvailabilitySource.HARNESS_RUNTIME,
+            reason="harness_role_context",
+        )
+        snapshot = ReviewerAvailabilitySnapshot(evidence=(current,))
+
+        self.assertTrue(
+            snapshot.is_available(
+                Reviewer.QA,
+                REPOSITORY,
+                5,
+                HEAD_SHA,
+                ReviewPurpose.CHECKPOINT,
+                NOW,
+            )
+        )
+        self.assertFalse(
+            snapshot.is_available(
+                Reviewer.QA,
+                REPOSITORY,
+                5,
+                "f" * 40,
+                ReviewPurpose.CHECKPOINT,
+                NOW,
+            )
+        )
+        self.assertFalse(
+            snapshot.is_available(
+                Reviewer.SEC,
+                REPOSITORY,
+                5,
+                HEAD_SHA,
+                ReviewPurpose.CHECKPOINT,
+                NOW,
+            )
+        )
+        self.assertFalse(
+            snapshot.is_available(
+                Reviewer.QA,
+                REPOSITORY,
+                5,
+                HEAD_SHA,
+                ReviewPurpose.CHECKPOINT,
+                current.expires_at,
+            )
+        )
+
 
 class RouteCliTest(unittest.TestCase):
-    """Route bindet Probe, API-PR-Zustand, Basispolicy und vollständigen Git-Diff."""
+    """Route erhebt Probe und Reviewer-Verfügbarkeit frisch und programmgesteuert."""
 
     def _route(
         self,
         *,
         usable: bool,
         purpose: str,
+        review_mode: str = "manual",
         path: str = "src/application.py",
         changed_lines: int = 1,
         installed: bool = False,
         extra: tuple[str, ...] = (),
         policy_source: PolicySourcePort | None = None,
         pull_request_state: PullRequestStatePort | None = None,
+        reviewer_availability: ReviewerAvailabilityPort | None | bool = True,
+        probe: ProbePort | None = None,
+        clock: ClockPort | None = None,
     ):
-        report = probe_report(usable=usable)
+        report = probe_report(usable=usable, review_mode=review_mode)
+        availability = (
+            FakeReviewerAvailability()
+            if reviewer_availability is True
+            else reviewer_availability
+        )
         cli_dependencies = dependencies(
             report,
             installed=installed,
             diff_source=FakeDiffSource(path, changed_lines),
             policy_source=policy_source,
             pull_request_state=pull_request_state,
+            reviewer_availability=availability,
+            probe=probe,
+            clock=clock,
         )
         with tempfile.TemporaryDirectory() as directory:
-            probe_path = Path(directory) / "probe.json"
-            probe_path.write_text(json.dumps(report.to_dict()), encoding="utf-8")
+            capability_arguments: list[str] = []
+            if usable:
+                identity = (
+                    ["personal", "tom", "manual", "tom", None]
+                    if review_mode == "manual"
+                    else ["personal", "author", "automatic", None, "author"]
+                )
+                artifact = {
+                    "schema_version": 1,
+                    "kind": "operator_setting",
+                    "repository": REPOSITORY,
+                    "principal_identity": identity,
+                    "review_mode": review_mode,
+                    "observed_at": "2026-07-27T08:59:30Z",
+                    "expires_at": "2026-07-27T09:10:00Z",
+                    "source_reference": "verified_capability",
+                }
+                artifact_path = Path(directory) / "capability.json"
+                artifact_path.write_text(json.dumps(artifact), encoding="utf-8")
+                capability_arguments = [
+                    "--capability-reference",
+                    str(artifact_path),
+                ]
             result = invoke(
                 [
                     "route",
-                    "--probe-file",
-                    str(probe_path),
                     "--repo",
                     REPOSITORY,
                     "--pull-request",
                     "5",
+                    "--review-mode",
+                    review_mode,
+                    *(
+                        ["--requester", "tom"]
+                        if review_mode == "manual"
+                        else []
+                    ),
                     "--purpose",
                     purpose,
                     "--repo-path",
                     str(ROOT),
+                    *capability_arguments,
                     *extra,
                     "--json",
                 ],
@@ -619,10 +892,23 @@ class RouteCliTest(unittest.TestCase):
             )
         return (*result, cli_dependencies)
 
-    def test_every_declared_non_blocker_route_is_serialized(self):
+    def test_automatic_route_binds_fresh_probe_to_api_pr_author(self):
+        exit_code, payload, _stdout, _stderr, cli_dependencies = self._route(
+            usable=False,
+            purpose="checkpoint",
+            review_mode="automatic",
+        )
+
+        self.assertEqual(exit_code, 0)
+        request = cli_dependencies.probe.requests[0]  # type: ignore[union-attr]
+        self.assertEqual(request.review_mode, "automatic")
+        self.assertEqual(request.pull_request_number, 5)
+        self.assertIsNone(request.manual_requester)
+        self.assertEqual(payload["pull_request_author"], "author")
+
+    def test_preliminary_routes_always_include_qa_for_unknown_coverage_and_mode(self):
         cases = (
-            (True, "checkpoint", "src/a.py", 1, ReviewRoute.LOCAL_CHECKS),
-            (True, "checkpoint", "src/a.py", 100, ReviewRoute.COPILOT),
+            (True, "checkpoint", "src/a.py", 1, ReviewRoute.QA),
             (True, "final_exact_head", "src/a.py", 300, ReviewRoute.COPILOT_QA),
             (True, "final_exact_head", "core/core.md", 1, ReviewRoute.COPILOT_QA_SEC),
             (False, "checkpoint", "src/a.py", 1, ReviewRoute.QA),
@@ -638,6 +924,11 @@ class RouteCliTest(unittest.TestCase):
                 )
                 self.assertEqual(exit_code, 0)
                 self.assertEqual(payload["route"], expected.value)
+                self.assertIsNone(payload["copilot_coverage_complete"])
+                self.assertEqual(payload["copilot_review_mode"], "unknown")
+                self.assertEqual(payload["decision_stage"], "preliminary")
+                self.assertEqual(payload["gate_status"], "evidence_validation_pending")
+                self.assertFalse(payload["gate_eligible"])
                 self.assertEqual(stderr, "")
 
     def test_route_uses_only_api_state_base_policy_and_complete_diff_ports(self):
@@ -660,6 +951,12 @@ class RouteCliTest(unittest.TestCase):
             cli_dependencies.diff_source.calls,  # type: ignore[union-attr]
             [(ROOT, REPOSITORY, BASE_SHA, HEAD_SHA)],
         )
+        self.assertEqual(len(cli_dependencies.probe.requests), 1)  # type: ignore[union-attr]
+        fresh_request = cli_dependencies.probe.requests[0]  # type: ignore[union-attr]
+        self.assertEqual(fresh_request.repository, REPOSITORY)
+        self.assertEqual(fresh_request.pull_request_number, 5)
+        self.assertEqual(fresh_request.review_mode, "manual")
+        self.assertEqual(payload["probe_request_digest"], fresh_request.request_digest)
         self.assertEqual(payload["base_ref"], "main")
         self.assertEqual(payload["base_sha"], BASE_SHA)
         self.assertEqual(payload["merge_base_sha"], MERGE_BASE_SHA)
@@ -672,7 +969,7 @@ class RouteCliTest(unittest.TestCase):
         self.assertEqual(payload["rename_detection"], "disabled")
         self.assertEqual(payload["copy_detection"], "disabled")
         self.assertEqual(payload["runtime_trust"], "installed")
-        self.assertTrue(payload["gate_eligible"])
+        self.assertFalse(payload["gate_eligible"])
         self.assertFalse(payload["dispatch_permitted"])
 
     def test_development_runtime_cannot_claim_gate_eligibility(self):
@@ -686,66 +983,18 @@ class RouteCliTest(unittest.TestCase):
         self.assertEqual(payload["runtime_trust"], "development")
         self.assertFalse(payload["gate_eligible"])
 
-    def test_unavailable_required_reviewer_is_blocker_exit_30(self):
+    def test_missing_reviewer_availability_port_is_fail_closed_blocker(self):
         exit_code, payload, _stdout, _stderr, _dependencies = self._route(
             usable=False,
             purpose="checkpoint",
-            extra=("--qa-available", "false"),
+            reviewer_availability=None,
         )
 
         self.assertEqual(exit_code, 30)
         self.assertEqual(payload["route"], "blocker")
         self.assertEqual(payload["required_reviewers"], ["qa"])
 
-    def test_invalid_probe_policy_pr_state_and_caller_authority_fail_exit_31(self):
-        with tempfile.TemporaryDirectory() as directory:
-            probe_path = Path(directory) / "probe.json"
-            probe_path.write_text("{", encoding="utf-8")
-            exit_code, payload, _stdout, _stderr = invoke(
-                [
-                    "route",
-                    "--probe-file",
-                    str(probe_path),
-                    "--repo",
-                    REPOSITORY,
-                    "--pull-request",
-                    "5",
-                    "--purpose",
-                    "checkpoint",
-                    "--repo-path",
-                    str(ROOT),
-                    "--json",
-                ],
-                dependencies(probe_report(usable=False)),
-            )
-        self.assertEqual(exit_code, 31)
-        self.assertEqual(payload["error"], "invalid_input")
-
-        with tempfile.TemporaryDirectory() as directory:
-            probe_path = Path(directory) / "probe.json"
-            forged_probe = probe_report(usable=False).to_dict()
-            forged_probe["schema_version"] = True
-            probe_path.write_text(json.dumps(forged_probe), encoding="utf-8")
-            exit_code, payload, _stdout, _stderr = invoke(
-                [
-                    "route",
-                    "--probe-file",
-                    str(probe_path),
-                    "--repo",
-                    REPOSITORY,
-                    "--pull-request",
-                    "5",
-                    "--purpose",
-                    "checkpoint",
-                    "--repo-path",
-                    str(ROOT),
-                    "--json",
-                ],
-                dependencies(probe_report(usable=False)),
-            )
-        self.assertEqual(exit_code, 31)
-        self.assertEqual(payload["error"], "invalid_input")
-
+    def test_invalid_policy_pr_state_and_caller_authority_fail_exit_31(self):
         exit_code, payload, _stdout, _stderr, _dependencies = self._route(
             usable=False,
             purpose="checkpoint",
@@ -772,7 +1021,16 @@ class RouteCliTest(unittest.TestCase):
         self.assertEqual(exit_code, 31)
         self.assertEqual(payload["error"], "invalid_input")
 
-        for forbidden in ("--base-sha", "--head-sha", "--files", "--policy-file", "--dispatch"):
+        for forbidden in (
+            "--probe-file",
+            "--base-sha",
+            "--head-sha",
+            "--files",
+            "--policy-file",
+            "--dispatch",
+            "--qa-available",
+            "--sec-available",
+        ):
             with self.subTest(forbidden=forbidden):
                 exit_code, payload, _stdout, _stderr, _dependencies = self._route(
                     usable=False,
@@ -781,6 +1039,62 @@ class RouteCliTest(unittest.TestCase):
                 )
                 self.assertEqual(exit_code, 31)
                 self.assertEqual(payload["error"], "invalid_input")
+
+    def test_route_rejects_stale_or_request_digest_mismatched_probe_reports(self):
+        stale_exit, stale_payload, _stdout, _stderr, _dependencies = self._route(
+            usable=False,
+            purpose="checkpoint",
+            clock=FakeClock(NOW + timedelta(minutes=6)),
+        )
+        self.assertEqual(stale_exit, 31)
+        self.assertEqual(stale_payload["error"], "invalid_input")
+
+        fixed_report = probe_report(usable=False)
+        mismatch_exit, mismatch_payload, _stdout, _stderr, _dependencies = self._route(
+            usable=False,
+            purpose="checkpoint",
+            probe=FakeProbe(fixed_report, bind_request=False),
+        )
+        self.assertEqual(mismatch_exit, 31)
+        self.assertEqual(mismatch_payload["error"], "invalid_input")
+
+    def test_available_reviewer_evidence_must_match_context_and_time(self):
+        foreign = FakeReviewerAvailability(repository="other/repository")
+        expired = FakeReviewerAvailability(
+            observed_at=NOW - timedelta(minutes=10),
+            expires_at=NOW - timedelta(minutes=1),
+        )
+        for availability in (foreign, expired):
+            with self.subTest(availability=availability):
+                exit_code, payload, _stdout, _stderr, _dependencies = self._route(
+                    usable=False,
+                    purpose="checkpoint",
+                    reviewer_availability=availability,
+                )
+                self.assertEqual(exit_code, 30)
+                self.assertEqual(payload["route"], "blocker")
+
+    def test_argparse_rejects_abbreviated_long_options_without_stderr(self):
+        abbreviations = (
+            "--rep",
+            "--rep=value",
+            "--review-m",
+            "--review-m=value",
+            "--req",
+            "--req=value",
+            "--qa-av",
+            "--sec-av",
+        )
+        for abbreviation in abbreviations:
+            with self.subTest(abbreviation=abbreviation):
+                exit_code, payload, _stdout, stderr, _dependencies = self._route(
+                    usable=False,
+                    purpose="checkpoint",
+                    extra=(abbreviation,),
+                )
+                self.assertEqual(exit_code, 31)
+                self.assertEqual(payload["error"], "invalid_input")
+                self.assertEqual(stderr, "")
 
 
 if __name__ == "__main__":

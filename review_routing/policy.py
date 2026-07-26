@@ -6,7 +6,6 @@ from typing import Mapping
 
 from review_routing.contracts import (
     AdapterFactory,
-    BlockEvidenceKind,
     DiagnosticStatus,
     ProbeSignals,
     ReviewPurpose,
@@ -18,17 +17,6 @@ from review_routing.contracts import (
     RoutingPolicyPort,
 )
 
-
-_STATUS_PRECEDENCE = (
-    DiagnosticStatus.BUDGET_BLOCKED,
-    DiagnosticStatus.QUOTA_EXHAUSTED,
-    DiagnosticStatus.RATE_LIMITED,
-    DiagnosticStatus.PROVIDER_UNAVAILABLE,
-    DiagnosticStatus.PERMISSION_DENIED,
-    DiagnosticStatus.UNKNOWN,
-    DiagnosticStatus.LOW_BUDGET,
-    DiagnosticStatus.AVAILABLE,
-)
 
 _ROUTE_REVIEWERS = {
     ReviewRoute.LOCAL_CHECKS: frozenset(),
@@ -42,29 +30,7 @@ _ROUTE_REVIEWERS = {
 
 def classify_usability(signals: ProbeSignals) -> tuple[bool, DiagnosticStatus]:
     """Technische Fehler und verifizierte Blockaden gelten fail-closed und zeitgebunden."""
-    technical_statuses = (
-        signals.usage_status,
-        signals.provider_status,
-        signals.permission_status,
-    )
-    status = next(
-        candidate for candidate in _STATUS_PRECEDENCE if candidate in technical_statuses
-    )
-    if status not in {DiagnosticStatus.AVAILABLE, DiagnosticStatus.LOW_BUDGET}:
-        return False, status
-    if signals.capability is None or not signals.capability.is_valid_for(
-        signals.repository,
-        signals.principal,
-        signals.review_mode,
-        signals.observed_at,
-    ):
-        return False, DiagnosticStatus.UNKNOWN
-    block = signals.verified_block
-    if block is not None and block.observed_at >= signals.capability.observed_at:
-        if block.kind is BlockEvidenceKind.QUOTA_EXHAUSTED:
-            return False, DiagnosticStatus.QUOTA_EXHAUSTED
-        return False, DiagnosticStatus.BUDGET_BLOCKED
-    return True, status
+    return signals.classify_usability()
 
 
 def _reviewers_for_route(route: str) -> frozenset[Reviewer]:
