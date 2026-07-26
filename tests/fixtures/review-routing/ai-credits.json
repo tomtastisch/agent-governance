@@ -10,9 +10,8 @@
       "sku": "AI Credit",
       "model": "synthetic-model",
       "unitType": "ai-credits",
-      "netQuantity": 37
+      "grossQuantity": 37,
+      "netQuantity": 12
     }
-  ],
-  "limit": 100,
-  "status": "available"
+  ]
 }

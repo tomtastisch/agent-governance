@@ -119,12 +119,16 @@ class RegistryFailureTest(unittest.TestCase):
 
     def test_bootstrap_resolves_github_ports(self):
         from review_routing.adapters.github_gh import (
+            BlockEvidenceVerifier,
+            CapabilityEvidenceVerifier,
             GitHubGhProbe,
             GitHubStatus,
             SubprocessCommand,
             SystemClock,
         )
         from review_routing.contracts import (
+            BlockEvidenceVerifierPort,
+            CapabilityEvidenceVerifierPort,
             ClockPort,
             CommandPort,
             ProbePort,
@@ -137,11 +141,21 @@ class RegistryFailureTest(unittest.TestCase):
         self.assertIsInstance(registry.resolve(CommandPort), SubprocessCommand)
         self.assertIsInstance(registry.resolve(StatusPort), GitHubStatus)
         self.assertIsInstance(registry.resolve(ClockPort), SystemClock)
+        self.assertIsInstance(
+            registry.resolve(CapabilityEvidenceVerifierPort),
+            CapabilityEvidenceVerifier,
+        )
+        self.assertIsInstance(
+            registry.resolve(BlockEvidenceVerifierPort),
+            BlockEvidenceVerifier,
+        )
         self.assertIsInstance(registry.resolve(ProbePort), GitHubGhProbe)
         self.assertIsInstance(registry.resolve(PullRequestStatePort), GitHubGhProbe)
 
     def test_github_port_signatures_are_closed(self):
         from review_routing.contracts import (
+            BlockEvidenceVerifierPort,
+            CapabilityEvidenceVerifierPort,
             ClockPort,
             CommandPort,
             ProbePort,
@@ -155,6 +169,22 @@ class RegistryFailureTest(unittest.TestCase):
             ClockPort.now: ("self",),
             ProbePort.probe: ("self", "request"),
             PullRequestStatePort.load: ("self", "repository", "pull_request_number"),
+            CapabilityEvidenceVerifierPort.verify: (
+                "self",
+                "reference",
+                "repository",
+                "principal",
+                "review_mode",
+                "observed_at",
+            ),
+            BlockEvidenceVerifierPort.verify: (
+                "self",
+                "reference",
+                "repository",
+                "principal",
+                "review_mode",
+                "observed_at",
+            ),
         }
 
         for method, parameter_names in expected.items():

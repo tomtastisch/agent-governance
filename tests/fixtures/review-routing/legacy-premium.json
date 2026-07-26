@@ -10,9 +10,8 @@
       "sku": "Copilot Premium Request",
       "model": "synthetic-model",
       "unitType": "requests",
-      "netQuantity": 7
+      "grossQuantity": 7,
+      "netQuantity": 3
     }
-  ],
-  "limit": 300,
-  "status": "available"
+  ]
 }

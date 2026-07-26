@@ -3,21 +3,36 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+import hashlib
 import json
 import math
+import re
 import subprocess
 from typing import Callable, Mapping
 from urllib import error as urlerror
+from urllib.parse import urlencode
 from urllib import request as urlrequest
 
 from review_routing.contracts import (
     AdapterFactory,
     BillingContext,
     BillingPrincipal,
+    BlockEvidenceKind,
+    BlockEvidenceReference,
+    BlockEvidenceSource,
+    BlockEvidenceVerifierPort,
+    BlockVerification,
+    CapabilityEvidence,
+    CapabilityEvidenceReference,
+    CapabilityEvidenceSource,
+    CapabilityEvidenceVerifierPort,
+    CapabilityVerification,
     ClockPort,
     CommandPort,
     CommandResult,
     DiagnosticStatus,
+    EvidenceTrust,
+    EvidenceVerificationStatus,
     IncompleteResponseError,
     MalformedResponseError,
     PermissionDeniedError,
@@ -35,8 +50,10 @@ from review_routing.contracts import (
     RateLimitedError,
     StatusPort,
     StatusSnapshot,
+    OperatorEvidencePin,
     UnknownContextError,
     Usage,
+    VerifiedBlockEvidence,
     require_repository,
 )
 
@@ -45,6 +62,11 @@ API_VERSION = "2026-03-10"
 STATUS_URL = "https://www.githubstatus.com/api/v2/components.json"
 DEFAULT_TIMEOUT_SECONDS = 10.0
 PRINCIPAL_VALIDITY = timedelta(minutes=15)
+CAPABILITY_VALIDITY = timedelta(minutes=15)
+COPILOT_REVIEWERS = {
+    "copilot-pull-request-reviewer[bot]",
+    "github-copilot[bot]",
+}
 
 
 class _NotFoundError(UnknownContextError):
@@ -141,7 +163,7 @@ class GitHubStatus(StatusPort):
             raise MalformedResponseError("GitHub status response is malformed") from error
         if not isinstance(document, dict) or not isinstance(document.get("components"), list):
             raise IncompleteResponseError("GitHub status response is incomplete")
-        relevant = []
+        relevant: dict[str, str] = {}
         for component in document["components"]:
             if not isinstance(component, dict):
                 raise IncompleteResponseError("GitHub status response is incomplete")
@@ -149,13 +171,16 @@ class GitHubStatus(StatusPort):
             status = component.get("status")
             if not isinstance(name, str) or not isinstance(status, str):
                 raise IncompleteResponseError("GitHub status response is incomplete")
-            if name.casefold() in {"api requests", "copilot"}:
-                relevant.append(status)
-        if not relevant:
+            normalized_name = name.casefold()
+            if normalized_name in {"api requests", "copilot"}:
+                if normalized_name in relevant:
+                    raise IncompleteResponseError("GitHub status response is incomplete")
+                relevant[normalized_name] = status
+        if set(relevant) != {"api requests", "copilot"}:
             raise IncompleteResponseError("GitHub status response is incomplete")
         provider_status = (
             DiagnosticStatus.AVAILABLE
-            if all(status == "operational" for status in relevant)
+            if all(status == "operational" for status in relevant.values())
             else DiagnosticStatus.PROVIDER_UNAVAILABLE
         )
         return StatusSnapshot(
@@ -171,10 +196,15 @@ def _parse_include_output(output: bytes) -> tuple[int, dict[str, str], bytes]:
     except UnicodeDecodeError as error:
         raise MalformedResponseError("GitHub API response is malformed") from error
     normalized = text.replace("\r\n", "\n")
-    marker = "\n\n"
-    if marker not in normalized:
+    starts = [match.start() for match in re.finditer(r"(?m)^HTTP/\S+ [0-9]{3}(?: .*)?$", normalized)]
+    if not starts:
         raise MalformedResponseError("GitHub API response is malformed")
-    header_text, body_text = normalized.split(marker, 1)
+    block_start = starts[-1]
+    marker_index = normalized.find("\n\n", block_start)
+    if marker_index < 0:
+        raise MalformedResponseError("GitHub API response is malformed")
+    header_text = normalized[block_start:marker_index]
+    body_text = normalized[marker_index + 2 :]
     lines = header_text.splitlines()
     if not lines or not lines[0].startswith("HTTP/"):
         raise MalformedResponseError("GitHub API response is malformed")
@@ -193,6 +223,15 @@ def _parse_include_output(output: bytes) -> tuple[int, dict[str, str], bytes]:
     return int(status_parts[1]), headers, body_text.encode("utf-8")
 
 
+def _error_for_failed_command(result: CommandResult) -> ProbePortError:
+    """Klassifiziert ausschließlich bekannte Statusmarker, nie rohe stderr-Inhalte."""
+    diagnostic = result.stderr.decode("utf-8", errors="replace")
+    match = re.search(r"(?:HTTP(?:/[\d.]+)?\s+|status(?:\s+code)?[=: ]+)(\d{3})\b", diagnostic, re.I)
+    if match is None:
+        return UnknownContextError("GitHub API command failed without a complete response")
+    return _error_for_http(int(match.group(1)), {})
+
+
 def _error_for_http(status: int, headers: Mapping[str, str]) -> ProbePortError:
     if status == 429 or headers.get("x-ratelimit-remaining") == "0":
         return RateLimitedError("GitHub API rate limit reached")
@@ -203,6 +242,42 @@ def _error_for_http(status: int, headers: Mapping[str, str]) -> ProbePortError:
     if status == 404:
         return _NotFoundError("GitHub API resource not found")
     return UnknownContextError("GitHub API response status is unknown")
+
+
+def _request_json(
+    command: CommandPort,
+    timeout_seconds: float,
+    endpoint: str,
+) -> _ApiResponse:
+    result = command.run(
+        (
+            "gh",
+            "api",
+            "--include",
+            "--header",
+            f"X-GitHub-Api-Version: {API_VERSION}",
+            "--header",
+            "Accept: application/vnd.github+json",
+            "--method",
+            "GET",
+            endpoint,
+        ),
+        timeout_seconds,
+    )
+    if not result.stdout.strip() and result.return_code != 0:
+        raise _error_for_failed_command(result)
+    status, headers, body = _parse_include_output(result.stdout)
+    if status < 200 or status >= 300 or result.return_code != 0:
+        raise _error_for_http(status, headers)
+    if not body.strip():
+        raise IncompleteResponseError("GitHub API response is incomplete")
+    try:
+        payload = json.loads(body)
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise MalformedResponseError("GitHub API response is malformed") from error
+    if not isinstance(payload, dict):
+        raise IncompleteResponseError("GitHub API response is incomplete")
+    return _ApiResponse(payload=payload, safe_headers=headers)
 
 
 def _diagnostic_for_error(error: Exception) -> DiagnosticStatus:
@@ -229,23 +304,6 @@ def _technical_error_code(error: Exception) -> ProbeTechnicalError:
     return ProbeTechnicalError.INCOMPLETE_RESPONSE
 
 
-def _status_from_payload(value: object) -> DiagnosticStatus:
-    if not isinstance(value, str):
-        raise IncompleteResponseError("GitHub billing response is incomplete")
-    try:
-        status = DiagnosticStatus(value)
-    except ValueError as error:
-        raise IncompleteResponseError("GitHub billing response is incomplete") from error
-    if status not in {
-        DiagnosticStatus.AVAILABLE,
-        DiagnosticStatus.LOW_BUDGET,
-        DiagnosticStatus.QUOTA_EXHAUSTED,
-        DiagnosticStatus.BUDGET_BLOCKED,
-    }:
-        raise IncompleteResponseError("GitHub billing response is incomplete")
-    return status
-
-
 def _number(value: object, field_name: str, *, optional: bool = False) -> float | None:
     if value is None and optional:
         return None
@@ -260,23 +318,355 @@ def _number(value: object, field_name: str, *, optional: bool = False) -> float 
 
 
 def _capability_status(
-    request: ProbeRequest,
-    principal: BillingPrincipal,
-    observed_at: datetime,
+    verification: CapabilityVerification,
 ) -> str:
-    capability = request.capability_evidence
-    if capability is None:
+    if verification.status is EvidenceVerificationStatus.ABSENT:
         return "absent"
-    if observed_at >= capability.expires_at:
+    if verification.status is EvidenceVerificationStatus.EXPIRED:
         return "expired"
-    if not capability.is_valid_for(
-        request.repository,
-        principal,
-        request.review_mode,
-        observed_at,
-    ):
+    if verification.status is EvidenceVerificationStatus.INVALID:
         return "invalid"
     return "valid"
+
+
+def _canonical_digest(document: Mapping[str, object]) -> str:
+    canonical = json.dumps(
+        document,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(canonical).hexdigest()
+
+
+def _parse_artifact(artifact: bytes) -> Mapping[str, object]:
+    try:
+        document = json.loads(artifact)
+    except (UnicodeDecodeError, json.JSONDecodeError, TypeError) as error:
+        raise MalformedResponseError("Operator evidence artifact is malformed") from error
+    if not isinstance(document, dict):
+        raise IncompleteResponseError("Operator evidence artifact is incomplete")
+    return document
+
+
+def _parse_utc(value: object, field_name: str) -> datetime:
+    if not isinstance(value, str) or not value.endswith("Z"):
+        raise IncompleteResponseError(f"Evidence field '{field_name}' is incomplete")
+    try:
+        parsed = datetime.fromisoformat(value[:-1] + "+00:00")
+    except ValueError as error:
+        raise IncompleteResponseError(f"Evidence field '{field_name}' is incomplete") from error
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise IncompleteResponseError(f"Evidence field '{field_name}' is incomplete")
+    return parsed.astimezone(timezone.utc)
+
+
+def _absent_capability() -> CapabilityVerification:
+    return CapabilityVerification(
+        status=EvidenceVerificationStatus.ABSENT,
+        trust=EvidenceTrust.DEVELOPMENT,
+        source=None,
+        source_reference=None,
+        artifact_digest=None,
+        evidence=None,
+    )
+
+
+def _invalid_capability(
+    reference: CapabilityEvidenceReference,
+    artifact_digest: str | None = None,
+    *,
+    expired: bool = False,
+) -> CapabilityVerification:
+    return CapabilityVerification(
+        status=(
+            EvidenceVerificationStatus.EXPIRED
+            if expired
+            else EvidenceVerificationStatus.INVALID
+        ),
+        trust=EvidenceTrust.DEVELOPMENT,
+        source=reference.source,
+        source_reference=reference.source_reference,
+        artifact_digest=artifact_digest,
+        evidence=None,
+    )
+
+
+class CapabilityEvidenceVerifier(CapabilityEvidenceVerifierPort):
+    """Verifiziert GitHub-Review- oder extern gepinnte Operator-Capabilities."""
+
+    def __init__(
+        self,
+        command: CommandPort,
+        operator_pins: Mapping[str, OperatorEvidencePin],
+        timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+    ):
+        self._command = command
+        self._operator_pins = dict(operator_pins)
+        self._timeout_seconds = timeout_seconds
+
+    def verify(
+        self,
+        reference: CapabilityEvidenceReference | None,
+        repository: str,
+        principal: BillingPrincipal,
+        review_mode: str,
+        observed_at: datetime,
+    ) -> CapabilityVerification:
+        if reference is None:
+            return _absent_capability()
+        if (
+            reference.repository != repository
+            or reference.principal_identity != principal.identity
+            or reference.review_mode != review_mode
+        ):
+            return _invalid_capability(reference)
+        if reference.source is CapabilityEvidenceSource.GITHUB_COMPLETED_REVIEW:
+            return self._verify_github(reference, principal, observed_at)
+        return self._verify_operator(reference, principal, observed_at)
+
+    def _verify_github(
+        self,
+        reference: CapabilityEvidenceReference,
+        principal: BillingPrincipal,
+        observed_at: datetime,
+    ) -> CapabilityVerification:
+        assert reference.pull_request_number is not None
+        assert reference.review_id is not None
+        response = _request_json(
+            self._command,
+            self._timeout_seconds,
+            (
+                f"/repos/{reference.repository}/pulls/"
+                f"{reference.pull_request_number}/reviews/{reference.review_id}"
+            ),
+        ).payload
+        expected_keys = {"id", "user", "state", "commit_id", "submitted_at"}
+        if not expected_keys.issubset(response):
+            return _invalid_capability(reference)
+        user = response["user"]
+        if (
+            response["id"] != reference.review_id
+            or not isinstance(user, dict)
+            or user.get("login") not in COPILOT_REVIEWERS
+            or response["state"] != "COMMENTED"
+            or not isinstance(response["commit_id"], str)
+        ):
+            return _invalid_capability(reference)
+        try:
+            submitted_at = _parse_utc(response["submitted_at"], "submitted_at")
+            review_commit_sha = response["commit_id"]
+            if len(review_commit_sha) != 40 or any(
+                character not in "0123456789abcdef" for character in review_commit_sha
+            ):
+                raise ValueError
+        except (IncompleteResponseError, ValueError):
+            return _invalid_capability(reference)
+        selected = {
+            "commit_id": review_commit_sha,
+            "id": reference.review_id,
+            "pull_request_number": reference.pull_request_number,
+            "repository": reference.repository,
+            "reviewer": user["login"],
+            "state": response["state"],
+            "submitted_at": submitted_at.isoformat().replace("+00:00", "Z"),
+        }
+        artifact_digest = _canonical_digest(selected)
+        expires_at = min(submitted_at + CAPABILITY_VALIDITY, principal.expires_at)
+        if not submitted_at <= observed_at < expires_at:
+            return _invalid_capability(reference, artifact_digest, expired=True)
+        evidence = CapabilityEvidence(
+            repository=reference.repository,
+            principal=principal,
+            review_mode=reference.review_mode,
+            observed_at=submitted_at,
+            expires_at=expires_at,
+            source=CapabilityEvidenceSource.GITHUB_COMPLETED_REVIEW,
+            source_reference=f"github_review_{reference.review_id}",
+            artifact_digest=artifact_digest,
+            pull_request_number=reference.pull_request_number,
+            review_id=reference.review_id,
+            review_commit_sha=review_commit_sha,
+        )
+        return CapabilityVerification(
+            status=EvidenceVerificationStatus.VERIFIED,
+            trust=EvidenceTrust.VERIFIED,
+            source=evidence.source,
+            source_reference=evidence.source_reference,
+            artifact_digest=artifact_digest,
+            evidence=evidence,
+        )
+
+    def _verify_operator(
+        self,
+        reference: CapabilityEvidenceReference,
+        principal: BillingPrincipal,
+        observed_at: datetime,
+    ) -> CapabilityVerification:
+        assert reference.artifact is not None
+        document = _parse_artifact(reference.artifact)
+        artifact_digest = _canonical_digest(document)
+        pin = self._operator_pins.get(reference.source_reference)
+        if pin is None or pin.expected_digest != artifact_digest:
+            return _invalid_capability(reference, artifact_digest)
+        expected_keys = {
+            "schema_version",
+            "repository",
+            "principal_identity",
+            "review_mode",
+            "observed_at",
+            "expires_at",
+            "source_reference",
+        }
+        if set(document) != expected_keys:
+            return _invalid_capability(reference, artifact_digest)
+        try:
+            identity = tuple(document["principal_identity"])
+            artifact_observed_at = _parse_utc(document["observed_at"], "observed_at")
+            expires_at = _parse_utc(document["expires_at"], "expires_at")
+        except (TypeError, IncompleteResponseError):
+            return _invalid_capability(reference, artifact_digest)
+        if (
+            document["schema_version"] != 1
+            or document["repository"] != reference.repository
+            or identity != principal.identity
+            or document["review_mode"] != reference.review_mode
+            or document["source_reference"] != reference.source_reference
+            or expires_at > principal.expires_at
+        ):
+            return _invalid_capability(reference, artifact_digest)
+        if not artifact_observed_at <= observed_at < expires_at:
+            return _invalid_capability(reference, artifact_digest, expired=True)
+        evidence = CapabilityEvidence(
+            repository=reference.repository,
+            principal=principal,
+            review_mode=reference.review_mode,
+            observed_at=artifact_observed_at,
+            expires_at=expires_at,
+            source=CapabilityEvidenceSource.OPERATOR_PINNED,
+            source_reference=reference.source_reference,
+            artifact_digest=artifact_digest,
+        )
+        return CapabilityVerification(
+            status=EvidenceVerificationStatus.VERIFIED,
+            trust=EvidenceTrust.VERIFIED,
+            source=evidence.source,
+            source_reference=evidence.source_reference,
+            artifact_digest=artifact_digest,
+            evidence=evidence,
+        )
+
+
+def _absent_block() -> BlockVerification:
+    return BlockVerification(
+        status=EvidenceVerificationStatus.ABSENT,
+        trust=EvidenceTrust.DEVELOPMENT,
+        source=None,
+        source_reference=None,
+        artifact_digest=None,
+        evidence=None,
+    )
+
+
+class BlockEvidenceVerifier(BlockEvidenceVerifierPort):
+    """Verifiziert Blockaden; Caller-Artefakte greifen nur mit externem Digest-Pin."""
+
+    def __init__(self, operator_pins: Mapping[str, OperatorEvidencePin]):
+        self._operator_pins = dict(operator_pins)
+
+    def _invalid(
+        self,
+        reference: BlockEvidenceReference,
+        artifact_digest: str | None = None,
+        *,
+        expired: bool = False,
+    ) -> BlockVerification:
+        return BlockVerification(
+            status=(
+                EvidenceVerificationStatus.EXPIRED
+                if expired
+                else EvidenceVerificationStatus.INVALID
+            ),
+            trust=EvidenceTrust.DEVELOPMENT,
+            source=reference.source,
+            source_reference=reference.source_reference,
+            artifact_digest=artifact_digest,
+            evidence=None,
+        )
+
+    def verify(
+        self,
+        reference: BlockEvidenceReference | None,
+        repository: str,
+        principal: BillingPrincipal,
+        review_mode: str,
+        observed_at: datetime,
+    ) -> BlockVerification:
+        if reference is None:
+            return _absent_block()
+        if (
+            reference.repository != repository
+            or reference.principal_identity != principal.identity
+            or reference.review_mode != review_mode
+            or reference.source is not BlockEvidenceSource.OPERATOR_PINNED
+            or reference.artifact is None
+        ):
+            return self._invalid(reference)
+        document = _parse_artifact(reference.artifact)
+        artifact_digest = _canonical_digest(document)
+        pin = self._operator_pins.get(reference.source_reference)
+        if pin is None or pin.expected_digest != artifact_digest:
+            return self._invalid(reference, artifact_digest)
+        expected_keys = {
+            "schema_version",
+            "kind",
+            "repository",
+            "principal_identity",
+            "review_mode",
+            "observed_at",
+            "expires_at",
+            "source_reference",
+        }
+        if set(document) != expected_keys:
+            return self._invalid(reference, artifact_digest)
+        try:
+            kind = BlockEvidenceKind(document["kind"])
+            identity = tuple(document["principal_identity"])
+            artifact_observed_at = _parse_utc(document["observed_at"], "observed_at")
+            expires_at = _parse_utc(document["expires_at"], "expires_at")
+        except (ValueError, TypeError, IncompleteResponseError):
+            return self._invalid(reference, artifact_digest)
+        if (
+            document["schema_version"] != 1
+            or document["repository"] != repository
+            or identity != principal.identity
+            or document["review_mode"] != review_mode
+            or document["source_reference"] != reference.source_reference
+            or expires_at > principal.expires_at
+        ):
+            return self._invalid(reference, artifact_digest)
+        if not artifact_observed_at <= observed_at < expires_at:
+            return self._invalid(reference, artifact_digest, expired=True)
+        evidence = VerifiedBlockEvidence(
+            schema_version=1,
+            kind=kind,
+            repository=repository,
+            principal_identity=principal.identity,
+            review_mode=review_mode,
+            observed_at=artifact_observed_at,
+            expires_at=expires_at,
+            source=BlockEvidenceSource.OPERATOR_PINNED,
+            source_reference=reference.source_reference,
+            artifact_digest=artifact_digest,
+        )
+        return BlockVerification(
+            status=EvidenceVerificationStatus.VERIFIED,
+            trust=EvidenceTrust.VERIFIED,
+            source=evidence.source,
+            source_reference=evidence.source_reference,
+            artifact_digest=artifact_digest,
+            evidence=evidence,
+        )
 
 
 _STATUS_PRECEDENCE = (
@@ -299,41 +689,19 @@ class GitHubGhProbe(ProbePort, PullRequestStatePort):
         command: CommandPort,
         status: StatusPort,
         clock: ClockPort,
+        capability_verifier: CapabilityEvidenceVerifierPort,
+        block_verifier: BlockEvidenceVerifierPort,
         timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
     ):
         self._command = command
         self._status = status
         self._clock = clock
+        self._capability_verifier = capability_verifier
+        self._block_verifier = block_verifier
         self._timeout_seconds = timeout_seconds
 
     def _request_json(self, endpoint: str) -> _ApiResponse:
-        result = self._command.run(
-            (
-                "gh",
-                "api",
-                "--include",
-                "--header",
-                f"X-GitHub-Api-Version: {API_VERSION}",
-                "--header",
-                "Accept: application/vnd.github+json",
-                "--method",
-                "GET",
-                endpoint,
-            ),
-            self._timeout_seconds,
-        )
-        status, headers, body = _parse_include_output(result.stdout)
-        if status < 200 or status >= 300 or result.return_code != 0:
-            raise _error_for_http(status, headers)
-        if not body.strip():
-            raise IncompleteResponseError("GitHub API response is incomplete")
-        try:
-            payload = json.loads(body)
-        except (UnicodeDecodeError, json.JSONDecodeError) as error:
-            raise MalformedResponseError("GitHub API response is malformed") from error
-        if not isinstance(payload, dict):
-            raise IncompleteResponseError("GitHub API response is incomplete")
-        return _ApiResponse(payload=payload, safe_headers=headers)
+        return _request_json(self._command, self._timeout_seconds, endpoint)
 
     def load(self, repository: str, pull_request_number: int) -> PullRequestState:
         require_repository(repository)
@@ -444,19 +812,38 @@ class GitHubGhProbe(ProbePort, PullRequestStatePort):
                     None,
                 )
             except _NotFoundError:
-                return "personal", candidate, ("personal_usage",), None
+                return "unknown", "unknown", ("seat_unverified",), UnknownContextError(
+                    "GitHub Copilot organization seat is not proven"
+                )
             except ProbePortError as error:
                 return "unknown", "unknown", ("seat_unverified",), error
         return "personal", candidate, ("personal_usage",), None
 
-    def _usage_endpoints(self, kind: str, identifier: str) -> tuple[str, str]:
+    def _usage_endpoints(
+        self,
+        kind: str,
+        identifier: str,
+        candidate: str,
+        observed_at: datetime,
+    ) -> tuple[str, str]:
         if kind == "organization":
             prefix = f"/organizations/{identifier}/settings/billing"
+            query = urlencode(
+                (
+                    ("year", observed_at.year),
+                    ("month", observed_at.month),
+                    ("user", candidate),
+                )
+            )
         elif kind == "personal":
             prefix = f"/users/{identifier}/settings/billing"
+            query = urlencode((("year", observed_at.year), ("month", observed_at.month)))
         else:
             raise UnknownContextError("GitHub billing context is unknown")
-        return f"{prefix}/ai_credit/usage", f"{prefix}/premium_request/usage"
+        return (
+            f"{prefix}/ai_credit/usage?{query}",
+            f"{prefix}/premium_request/usage?{query}",
+        )
 
     def _usage_quantity(self, payload: Mapping[str, object], model: str) -> tuple[float, str]:
         items = payload.get("usageItems")
@@ -468,10 +855,10 @@ class GitHubGhProbe(ProbePort, PullRequestStatePort):
             if not isinstance(item, dict):
                 raise IncompleteResponseError("GitHub billing response is incomplete")
             unit = item.get("unitType")
-            quantity = item.get("netQuantity")
+            quantity = item.get("grossQuantity")
             if unit not in expected_units:
                 raise IncompleteResponseError("GitHub billing response is incomplete")
-            parsed = _number(quantity, "netQuantity")
+            parsed = _number(quantity, "grossQuantity")
             assert parsed is not None
             total += parsed
         return total, "credits" if model == "ai_credits" else "requests"
@@ -480,8 +867,15 @@ class GitHubGhProbe(ProbePort, PullRequestStatePort):
         self,
         kind: str,
         identifier: str,
-    ) -> tuple[Usage, str, DiagnosticStatus]:
-        ai_endpoint, legacy_endpoint = self._usage_endpoints(kind, identifier)
+        candidate: str,
+        observed_at: datetime,
+    ) -> tuple[Usage, str]:
+        ai_endpoint, legacy_endpoint = self._usage_endpoints(
+            kind,
+            identifier,
+            candidate,
+            observed_at,
+        )
         model = "ai_credits"
         try:
             payload = self._request_json(ai_endpoint).payload
@@ -489,10 +883,7 @@ class GitHubGhProbe(ProbePort, PullRequestStatePort):
             payload = self._request_json(legacy_endpoint).payload
             model = "premium_requests"
         used, unit = self._usage_quantity(payload, model)
-        limit = _number(payload.get("limit"), "limit", optional=True)
-        status_value = payload.get("status", DiagnosticStatus.AVAILABLE.value)
-        status = _status_from_payload(status_value)
-        return Usage(used=used, limit=limit, unit=unit), model, status
+        return Usage(used=used, limit=None, unit=unit), model
 
     def probe(self, request: ProbeRequest) -> ProbeReport:
         observed_at = self._clock.now()
@@ -525,12 +916,17 @@ class GitHubGhProbe(ProbePort, PullRequestStatePort):
         )
         usage = Usage(used=None, limit=None)
         billing_model = "unknown"
-        billing_status = DiagnosticStatus.UNKNOWN
+        billing_status: DiagnosticStatus | None = None
         usage_status = DiagnosticStatus.UNKNOWN
         usage_error: Exception | None = None
         if context_error is None and candidate_error is None:
             try:
-                usage, billing_model, billing_status = self._usage(context_kind, context_identity)
+                usage, billing_model = self._usage(
+                    context_kind,
+                    context_identity,
+                    candidate,
+                    observed_at,
+                )
                 usage_status = DiagnosticStatus.AVAILABLE
             except ProbePortError as error:
                 usage_error = error
@@ -538,8 +934,54 @@ class GitHubGhProbe(ProbePort, PullRequestStatePort):
                 if isinstance(error, PermissionDeniedError):
                     permission_status = DiagnosticStatus.PERMISSION_DENIED
 
-        capability_status = _capability_status(request, principal, observed_at)
-        capability = request.capability_evidence
+        capability_error: Exception | None = None
+        block_error: Exception | None = None
+        try:
+            capability_verification = self._capability_verifier.verify(
+                request.capability_reference,
+                request.repository,
+                principal,
+                request.review_mode,
+                observed_at,
+            )
+        except ProbePortError as error:
+            capability_error = error
+            capability_verification = (
+                _absent_capability()
+                if request.capability_reference is None
+                else _invalid_capability(request.capability_reference)
+            )
+        try:
+            block_verification = self._block_verifier.verify(
+                request.block_reference,
+                request.repository,
+                principal,
+                request.review_mode,
+                observed_at,
+            )
+        except ProbePortError as error:
+            block_error = error
+            block_verification = (
+                _absent_block()
+                if request.block_reference is None
+                else BlockVerification(
+                    status=EvidenceVerificationStatus.INVALID,
+                    trust=EvidenceTrust.DEVELOPMENT,
+                    source=request.block_reference.source,
+                    source_reference=request.block_reference.source_reference,
+                    artifact_digest=None,
+                    evidence=None,
+                )
+            )
+        capability_status = _capability_status(capability_verification)
+        capability = capability_verification.evidence
+        verified_block = block_verification.evidence
+        if verified_block is not None:
+            billing_status = (
+                DiagnosticStatus.QUOTA_EXHAUSTED
+                if verified_block.kind is BlockEvidenceKind.QUOTA_EXHAUSTED
+                else DiagnosticStatus.BUDGET_BLOCKED
+            )
         signals = ProbeSignals(
             billing_status=billing_status,
             usage_status=usage_status,
@@ -550,21 +992,33 @@ class GitHubGhProbe(ProbePort, PullRequestStatePort):
             principal=principal,
             review_mode=request.review_mode,
             observed_at=observed_at,
+            verified_block=verified_block,
         )
-        statuses = (
-            billing_status,
+        technical_statuses = (
             usage_status,
             provider_status,
             permission_status,
         )
-        routing_status = next(status for status in _STATUS_PRECEDENCE if status in statuses)
-        positive_status = routing_status in {
-            DiagnosticStatus.AVAILABLE,
-            DiagnosticStatus.LOW_BUDGET,
-        }
-        copilot_usable = positive_status and capability_status == "valid"
-        if positive_status and capability_status != "valid":
-            routing_status = DiagnosticStatus.UNKNOWN
+        routing_status = next(
+            status for status in _STATUS_PRECEDENCE if status in technical_statuses
+        )
+        copilot_usable = False
+        if routing_status in {DiagnosticStatus.AVAILABLE, DiagnosticStatus.LOW_BUDGET}:
+            if capability is None or not capability.is_valid_for(
+                request.repository,
+                principal,
+                request.review_mode,
+                observed_at,
+            ):
+                routing_status = DiagnosticStatus.UNKNOWN
+            elif (
+                verified_block is not None
+                and verified_block.observed_at >= capability.observed_at
+            ):
+                assert billing_status is not None
+                routing_status = billing_status
+            else:
+                copilot_usable = True
 
         errors = tuple(
             error
@@ -574,6 +1028,8 @@ class GitHubGhProbe(ProbePort, PullRequestStatePort):
                 context_error,
                 usage_error,
                 provider_error,
+                capability_error,
+                block_error,
             )
             if error is not None
         )
@@ -638,6 +1094,8 @@ class GitHubGhProbe(ProbePort, PullRequestStatePort):
             technical_status=technical_status,
             technical_error=technical_error_code,
             capability_status=capability_status,
+            capability_verification=capability_verification,
+            block_verification=block_verification,
             evidence=("github_api", "github_status"),
             warnings=(),
         )
@@ -649,6 +1107,8 @@ class GitHubFactory:
         CommandPort,
         StatusPort,
         ClockPort,
+        CapabilityEvidenceVerifierPort,
+        BlockEvidenceVerifierPort,
         ProbePort,
         PullRequestStatePort,
     )
@@ -660,11 +1120,21 @@ class GitHubFactory:
         command = SubprocessCommand()
         clock = SystemClock()
         status = GitHubStatus(clock=clock)
-        probe = GitHubGhProbe(command=command, status=status, clock=clock)
+        capability_verifier = CapabilityEvidenceVerifier(command=command, operator_pins={})
+        block_verifier = BlockEvidenceVerifier(operator_pins={})
+        probe = GitHubGhProbe(
+            command=command,
+            status=status,
+            clock=clock,
+            capability_verifier=capability_verifier,
+            block_verifier=block_verifier,
+        )
         return {
             CommandPort: command,
             StatusPort: status,
             ClockPort: clock,
+            CapabilityEvidenceVerifierPort: capability_verifier,
+            BlockEvidenceVerifierPort: block_verifier,
             ProbePort: probe,
             PullRequestStatePort: probe,
         }

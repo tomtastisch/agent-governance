@@ -167,7 +167,7 @@ python3 -m unittest tests.test_review_routing_config \
 
 Expected: all pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add core/review-routing.toml docs/decisions/0003-review-routing.md review_routing \
@@ -436,6 +436,9 @@ git commit -m "feat(governance): classify review risk deterministically"
   `ClockPort.now() -> datetime`.
 - Adds and implements:
   `ProbePort.probe(request: ProbeRequest) -> ProbeReport`.
+- Adds and implements `CapabilityEvidenceVerifierPort.verify(...)` and
+  `BlockEvidenceVerifierPort.verify(...)`. `ProbeRequest` carries only untrusted references;
+  verified evidence is reconstructed inside these ports.
 - Adds
   `PullRequestStatePort.load(
       repository: str,
@@ -445,8 +448,8 @@ git commit -m "feat(governance): classify review risk deterministically"
 - `PullRequestState` contains repository, PR number, base ref, full API base SHA, full head SHA,
   author, observed-at and `source=github_api`.
 - `ProbeRequest` contains repository, review mode, optional manual requester, optional PR number,
-  optional explicit organization/enterprise/cost-center selector and capability evidence; the
-  adapter determines the billing model instead of trusting a caller hint.
+  optional explicit organization/enterprise/cost-center selector plus untrusted capability/block
+  references; the adapter determines the billing model instead of trusting a caller hint.
 - `CommandResult` contains return code and raw stdout/stderr bytes only inside the adapter
   boundary. `StatusSnapshot` and all public reports contain only typed/sanitized fields.
 - Typed port errors distinguish permission denied, rate limited, provider unavailable, timeout,
@@ -455,7 +458,7 @@ git commit -m "feat(governance): classify review risk deterministically"
 - Produces `GitHubGhProbe.probe(request: ProbeRequest) -> ProbeReport`.
 - Uses documented API version `2026-03-10`.
 
-- [ ] **Step 1: Write failing adapter tests with fake ports**
+- [x] **Step 1: Write failing adapter tests with fake ports**
 
 Cover:
 
@@ -463,38 +466,42 @@ Cover:
 - AI credits without limit;
 - legacy premium requests;
 - organization seat confirmed;
-- organization membership without seat evidence;
+- organization membership or Seat-404 without seat evidence, without personal fallback;
 - manual requester versus automatic PR-author attribution;
 - ambiguous organization/enterprise/cost-center principal;
 - unknown enterprise/cost-center context;
-- explicit quota and budget blocks;
+- usage payloads cannot assert quota/budget blocks;
+- externally digest-pinned explicit quota and budget blocks;
 - HTTP 403/permission diagnostics;
 - 429/rate headers;
 - 503/provider unavailable;
 - empty, malformed and incomplete JSON;
-- current explicit block plus API permission denial;
+- current verified block plus API permission denial, with the technical error taking precedence;
 - absent/expired/wrong-principal capability evidence;
-- valid recent capability evidence;
+- valid recent capability evidence reconstructed from GitHub or an external digest pin;
+- interim/multiple `gh api --include` HTTP blocks and safe known stderr diagnostics;
 - endpoint selection and API version header;
 - no raw stderr/header/token material in `ProbeReport.to_dict()`.
 - exact repository, PR number, Base-Ref, full Base-SHA and full Head-SHA from PR metadata.
 
-- [ ] **Step 2: Run and confirm RED**
+- [x] **Step 2: Run and confirm RED**
 
 ```bash
 python3 -m unittest tests.test_review_routing_github \
   tests.test_review_routing_architecture -v
 ```
 
-- [ ] **Step 3: Implement the injected clients**
+- [x] **Step 3: Implement the injected clients**
 
 Invoke `gh api --include` without embedding credentials. Parse only HTTP status, selected safe
 headers and JSON. Discard raw authorization/cookie headers and raw stderr after classification.
 Use `urllib.request` only for the public GitHub Status components endpoint, with timeout and an
 injectable client in tests.
-Extend the architecture test so `github_gh.py` imports only contracts.
+Extend the architecture test so `github_gh.py` imports only contracts. Usage endpoints always
+carry UTC year/month; organization usage additionally carries the URL-encoded candidate user.
+Usage sums `grossQuantity` only and never imports a free response `status` or `limit` into routing.
 
-Fake tests implement the exact four port signatures above and assert typed errors are converted to
+Fake tests implement the exact port signatures above and assert typed errors are converted to
 the declared diagnostic status/exitcode without raw stderr, headers or credentials escaping.
 
 Automatic context rules:
@@ -508,7 +515,7 @@ ambiguous or unpermitted attribution -> unknown/permission_denied
 enterprise -> only explicit/API-backed selector
 ```
 
-- [ ] **Step 4: Run and confirm GREEN**
+- [x] **Step 4: Run and confirm GREEN**
 
 ```bash
 python3 -m unittest tests.test_review_routing_github \
@@ -553,8 +560,10 @@ Use `main(..., dependencies=CliDependencies(...), stdout=StringIO())`. Cover val
 permission/rate/provider/unknown/incomplete exitcodes `20`–`24`, every route, blocker `30`, invalid
 input `31`, invalid SHA, invalid JSON and no dispatch side effect. Probe tests require
 `--review-mode manual --requester USER` or
-`--review-mode automatic --pull-request NUMBER`, plus a matching capability-evidence input before
-`copilot_usable` may become true. Route tests provide repository/PR number and prove the CLI reads
+`--review-mode automatic --pull-request NUMBER`, plus a matching untrusted capability reference
+before a verifier may reconstruct routing evidence and `copilot_usable` may become true. The CLI
+must expose no Trust-, Issuer-, Source- oder Digest-Override. Route tests provide repository/PR
+number and prove the CLI reads
 the actual Base-Ref/Base-SHA/Head-SHA through `PullRequestStatePort`, then reads policy from that
 Base-SHA and the complete diff through injected ports. A missing Basispolicy, caller-supplied file
 list/SHA or policy source from head/worktree must fail with `31`. An explicitly separate offline

@@ -41,9 +41,12 @@ Referenzstand der Analyse: `origin/main@97c4044f01cebf011f5442bf312dfcc0dcfc0098
 
 ### 3.1 Restbudget ist kein Routing-Eingang
 
-Verbrauch, Limit, Budget und Restwert bleiben Diagnosefelder. Sie dürfen die Verwendbarkeit
-belegen, wenn GitHub ausdrücklich eine Blockade oder Erschöpfung meldet. Ein berechnetes oder
-geschätztes Restbudget entscheidet jedoch nicht, welcher Reviewer verwendet wird.
+Verbrauch, Limit, Budget und Restwert bleiben Diagnosefelder. Die Usage-Antwort beschreibt
+ausschließlich Verbrauch; weder freie `status`-Felder noch ein dort auftauchendes `limit` gelten
+als Blockade-, Capability- oder Budgetevidenz. Eine Blockade oder Erschöpfung darf nur ein
+separater Verifier aus aktueller Provider-/API-Evidenz oder einem extern digest-gepinnten
+Operator-Artefakt rekonstruieren. Ein berechnetes oder geschätztes Restbudget entscheidet nicht,
+welcher Reviewer verwendet wird.
 
 Insbesondere gibt es:
 
@@ -85,7 +88,7 @@ Abbildung:
 | `available` | `true` | Positive, aktuelle und vollständige Evidenz |
 | `low_budget` | `true` | Nutzbar; Restbudget beeinflusst die Route nicht |
 | `quota_exhausted` | `false` | Nur mit expliziter Provider-/API-/Operator-Evidenz |
-| `budget_blocked` | `false` | Explizite Nutzungsblockade |
+| `budget_blocked` | `false` | Separat verifizierte aktuelle Budgetblockade |
 | `rate_limited` | `false` | Kein belastbarer Reviewpfad in diesem Versuch |
 | `provider_unavailable` | `false` | Providerpfad nicht erreichbar |
 | `permission_denied` | `false` | Verwendbarkeit kann nicht belastbar belegt werden |
@@ -104,8 +107,11 @@ Signale positiv und aktuell sind:
 1. Reviewmodus (`manual` oder `automatic`), Requester, PR-Autor und der daraus folgende
    Billing-Principal sind belastbar bestimmt.
 2. Abrechnungskontext und Billing-Modell dieses Principals sind belastbar bestimmt.
-3. Usage-/Lizenzantwort ist syntaktisch und semantisch vollständig genug.
-4. Keine explizite Quoten- oder Budgetblockade liegt vor.
+3. Usage-/Lizenzantwort ist syntaktisch und semantisch vollständig genug; gemessen wird
+   `grossQuantity`, während `limit` und `remaining` ohne eigene autoritative Budgetquelle
+   unbekannt bleiben.
+4. Keine gleich alte oder neuere, separat verifizierte Quoten-, Account- oder Budgetblockade
+   liegt vor.
 5. Kein aktuelles Rate Limit oder Provider-Ausfall liegt vor.
 6. Es liegt eine zeitlich gültige positive Capability-Evidenz für Repository, Principal und
    Reviewmodus vor.
@@ -114,10 +120,18 @@ GitHub bietet nicht für jeden persönlichen Kontext einen read-only „Can revi
 Historische Usage ohne Blockade ist deshalb allein **keine** positive Capability-Evidenz. Zulässige
 positive Evidenz ist:
 
-- ein erfolgreich abgeschlossenes Copilot-Review für denselben Repository-/Principal-/
-  Reviewmodus-Kontext innerhalb der konfigurierten Gültigkeitsdauer; oder
-- explizite, datierte Operator-Evidenz einer GitHub-Einstellung, die Code Review für diesen
-  Kontext als nutzbar ausweist.
+- ein über die GitHub-API erneut geladenes, erfolgreich abgeschlossenes Copilot-Review für
+  denselben Repository-/Principal-/Reviewmodus-Kontext innerhalb der konfigurierten
+  Gültigkeitsdauer; oder
+- ein datiertes Operator-Artefakt, dessen kanonischer SHA-256-Digest außerhalb des CLI durch die
+  Publisher-App oder installierte Konfiguration fest gepinnt ist.
+
+`ProbeRequest` transportiert dafür nur eine nicht vertrauenswürdige Referenz. Er kann weder
+`trust`, erwarteten Digest noch Issuer setzen. `CapabilityEvidenceVerifierPort` und
+`BlockEvidenceVerifierPort` rekonstruieren routingfähige Evidenz samt geschlossener Provenienz.
+Eine gleich alte oder neuere verifizierte Blockade schlägt die Capability; ein danach
+abgeschlossenes Review schlägt eine ältere Blockade. Technische Permission-, Rate- oder
+Providerfehler schlagen beide Caches, abgelaufene Evidenz wird ignoriert.
 
 Fehlt sie, bleibt die Diagnose `unknown` und `copilot_usable = false`. Der nach Aufhebung des
 Billing-Locks vom Nutzer ausdrücklich freizugebende einmalige Dispatch ist der Bootstrap- und
@@ -136,7 +150,9 @@ Der Probe bestimmt den Kontext review- und principalbezogen:
 - Enterprise-/Cost-Center-Kontext: nur bei explizit konfigurierter oder API-belegter Zuordnung;
 - Legacy-Kontext: offizieller Premium-Request-Endpunkt als Kompatibilitätspfad.
 
-Eine Organisationsmitgliedschaft allein beweist keine von dieser Organisation bezahlte
+Eine Organisationsmitgliedschaft und auch ein Seat-`404` beweisen weder persönlichen noch
+organisatorischen Billing-Kontext. Eine Organisationsmitgliedschaft allein beweist keine
+von dieser Organisation bezahlte
 Copilot-Lizenz. Für Mitglieder ohne eigene Copilot-Sitzzuordnung kann Code Review je nach
 Organisations-/Enterprise-Policy trotzdem der Organisation, dem Enterprise oder einem Cost Center
 zugerechnet werden. Ist mehr als ein Principal möglich oder fehlen die Rechte zur Sitz-, Policy-
@@ -559,13 +575,13 @@ python3 -m review_routing probe \
   --repo OWNER/REPO \
   --review-mode manual \
   --requester USER \
-  --capability-evidence CAPABILITY.json \
+  --capability-reference CAPABILITY-REFERENCE.json \
   --json
 python3 -m review_routing probe \
   --repo OWNER/REPO \
   --review-mode automatic \
   --pull-request NUMBER \
-  --capability-evidence CAPABILITY.json \
+  --capability-reference CAPABILITY-REFERENCE.json \
   --json
 python3 -m review_routing route \
   --probe-file PROBE.json \
@@ -589,9 +605,10 @@ python3 -m review_routing output-policy --json
 ```
 
 Bei `manual` ist `--requester` Pflicht; bei `automatic` wird der PR-Autor read-only aus dem
-angegebenen PR ermittelt. Eine Capability-Datei ist ein versioniertes, ablaufendes
-Evidenzartefakt, keine freie Behauptung. Fehlt sie oder passt Principal/Repository/Reviewmodus
-nicht, bleibt `copilot_usable = false`.
+angegebenen PR ermittelt. Eine Capability-Referenz ist nicht vertrauenswürdig und kann nur auf
+ein GitHub-Review oder ein extern gepinntes Operator-Artefakt zeigen. Der CLI besitzt keine Flags
+für Trust, Issuer oder erwartete Digests. Fehlt die Referenz, scheitert ihre Verifikation oder
+passt Principal/Repository/Reviewmodus nicht, bleibt `copilot_usable = false`.
 
 Der Composition Root löst Ports ausschließlich über die generische Runtime-Registry auf. Policy
 und Risikoklassifikation kennen weder `gh` noch HTTP; `__main__.py` importiert keine
@@ -627,15 +644,28 @@ Adapterimplementierung.
     "unit": "credits"
   },
   "signals": {
-    "billing_status": "budget_blocked",
+    "billing_status": null,
+    "usage_status": "available",
     "provider_status": "available",
-    "api_status": "permission_denied"
+    "api_status": "available"
   },
-  "routing_status": "budget_blocked",
+  "routing_status": "unknown",
   "copilot_usable": false,
   "capability_evidence": {
     "status": "absent",
-    "expires_at": null
+    "expires_at": null,
+    "source": null,
+    "source_reference": null,
+    "artifact_digest": null,
+    "trust": "development"
+  },
+  "block_evidence": {
+    "status": "absent",
+    "kind": null,
+    "source": null,
+    "source_reference": null,
+    "artifact_digest": null,
+    "trust": "development"
   },
   "evidence": [],
   "warnings": []
@@ -695,13 +725,13 @@ Probe:
 | `23` | Kontext oder Status `unknown` |
 | `24` | Leere, unvollständige oder ungültige Antwort |
 
-Eine explizit erkannte Quoten-/Budgetblockade ist eine erfolgreiche Probe und liefert `0`, obwohl
+Eine separat verifizierte Quoten-/Budgetblockade ist eine erfolgreiche Probe und liefert `0`, obwohl
 `copilot_usable = false` gilt. Das setzt voraus, dass die Blockade von einer erfolgreich
 abgerufenen autoritativen Quelle stammt. Liegt zusätzlich oder stattdessen nur Operator-Evidenz
-vor, während eine erforderliche API wegen fehlender Rechte nicht geprüft werden konnte, bleiben
-`routing_status = budget_blocked` und `copilot_usable = false`, der Prozess meldet die technische
-Unvollständigkeit aber mit Exitcode `20`. Die JSON-Evidenz bleibt auch bei einem Exitcode ungleich
-null vollständig auswertbar.
+vor, während eine erforderliche API wegen fehlender Rechte nicht geprüft werden konnte,
+überschreibt der technische Fehler die Cacheentscheidung: `routing_status = permission_denied`,
+`copilot_usable = false` und Exitcode `20`. Die verifizierte Blockevidenz bleibt separat im JSON
+nachvollziehbar.
 
 Route:
 
@@ -909,11 +939,12 @@ ruft GitHub auf oder löst ein Review aus.
 
 Mindestens:
 
-1. AI Credits mit bekanntem Limit/Budget; Restwert korrekt, aber ohne Routingeinfluss.
-2. AI Credits ohne bekanntes Limit; `remaining = null`.
+1. AI-Credit-Usage verwendet `grossQuantity`; freie Usage-Felder `status`/`limit` werden nicht
+   als Routing- oder Budgetevidenz übernommen.
+2. AI Credits ohne separate autoritative Budgetquelle; `limit = remaining = null`.
 3. Legacy Premium Requests.
-4. Explizit ausgeschöpftes Kontingent → `copilot_usable = false`.
-5. Explizit blockiertes Budget → `false`.
+4. Separat verifiziertes ausgeschöpftes Kontingent → `copilot_usable = false`.
+5. Separat verifiziertes blockiertes Budget → `false`.
 6. `low_budget`, aber tatsächlich nutzbar → `true`, identische Route wie `available`.
 7. Rate Limit → `false`, Exitcode `21`.
 8. Provider-Ausfall → `false`, Exitcode `22`.
@@ -921,11 +952,13 @@ Mindestens:
 10. Leere Antwort → `unknown`, Exitcode `24`.
 11. Unvollständige Antwort → `unknown`, Exitcode `24`.
 12. Unbekannter Abrechnungskontext → `unknown`, Exitcode `23`.
-13. Organisationsmitgliedschaft ohne Sitzbeleg erzeugt keinen Organisationskontext.
+13. Organisationsmitgliedschaft oder Seat-`404` ohne Sitzbeleg erzeugt weder Organisations- noch
+    persönlichen Fallbackkontext.
 14. Manuell versus automatisch bestimmt Requester beziehungsweise PR-Autor als Principal.
 15. Mehrdeutiger oder nicht belegbarer Billing-Principal → `unknown`.
-16. Abgelaufene, fremde oder fehlende positive Capability-Evidenz → nicht nutzbar.
-17. Gültige Capability-Evidenz mit passendem Principal/Repo/Modus → nutzbar.
+16. Abgelaufene, fremde, ungepinnte oder fehlende Capability-Referenz → nicht nutzbar.
+17. Von einem Verifier rekonstruierte Capability mit geschlossenem Source-/Digest-Nachweis und
+    passendem Principal/Repo/Modus → nutzbar.
 18. Checkpoint-Matrix für alle vier Risiken und beide Verwendbarkeitswerte; `false` verlangt
     ausnahmslos QA.
 19. Final-Matrix für alle vier Risiken und beide Verwendbarkeitswerte.

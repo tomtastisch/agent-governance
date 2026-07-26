@@ -11,24 +11,37 @@ import unittest
 
 from review_routing.adapters.github_gh import (
     API_VERSION,
+    BlockEvidenceVerifier,
+    CapabilityEvidenceVerifier,
     GitHubGhProbe,
     GitHubStatus,
     SubprocessCommand,
 )
 from review_routing.contracts import (
     BillingPrincipal,
+    BlockEvidenceKind,
+    BlockEvidenceReference,
+    BlockEvidenceSource,
+    BlockVerification,
     CapabilityEvidence,
+    CapabilityEvidenceReference,
+    CapabilityEvidenceSource,
+    CapabilityVerification,
     ClockPort,
     CommandPort,
     CommandResult,
     DiagnosticStatus,
+    EvidenceTrust,
+    EvidenceVerificationStatus,
     MalformedResponseError,
+    PermissionDeniedError,
     PortTimeoutError,
     ProbeRequest,
     PullRequestState,
     PullRequestStateSource,
     StatusPort,
     StatusSnapshot,
+    VerifiedBlockEvidence,
 )
 
 
@@ -128,7 +141,7 @@ def personal_replies(
 ) -> dict[str, CommandResult | Exception]:
     return {
         "/user": user or user_response(),
-        "/users/tom/settings/billing/ai_credit/usage": usage
+        "/users/tom/settings/billing/ai_credit/usage?year=2026&month=7": usage
         or response(200, fixture("ai-credits.json")),
     }
 
@@ -138,13 +151,14 @@ def request(**changes: object) -> ProbeRequest:
         "repository": REPOSITORY,
         "review_mode": "manual",
         "manual_requester": "tom",
-        "capability_evidence": None,
+        "capability_reference": None,
+        "block_reference": None,
     }
     values.update(changes)
     return ProbeRequest(**values)
 
 
-def capability(
+def capability_reference(
     *,
     kind: str = "personal",
     identifier: str = "tom",
@@ -152,8 +166,8 @@ def capability(
     review_mode: str = "manual",
     observed_at: datetime = NOW - timedelta(minutes=5),
     expires_at: datetime = NOW + timedelta(minutes=10),
-) -> CapabilityEvidence:
-    principal = BillingPrincipal(
+) -> CapabilityEvidenceReference:
+    billing_principal = BillingPrincipal(
         kind=kind,
         identifier=identifier,
         review_mode=review_mode,
@@ -163,13 +177,132 @@ def capability(
         observed_at=NOW - timedelta(minutes=10),
         expires_at=NOW + timedelta(minutes=15),
     )
-    return CapabilityEvidence(
+    return CapabilityEvidenceReference(
+        schema_version=1,
+        source=CapabilityEvidenceSource.GITHUB_COMPLETED_REVIEW,
         repository=repository,
-        principal=principal,
         review_mode=review_mode,
-        observed_at=observed_at,
-        expires_at=expires_at,
-        source="completed_review",
+        principal_identity=billing_principal.identity,
+        source_reference=(
+            "expired_capability" if expires_at <= NOW else "verified_capability"
+        ),
+        pull_request_number=5,
+        review_id=7,
+    )
+
+
+class FakeCapabilityVerifier:
+    def verify(self, reference, repository, principal, review_mode, observed_at):
+        if reference is None:
+            return CapabilityVerification(
+                EvidenceVerificationStatus.ABSENT,
+                EvidenceTrust.DEVELOPMENT,
+                None,
+                None,
+                None,
+                None,
+            )
+        if (
+            reference.repository != repository
+            or reference.principal_identity != principal.identity
+            or reference.review_mode != review_mode
+        ):
+            return CapabilityVerification(
+                EvidenceVerificationStatus.INVALID,
+                EvidenceTrust.DEVELOPMENT,
+                reference.source,
+                reference.source_reference,
+                None,
+                None,
+            )
+        if reference.source_reference == "expired_capability":
+            return CapabilityVerification(
+                EvidenceVerificationStatus.EXPIRED,
+                EvidenceTrust.DEVELOPMENT,
+                reference.source,
+                reference.source_reference,
+                "sha256:" + "a" * 64,
+                None,
+            )
+        evidence = CapabilityEvidence(
+            repository=repository,
+            principal=principal,
+            review_mode=review_mode,
+            observed_at=observed_at - timedelta(minutes=5),
+            expires_at=min(observed_at + timedelta(minutes=10), principal.expires_at),
+            source=CapabilityEvidenceSource.GITHUB_COMPLETED_REVIEW,
+            source_reference=reference.source_reference,
+            artifact_digest="sha256:" + "a" * 64,
+            pull_request_number=reference.pull_request_number,
+            review_id=reference.review_id,
+            review_commit_sha=HEAD_SHA,
+        )
+        return CapabilityVerification(
+            EvidenceVerificationStatus.VERIFIED,
+            EvidenceTrust.VERIFIED,
+            evidence.source,
+            evidence.source_reference,
+            evidence.artifact_digest,
+            evidence,
+        )
+
+
+class FakeBlockVerifier:
+    def verify(self, reference, repository, principal, review_mode, observed_at):
+        if reference is None:
+            return BlockVerification(
+                EvidenceVerificationStatus.ABSENT,
+                EvidenceTrust.DEVELOPMENT,
+                None,
+                None,
+                None,
+                None,
+            )
+        kind = (
+            BlockEvidenceKind.QUOTA_EXHAUSTED
+            if reference.source_reference == "quota_exhausted"
+            else BlockEvidenceKind.BUDGET_BLOCKED
+        )
+        evidence = VerifiedBlockEvidence(
+            schema_version=1,
+            kind=kind,
+            repository=repository,
+            principal_identity=principal.identity,
+            review_mode=review_mode,
+            observed_at=observed_at - timedelta(minutes=1),
+            expires_at=observed_at + timedelta(minutes=10),
+            source=BlockEvidenceSource.PROVIDER_API,
+            source_reference=reference.source_reference,
+            artifact_digest="sha256:" + "b" * 64,
+        )
+        return BlockVerification(
+            EvidenceVerificationStatus.VERIFIED,
+            EvidenceTrust.VERIFIED,
+            evidence.source,
+            evidence.source_reference,
+            evidence.artifact_digest,
+            evidence,
+        )
+
+
+def block_reference(kind: str) -> BlockEvidenceReference:
+    return BlockEvidenceReference(
+        schema_version=1,
+        source=BlockEvidenceSource.PROVIDER_API,
+        repository=REPOSITORY,
+        review_mode="manual",
+        principal_identity=capability_reference().principal_identity,
+        source_reference=kind,
+    )
+
+
+def adapter(command: CommandPort, status: StatusPort | None = None) -> GitHubGhProbe:
+    return GitHubGhProbe(
+        command=command,
+        status=status or FakeStatus(),
+        clock=FakeClock(),
+        capability_verifier=FakeCapabilityVerifier(),
+        block_verifier=FakeBlockVerifier(),
     )
 
 
@@ -183,34 +316,33 @@ class GitHubProbeTest(unittest.TestCase):
         status: FakeStatus | None = None,
     ):
         command = FakeCommand(replies)
-        adapter = GitHubGhProbe(command=command, status=status or FakeStatus(), clock=FakeClock())
-        return adapter.probe(probe_request or request()), command
+        probe_adapter = adapter(command, status)
+        return probe_adapter.probe(probe_request or request()), command
 
     def test_personal_ai_credits_use_valid_capability_without_routing_on_remaining(self):
         report, command = self.probe(
             personal_replies(),
-            request(capability_evidence=capability()),
+            request(capability_reference=capability_reference()),
         )
 
         self.assertTrue(report.copilot_usable)
         self.assertEqual(report.billing_model, "ai_credits")
         self.assertEqual(report.usage.used, 37)
-        self.assertEqual(report.usage.limit, 100)
-        self.assertEqual(report.usage.remaining, 63)
+        self.assertIsNone(report.usage.limit)
+        self.assertIsNone(report.usage.remaining)
         self.assertEqual(report.usage.unit, "credits")
         self.assertEqual(report.billing_principal.kind, "personal")
         self.assertEqual(report.billing_principal.identifier, "tom")
         self.assertIn(
-            "/users/tom/settings/billing/ai_credit/usage",
+            "/users/tom/settings/billing/ai_credit/usage?year=2026&month=7",
             [call[0][-1] for call in command.calls],
         )
 
     def test_ai_credits_without_limit_preserve_unknown_remaining(self):
         payload = fixture("ai-credits.json")
-        payload.pop("limit")
         report, _ = self.probe(
             personal_replies(response(200, payload)),
-            request(capability_evidence=capability()),
+            request(capability_reference=capability_reference()),
         )
 
         self.assertTrue(report.copilot_usable)
@@ -219,20 +351,21 @@ class GitHubProbeTest(unittest.TestCase):
 
     def test_legacy_premium_requests_are_used_only_after_ai_endpoint_is_absent(self):
         replies = personal_replies(response(404, {"message": "Not Found"}))
-        replies["/users/tom/settings/billing/premium_request/usage"] = response(
+        replies["/users/tom/settings/billing/premium_request/usage?year=2026&month=7"] = response(
             200,
             fixture("legacy-premium.json"),
         )
 
-        report, command = self.probe(replies, request(capability_evidence=capability()))
+        report, command = self.probe(replies, request(capability_reference=capability_reference()))
 
         self.assertEqual(report.billing_model, "premium_requests")
-        self.assertEqual(report.usage.remaining, 293)
+        self.assertEqual(report.usage.used, 7)
+        self.assertIsNone(report.usage.remaining)
         self.assertEqual(
             [call[0][-1] for call in command.calls][-2:],
             [
-                "/users/tom/settings/billing/ai_credit/usage",
-                "/users/tom/settings/billing/premium_request/usage",
+                "/users/tom/settings/billing/ai_credit/usage?year=2026&month=7",
+                "/users/tom/settings/billing/premium_request/usage?year=2026&month=7",
             ],
         )
 
@@ -243,7 +376,7 @@ class GitHubProbeTest(unittest.TestCase):
                 200,
                 {"assignee": {"login": "tom"}, "assigning_team": {"slug": "engineering"}},
             ),
-            "/organizations/acme/settings/billing/ai_credit/usage": response(
+            "/organizations/acme/settings/billing/ai_credit/usage?year=2026&month=7&user=tom": response(
                 200,
                 fixture("ai-credits.json"),
             ),
@@ -253,7 +386,7 @@ class GitHubProbeTest(unittest.TestCase):
             replies,
             request(
                 organization="acme",
-                capability_evidence=capability(kind="organization", identifier="acme"),
+                capability_reference=capability_reference(kind="organization", identifier="acme"),
             ),
         )
 
@@ -262,7 +395,7 @@ class GitHubProbeTest(unittest.TestCase):
         self.assertEqual(report.billing_context.kind, "organization")
         self.assertTrue(report.copilot_usable)
 
-    def test_organization_membership_without_seat_is_not_organization_attribution(self):
+    def test_organization_seat_404_is_unknown_and_never_personal_fallback(self):
         replies = {
             **personal_replies(),
             "/orgs/acme/members/tom/copilot": response(404, {"message": "Not Found"}),
@@ -270,8 +403,9 @@ class GitHubProbeTest(unittest.TestCase):
 
         report, _ = self.probe(replies, request(organization="acme"))
 
-        self.assertEqual(report.billing_principal.kind, "personal")
-        self.assertEqual(report.billing_context.kind, "personal")
+        self.assertEqual(report.billing_principal.kind, "unknown")
+        self.assertEqual(report.billing_context.kind, "unknown")
+        self.assertEqual(report.billing_model, "unknown")
         self.assertFalse(report.copilot_usable)
 
     def test_manual_requester_and_automatic_pr_author_are_distinct_candidates(self):
@@ -279,7 +413,7 @@ class GitHubProbeTest(unittest.TestCase):
         automatic_replies = {
             "/user": user_response(),
             f"/repos/{REPOSITORY}/pulls/5": pr_response(author="author"),
-            "/users/author/settings/billing/ai_credit/usage": response(
+            "/users/author/settings/billing/ai_credit/usage?year=2026&month=7": response(
                 200,
                 fixture("ai-credits.json"),
             ),
@@ -323,13 +457,16 @@ class GitHubProbeTest(unittest.TestCase):
                 self.assertEqual(report.billing_model, "unknown")
                 self.assertFalse(report.copilot_usable)
 
-    def test_explicit_quota_and_budget_blocks_are_preserved(self):
+    def test_usage_payload_cannot_claim_quota_or_budget_block(self):
         for status in ("quota_exhausted", "budget_blocked"):
             with self.subTest(status=status):
                 payload = {**fixture("ai-credits.json"), "status": status}
-                report, _ = self.probe(personal_replies(response(200, payload)))
-                self.assertEqual(report.routing_status.value, status)
-                self.assertFalse(report.copilot_usable)
+                report, _ = self.probe(
+                    personal_replies(response(200, payload)),
+                    request(capability_reference=capability_reference()),
+                )
+                self.assertTrue(report.copilot_usable)
+                self.assertIsNone(report.signals.billing_status)
 
     def test_permission_rate_and_provider_failures_are_sanitized(self):
         cases = (
@@ -367,7 +504,7 @@ class GitHubProbeTest(unittest.TestCase):
 
         report, _ = self.probe(
             personal_replies(),
-            request(capability_evidence=capability()),
+            request(capability_reference=capability_reference()),
             status=status,
         )
 
@@ -395,18 +532,22 @@ class GitHubProbeTest(unittest.TestCase):
                 self.assertEqual(report.technical_error, "incomplete_response")
                 self.assertFalse(report.copilot_usable)
 
-    def test_explicit_current_block_survives_independent_api_permission_denial(self):
+    def test_technical_permission_failure_overrides_verified_block_cache(self):
         report, _ = self.probe(
             personal_replies(
                 response(
                     200,
-                    {**fixture("ai-credits.json"), "status": "budget_blocked"},
+                    fixture("ai-credits.json"),
                 ),
                 user=response(403, {"message": "Resource not accessible"}),
-            )
+            ),
+            request(
+                capability_reference=capability_reference(),
+                block_reference=block_reference("budget_blocked"),
+            ),
         )
 
-        self.assertEqual(report.routing_status, DiagnosticStatus.BUDGET_BLOCKED)
+        self.assertEqual(report.routing_status, DiagnosticStatus.PERMISSION_DENIED)
         self.assertEqual(report.technical_status, DiagnosticStatus.PERMISSION_DENIED)
         self.assertFalse(report.copilot_usable)
 
@@ -425,22 +566,22 @@ class GitHubProbeTest(unittest.TestCase):
     def test_capability_must_be_present_current_and_bound_to_principal(self):
         cases = (
             None,
-            capability(expires_at=NOW),
-            capability(identifier="other"),
-            capability(repository="tomtastisch/other"),
+            capability_reference(expires_at=NOW),
+            capability_reference(identifier="other"),
+            capability_reference(repository="tomtastisch/other"),
         )
         for evidence in cases:
             with self.subTest(evidence=evidence):
                 report, _ = self.probe(
                     personal_replies(),
-                    request(capability_evidence=evidence),
+                    request(capability_reference=evidence),
                 )
                 self.assertFalse(report.copilot_usable)
                 self.assertEqual(report.routing_status, DiagnosticStatus.UNKNOWN)
 
         valid, _ = self.probe(
             personal_replies(),
-            request(capability_evidence=capability()),
+            request(capability_reference=capability_reference()),
         )
         self.assertTrue(valid.copilot_usable)
         self.assertEqual(valid.capability_status, "valid")
@@ -461,7 +602,7 @@ class GitHubProbeTest(unittest.TestCase):
     def test_report_serialization_contains_only_closed_sanitized_fields(self):
         report, _ = self.probe(
             personal_replies(),
-            request(capability_evidence=capability()),
+            request(capability_reference=capability_reference()),
         )
 
         document = report.to_dict()
@@ -485,6 +626,7 @@ class GitHubProbeTest(unittest.TestCase):
                 "technical_error",
                 "copilot_usable",
                 "capability_evidence",
+                "block_evidence",
                 "evidence",
                 "warnings",
             },
@@ -499,9 +641,9 @@ class PullRequestStateTest(unittest.TestCase):
 
     def test_exact_pr_state_is_loaded_from_api(self):
         command = FakeCommand({f"/repos/{REPOSITORY}/pulls/5": pr_response(author="author")})
-        adapter = GitHubGhProbe(command=command, status=FakeStatus(), clock=FakeClock())
+        probe_adapter = adapter(command)
 
-        state = adapter.load(REPOSITORY, 5)
+        state = probe_adapter.load(REPOSITORY, 5)
 
         self.assertEqual(
             state,
@@ -525,16 +667,14 @@ class PullRequestStateTest(unittest.TestCase):
         )
         for result in cases:
             with self.subTest(result=result.return_code):
-                adapter = GitHubGhProbe(
-                    command=FakeCommand({f"/repos/{REPOSITORY}/pulls/5": result}),
-                    status=FakeStatus(),
-                    clock=FakeClock(),
+                probe_adapter = adapter(
+                    FakeCommand({f"/repos/{REPOSITORY}/pulls/5": result})
                 )
                 with self.assertRaisesRegex(
                     (MalformedResponseError, PortTimeoutError, RuntimeError),
                     r"^(?!.*(?:cookie|session)).*$",
                 ):
-                    adapter.load(REPOSITORY, 5)
+                    probe_adapter.load(REPOSITORY, 5)
 
 
 class ProductionClientBoundaryTest(unittest.TestCase):
@@ -564,6 +704,41 @@ class ProductionClientBoundaryTest(unittest.TestCase):
 
         with self.assertRaisesRegex(PortTimeoutError, "^GitHub command timed out$"):
             SubprocessCommand(runner=runner).run(("gh", "api", "/user"), 1.0)
+
+    def test_include_parser_uses_the_last_complete_http_response_block(self):
+        final = pr_response(author="author").stdout
+        combined = CommandResult(
+            return_code=0,
+            stdout=b"HTTP/1.1 100 Continue\r\ncontent-length: 0\r\n\r\n" + final,
+            stderr=b"",
+        )
+        probe_adapter = adapter(
+            FakeCommand({f"/repos/{REPOSITORY}/pulls/5": combined})
+        )
+
+        state = probe_adapter.load(REPOSITORY, 5)
+
+        self.assertEqual(state.head_sha, HEAD_SHA)
+
+    def test_empty_stdout_uses_only_known_stderr_http_diagnostic(self):
+        secret = b"authorization=SENSITIVE_VALUE request failed: HTTP 403"
+        probe_adapter = adapter(
+            FakeCommand(
+                {
+                    f"/repos/{REPOSITORY}/pulls/5": CommandResult(
+                        return_code=1,
+                        stdout=b"",
+                        stderr=secret,
+                    )
+                }
+            )
+        )
+
+        with self.assertRaisesRegex(
+            PermissionDeniedError,
+            r"^GitHub API permission denied$",
+        ):
+            probe_adapter.load(REPOSITORY, 5)
 
     def test_public_status_client_parses_only_operational_components(self):
         payload = json.dumps(fixture("status-operational.json")).encode("utf-8")

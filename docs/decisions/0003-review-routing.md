@@ -18,6 +18,20 @@ binäre Routing-Eingabe an. Diagnosestatus wie `low_budget`, `budget_blocked` od
 `permission_denied` bleiben als getrennte Evidenz erhalten. Es gibt weder eine `remaining`-
 Berechnung als Routing-Eingabe noch eine Budgetreservierung.
 
+Usage ist ausschließlich eine Verbrauchsmessung (`grossQuantity`). Freie Felder wie `status`
+oder `limit` in einer Usage-Antwort sind weder Capability- noch Blockadeevidenz. Routingfähige
+Capability entsteht nur durch `CapabilityEvidenceVerifierPort`: entweder aus einem erneut über
+die GitHub-API geladenen abgeschlossenen Copilot-Review oder aus einem Operator-Artefakt, dessen
+kanonischer Digest extern durch Publisher-App beziehungsweise installierte Konfiguration gepinnt
+ist. Der Caller liefert nur eine nicht vertrauenswürdige Referenz und kann Trust, Issuer oder den
+erwarteten Digest nicht setzen.
+
+`BlockEvidenceVerifierPort` rekonstruiert Quoten-, Account- oder Budgetblockaden getrennt aus
+aktueller Provider-/API-Evidenz oder ebenfalls extern gepinnter Operator-Evidenz. Eine gleich alte
+oder neuere verifizierte Blockade schlägt eine Capability; ein danach abgeschlossenes Review
+schlägt die ältere Blockade. Technische Permission-, Rate- und Providerfehler haben Vorrang vor
+beiden Caches. Abgelaufene Evidenz bleibt ohne Routingwirkung.
+
 Ein Copilot-Review kann ausschließlich als `valid_review_evidence` gelten, wenn es als
 `COMMENTED` auf dem Exact Head vollständig und ohne offene Findings belegt ist; es ist keine
 GitHub-Freigabe. Unklare, degradierte oder ausgeschlossene Abdeckung ergänzt unabhängig von der
@@ -28,6 +42,8 @@ Check-Run und ändern weder GitHub- noch lokale Konfigurationszustände. Die pak
 `review_routing/runtime.toml` ist getrennt von der Policy die einzige Bootstrap-Quelle für
 Adaptermodule. Eine externe, passende Publisher-/Installations-Pinbindung kann diese Runtime als
 `installed` ausweisen; ein Source-Checkout bleibt `development` und damit nicht gate-fähig.
+Ein Organisations-Seat-`404` oder eine bloße Mitgliedschaft erzeugt keinen persönlichen
+Fallbackkontext, sondern `unknown`.
 
 ## Konsequenzen
 

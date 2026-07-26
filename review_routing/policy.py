@@ -6,6 +6,7 @@ from typing import Mapping
 
 from review_routing.contracts import (
     AdapterFactory,
+    BlockEvidenceKind,
     DiagnosticStatus,
     ProbeSignals,
     ReviewPurpose,
@@ -40,14 +41,15 @@ _ROUTE_REVIEWERS = {
 
 
 def classify_usability(signals: ProbeSignals) -> tuple[bool, DiagnosticStatus]:
-    """Erhält die höchste Diagnose und erlaubt Copilot nur bei aktueller Capability-Evidenz."""
-    statuses = (
-        signals.billing_status,
+    """Technische Fehler und verifizierte Blockaden gelten fail-closed und zeitgebunden."""
+    technical_statuses = (
         signals.usage_status,
         signals.provider_status,
         signals.permission_status,
     )
-    status = next(candidate for candidate in _STATUS_PRECEDENCE if candidate in statuses)
+    status = next(
+        candidate for candidate in _STATUS_PRECEDENCE if candidate in technical_statuses
+    )
     if status not in {DiagnosticStatus.AVAILABLE, DiagnosticStatus.LOW_BUDGET}:
         return False, status
     if signals.capability is None or not signals.capability.is_valid_for(
@@ -57,6 +59,11 @@ def classify_usability(signals: ProbeSignals) -> tuple[bool, DiagnosticStatus]:
         signals.observed_at,
     ):
         return False, DiagnosticStatus.UNKNOWN
+    block = signals.verified_block
+    if block is not None and block.observed_at >= signals.capability.observed_at:
+        if block.kind is BlockEvidenceKind.QUOTA_EXHAUSTED:
+            return False, DiagnosticStatus.QUOTA_EXHAUSTED
+        return False, DiagnosticStatus.BUDGET_BLOCKED
     return True, status
 
 

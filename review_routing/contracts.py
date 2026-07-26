@@ -172,6 +172,35 @@ class ProbeTechnicalError(str, Enum):
     INCOMPLETE_RESPONSE = "incomplete_response"
 
 
+class CapabilityEvidenceSource(str, Enum):
+    GITHUB_COMPLETED_REVIEW = "github_completed_review"
+    OPERATOR_PINNED = "operator_pinned"
+
+
+class BlockEvidenceSource(str, Enum):
+    GITHUB_API = "github_api"
+    PROVIDER_API = "provider_api"
+    OPERATOR_PINNED = "operator_pinned"
+
+
+class BlockEvidenceKind(str, Enum):
+    BUDGET_BLOCKED = "budget_blocked"
+    QUOTA_EXHAUSTED = "quota_exhausted"
+    ACCOUNT_LOCKED = "account_locked"
+
+
+class EvidenceVerificationStatus(str, Enum):
+    ABSENT = "absent"
+    INVALID = "invalid"
+    EXPIRED = "expired"
+    VERIFIED = "verified"
+
+
+class EvidenceTrust(str, Enum):
+    DEVELOPMENT = "development"
+    VERIFIED = "verified"
+
+
 def _require_digest(value: str, field_name: str) -> None:
     if not DIGEST_RE.fullmatch(value):
         raise ValueError(f"{field_name} must be a sha256 digest")
@@ -242,6 +271,19 @@ def _freeze_reviewers(reviewers: frozenset[Reviewer] | set[Reviewer]) -> frozens
     if not all(isinstance(reviewer, Reviewer) for reviewer in frozen):
         raise ValueError("reviewers must be Reviewer values")
     return frozen
+
+
+def _require_principal_identity(
+    value: tuple[str, str, str, str | None, str | None],
+) -> tuple[str, str, str, str | None, str | None]:
+    identity = tuple(value)
+    if len(identity) != 5:
+        raise ValueError("principal_identity must contain exactly five fields")
+    if any(item is not None and not isinstance(item, str) for item in identity):
+        raise ValueError("principal_identity fields must be strings or absent")
+    if not all(identity[index] for index in (0, 1, 2)):
+        raise ValueError("principal_identity kind, identifier and review mode are required")
+    return identity  # type: ignore[return-value]
 
 
 def canonical_policy_digest(policy: Mapping[str, object]) -> str:
@@ -368,27 +410,134 @@ class BillingPrincipal:
 
 
 @dataclass(frozen=True)
+class OperatorEvidencePin:
+    source_reference: str
+    expected_digest: str
+    source: RuntimeTrustSource
+
+    def __post_init__(self) -> None:
+        _require_code(self.source_reference, "source_reference")
+        _require_digest(self.expected_digest, "expected_digest")
+        if self.source not in {
+            RuntimeTrustSource.PUBLISHER_APP,
+            RuntimeTrustSource.INSTALLED_CONFIG,
+        }:
+            raise ValueError("operator evidence pin requires an external trusted source")
+
+
+@dataclass(frozen=True)
+class CapabilityEvidenceReference:
+    schema_version: int
+    source: CapabilityEvidenceSource
+    repository: str
+    review_mode: str
+    principal_identity: tuple[str, str, str, str | None, str | None]
+    source_reference: str
+    pull_request_number: int | None = None
+    review_id: int | None = None
+    artifact: bytes | None = None
+
+    def __post_init__(self) -> None:
+        if self.schema_version != 1 or isinstance(self.schema_version, bool):
+            raise ValueError("schema_version must be 1")
+        if not isinstance(self.source, CapabilityEvidenceSource):
+            raise ValueError("source must be a CapabilityEvidenceSource")
+        require_repository(self.repository)
+        if self.review_mode not in {"manual", "automatic"}:
+            raise ValueError("review_mode must be manual or automatic")
+        object.__setattr__(
+            self,
+            "principal_identity",
+            _require_principal_identity(self.principal_identity),
+        )
+        _require_code(self.source_reference, "source_reference")
+        if self.source is CapabilityEvidenceSource.GITHUB_COMPLETED_REVIEW:
+            for field_name in ("pull_request_number", "review_id"):
+                value = getattr(self, field_name)
+                if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                    raise ValueError(f"{field_name} must be a positive integer")
+            if self.artifact is not None:
+                raise ValueError("GitHub review references forbid caller artifact content")
+        else:
+            if self.pull_request_number is not None or self.review_id is not None:
+                raise ValueError("operator references forbid GitHub review identifiers")
+            if not isinstance(self.artifact, bytes) or not self.artifact:
+                raise ValueError("operator references require untrusted artifact bytes")
+
+
+@dataclass(frozen=True)
+class BlockEvidenceReference:
+    schema_version: int
+    source: BlockEvidenceSource
+    repository: str
+    review_mode: str
+    principal_identity: tuple[str, str, str, str | None, str | None]
+    source_reference: str
+    artifact: bytes | None = None
+
+    def __post_init__(self) -> None:
+        if self.schema_version != 1 or isinstance(self.schema_version, bool):
+            raise ValueError("schema_version must be 1")
+        if not isinstance(self.source, BlockEvidenceSource):
+            raise ValueError("source must be a BlockEvidenceSource")
+        require_repository(self.repository)
+        if self.review_mode not in {"manual", "automatic"}:
+            raise ValueError("review_mode must be manual or automatic")
+        object.__setattr__(
+            self,
+            "principal_identity",
+            _require_principal_identity(self.principal_identity),
+        )
+        _require_code(self.source_reference, "source_reference")
+        if self.source is BlockEvidenceSource.OPERATOR_PINNED:
+            if not isinstance(self.artifact, bytes) or not self.artifact:
+                raise ValueError("operator references require untrusted artifact bytes")
+        elif self.artifact is not None:
+            raise ValueError("provider references forbid caller artifact content")
+
+
+@dataclass(frozen=True)
 class CapabilityEvidence:
     repository: str
     principal: BillingPrincipal
     review_mode: str
     observed_at: datetime
     expires_at: datetime
-    source: str
+    source: CapabilityEvidenceSource
+    source_reference: str
+    artifact_digest: str
+    pull_request_number: int | None = None
+    review_id: int | None = None
+    review_commit_sha: str | None = None
 
     def __post_init__(self) -> None:
         require_repository(self.repository)
-        for field_name in ("review_mode", "source"):
-            _require_non_empty(getattr(self, field_name), field_name)
+        _require_non_empty(self.review_mode, "review_mode")
         if self.review_mode not in {"manual", "automatic"}:
             raise ValueError("review_mode must be manual or automatic")
-        _require_code(self.source, "source")
+        if not isinstance(self.source, CapabilityEvidenceSource):
+            raise ValueError("source must be a CapabilityEvidenceSource")
+        _require_code(self.source_reference, "source_reference")
+        _require_digest(self.artifact_digest, "artifact_digest")
         _iso_z(self.observed_at)
         _iso_z(self.expires_at)
         if self.review_mode != self.principal.review_mode:
             raise ValueError("review_mode must match the billing principal")
         if self.expires_at <= self.observed_at:
             raise ValueError("expires_at must be after observed_at")
+        if self.source is CapabilityEvidenceSource.GITHUB_COMPLETED_REVIEW:
+            for field_name in ("pull_request_number", "review_id"):
+                value = getattr(self, field_name)
+                if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                    raise ValueError(f"{field_name} must be a positive integer")
+            if self.review_commit_sha is None:
+                raise ValueError("GitHub review evidence requires review_commit_sha")
+            require_full_sha(self.review_commit_sha, "review_commit_sha")
+        elif any(
+            value is not None
+            for value in (self.pull_request_number, self.review_id, self.review_commit_sha)
+        ):
+            raise ValueError("operator evidence forbids GitHub review fields")
 
     def is_valid_for(self, repository: str, principal: BillingPrincipal, review_mode: str, now: datetime) -> bool:
         return (
@@ -397,14 +546,129 @@ class CapabilityEvidence:
             and self.review_mode == review_mode
             and principal.is_valid_at(now)
             and self.observed_at <= now < self.expires_at
-            and self.principal.is_valid_at(self.observed_at)
             and self.expires_at <= self.principal.expires_at
         )
 
 
 @dataclass(frozen=True)
+class CapabilityVerification:
+    status: EvidenceVerificationStatus
+    trust: EvidenceTrust
+    source: CapabilityEvidenceSource | None
+    source_reference: str | None
+    artifact_digest: str | None
+    evidence: CapabilityEvidence | None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.status, EvidenceVerificationStatus):
+            raise ValueError("status must be an EvidenceVerificationStatus")
+        if not isinstance(self.trust, EvidenceTrust):
+            raise ValueError("trust must be an EvidenceTrust")
+        if self.status is EvidenceVerificationStatus.VERIFIED:
+            if (
+                self.trust is not EvidenceTrust.VERIFIED
+                or self.source is None
+                or self.source_reference is None
+                or self.artifact_digest is None
+                or self.evidence is None
+            ):
+                raise ValueError("verified capability must carry complete trusted provenance")
+            if (
+                self.evidence.source is not self.source
+                or self.evidence.source_reference != self.source_reference
+                or self.evidence.artifact_digest != self.artifact_digest
+            ):
+                raise ValueError("verified capability provenance must match its evidence")
+        elif self.evidence is not None:
+            raise ValueError("non-verified capability must not carry routing evidence")
+
+
+@dataclass(frozen=True)
+class VerifiedBlockEvidence:
+    schema_version: int
+    kind: BlockEvidenceKind
+    repository: str
+    principal_identity: tuple[str, str, str, str | None, str | None]
+    review_mode: str
+    observed_at: datetime
+    expires_at: datetime
+    source: BlockEvidenceSource
+    source_reference: str
+    artifact_digest: str
+
+    def __post_init__(self) -> None:
+        if self.schema_version != 1 or isinstance(self.schema_version, bool):
+            raise ValueError("schema_version must be 1")
+        if not isinstance(self.kind, BlockEvidenceKind):
+            raise ValueError("kind must be a BlockEvidenceKind")
+        require_repository(self.repository)
+        object.__setattr__(
+            self,
+            "principal_identity",
+            _require_principal_identity(self.principal_identity),
+        )
+        if self.review_mode not in {"manual", "automatic"}:
+            raise ValueError("review_mode must be manual or automatic")
+        _iso_z(self.observed_at)
+        _iso_z(self.expires_at)
+        if self.expires_at <= self.observed_at:
+            raise ValueError("expires_at must be after observed_at")
+        if not isinstance(self.source, BlockEvidenceSource):
+            raise ValueError("source must be a BlockEvidenceSource")
+        _require_code(self.source_reference, "source_reference")
+        _require_digest(self.artifact_digest, "artifact_digest")
+
+    def is_valid_for(
+        self,
+        repository: str,
+        principal: BillingPrincipal,
+        review_mode: str,
+        now: datetime,
+    ) -> bool:
+        return (
+            self.repository == repository
+            and self.principal_identity == principal.identity
+            and self.review_mode == review_mode
+            and self.observed_at <= now < self.expires_at
+        )
+
+
+@dataclass(frozen=True)
+class BlockVerification:
+    status: EvidenceVerificationStatus
+    trust: EvidenceTrust
+    source: BlockEvidenceSource | None
+    source_reference: str | None
+    artifact_digest: str | None
+    evidence: VerifiedBlockEvidence | None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.status, EvidenceVerificationStatus):
+            raise ValueError("status must be an EvidenceVerificationStatus")
+        if not isinstance(self.trust, EvidenceTrust):
+            raise ValueError("trust must be an EvidenceTrust")
+        if self.status is EvidenceVerificationStatus.VERIFIED:
+            if (
+                self.trust is not EvidenceTrust.VERIFIED
+                or self.source is None
+                or self.source_reference is None
+                or self.artifact_digest is None
+                or self.evidence is None
+            ):
+                raise ValueError("verified block must carry complete trusted provenance")
+            if (
+                self.evidence.source is not self.source
+                or self.evidence.source_reference != self.source_reference
+                or self.evidence.artifact_digest != self.artifact_digest
+            ):
+                raise ValueError("verified block provenance must match its evidence")
+        elif self.evidence is not None:
+            raise ValueError("non-verified block must not carry routing evidence")
+
+
+@dataclass(frozen=True)
 class ProbeSignals:
-    billing_status: DiagnosticStatus
+    billing_status: DiagnosticStatus | None
     usage_status: DiagnosticStatus
     provider_status: DiagnosticStatus
     permission_status: DiagnosticStatus
@@ -413,6 +677,7 @@ class ProbeSignals:
     principal: BillingPrincipal
     review_mode: str
     observed_at: datetime
+    verified_block: VerifiedBlockEvidence | None = None
 
     def __post_init__(self) -> None:
         require_repository(self.repository)
@@ -421,6 +686,13 @@ class ProbeSignals:
         _iso_z(self.observed_at)
         if self.review_mode != self.principal.review_mode:
             raise ValueError("review_mode must match the authoritative billing principal")
+        if self.verified_block is not None and not self.verified_block.is_valid_for(
+            self.repository,
+            self.principal,
+            self.review_mode,
+            self.observed_at,
+        ):
+            raise ValueError("verified_block must match the authoritative probe context")
 
 
 @dataclass(frozen=True)
@@ -464,6 +736,8 @@ class ProbeReport:
     technical_status: DiagnosticStatus
     technical_error: ProbeTechnicalError | None
     capability_status: str
+    capability_verification: CapabilityVerification | None = None
+    block_verification: BlockVerification | None = None
     evidence: tuple[str, ...] = ()
     warnings: tuple[str, ...] = ()
     schema_version: int = 1
@@ -479,6 +753,16 @@ class ProbeReport:
             raise ValueError("billing_model is not supported")
         if self.capability_status not in {"absent", "invalid", "expired", "valid"}:
             raise ValueError("capability_status is not supported")
+        if (
+            self.capability_verification is not None
+            and self.capability_verification.evidence != self.signals.capability
+        ):
+            raise ValueError("capability verification must match probe signals")
+        if (
+            self.block_verification is not None
+            and self.block_verification.evidence != self.signals.verified_block
+        ):
+            raise ValueError("block verification must match probe signals")
         if self.technical_error is not None and not isinstance(
             self.technical_error,
             ProbeTechnicalError,
@@ -501,6 +785,8 @@ class ProbeReport:
     def to_dict(self) -> dict[str, object]:
         """Serialisiert ausschließlich den geschlossenen, sanitisierten Probe-Vertrag."""
         capability = self.signals.capability
+        capability_verification = self.capability_verification
+        block_verification = self.block_verification
         return {
             "schema_version": self.schema_version,
             "observed_at": _iso_z(self.observed_at),
@@ -531,7 +817,11 @@ class ProbeReport:
                 "unit": self.usage.unit,
             },
             "signals": {
-                "billing_status": self.signals.billing_status.value,
+                "billing_status": (
+                    self.signals.billing_status.value
+                    if self.signals.billing_status is not None
+                    else None
+                ),
                 "usage_status": self.signals.usage_status.value,
                 "provider_status": self.signals.provider_status.value,
                 "api_status": self.signals.permission_status.value,
@@ -543,6 +833,61 @@ class ProbeReport:
             "capability_evidence": {
                 "status": self.capability_status,
                 "expires_at": _iso_z(capability.expires_at) if capability is not None else None,
+                "source": (
+                    capability_verification.source.value
+                    if capability_verification is not None
+                    and capability_verification.source is not None
+                    else None
+                ),
+                "source_reference": (
+                    capability_verification.source_reference
+                    if capability_verification is not None
+                    else None
+                ),
+                "artifact_digest": (
+                    capability_verification.artifact_digest
+                    if capability_verification is not None
+                    else None
+                ),
+                "trust": (
+                    capability_verification.trust.value
+                    if capability_verification is not None
+                    else EvidenceTrust.DEVELOPMENT.value
+                ),
+            },
+            "block_evidence": {
+                "status": (
+                    block_verification.status.value
+                    if block_verification is not None
+                    else EvidenceVerificationStatus.ABSENT.value
+                ),
+                "kind": (
+                    block_verification.evidence.kind.value
+                    if block_verification is not None
+                    and block_verification.evidence is not None
+                    else None
+                ),
+                "source": (
+                    block_verification.source.value
+                    if block_verification is not None
+                    and block_verification.source is not None
+                    else None
+                ),
+                "source_reference": (
+                    block_verification.source_reference
+                    if block_verification is not None
+                    else None
+                ),
+                "artifact_digest": (
+                    block_verification.artifact_digest
+                    if block_verification is not None
+                    else None
+                ),
+                "trust": (
+                    block_verification.trust.value
+                    if block_verification is not None
+                    else EvidenceTrust.DEVELOPMENT.value
+                ),
             },
             "evidence": list(self.evidence),
             "warnings": list(self.warnings),
@@ -620,7 +965,8 @@ class ProbeRequest:
     organization: str | None = None
     enterprise: str | None = None
     cost_center: str | None = None
-    capability_evidence: CapabilityEvidence | None = None
+    capability_reference: CapabilityEvidenceReference | None = None
+    block_reference: BlockEvidenceReference | None = None
 
     def __post_init__(self) -> None:
         require_repository(self.repository)
@@ -650,6 +996,16 @@ class ProbeRequest:
                 or not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9_.-]*[A-Za-z0-9])?", value)
             ):
                 raise ValueError(f"{field_name} must be a normalized identifier")
+        if self.capability_reference is not None and not isinstance(
+            self.capability_reference,
+            CapabilityEvidenceReference,
+        ):
+            raise ValueError("capability_reference must be a CapabilityEvidenceReference")
+        if self.block_reference is not None and not isinstance(
+            self.block_reference,
+            BlockEvidenceReference,
+        ):
+            raise ValueError("block_reference must be a BlockEvidenceReference")
 
 
 @dataclass(frozen=True)
@@ -963,6 +1319,32 @@ class ProbePort(ABC):
     @abstractmethod
     def probe(self, request: ProbeRequest) -> ProbeReport:
         """Erhebt die read-only Copilot-Verwendbarkeit für den gebundenen Kontext."""
+
+
+class CapabilityEvidenceVerifierPort(ABC):
+    @abstractmethod
+    def verify(
+        self,
+        reference: CapabilityEvidenceReference | None,
+        repository: str,
+        principal: BillingPrincipal,
+        review_mode: str,
+        observed_at: datetime,
+    ) -> CapabilityVerification:
+        """Rekonstruiert routingfähige Capability ausschließlich aus verifizierter Evidenz."""
+
+
+class BlockEvidenceVerifierPort(ABC):
+    @abstractmethod
+    def verify(
+        self,
+        reference: BlockEvidenceReference | None,
+        repository: str,
+        principal: BillingPrincipal,
+        review_mode: str,
+        observed_at: datetime,
+    ) -> BlockVerification:
+        """Rekonstruiert eine aktuelle Blockade ausschließlich aus verifizierter Evidenz."""
 
 
 class PullRequestStatePort(ABC):

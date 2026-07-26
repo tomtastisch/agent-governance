@@ -9,7 +9,10 @@ from review_routing.policy import classify_usability, route_review
 from review_routing.adapters.toml_config import TomlConfig
 from review_routing.contracts import (
     BillingPrincipal,
+    BlockEvidenceKind,
+    BlockEvidenceSource,
     CapabilityEvidence,
+    CapabilityEvidenceSource,
     DiagnosticStatus,
     PolicyDocument,
     ProbeSignals,
@@ -21,6 +24,7 @@ from review_routing.contracts import (
     RiskLevel,
     RuntimeTrust,
     Usage,
+    VerifiedBlockEvidence,
 )
 
 
@@ -64,21 +68,53 @@ def capability(
         review_mode=review_mode,
         observed_at=observed_at,
         expires_at=expires_at or observed_at + timedelta(hours=1),
-        source="completed_review",
+        source=CapabilityEvidenceSource.OPERATOR_PINNED,
+        source_reference="verified_capability",
+        artifact_digest="sha256:" + "e" * 64,
     )
 
 
 def signals(status: DiagnosticStatus) -> ProbeSignals:
+    block = None
+    billing_status = None
+    usage_status = DiagnosticStatus.AVAILABLE
+    provider_status = DiagnosticStatus.AVAILABLE
+    permission_status = DiagnosticStatus.AVAILABLE
+    if status in {DiagnosticStatus.AVAILABLE, DiagnosticStatus.LOW_BUDGET}:
+        usage_status = status
+    elif status in {DiagnosticStatus.QUOTA_EXHAUSTED, DiagnosticStatus.BUDGET_BLOCKED}:
+        billing_status = status
+        block = VerifiedBlockEvidence(
+            schema_version=1,
+            kind=(
+                BlockEvidenceKind.QUOTA_EXHAUSTED
+                if status is DiagnosticStatus.QUOTA_EXHAUSTED
+                else BlockEvidenceKind.BUDGET_BLOCKED
+            ),
+            repository="tomtastisch/agent-governance",
+            principal_identity=principal().identity,
+            review_mode="manual",
+            observed_at=NOW,
+            expires_at=NOW + timedelta(minutes=10),
+            source=BlockEvidenceSource.OPERATOR_PINNED,
+            source_reference="verified_block",
+            artifact_digest="sha256:" + "f" * 64,
+        )
+    elif status is DiagnosticStatus.PERMISSION_DENIED:
+        permission_status = status
+    else:
+        provider_status = status
     return ProbeSignals(
-        billing_status=status,
-        usage_status=DiagnosticStatus.AVAILABLE,
-        provider_status=DiagnosticStatus.AVAILABLE,
-        permission_status=DiagnosticStatus.AVAILABLE,
+        billing_status=billing_status,
+        usage_status=usage_status,
+        provider_status=provider_status,
+        permission_status=permission_status,
         capability=capability(),
         repository="tomtastisch/agent-governance",
         principal=principal(),
         review_mode="manual",
         observed_at=NOW,
+        verified_block=block,
     )
 
 
@@ -138,9 +174,9 @@ class UsabilityClassificationTest(unittest.TestCase):
     def test_highest_precedence_signal_wins(self):
         result = classify_usability(
             ProbeSignals(
-                billing_status=DiagnosticStatus.QUOTA_EXHAUSTED,
+                billing_status=None,
                 usage_status=DiagnosticStatus.LOW_BUDGET,
-                provider_status=DiagnosticStatus.BUDGET_BLOCKED,
+                provider_status=DiagnosticStatus.RATE_LIMITED,
                 permission_status=DiagnosticStatus.AVAILABLE,
                 capability=capability(),
                 repository="tomtastisch/agent-governance",
@@ -150,7 +186,7 @@ class UsabilityClassificationTest(unittest.TestCase):
             )
         )
 
-        self.assertEqual(result, (False, DiagnosticStatus.BUDGET_BLOCKED))
+        self.assertEqual(result, (False, DiagnosticStatus.RATE_LIMITED))
 
     def test_historical_usage_without_current_capability_is_not_usable(self):
         usable, status = classify_usability(
