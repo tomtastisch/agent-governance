@@ -33,6 +33,7 @@ the non-suppressible safety and audit invariants exactly once.
 - Create: `core/interaction.toml`
 - Create: `docs/decisions/0004-configurable-intermediate-output.md`
 - Modify: `review_routing/contracts.py`
+- Modify: `review_routing/runtime.toml`
 - Modify: `review_routing/adapters/toml_config.py`
 - Create: `review_routing/output_policy.py`
 - Create: `tests/test_interaction_policy.py`
@@ -52,7 +53,7 @@ document = PolicyDocument(
     content=Path("core/interaction.toml").read_bytes(),
     source_ref="worktree",
     source_path="core/interaction.toml",
-    trust=PolicyTrust.DEVELOPMENT,
+    trust=DocumentTrust.DEVELOPMENT,
 )
 config = config_port.parse_interaction(document)
 self.assertIs(config.intermediate_status, False)
@@ -86,7 +87,8 @@ Do not use Python truthiness; require `type(value) is bool`. Put `InteractionCon
 parsing. `output_policy.py` implements a pure decision function that preserves `QUESTION`,
 `BLOCKER`, `APPROVAL`, `SECURITY_WARNING`, `ERROR`, `MATERIAL_FINDING` and `FINAL_RESULT`
 regardless of the boolean. Extend the architecture test so `output_policy.py` imports only
-`contracts.py`.
+`contracts.py`. Add the output-policy factory to `runtime.toml` and prove registry resolution in
+the same RED/GREEN runs.
 
 - [ ] **Step 4: Run and confirm GREEN**
 
@@ -100,7 +102,7 @@ python3 -m unittest tests.test_interaction_policy \
 ```bash
 git add core/interaction.toml docs/decisions/0004-configurable-intermediate-output.md \
   review_routing/contracts.py review_routing/adapters/toml_config.py \
-  review_routing/output_policy.py tests/test_interaction_policy.py \
+  review_routing/runtime.toml review_routing/output_policy.py tests/test_interaction_policy.py \
   tests/test_review_routing_architecture.py
 git commit -m "feat(governance): configure intermediate status output"
 ```

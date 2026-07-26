@@ -66,8 +66,13 @@ sources. The CLI is the composition root and never dispatches a paid review.
   `ConfigPort.parse_routing(document: PolicyDocument) -> RoutingConfig`.
 - Produces `RuntimeRegistry.register(factory: AdapterFactory) -> None` and
   `RuntimeRegistry.resolve(port: type[T]) -> T`.
-- Produces `RuntimeProvenance(digest, trust=installed|development)`; only `installed` can make a
-  route gate-eligible.
+- Produces `DocumentTrust(development|commit_object)`, `RuntimeTrustSource`,
+  `RuntimeTrustConfig(expected_runtime_digest, source, observed_at)`,
+  `RuntimeTrustPort.load() -> RuntimeTrustConfig` and
+  `RuntimeProvenance(digest, trust=installed|development)`.
+- Only a manifest digest matching an externally supplied pin from `publisher_app` or
+  `installed_config` yields `installed`; missing pin is development, mismatched pin is a typed
+  hard failure. This PR has no trusted publisher implementation of `RuntimeTrustPort`.
 - Produces: TOML tables `risk.thresholds`, `risk.path_markers`,
   `routing.<purpose>.<usable>`, `gate.required_checks` and `gate.publisher`.
 
@@ -143,6 +148,8 @@ Test that a `[runtime]` injection in `core/review-routing.toml` is rejected and 
 Policy-/Diff-source factories. In this task, AST-test only the modules
 that exist now: `contracts.py` imports no project module; `registry.py` and `toml_config.py` know
 only the contracts boundary. Test missing/duplicate/cyclic providers with typed failures.
+Test external runtime pin absent/matching/mismatching and source trust. Task 1 lists only the
+TOML-config factory in `runtime.toml` and resolves it successfully.
 Each later task extends this same architecture test when its new module first exists; no
 vacuously passing checks for absent modules.
 
@@ -169,6 +176,7 @@ git commit -m "feat(governance): define review routing policy"
 
 **Files:**
 - Modify: `review_routing/contracts.py`
+- Modify: `review_routing/runtime.toml`
 - Create: `review_routing/policy.py`
 - Create: `tests/test_review_routing_policy.py`
 - Modify: `tests/test_review_routing_architecture.py`
@@ -184,6 +192,7 @@ git commit -m "feat(governance): define review routing policy"
 - Implements `RoutingPolicyPort`.
 - Adds `RoutingPolicyPort.route(request, config) -> RouteDecision` to contracts together with all
   referenced request/decision types.
+- Adds the policy factory to `runtime.toml` and proves registry resolution in RED/GREEN tests.
 
 - [ ] **Step 1: Write failing status and matrix tests**
 
@@ -287,6 +296,7 @@ git commit -m "feat(governance): implement deterministic review policy"
 
 **Files:**
 - Modify: `review_routing/contracts.py`
+- Modify: `review_routing/runtime.toml`
 - Create: `review_routing/risk.py`
 - Create: `review_routing/adapters/git_cli.py`
 - Create: `tests/test_review_routing_risk.py`
@@ -298,9 +308,24 @@ git commit -m "feat(governance): implement deterministic review policy"
 - Produces:
   `assess_risk(changes: DiffSnapshot, config: RoutingConfig) -> RiskAssessment`.
 - Implements `RiskClassifierPort`.
-- Adds `RiskClassifierPort`, `PolicySourcePort` and `DiffSourcePort` together with their closed
-  snapshot/provenance types.
+- Adds `RiskClassifierPort.assess(
+      snapshot: DiffSnapshot,
+      config: RoutingConfig,
+  ) -> RiskAssessment`.
+- Adds `PolicySourcePort.read_at_commit(
+      repo_path: Path,
+      repository: str,
+      commit_sha: str,
+      policy_path: PurePosixPath,
+  ) -> PolicyDocument`.
+- Adds `DiffSourcePort.load(
+      repo_path: Path,
+      repository: str,
+      api_base_sha: str,
+      head_sha: str,
+  ) -> DiffSnapshot`.
 - Implements `PolicySourcePort` and `DiffSourcePort` with read-only local Git commands.
+- Adds risk/Git factories to `runtime.toml` and proves registry resolution in RED/GREEN tests.
 
 - [ ] **Step 1: Write failing boundary and path tests**
 
@@ -322,8 +347,12 @@ assessment = assess_risk(
     DiffSnapshot(
         schema_version=1,
         repository="owner/repository",
-        base_sha="a" * 40,
+        api_base_sha="a" * 40,
+        merge_base_sha="c" * 40,
         head_sha="b" * 40,
+        diff_mode=DiffMode.MERGE_BASE_TO_HEAD,
+        rename_detection=DetectionMode.DISABLED,
+        copy_detection=DetectionMode.DISABLED,
         files=(
             DiffFile(
                 path="core/core.md",
@@ -373,7 +402,8 @@ python3 -m unittest tests.test_review_routing_risk tests.test_review_routing_git
 - [ ] **Step 5: Commit**
 
 ```bash
-git add review_routing/contracts.py review_routing/risk.py review_routing/adapters/git_cli.py \
+git add review_routing/contracts.py review_routing/runtime.toml review_routing/risk.py \
+  review_routing/adapters/git_cli.py \
   tests/test_review_routing_risk.py tests/test_review_routing_git.py \
   tests/test_review_routing_architecture.py
 git commit -m "feat(governance): classify review risk deterministically"
@@ -383,6 +413,7 @@ git commit -m "feat(governance): classify review risk deterministically"
 
 **Files:**
 - Modify: `review_routing/contracts.py`
+- Modify: `review_routing/runtime.toml`
 - Create: `review_routing/adapters/github_gh.py`
 - Create: `tests/test_review_routing_github.py`
 - Create: `tests/fixtures/review-routing/ai-credits.json`
@@ -393,7 +424,13 @@ git commit -m "feat(governance): classify review risk deterministically"
 **Interfaces:**
 - Implements contract ports `CommandPort`, `StatusPort`, `ClockPort`, `ProbePort`.
 - Implements `PullRequestStatePort` from documented GitHub PR metadata.
-- Adds `PullRequestStatePort` and `PullRequestState` to contracts in this task.
+- Adds
+  `PullRequestStatePort.load(
+      repository: str,
+      pull_request_number: int,
+  ) -> PullRequestState`
+  and the closed `PullRequestState` type to contracts in this task.
+- Adds the GitHub factory to `runtime.toml` and proves registry resolution in RED/GREEN tests.
 - Produces `GitHubGhProbe.probe(repository, context, billing_model) -> ProbeReport`.
 - Uses documented API version `2026-03-10`.
 
@@ -457,7 +494,8 @@ python3 -m unittest tests.test_review_routing_github \
 - [ ] **Step 5: Commit**
 
 ```bash
-git add review_routing/contracts.py review_routing/adapters/github_gh.py \
+git add review_routing/contracts.py review_routing/runtime.toml \
+  review_routing/adapters/github_gh.py \
   tests/test_review_routing_github.py tests/fixtures/review-routing \
   tests/test_review_routing_architecture.py
 git commit -m "feat(governance): probe Copilot availability read only"
@@ -475,6 +513,7 @@ git commit -m "feat(governance): probe Copilot availability read only"
 - Produces `main(argv: Sequence[str] | None = None) -> int`.
 - Produces injectable
   `CliDependencies(
+      runtime_trust: RuntimeTrustPort,
       probe: ProbePort,
       pull_request_state: PullRequestStatePort,
       config: ConfigPort,
@@ -496,6 +535,8 @@ the actual Base-Ref/Base-SHA/Head-SHA through `PullRequestStatePort`, then reads
 Base-SHA and the complete diff through injected ports. A missing Basispolicy, caller-supplied file
 list/SHA or policy source from head/worktree must fail with `31`. An explicitly separate offline
 diagnostic mode may accept SHAs but must serialize `gate_eligible = false`.
+Tests also prove that only an externally pinned matching runtime digest can produce
+`runtime_trust=installed`; the normal source-checkout CLI dependency is development-only.
 
 - [ ] **Step 2: Run and confirm RED**
 
@@ -532,6 +573,7 @@ git commit -m "feat(governance): expose review routing CLI"
 
 **Files:**
 - Modify: `review_routing/contracts.py`
+- Modify: `review_routing/runtime.toml`
 - Create: `review_routing/evidence.py`
 - Create: `tests/test_review_routing_evidence.py`
 - Modify: `tests/test_review_routing_architecture.py`
@@ -543,6 +585,7 @@ git commit -m "feat(governance): expose review routing CLI"
   `validate_exact_head(
       decision: RouteDecision,
       evidence: GateSnapshot,
+      runtime: RuntimeProvenance,
       trusted_config: RoutingConfig,
       trusted_diff: DiffSnapshot,
       risk_classifier: RiskClassifierPort,
@@ -604,6 +647,8 @@ object store via ports, never from head/worktree or evidence JSON. Valid evidenc
 missing, stale or contradictory exact-head evidence returns `32` with sanitized reasons. The
 bootstrap case with no Basispolicy returns `31` and cannot emit a successful GateResult.
 Extend the architecture test so `evidence.py` imports only contracts.
+Add the evidence-validator factory to `runtime.toml` and prove registry resolution in RED/GREEN
+tests.
 
 - [ ] **Step 4: Run and confirm GREEN**
 
@@ -615,7 +660,8 @@ python3 -m unittest tests.test_review_routing_evidence \
 - [ ] **Step 5: Commit**
 
 ```bash
-git add review_routing/contracts.py review_routing/evidence.py review_routing/__main__.py \
+git add review_routing/contracts.py review_routing/runtime.toml \
+  review_routing/evidence.py review_routing/__main__.py \
   tests/test_review_routing_evidence.py tests/test_review_routing_cli.py \
   tests/test_review_routing_architecture.py
 git commit -m "feat(governance): validate exact head review evidence"

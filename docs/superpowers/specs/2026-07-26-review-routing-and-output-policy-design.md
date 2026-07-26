@@ -780,7 +780,24 @@ nirgends.
 
 Die Routing-Policy darf keinen `[runtime]`-Abschnitt enthalten. Eine Head-Änderung der
 Routing-Policy kann daher niemals Policy-/Diff-Quellen austauschen. Gate-fähige Ausführung setzt
-eine installierte, publisherseitig digest-gebundene Runtime-Ressource voraus. Ausführung direkt
+eine installierte, publisherseitig digest-gebundene Runtime-Ressource voraus. Ein externer
+`RuntimeTrustPort` liefert dafür:
+
+```text
+RuntimeTrustConfig:
+  expected_runtime_digest
+  source = publisher_app | installed_config | development
+  observed_at
+```
+
+`runtime_trust = installed` entsteht ausschließlich, wenn der berechnete Manifest-Digest mit dem
+externen `expected_runtime_digest` übereinstimmt und die Quelle `publisher_app` oder
+`installed_config` ist. Ein fehlender Pin ergibt `development`; ein vorhandener, aber abweichender
+Pin ist ein harter Konfigurationsfehler. Dieser PR liefert bewusst keine vertrauenswürdige
+Publisher-Implementierung des Ports. Tests injizieren Fake-Trust-Konfigurationen; der spätere
+Publisher aus Issue #3 stellt den echten Port außerhalb des PR-Artefakts bereit.
+
+Ausführung direkt
 aus einem PR-Checkout wird als `runtime_trust = development` und `gate_eligible = false`
 gekennzeichnet. Issue #3/#7 verantworten später signiertes/publiziertes Artefakt und Publisher-
 Digest; PR #5 liefert lokale Funktionalität und die vollständigen Verträge, behauptet aber keine
@@ -936,6 +953,10 @@ Mindestens:
     Offline-SHAs bleiben ausdrücklich `gate_eligible = false`.
 46. Eine `[runtime]`-Injection in der PR-Head-Policy wird abgelehnt und kann Policy-/Diff-Adapter
     nicht austauschen; nur die installierte Runtime-Bootstrap-SSOT bestimmt Factories.
+47. Fehlender externer Runtime-Pin bleibt `development`; passender publisher-/installationsseitiger
+    Pin wird `installed`; abweichender Pin ist ein harter Fehler.
+48. Nach jedem Factory-Slice löst die inkrementell aktualisierte Runtime-SSOT alle bis dahin
+    angebotenen/benötigten Ports vollständig und zyklusfrei auf.
 
 ## 13. Umsetzungsschnitt
 
