@@ -97,7 +97,10 @@ class TomlConfig(ConfigPort):
                 if not isinstance(matrix, dict):
                     raise PolicyValidationError("Jede Routingmatrix muss eine Tabelle sein")
                 self._require_exact_keys(matrix, set(_RISK_LEVELS), "Routingmatrix")
-                if any(route not in _REVIEW_ROUTES for route in matrix.values()):
+                if any(
+                    not isinstance(route, str) or not route or route not in _REVIEW_ROUTES
+                    for route in matrix.values()
+                ):
                     raise PolicyValidationError("Die Routingmatrix enthält eine unbekannte Route")
                 states[usable] = MappingProxyType(dict(matrix))
             parsed[purpose] = MappingProxyType(states)

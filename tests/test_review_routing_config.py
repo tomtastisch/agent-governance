@@ -108,6 +108,23 @@ class RoutingPolicyFileTest(unittest.TestCase):
                         PolicyDocument(content, DocumentTrust.DEVELOPMENT, "candidate-policy")
                     )
 
+    def test_parser_rejects_non_string_route_values_with_a_typed_error(self):
+        policy = (ROOT / "core/review-routing.toml").read_text(encoding="utf-8")
+        invalid_values = (
+            '["qa"]',
+            '{ route = "qa" }',
+            "true",
+            "1",
+        )
+
+        for invalid_value in invalid_values:
+            with self.subTest(invalid_value=invalid_value):
+                candidate = policy.replace('low = "local_checks"', f"low = {invalid_value}", 1)
+                with self.assertRaises(PolicyValidationError):
+                    TomlConfig().parse_routing(
+                        PolicyDocument(candidate, DocumentTrust.DEVELOPMENT, "candidate-policy")
+                    )
+
 
 class RuntimeBootstrapTest(unittest.TestCase):
     """Nur die paketierte Runtime-SSOT darf die Factory-Auswahl steuern."""
@@ -174,6 +191,18 @@ class RuntimeBootstrapTest(unittest.TestCase):
             RuntimeTrustConfig(
                 expected_runtime_digest="sha256:" + "0" * 64,
                 source=RuntimeTrustSource.PUBLISHER_APP,
+                observed_at=datetime(2026, 7, 26, tzinfo=timezone.utc),
+            )
+        )
+
+        with self.assertRaises(RuntimeTrustMismatchError):
+            RuntimeRegistry.bootstrap(CliDependencies(runtime_trust_port=trust))
+
+    def test_mismatching_development_runtime_pin_is_a_hard_failure(self):
+        trust = StaticRuntimeTrust(
+            RuntimeTrustConfig(
+                expected_runtime_digest="sha256:" + "0" * 64,
+                source=RuntimeTrustSource.DEVELOPMENT,
                 observed_at=datetime(2026, 7, 26, tzinfo=timezone.utc),
             )
         )

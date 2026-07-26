@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import hashlib
 import importlib
 from importlib import resources
-from typing import Mapping
+from typing import Mapping, TypeVar, cast
 import tomllib
 
 from review_routing.contracts import (
@@ -21,6 +21,8 @@ from review_routing.contracts import (
     RuntimeTrustMismatchError,
     RuntimeTrustSource,
 )
+
+T = TypeVar("T")
 
 
 class RuntimeRegistry:
@@ -87,6 +89,11 @@ class RuntimeRegistry:
             )
         )
         digest = "sha256:" + hashlib.sha256(runtime_bytes).hexdigest()
+        if (
+            trust_config.expected_runtime_digest is not None
+            and trust_config.expected_runtime_digest != digest
+        ):
+            raise RuntimeTrustMismatchError("Der externe Runtime-Pin stimmt nicht mit dem Manifest überein")
         trusted_sources = {
             RuntimeTrustSource.PUBLISHER_APP,
             RuntimeTrustSource.INSTALLED_CONFIG,
@@ -94,8 +101,6 @@ class RuntimeRegistry:
         if trust_config.expected_runtime_digest is None:
             return RuntimeProvenance(digest=digest, trust=RuntimeTrust.DEVELOPMENT)
         if trust_config.source in trusted_sources:
-            if trust_config.expected_runtime_digest != digest:
-                raise RuntimeTrustMismatchError("Der externe Runtime-Pin stimmt nicht mit dem Manifest überein")
             return RuntimeProvenance(digest=digest, trust=RuntimeTrust.INSTALLED)
         return RuntimeProvenance(digest=digest, trust=RuntimeTrust.DEVELOPMENT)
 
@@ -109,9 +114,9 @@ class RuntimeRegistry:
         for port in provided_ports:
             self._providers[port] = factory
 
-    def resolve(self, port: type[object]) -> object:
+    def resolve(self, port: type[T]) -> T:
         if port in self._resolved:
-            return self._resolved[port]
+            return cast(T, self._resolved[port])
         if port in self._resolving:
             raise CyclicProviderError(f"Zyklische Abhängigkeit am Port '{port.__name__}'")
         factory = self._providers.get(port)
@@ -126,4 +131,4 @@ class RuntimeRegistry:
             self._resolved.update(implementations)
         finally:
             self._resolving.remove(port)
-        return self._resolved[port]
+        return cast(T, self._resolved[port])

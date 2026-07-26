@@ -3,6 +3,7 @@
 import ast
 from dataclasses import dataclass
 from pathlib import Path
+from typing import get_args, get_origin, get_type_hints
 import unittest
 
 from review_routing.contracts import (
@@ -85,6 +86,14 @@ class RegistryFailureTest(unittest.TestCase):
 
         with self.assertRaises(CyclicProviderError):
             registry.resolve(ExamplePort)
+
+    def test_resolve_preserves_the_requested_port_type(self):
+        hints = get_type_hints(RuntimeRegistry.resolve)
+        requested_type = get_args(hints["port"])[0]
+
+        self.assertIs(get_origin(hints["port"]), type)
+        self.assertEqual(getattr(requested_type, "__name__", None), "T")
+        self.assertIs(hints["return"], requested_type)
 
 
 if __name__ == "__main__":
