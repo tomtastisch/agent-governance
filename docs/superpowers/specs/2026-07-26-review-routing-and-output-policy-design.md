@@ -205,8 +205,12 @@ Die Risikoeingabe ist ein geschlossenes `DiffSnapshot`-Schema Version 1:
 ```text
 schema_version
 repository
-base_sha
+api_base_sha
+merge_base_sha
 head_sha
+diff_mode = merge_base_to_head
+rename_detection = disabled
+copy_detection = disabled
 files[]:
   path
   status = added | modified | deleted | renamed | copied
@@ -219,7 +223,8 @@ security_relevant     optional, true kann nur erhöhen
 risk_reasons[]         optional, reine Evidenztexte ohne Steuerwirkung
 ```
 
-Pflichtfelder sind Schema, Repository, beide SHAs und für jede Datei alle aufgeführten
+Pflichtfelder sind Schema, Repository, alle drei SHAs, die drei Diffmodusfelder und für jede Datei
+alle aufgeführten
 Dateifelder. Pfade sind normalisierte relative POSIX-Pfade in Unicode-NFC: kein führender Slash,
 kein `.`/`..`, kein Backslash, kein NUL und keine doppelte Darstellung desselben Pfads.
 `additions`/`deletions` sind nichtnegative Ganzzahlen; Binärdateien tragen jeweils `0`.
@@ -239,11 +244,25 @@ einem ungültigen Level macht die Policy ungültig. Damit sind Risikostufe und S
 explizit, ohne im Klassifikator aus Dateinamen abgeleitet zu werden.
 
 Ein geschlossenes Schema beweist noch keine Vollständigkeit. Deshalb akzeptiert `route` keine frei
-gelieferte Diff-Datei als autoritative Eingabe. Ein `DiffSourcePort` liest den vollständigen Diff
-read-only aus dem lokalen Git-Objektbestand für die beiden vollständigen Commit-SHAs. Der Adapter
-prüft, dass beide Objekte Commits sind, erhebt Status, alten und neuen Pfad, Binärkennzeichen sowie
-Zeilenzahlen und verwirft nicht auflösbare oder widersprüchliche Ergebnisse. Tests verwenden einen
-Fake-Port; reale Tests lösen keine GitHub-Anfrage aus.
+gelieferte Diff-Datei als autoritative Eingabe. Ein `DiffSourcePort` liest den vollständigen
+PR-Diff read-only aus dem lokalen Git-Objektbestand. Er übernimmt den `api_base_sha` und `head_sha`
+aus dem `PullRequestStatePort`, berechnet `merge_base_sha = git merge-base api_base_sha head_sha`
+und diffiert ausschließlich `merge_base_sha..head_sha`.
+
+Der lokale Git-Adapter bindet `repo_path` an `repository`, indem er das kanonische Toplevel und
+die normalisierte `origin`-URL gegen `OWNER/REPO` prüft. Fehlender/fremder Origin, abweichendes
+Toplevel oder nicht vorhandene Commitobjekte sind für ein Gate ein Fehler. Er verwendet
+`--no-ext-diff`, `--no-textconv`, `--no-renames` und NUL-delimitierte Raw-/Numstat-Ausgaben.
+Heuristische Rename-/Copy-Erkennung ist damit bewusst deaktiviert: auch mehrdeutige oder
+inhaltlich veränderte Verschiebungen erscheinen deterministisch als Delete+Add und beide Pfade
+werden klassifiziert. Das Schema unterstützt `renamed`/`copied` für künftige verifizierte Quellen,
+der Git-v1-Adapter emittiert diese Stati jedoch nicht.
+
+`DiffSnapshot` und sein Digest enthalten `api_base_sha`, `merge_base_sha`, `head_sha`,
+`diff_mode = merge_base_to_head`, `rename_detection = disabled`,
+`copy_detection = disabled` und die normalisierte Repository-ID. Tests decken vorgerückte und
+divergierte Base-Zweige sowie mehrdeutige Rename-/Copy-Kandidaten ab. Tests verwenden ansonsten
+Fake-Ports; reale Tests lösen keine GitHub-Anfrage aus.
 
 Der kanonische SHA-256-`diff_digest` des vollständigen `DiffSnapshot` wird in jede
 `RouteDecision` übernommen. `validate` erhebt denselben Diff über den vertrauenswürdigen Port
@@ -445,6 +464,8 @@ pr_state_source
 policy_source_ref
 policy_source_path
 policy_digest
+runtime_digest
+runtime_trust = installed | development
 diff_digest
 evidence_digest
 required_reviewers
@@ -494,7 +515,8 @@ publish(result: GateResult) -> PublicationReceipt
 
 `PublicationReceipt` enthält Repository, PR, Head-SHA, Checkname, Publisher-App-Slug,
 Publication-ID, Idempotenzschlüssel und Veröffentlichungszeit. Der Idempotenzschlüssel ist der
-SHA-256-Digest aus Repository, PR, Head-SHA, `policy_digest` und `evidence_digest`. Vor jedem
+SHA-256-Digest aus Repository, PR, Head-SHA, `runtime_digest`, `policy_digest` und
+`evidence_digest`. Vor jedem
 Schreibvorgang muss der spätere Publisher den aktuellen PR-Head erneut read-only abfragen und
 bei Abweichung ohne Veröffentlichung abbrechen. Als vertrauenswürdige Publisher-Quelle ist eine
 dedizierte, in der Policy festgelegte GitHub-App vorgesehen; ein lokaler Benutzer-Token oder
@@ -632,6 +654,7 @@ sind. Das Feld beeinflusst `copilot_usable` und die Route nicht.
   "pull_request_number": 5,
   "base_ref": "main",
   "base_sha": "BASE",
+  "merge_base_sha": "MERGE_BASE",
   "head_sha": "HEAD",
   "risk": {
     "level": "high",
@@ -644,7 +667,12 @@ sind. Das Feld beeinflusst `copilot_usable` und die Route nicht.
   "policy_source_ref": "BASE",
   "policy_source_path": "core/review-routing.toml",
   "policy_digest": "sha256:...",
+  "runtime_digest": "sha256:...",
+  "runtime_trust": "installed",
   "diff_digest": "sha256:...",
+  "diff_mode": "merge_base_to_head",
+  "rename_detection": "disabled",
+  "copy_detection": "disabled",
   "gate_eligible": true,
   "merge_evidence_required": true,
   "dispatch_permitted": false
@@ -701,6 +729,7 @@ review_routing/
   __init__.py
   __main__.py
   contracts.py
+  runtime.toml
   registry.py
   policy.py
   risk.py
@@ -721,8 +750,10 @@ tests/
 
 - `contracts.py`: **einziges Vertragsmodul** für sämtliche Ports, Domänen-, Konfigurations-,
   Evidenz- und Fehlertypen; ohne Import aus einem anderen Projektmodul.
+- `runtime.toml`: separate, installations-/publisherseitig gebundene Bootstrap-SSOT für die
+  unveränderliche Port→Factory-Auswahl; enthält keine Routingwerte.
 - `registry.py`: generische Laufzeitregistrierung und Factory-Auflösung; kennt nur das
-  Vertragsmodul sowie per SSOT geladene Modulnamen.
+  Vertragsmodul sowie die aus der installierten Bootstrap-SSOT geladenen Modulnamen.
 - `policy.py`: reine Routingfunktion.
 - `risk.py`: reine Risikoklassifikation aus TOML und Diff-Metadaten.
 - `evidence.py`: reine Exact-Head-/Reviewer-/Check-/Thread-Validierung.
@@ -741,10 +772,19 @@ Architektur zu brechen.
 Keine Routingwerte werden in Kernprosa, Adaptern oder Templates kopiert. Diese Stellen benennen
 nur Invarianten und verweisen auf die Policy.
 
-`core/review-routing.toml` enthält unter `[runtime]` die geschlossene Liste registrierbarer
-Adaptermodule und die Priorität je Port. `registry.py` lädt sie über `importlib`; jedes Adaptermodul
-meldet eine Factory mit deklarierten benötigten/angebotenen Ports an. Die Composition Root ruft nur
-die generische Registry auf und nennt `GitHubGhProbe` oder `TomlConfig` nirgends.
+`review_routing/runtime.toml` enthält die geschlossene Liste registrierbarer Adaptermodule und die
+Priorität je Port. `registry.py` lädt sie als Paketressource über `importlib.resources` und lädt die
+Factories danach über `importlib`; jedes Adaptermodul meldet benötigte/angebotene Ports an. Die
+Composition Root ruft nur die generische Registry auf und nennt `GitHubGhProbe` oder `TomlConfig`
+nirgends.
+
+Die Routing-Policy darf keinen `[runtime]`-Abschnitt enthalten. Eine Head-Änderung der
+Routing-Policy kann daher niemals Policy-/Diff-Quellen austauschen. Gate-fähige Ausführung setzt
+eine installierte, publisherseitig digest-gebundene Runtime-Ressource voraus. Ausführung direkt
+aus einem PR-Checkout wird als `runtime_trust = development` und `gate_eligible = false`
+gekennzeichnet. Issue #3/#7 verantworten später signiertes/publiziertes Artefakt und Publisher-
+Digest; PR #5 liefert lokale Funktionalität und die vollständigen Verträge, behauptet aber keine
+Selbstbeglaubigung seines eigenen Codes.
 
 Ein AST-basierter Architekturtest erzwingt:
 
@@ -752,7 +792,8 @@ Ein AST-basierter Architekturtest erzwingt:
 - `policy.py`, `risk.py`, `evidence.py` und Adapter importieren projektintern ausschließlich
   `review_routing.contracts`;
 - `__main__.py` kennt nur `contracts` und `registry`, keine Adapter;
-- alle Factory-Module stammen aus der TOML-SSOT;
+- alle Factory-Module stammen aus `review_routing/runtime.toml`;
+- `core/review-routing.toml` mit einem injizierten `[runtime]`-Abschnitt wird abgelehnt;
 - fehlende, konkurrierende oder zyklisch abhängige Provider werden typisiert und fail-closed
   gemeldet.
 
@@ -869,8 +910,8 @@ Mindestens:
 27. Copilot-`COMMENTED` mit korrektem Head, voller Abdeckung und null Findings → gültige
     technische Evidenz.
 28. Copilot-`COMMENTED` auf altem Head, mit offenem Finding oder ohne Abdeckungsbeleg → ungültig.
-29. GateResult enthält stabilen Checknamen, Basispolicy-Quelle, Policy-/Diff-/Evidenzdigest und
-    vollständige Provenienz.
+29. GateResult enthält stabilen Checknamen, Runtime-/Basispolicy-Quelle,
+    Runtime-/Policy-/Diff-/Evidenzdigest und vollständige Provenienz.
 30. Kein Mergepfad ohne vollständige Exact-Head-Reviewer-Menge.
 31. Versioniertes Diff-Schema, Pfadnormalisierung, Rename-/Copy-Quellpfad und fehlende
     Pflichtfelder fail-closed.
@@ -883,7 +924,8 @@ Mindestens:
 38. Bestehende 25 Governance-Tests bleiben grün.
 39. Policyänderung nur am PR-Head schwächt die Basispolicy nicht ab.
 40. Fehlende Basispolicy im Bootstrap erzeugt keinen positiven GateResult.
-41. Vollständiger Git-Diff enthält Add/Modify/Delete/Rename/Copy und klassifiziert beide Pfade.
+41. Vollständiger Git-Diff enthält Add/Modify/Delete; vorgerückte/divergierte Base-Zweige nutzen
+    Merge-Base→Head, mehrdeutige Rename-/Copy-Kandidaten werden als Delete+Add klassifiziert.
 42. Fehlende/zusätzliche/veränderte Diff-Datei oder abweichender `diff_digest` macht das Gate
     ungültig.
 43. Validate klassifiziert den vertrauenswürdig erhobenen Diff erneut und vergleicht Risiko,
@@ -892,6 +934,8 @@ Mindestens:
     caller-selektierte SHAs.
 45. Wechsel von Base-Ref oder Head zwischen Route und Validate macht die Evidenz ungültig;
     Offline-SHAs bleiben ausdrücklich `gate_eligible = false`.
+46. Eine `[runtime]`-Injection in der PR-Head-Policy wird abgelehnt und kann Policy-/Diff-Adapter
+    nicht austauschen; nur die installierte Runtime-Bootstrap-SSOT bestimmt Factories.
 
 ## 13. Umsetzungsschnitt
 

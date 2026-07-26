@@ -48,7 +48,13 @@ the non-suppressible safety and audit invariants exactly once.
 - [ ] **Step 1: Write failing parser/default tests**
 
 ```python
-config = load_interaction_config(Path("core/interaction.toml"))
+document = PolicyDocument(
+    content=Path("core/interaction.toml").read_bytes(),
+    source_ref="worktree",
+    source_path="core/interaction.toml",
+    trust=PolicyTrust.DEVELOPMENT,
+)
+config = config_port.parse_interaction(document)
 self.assertIs(config.intermediate_status, False)
 ```
 
@@ -59,7 +65,8 @@ treat that fail-closed. Missing-file behavior is exercised at the CLI boundary i
 - [ ] **Step 2: Run and confirm RED**
 
 ```bash
-python3 -m unittest tests.test_interaction_policy -v
+python3 -m unittest tests.test_interaction_policy \
+  tests.test_review_routing_architecture -v
 ```
 
 - [ ] **Step 3: Add the SSOT and strict parser**
@@ -84,7 +91,8 @@ regardless of the boolean. Extend the architecture test so `output_policy.py` im
 - [ ] **Step 4: Run and confirm GREEN**
 
 ```bash
-python3 -m unittest tests.test_interaction_policy -v
+python3 -m unittest tests.test_interaction_policy \
+  tests.test_review_routing_architecture -v
 ```
 
 - [ ] **Step 5: Commit**

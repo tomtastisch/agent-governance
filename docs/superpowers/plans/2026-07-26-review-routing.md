@@ -33,6 +33,7 @@ sources. The CLI is the composition root and never dispatches a paid review.
 ## File map
 
 - `core/review-routing.toml`: route matrix, risk thresholds and path markers (SSOT).
+- `review_routing/runtime.toml`: installed bootstrap SSOT for immutable port-to-factory selection.
 - `review_routing/contracts.py`: the single module for every port, domain/config/evidence/error type.
 - `review_routing/registry.py`: runtime factory registration and dependency resolution.
 - `review_routing/risk.py`: pure diff risk classifier.
@@ -52,6 +53,7 @@ sources. The CLI is the composition root and never dispatches a paid review.
 - Create: `core/review-routing.toml`
 - Create: `docs/decisions/0003-review-routing.md`
 - Create: `review_routing/__init__.py`
+- Create: `review_routing/runtime.toml`
 - Create: `review_routing/contracts.py`
 - Create: `review_routing/registry.py`
 - Create: `review_routing/adapters/__init__.py`
@@ -62,19 +64,10 @@ sources. The CLI is the composition root and never dispatches a paid review.
 **Interfaces:**
 - Produces
   `ConfigPort.parse_routing(document: PolicyDocument) -> RoutingConfig`.
-- Declares
-  `PolicySourcePort.read_at_commit(
-      repository_path: Path,
-      commit_sha: str,
-      policy_path: str,
-  ) -> PolicyDocument`.
-- Declares `DiffSourcePort.load(repository: str, base_sha: str, head_sha: str) -> DiffSnapshot`.
-- Declares
-  `PullRequestStatePort.load(repository: str, pull_request_number: int) -> PullRequestState`.
-- Declares `RiskClassifierPort.assess(snapshot, config) -> RiskAssessment`.
-- Declares `RoutingPolicyPort.route(request, config) -> RouteDecision`.
 - Produces `RuntimeRegistry.register(factory: AdapterFactory) -> None` and
   `RuntimeRegistry.resolve(port: type[T]) -> T`.
+- Produces `RuntimeProvenance(digest, trust=installed|development)`; only `installed` can make a
+  route gate-eligible.
 - Produces: TOML tables `risk.thresholds`, `risk.path_markers`,
   `routing.<purpose>.<usable>`, `gate.required_checks` and `gate.publisher`.
 
@@ -94,11 +87,15 @@ self.assertEqual(
     {"low", "medium", "high", "critical"},
 )
 self.assertNotIn("remaining", json.dumps(raw).lower())
+self.assertNotIn("runtime", raw)
 ```
 
 Assert that `gate.required_checks` is non-empty and every entry contains only `name` and
 `source_app_slug`. Assert that `gate.publisher.expected_app_slug` is non-empty. Also assert that
 every `risk.path_markers` entry contains only `glob`, `level` and `security_relevant`.
+Parse `review_routing/runtime.toml` separately; require only the closed bootstrap keys and prove
+that changing/injecting a runtime table in the candidate routing policy cannot change the loaded
+factory set.
 
 At this stage, require only the TOML, parser, contracts, registry and ADR to agree. Full
 core/adapter/template/README drift tests are deliberately deferred to Task 7, where those files
@@ -122,7 +119,8 @@ the sole normative source for thresholds and every matrix cell. Do not copy thos
 Python, Markdown, adapters or templates.
 
 Represent each path marker as a closed object with explicit `glob`, `level` and
-`security_relevant`. Add trusted required-check entries with `name` and `source_app_slug`, plus
+`security_relevant`. Reject any `[runtime]` table in the routing policy. Add trusted required-check
+entries with `name` and `source_app_slug`, plus
 the expected dedicated publisher app slug for the later Issue-#3 writer. Reject an empty required
 check list.
 
@@ -137,8 +135,12 @@ Implement strict TOML parsing in `adapters/toml_config.py`. Reject unknown keys,
 schema versions, non-positive/non-monotonic thresholds, incomplete tables, invalid routes and
 absent matrix cells.
 
-Add `[runtime] adapter_modules = [...]` to the TOML. `registry.py` imports configured modules with
-`importlib`; factories declare provided/required ports. In this task, AST-test only the modules
+Add adapter module identifiers only to the separate packaged `review_routing/runtime.toml`.
+`registry.py` loads that bootstrap SSOT with `importlib.resources` and imports configured modules
+with `importlib`; factories declare provided/required ports. A development/source-checkout
+runtime is explicitly non-gate-eligible; the later publisher binds the installed manifest digest.
+Test that a `[runtime]` injection in `core/review-routing.toml` is rejected and cannot replace
+Policy-/Diff-source factories. In this task, AST-test only the modules
 that exist now: `contracts.py` imports no project module; `registry.py` and `toml_config.py` know
 only the contracts boundary. Test missing/duplicate/cyclic providers with typed failures.
 Each later task extends this same architecture test when its new module first exists; no
@@ -180,6 +182,8 @@ git commit -m "feat(governance): define review routing policy"
 - Produces:
   `route_review(request: ReviewRequest, config: RoutingConfig) -> RouteDecision`.
 - Implements `RoutingPolicyPort`.
+- Adds `RoutingPolicyPort.route(request, config) -> RouteDecision` to contracts together with all
+  referenced request/decision types.
 
 - [ ] **Step 1: Write failing status and matrix tests**
 
@@ -208,7 +212,8 @@ the numeric risk.
 - [ ] **Step 2: Run the policy tests and confirm RED**
 
 ```bash
-python3 -m unittest tests.test_review_routing_policy -v
+python3 -m unittest tests.test_review_routing_policy \
+  tests.test_review_routing_architecture -v
 ```
 
 Expected: failure because `review_routing.policy` does not exist.
@@ -237,8 +242,8 @@ usage without a valid capability record never creates `copilot_usable = true`.
 
 `RoutingConfig` contains the canonical `policy_digest`. Every `RouteDecision` copies this digest;
 route serialization must never synthesize or omit it. It also carries `policy_source_ref`,
-`policy_source_path`, `diff_digest` and all policy-relevant request inputs needed for deterministic
-revalidation.
+`policy_source_path`, `runtime_digest`, `runtime_trust`, `diff_digest` and all policy-relevant
+request inputs needed for deterministic revalidation.
 
 Extend the architecture test so `policy.py` imports only `contracts.py`.
 
@@ -266,7 +271,8 @@ reviewer set to one of the declared routes.
 - [ ] **Step 5: Run focused tests and confirm GREEN**
 
 ```bash
-python3 -m unittest tests.test_review_routing_policy -v
+python3 -m unittest tests.test_review_routing_policy \
+  tests.test_review_routing_architecture -v
 ```
 
 - [ ] **Step 6: Commit**
@@ -292,6 +298,8 @@ git commit -m "feat(governance): implement deterministic review policy"
 - Produces:
   `assess_risk(changes: DiffSnapshot, config: RoutingConfig) -> RiskAssessment`.
 - Implements `RiskClassifierPort`.
+- Adds `RiskClassifierPort`, `PolicySourcePort` and `DiffSourcePort` together with their closed
+  snapshot/provenance types.
 - Implements `PolicySourcePort` and `DiffSourcePort` with read-only local Git commands.
 
 - [ ] **Step 1: Write failing boundary and path tests**
@@ -301,10 +309,11 @@ explicit risk escalation, inability to lower, separate `security_relevant`, miss
 invalid negative counts and the closed versioned DiffSnapshot schema. Require `previous_path`
 exactly for renamed/copied files and classify old and new paths.
 
-Adapter tests create temporary local repositories and cover complete add/modify/delete/rename/copy
+Adapter tests create temporary local repositories and cover complete add/modify/delete
 enumeration, binary files, exact full-SHA validation, missing/non-commit objects, policy reads at
 the base commit, a policy changed only on head, conflicting Git metadata and sanitized failures.
-No test accesses GitHub or a network.
+They also cover advanced/diverged Base-Refs and ambiguous rename/copy candidates, which must be
+represented deterministically as delete+add. No test accesses GitHub or a network.
 
 Example:
 
@@ -334,7 +343,8 @@ self.assertIn("critical_path:core/core.md", assessment.reasons)
 - [ ] **Step 2: Run and confirm RED**
 
 ```bash
-python3 -m unittest tests.test_review_routing_risk tests.test_review_routing_git -v
+python3 -m unittest tests.test_review_routing_risk tests.test_review_routing_git \
+  tests.test_review_routing_architecture -v
 ```
 
 - [ ] **Step 3: Implement pure maximum-based classification**
@@ -345,14 +355,19 @@ Normalize paths as relative NFC POSIX paths and reject absolute, `..`, backslash
 forms. Missing required data classifies `CRITICAL` with `incomplete_diff_metadata`. Compute the
 canonical SHA-256 `diff_digest`.
 
-Implement the Git adapter by full object IDs, not mutable branch names. Reconcile NUL-delimited
-name-status and numstat output fail-closed; never accept caller-supplied file lists as
-authoritative. Extend the architecture test so `risk.py` and `git_cli.py` import only contracts.
+Implement the Git adapter by full object IDs, not mutable branch names. Verify canonical repo
+toplevel and normalized origin against `OWNER/REPO`. Compute `merge_base_sha` from API Base-SHA
+and Head-SHA, then diff merge-base→head with `--no-ext-diff --no-textconv --no-renames`.
+Reconcile NUL-delimited raw and numstat output fail-closed; record API Base-SHA, merge-base,
+Head-SHA and the fixed detection mode in provenance/digest. Never accept caller-supplied file
+lists as authoritative. Extend the architecture test so `risk.py` and `git_cli.py` import only
+contracts.
 
 - [ ] **Step 4: Run and confirm GREEN**
 
 ```bash
-python3 -m unittest tests.test_review_routing_risk tests.test_review_routing_git -v
+python3 -m unittest tests.test_review_routing_risk tests.test_review_routing_git \
+  tests.test_review_routing_architecture -v
 ```
 
 - [ ] **Step 5: Commit**
@@ -378,6 +393,7 @@ git commit -m "feat(governance): classify review risk deterministically"
 **Interfaces:**
 - Implements contract ports `CommandPort`, `StatusPort`, `ClockPort`, `ProbePort`.
 - Implements `PullRequestStatePort` from documented GitHub PR metadata.
+- Adds `PullRequestStatePort` and `PullRequestState` to contracts in this task.
 - Produces `GitHubGhProbe.probe(repository, context, billing_model) -> ProbeReport`.
 - Uses documented API version `2026-03-10`.
 
@@ -408,7 +424,8 @@ Cover:
 - [ ] **Step 2: Run and confirm RED**
 
 ```bash
-python3 -m unittest tests.test_review_routing_github -v
+python3 -m unittest tests.test_review_routing_github \
+  tests.test_review_routing_architecture -v
 ```
 
 - [ ] **Step 3: Implement the injected clients**
@@ -433,7 +450,8 @@ enterprise -> only explicit/API-backed selector
 - [ ] **Step 4: Run and confirm GREEN**
 
 ```bash
-python3 -m unittest tests.test_review_routing_github -v
+python3 -m unittest tests.test_review_routing_github \
+  tests.test_review_routing_architecture -v
 ```
 
 - [ ] **Step 5: Commit**
@@ -482,7 +500,8 @@ diagnostic mode may accept SHAs but must serialize `gate_eligible = false`.
 - [ ] **Step 2: Run and confirm RED**
 
 ```bash
-python3 -m unittest tests.test_review_routing_cli -v
+python3 -m unittest tests.test_review_routing_cli \
+  tests.test_review_routing_architecture -v
 ```
 
 - [ ] **Step 3: Implement strict argparse and stable serialization**
@@ -497,7 +516,8 @@ the architecture test accordingly.
 - [ ] **Step 4: Run and confirm GREEN**
 
 ```bash
-python3 -m unittest tests.test_review_routing_cli -v
+python3 -m unittest tests.test_review_routing_cli \
+  tests.test_review_routing_architecture -v
 ```
 
 - [ ] **Step 5: Commit**
@@ -549,7 +569,8 @@ offline `gate_eligible = false`.
 - [ ] **Step 2: Run and confirm RED**
 
 ```bash
-python3 -m unittest tests.test_review_routing_evidence -v
+python3 -m unittest tests.test_review_routing_evidence \
+  tests.test_review_routing_architecture -v
 ```
 
 - [ ] **Step 3: Implement fail-closed set validation**
@@ -567,14 +588,15 @@ GateResult(
 Only all required reviewers + all policy-required successful checks from their expected app
 sources + zero unresolved threads is valid.
 Recompute risk and routing from `trusted_diff` and `trusted_config`; require exact equality with
-the decision's repository, SHAs, policy provenance/digest, diff digest, risk, security flag, route
-and reviewer set. Every file from the trusted diff must have positive coverage by the route's
-reviewer set. The result includes repo, PR, base/head, trusted policy source/path/digest, diff
-digest, evidence digest, reviewer sets and observation time. Define a
+the decision's repository, SHAs, runtime provenance/digest, policy provenance/digest, diff digest,
+risk, security flag, route and reviewer set. Every file from the trusted diff must have positive
+coverage by the route's reviewer set. The result includes repo, PR, base/head, trusted runtime and
+policy source/path/digests, diff digest, evidence digest, reviewer sets and observation time.
+Define a
 `GatePublisherPort.publish(result: GateResult) -> PublicationReceipt` in contracts but provide no
 writer in this read-only PR. The receipt and port contract define the deterministic idempotency key
-over repository/PR/head/policy/evidence digests, the dedicated publisher app identity and mandatory
-read-only head revalidation immediately before a future write.
+over repository/PR/head/runtime/policy/evidence digests, the dedicated publisher app identity and
+mandatory read-only head revalidation immediately before a future write.
 
 Wire the `validate` CLI command. For gate-fähige decisions it reloads PR state through
 `PullRequestStatePort`, then policy from the API-erhobenen `base_sha` and diff from the local Git
@@ -586,7 +608,8 @@ Extend the architecture test so `evidence.py` imports only contracts.
 - [ ] **Step 4: Run and confirm GREEN**
 
 ```bash
-python3 -m unittest tests.test_review_routing_evidence -v
+python3 -m unittest tests.test_review_routing_evidence \
+  tests.test_review_routing_architecture -v
 ```
 
 - [ ] **Step 5: Commit**
