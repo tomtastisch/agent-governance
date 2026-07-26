@@ -10,6 +10,7 @@ import unittest
 from unittest.mock import patch
 
 from review_routing.adapters.git_cli import LocalGit
+from review_routing.adapters.toml_config import TomlConfig
 from review_routing.contracts import (
     DetectionMode,
     DiffMode,
@@ -18,11 +19,15 @@ from review_routing.contracts import (
     FileStatus,
     GitSourceError,
     PolicySourcePort,
+    PolicyDocument,
+    RiskLevel,
 )
 from review_routing.registry import RuntimeRegistry
+from review_routing.risk import assess_risk
 
 
 REPOSITORY = "owner/repository"
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def run_git(repo: Path, *args: str, input_bytes: bytes | None = None) -> bytes:
@@ -61,6 +66,16 @@ class RepositoryFixture:
 
 class LocalGitIntegrationTest(unittest.TestCase):
     """Der Adapter bindet vollständige Commitobjekte an Repo, Merge-Base und NUL-Diff."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.routing_config = TomlConfig().parse_routing(
+            PolicyDocument(
+                content=(ROOT / "core/review-routing.toml").read_text(encoding="utf-8"),
+                trust=DocumentTrust.DEVELOPMENT,
+                source="core/review-routing.toml",
+            )
+        )
 
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix="review-routing-git-")
@@ -108,6 +123,9 @@ class LocalGitIntegrationTest(unittest.TestCase):
         self.assertTrue(by_path["binary.dat"].binary)
         self.assertFalse(by_path["kept.txt"].binary)
         self.assertRegex(result.diff_digest, r"\Asha256:[0-9a-f]{64}\Z")
+        assessment = assess_risk(result, self.routing_config)
+        self.assertEqual(assessment.level, RiskLevel.CRITICAL)
+        self.assertIn("incomplete_binary_diff_metadata", assessment.reasons)
 
     def test_policy_is_read_from_the_requested_base_commit_not_the_worktree_or_head(self):
         head_sha = self.commit_changed_head()
@@ -300,6 +318,55 @@ class LocalGitIntegrationTest(unittest.TestCase):
         self.assertIn(("copy-b.txt", FileStatus.ADDED), statuses)
         self.assertFalse(any(file.status in {FileStatus.RENAMED, FileStatus.COPIED} for file in result.files))
 
+    def test_file_and_symlink_type_changes_are_modified_in_both_directions(self):
+        self.fixture.write("component", "regular\n")
+        file_base_sha = self.fixture.commit("file base")
+        (self.repo / "component").unlink()
+        os.symlink("target", self.repo / "component")
+        symlink_sha = self.fixture.commit("file to symlink")
+        (self.repo / "component").unlink()
+        self.fixture.write("component", "regular again\n")
+        file_head_sha = self.fixture.commit("symlink to file")
+
+        to_symlink = LocalGit().load(self.repo, REPOSITORY, file_base_sha, symlink_sha)
+        to_file = LocalGit().load(self.repo, REPOSITORY, symlink_sha, file_head_sha)
+
+        self.assertEqual(
+            tuple((file.path, file.status) for file in to_symlink.files),
+            (("component", FileStatus.MODIFIED),),
+        )
+        self.assertEqual(
+            tuple((file.path, file.status) for file in to_file.files),
+            (("component", FileStatus.MODIFIED),),
+        )
+
+    def test_file_and_gitlink_type_changes_are_modified_in_both_directions(self):
+        self.fixture.write("component", "regular\n")
+        file_base_sha = self.fixture.commit("file base")
+        run_git(
+            self.repo,
+            "update-index",
+            "--cacheinfo",
+            f"160000,{self.base_sha},component",
+        )
+        run_git(self.repo, "commit", "-m", "file to gitlink")
+        gitlink_sha = run_git(self.repo, "rev-parse", "HEAD").decode("ascii").strip()
+        run_git(self.repo, "add", "component")
+        run_git(self.repo, "commit", "-m", "gitlink to file")
+        file_head_sha = run_git(self.repo, "rev-parse", "HEAD").decode("ascii").strip()
+
+        to_gitlink = LocalGit().load(self.repo, REPOSITORY, file_base_sha, gitlink_sha)
+        to_file = LocalGit().load(self.repo, REPOSITORY, gitlink_sha, file_head_sha)
+
+        self.assertEqual(
+            tuple((file.path, file.status) for file in to_gitlink.files),
+            (("component", FileStatus.MODIFIED),),
+        )
+        self.assertEqual(
+            tuple((file.path, file.status) for file in to_file.files),
+            (("component", FileStatus.MODIFIED),),
+        )
+
     def test_nul_delimited_diff_preserves_tabs_newlines_and_unicode_paths(self):
         unusual_paths = (
             "tab\tname.txt",
@@ -369,6 +436,22 @@ class LocalGitIntegrationTest(unittest.TestCase):
         payload = next(file for file in result.files if file.path == "payload.txt")
         self.assertFalse(payload.binary)
         self.assertEqual((payload.additions, payload.deletions), (1000, 1))
+
+    def test_text_above_the_pinned_threshold_is_incomplete_critical(self):
+        self.fixture.write("payload.txt", "before\n")
+        base_sha = self.fixture.commit("payload base")
+        self.fixture.write("payload.txt", "".join(f"line {index}\n" for index in range(1000)))
+        head_sha = self.fixture.commit("payload head")
+
+        with patch("review_routing.adapters.git_cli._GIT_BIG_FILE_THRESHOLD", "1"):
+            result = LocalGit().load(self.repo, REPOSITORY, base_sha, head_sha)
+
+        payload = next(file for file in result.files if file.path == "payload.txt")
+        self.assertTrue(payload.binary)
+        self.assertEqual((payload.additions, payload.deletions), (0, 0))
+        assessment = assess_risk(result, self.routing_config)
+        self.assertEqual(assessment.level, RiskLevel.CRITICAL)
+        self.assertIn("incomplete_binary_diff_metadata", assessment.reasons)
 
     def test_local_ignore_submodules_cannot_hide_a_changed_gitlink(self):
         run_git(

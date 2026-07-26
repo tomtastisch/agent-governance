@@ -387,6 +387,7 @@ class LocalGit(PolicySourcePort, DiffSourcePort):
             b"A": FileStatus.ADDED,
             b"M": FileStatus.MODIFIED,
             b"D": FileStatus.DELETED,
+            b"T": FileStatus.MODIFIED,
         }
         zero_sha = b"0" * 40
         for index in range(0, len(records), 2):

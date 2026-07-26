@@ -200,6 +200,21 @@ class RiskClassificationTest(unittest.TestCase):
         self.assertEqual(result.level, RiskLevel.CRITICAL)
         self.assertEqual(result.reasons, ("incomplete_diff_metadata",))
 
+    def test_binary_diff_is_incomplete_critical_and_cannot_be_lowered(self):
+        result = assess_risk(
+            snapshot(
+                diff_file(path="assets/archive.bin", binary=True, additions=0, deletions=0),
+                explicit_risk=RiskLevel.LOW,
+            ),
+            self.config,
+        )
+
+        self.assertEqual(result.level, RiskLevel.CRITICAL)
+        self.assertEqual(
+            result.reasons,
+            ("explicit_risk:low", "incomplete_binary_diff_metadata"),
+        )
+
     def test_evidence_reasons_do_not_raise_the_risk(self):
         result = assess_risk(
             snapshot(diff_file(), risk_reasons=("operator note", "external critical claim")),

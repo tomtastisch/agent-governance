@@ -60,6 +60,9 @@ def assess_risk(changes: DiffSnapshot, config: RoutingConfig) -> RiskAssessment:
     reasons = {f"evidence:{reason}" for reason in changes.risk_reasons}
     if size_reason is not None:
         reasons.add(size_reason)
+    if any(file.binary for file in changes.files):
+        level = _maximum(level, RiskLevel.CRITICAL)
+        reasons.add("incomplete_binary_diff_metadata")
     security_relevant = changes.security_relevant is True
     if security_relevant:
         reasons.add("explicit_security_relevant")
