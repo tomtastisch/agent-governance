@@ -138,6 +138,12 @@ class ImportBoundaryTest(unittest.TestCase):
                     {"review_routing.contracts"},
                 )
 
+    def test_cli_composition_root_imports_only_contracts_and_registry(self):
+        self.assertEqual(
+            imported_review_routing_modules(ROOT / "review_routing/__main__.py"),
+            {"review_routing.contracts", "review_routing.registry"},
+        )
+
 
 class RegistryFailureTest(unittest.TestCase):
     """Provider-Fehler sind sichtbar und typisiert statt stiller Ausfall."""

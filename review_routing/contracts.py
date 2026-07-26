@@ -1417,6 +1417,28 @@ class CliDependencies:
 
     runtime_trust_port: RuntimeTrustPort | None = None
     operator_evidence_trust_port: OperatorEvidenceTrustPort | None = None
+    probe: ProbePort | None = None
+    pull_request_state: PullRequestStatePort | None = None
+    config: ConfigPort | None = None
+    policy_source: PolicySourcePort | None = None
+    diff_source: DiffSourcePort | None = None
+    clock: ClockPort | None = None
+
+    def __post_init__(self) -> None:
+        expected_ports = {
+            "runtime_trust_port": RuntimeTrustPort,
+            "operator_evidence_trust_port": OperatorEvidenceTrustPort,
+            "probe": ProbePort,
+            "pull_request_state": PullRequestStatePort,
+            "config": ConfigPort,
+            "policy_source": PolicySourcePort,
+            "diff_source": DiffSourcePort,
+            "clock": ClockPort,
+        }
+        for field_name, port in expected_ports.items():
+            value = getattr(self, field_name)
+            if value is not None and not isinstance(value, port):
+                raise ValueError(f"{field_name} must implement {port.__name__}")
 
 
 class AdapterFactory(Protocol):
