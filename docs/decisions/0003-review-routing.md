@@ -70,6 +70,22 @@ vorläufige Reviewer-Menge nicht blind konserviert; QA darf nur entfallen, wenn 
 wegen der zuvor unbekannten Coverage beziehungsweise des unbekannten Modus hinzukam und nun
 vollständige Abdeckung im Modus `full` positiv belegt ist.
 
+Task 6 erhält dafür einen geschlossenen `GateEvaluationContext` mit rekonstruierter
+`probe_request`, genau einmal erhobenem `fresh_probe`, aktueller programmatic-only
+`reviewer_availability` und `evaluated_at`. `validate` verlangt denselben vollständigen
+Probe-Kontext wie `route`; der serialisierte `probe_request_digest` allein ist nicht
+rekonstruierbar und keine Autorität. Coverage und tatsächlicher Reviewmodus stammen ausschließlich
+aus dem Exact-Head-gebundenen `GateSnapshot` mit `coverage_source` beziehungsweise
+`review_mode_source`. Der Validator baut daraus und aus der frischen Usability/Availability einen
+neuen finalen `ReviewRequest` und ruft die Policy erneut auf.
+
+Vom Task-5-Vorplan werden ausschließlich Repository/PR/Purpose, Base-/Head-/Merge-Base-SHAs,
+Policy-/Runtime-/Diff-Provenienz und -Digests sowie Risiko/Security verglichen. Vorläufige
+Usability, Coverage, Modus, Route, Reviewer-Menge und Gatefelder besitzen keine finale
+Steuerwirkung. Manipulation dieser Felder darf daher das Gate weder positiv noch negativ
+beeinflussen; fremde oder stale Probe-, Reviewer-, Coverage- oder Modusevidenz macht es
+fail-closed rot.
+
 ## Konsequenzen
 
 Die Routingentscheidung ist reproduzierbar und fail-closed. Kandidatenpolicy kann keine

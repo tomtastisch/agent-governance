@@ -640,14 +640,36 @@ git commit -m "feat(governance): expose review routing CLI"
 - Modify: `review_routing/contracts.py`
 - Modify: `review_routing/runtime.toml`
 - Create: `review_routing/evidence.py`
+- Modify: `review_routing/__main__.py`
 - Create: `tests/test_review_routing_evidence.py`
+- Modify: `tests/test_review_routing_cli.py`
 - Modify: `tests/test_review_routing_architecture.py`
 
 **Interfaces:**
 - Produces contract records `ReviewRecord`, `ThreadRecord`, `CheckRecord`, `FileCoverage`,
-  `GateSnapshot`, `GateResult`, `PublicationReceipt`.
+  `GateSnapshot`, `PreliminaryRoutePlan`, `GateEvaluationContext`, `GateResult` and
+  `PublicationReceipt`.
+- `PreliminaryRoutePlan` dekodiert das vollständige Task-5-Schema. Nur Repository, PR, Purpose,
+  Base-Ref, Base-/Head-/Merge-Base-SHAs, PR-State-Quelle, Risiko/Security sowie
+  Policy-/Runtime-/Diff-Provenienz und -Digests sind Vergleichseingaben. Seine Usability,
+  Coverage, Reviewmodus, Route, Reviewer und Gatefelder sind explizit `untrusted preliminary`.
+- `FileCoverage` enthält die geschlossene `coverage_source`; `GateSnapshot` enthält
+  `copilot_review_mode` und die geschlossene `review_mode_source`. Beide Quellen sind an
+  Repository, PR, Exact Head und Beobachtungszeit gebunden. Fehlende oder nicht belastbare
+  Quellen ergeben `coverage=unverified` beziehungsweise `copilot_review_mode=unknown`, nie einen
+  implizit positiven Wert. `GateSnapshot.valid_until` erzwingt gemeinsam mit `observed_at`
+  `observed_at <= evaluated_at < valid_until`.
+- Produces:
+  `GateEvaluationContext(
+      preliminary_plan: PreliminaryRoutePlan,
+      current_pr_state: PullRequestState,
+      probe_request: ProbeRequest,
+      fresh_probe: ProbeReport,
+      reviewer_availability: ReviewerAvailabilitySnapshot,
+      evaluated_at: datetime,
+  )`.
 - Adds `EvidenceValidatorPort.validate(
-      decision: RouteDecision,
+      context: GateEvaluationContext,
       evidence: GateSnapshot,
       runtime: RuntimeProvenance,
       trusted_config: RoutingConfig,
@@ -657,7 +679,7 @@ git commit -m "feat(governance): expose review routing CLI"
   ) -> GateResult`.
 - Produces:
   `validate_exact_head(
-      decision: RouteDecision,
+      context: GateEvaluationContext,
       evidence: GateSnapshot,
       runtime: RuntimeProvenance,
       trusted_config: RoutingConfig,
@@ -665,9 +687,32 @@ git commit -m "feat(governance): expose review routing CLI"
       risk_classifier: RiskClassifierPort,
       routing_policy: RoutingPolicyPort,
   ) -> GateResult`.
+- Extends the injectable Task-6 composition root with
+  `CliDependencies(
+      runtime_trust_port: RuntimeTrustPort,
+      operator_evidence_trust_port: OperatorEvidenceTrustPort,
+      probe: ProbePort,
+      pull_request_state: PullRequestStatePort,
+      reviewer_availability: ReviewerAvailabilityPort,
+      config: ConfigPort,
+      policy_source: PolicySourcePort,
+      diff_source: DiffSourcePort,
+      clock: ClockPort,
+  )`; Validator, Risiko und Policy kommen weiterhin über die Runtime-Registry.
 - Extends CLI with:
   `validate --route-file ROUTE.json --evidence-file EVIDENCE.json
+  --repo OWNER/REPO --pull-request NUMBER
+  --review-mode manual --requester USER
+  [--organization ORG] [--enterprise ENTERPRISE] [--cost-center COST_CENTER]
+  [--capability-reference CAPABILITY-REFERENCE.json]
   --repo-path /absolute/path/to/checkout --json`.
+
+Bei `automatic` ist `--requester` verboten; bei `manual` ist er Pflicht. `validate` lädt zuerst
+den aktuellen `PullRequestState`, baut daraus mit exakt demselben vollständigen Probe-Kontext wie
+`route` eine neue `ProbeRequest`, ruft `ProbePort.probe()` genau einmal frisch auf und prüft
+Request-Digest, PR, Principal, Modus und TTL. Danach lädt es den
+`ReviewerAvailabilityPort` genau einmal für Repository/PR/Head/Purpose. Der serialisierte
+`probe_request_digest` aus Task 5 ist nicht rekonstruierbar und keine Autorität.
 
 - [ ] **Step 1: Write failing evidence tests**
 
@@ -675,7 +720,8 @@ Cover valid Copilot `COMMENTED`, wrong bot, wrong SHA, pending/error review, unr
 thread, newer pending request, missing QA/SEC, stale QA/SEC, missing/failing/skipped/cancelled CI,
 successful exact-head checks, unresolved non-Copilot thread, correction head invalidation,
 excluded/unverified files, degraded/unknown Copilot mode, QA coverage replacement, stable check
-name and deterministic policy/evidence digests. Also cover a route policy-digest mismatch,
+name, `coverage_source`, `review_mode_source` and deterministic policy/evidence digests. Also
+cover a route policy-digest mismatch,
 an empty trusted required-check policy, a spoofed same-name check from the wrong app slug and an
 attempt to inject required check names through evidence. Cover a policy changed only on head,
 missing Basispolicy during bootstrap, missing/extra/changed diff files, rename/copy source-path
@@ -691,6 +737,19 @@ Task-5-Reviewer-Menge ist keine finale Sollmenge und wird nicht als Gleichheitsi
 Coverage beziehungsweise unbekanntem Modus ergänzt wurde und Task 6
 `coverage_complete=true` plus `full` positiv belegt; Risiko-, Security-, Fallback- und
 Correction-QA bleibt.
+
+Pflicht-Negativtests belegen zusätzlich:
+
+- manipulierte Task-5-Werte für `copilot_usable`, Coverage, Reviewmodus, Route,
+  `required_reviewers`, Gate-Status oder Gate-Fähigkeit beeinflussen die finale Entscheidung
+  nicht;
+- ein fremder, abgelaufener oder digest-/PR-/Principal-/Mode-fremder `fresh_probe` macht das Gate
+  rot;
+- fremde oder abgelaufene Reviewer-Availability-Evidenz macht das Gate rot;
+- fehlende Reviewer-Availability wird als QA/SEC `false` geroutet;
+- ein `probe_request_digest` ohne die rekonstruierte `probe_request` genügt nie;
+- fremde, fehlende oder stale `coverage_source`/`review_mode_source` kann weder
+  `coverage_complete=true` noch `copilot_review_mode=full` belegen.
 
 - [ ] **Step 2: Run and confirm RED**
 
@@ -713,12 +772,20 @@ GateResult(
 
 Only all required reviewers + all policy-required successful checks from their expected app
 sources + zero unresolved threads is valid.
-Recompute risk and routing from `trusted_diff` and `trusted_config`; require exact equality with
-the decision's repository, SHAs, runtime provenance/digest, policy provenance/digest, diff digest,
-risk and security flag. Recompute the first gate-fähige route and reviewer set from fresh
-usability, actual coverage and actual review mode instead of requiring blind equality with Task
-5's preliminary route. Every file from the trusted diff must have positive coverage by the final
-route's reviewer set. The result includes repo, PR, base/head, trusted runtime and
+Validate `GateEvaluationContext` first. `fresh_probe` must match `probe_request`, current PR state
+and `evaluated_at`; Reviewer-Availability must be current and Exact-Context-bound. Derive
+`coverage_complete` exclusively by matching every path/status in `trusted_diff` exactly once
+against `GateSnapshot.review_file_coverage` with a valid `coverage_source`. Derive
+`copilot_review_mode` exclusively from `GateSnapshot` and its valid `review_mode_source`.
+
+Recompute risk and routing from `trusted_diff` and `trusted_config`. From Task 5 compare only
+repository, PR, purpose, Base-/Head-/Merge-Base-SHAs, policy/runtime/diff provenance and digests,
+risk and security flag. Build the final `ReviewRequest` from recomputed risk,
+`fresh_probe.copilot_usable`, derived `coverage_complete`, derived `copilot_review_mode` and the
+current `reviewer_availability`, then invoke `RoutingPolicyPort` again. Never read
+`preliminary_plan.copilot_usable`, preliminary coverage/mode, route, reviewer set, gate status or
+gate eligibility as final authority. Every file from the trusted diff must have positive coverage
+by the final route's reviewer set. The result includes repo, PR, base/head, trusted runtime and
 policy source/path/digests, diff digest, evidence digest, reviewer sets and observation time.
 Define a
 `GatePublisherPort.publish(result: GateResult) -> PublicationReceipt` in contracts but provide no
@@ -726,9 +793,11 @@ writer in this read-only PR. The receipt and port contract define the determinis
 over repository/PR/head/runtime/policy/evidence digests, the dedicated publisher app identity and
 mandatory read-only head revalidation immediately before a future write.
 
-Wire the `validate` CLI command. For gate-fähige decisions it reloads PR state through
-`PullRequestStatePort`, then policy from the API-erhobenen `base_sha` and diff from the local Git
-object store via ports, never from head/worktree or evidence JSON. Valid evidence returns `0`;
+Wire the `validate` CLI command. It reloads PR state through `PullRequestStatePort`, executes the
+fresh bound probe and programmatic Reviewer-Availability flow above, then loads policy from the
+API-erhobenen `base_sha` and diff from the local Git object store via ports, never from
+head/worktree or evidence JSON. It constructs `GateEvaluationContext` and passes it to the
+validator. Valid evidence returns `0`;
 missing, stale or contradictory exact-head evidence returns `32` with sanitized reasons. The
 bootstrap case with no Basispolicy returns `31` and cannot emit a successful GateResult.
 Extend the architecture test so `evidence.py` imports only contracts.

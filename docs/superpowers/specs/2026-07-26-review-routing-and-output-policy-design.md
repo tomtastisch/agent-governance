@@ -449,12 +449,16 @@ Der Evidenzvertrag enthält pro Diff-Datei:
 path
 status
 coverage = reviewed | excluded | unverified
-coverage_source
+coverage_source = github_api | harness_runtime | unavailable
 reviewer
 ```
 
-sowie `copilot_review_mode = full | degraded | unknown`. Freitextkommentare werden nicht als
-Abdeckungsbeweis interpretiert.
+sowie `copilot_review_mode = full | degraded | unknown` und
+`review_mode_source = github_api | harness_runtime | unavailable`. Jede positive
+`coverage_source` und `review_mode_source` ist an Repository, PR, Exact Head,
+Beobachtungszeitpunkt und ihre konkrete maschinenlesbare Quellkennung gebunden. `unavailable`,
+fehlende, fremde oder stale Quellen können weder `coverage_complete=true` noch `full` belegen.
+Freitextkommentare werden nicht als Abdeckungs- oder Modusbeweis interpretiert.
 
 ### 7.3 Stabiler Gate-Vertrag
 
@@ -469,9 +473,93 @@ check_runs
 review_requests
 reviews
 review_file_coverage
+copilot_review_mode
+review_mode_source
 threads
 observed_at
+valid_until
 ```
+
+`GateSnapshot` ist die einzige autoritative Eingabe für per-Datei-Coverage und den tatsächlich
+beobachteten Copilot-Reviewmodus. Der Validator leitet `coverage_complete` selbst ab: Jeder
+Pfad/Status aus dem erneut erhobenen `trusted_diff` muss genau einmal im Snapshot erscheinen und
+eine aktuelle, Exact-Head-gebundene `coverage_source` besitzen. Excluded oder unverified bleibt
+für Copilot unvollständig und ergänzt QA; eine spätere QA-Validierung ersetzt nicht rückwirkend die
+Copilot-Coverage. Der Validator leitet den Modus ausschließlich aus `copilot_review_mode` und
+`review_mode_source` ab. Route-/Probe-Dateien dürfen weder Coverage noch Modus behaupten.
+Repository/PR/Head des Snapshots müssen dem aktuellen PR-State entsprechen und
+`observed_at <= evaluated_at < valid_until` gelten; damit sind auch seine Coverage-/Modusquellen
+zeitlich und kontextuell gebunden.
+
+Die Task-5-Datei wird in ein geschlossenes `PreliminaryRoutePlan` dekodiert:
+
+```text
+repository
+pull_request_number
+purpose
+base_ref
+base_sha
+merge_base_sha
+head_sha
+pr_state_source
+risk
+security_relevant
+policy_source_ref
+policy_source_path
+policy_digest
+runtime_digest
+runtime_trust
+diff_digest
+copilot_usable             untrusted preliminary
+copilot_coverage_complete  untrusted preliminary
+copilot_review_mode        untrusted preliminary
+route                      untrusted preliminary
+required_reviewers         untrusted preliminary
+gate_status                untrusted preliminary
+gate_eligible              untrusted preliminary
+```
+
+Fehlende oder unbekannte Felder machen die Datei ungültig. Die als `untrusted preliminary`
+markierten Felder werden nur zur vollständigen Schema-/Auditdarstellung dekodiert und niemals in
+den finalen `ReviewRequest` übernommen.
+
+Die finale Auswertung erhält einen geschlossenen Kontext:
+
+```text
+GateEvaluationContext:
+  preliminary_plan: PreliminaryRoutePlan
+  current_pr_state: PullRequestState
+  probe_request: ProbeRequest
+  fresh_probe: ProbeReport
+  reviewer_availability: ReviewerAvailabilitySnapshot
+  evaluated_at: datetime
+```
+
+`validate` lädt zuerst den aktuellen PR-State, rekonstruiert aus den CLI-Kontextfeldern eine neue
+`probe_request`, führt `ProbePort.probe()` genau einmal frisch aus und prüft `fresh_probe` gegen
+Request-Digest, PR, Principal, Modus und `observed_at <= evaluated_at < valid_until`. Danach lädt
+es die programmatic-only `reviewer_availability` genau einmal für Repository/PR/Head/Purpose.
+Fremde oder stale Probe-/Availability-Evidenz erzeugt ein rotes Gate. Der in Task 5
+serialisierte `probe_request_digest` allein ist nicht rekonstruierbar und keine Autorität.
+
+Der formale Validator-Vertrag lautet:
+
+```text
+EvidenceValidatorPort.validate(
+  context: GateEvaluationContext,
+  evidence: GateSnapshot,
+  runtime: RuntimeProvenance,
+  trusted_config: RoutingConfig,
+  trusted_diff: DiffSnapshot,
+  risk_classifier: RiskClassifierPort,
+  routing_policy: RoutingPolicyPort,
+) -> GateResult
+```
+
+`validate_exact_head(...)` besitzt dieselben Parameter. Der Validator baut den finalen
+`ReviewRequest` ausschließlich aus neu klassifiziertem Risiko, `fresh_probe.copilot_usable`,
+abgeleitetem `coverage_complete`, abgeleitetem `copilot_review_mode` und aktueller
+Reviewer-Verfügbarkeit und ruft die Policy erneut auf.
 
 Die Namen und erwarteten Quellen aller Pflichtchecks stammen ausschließlich aus der geladenen
 Basispolicy `core/review-routing.toml` am vollständigen `base_sha`. Für ein gate-fähiges Ergebnis
@@ -535,8 +623,12 @@ Required Check. Der spätere Publisher muss Base-Ref und Protection/Ruleset gege
 außerhalb des PR-Heads verwaltete App-Konfiguration prüfen. Ein Offline-Aufruf mit expliziten SHAs
 ist ausschließlich diagnostisch und trägt `gate_eligible = false`.
 
-`RouteDecision` wird dem Validator separat übergeben; der externe `GateSnapshot` enthält keine
-zweite, potenziell abweichende Kopie der Routingentscheidung.
+`PreliminaryRoutePlan` wird aus Task 5 nur als Provenienzvergleich eingelesen. Verglichen werden
+Repository/PR/Purpose, Base-/Head-/Merge-Base-SHAs, Policy-/Runtime-/Diff-Provenienz und -Digests
+sowie Risiko/Security. Seine Werte für Usability, Coverage, Reviewmodus, Route, Reviewer,
+Gate-Status und Gate-Fähigkeit sind ausdrücklich keine Validierungsautorität und dürfen die finale
+Policyentscheidung nicht beeinflussen. Der externe `GateSnapshot` enthält keine zweite,
+potenziell abweichende Routingentscheidung.
 
 Der read-only Lieferumfang gibt dieses Ergebnis nur als JSON aus. Ein typisierter
 `GatePublisherPort` legt den späteren Übergabevertrag fest:
@@ -611,12 +703,23 @@ python3 -m review_routing route \
 python3 -m review_routing validate \
   --route-file ROUTE.json \
   --evidence-file EVIDENCE.json \
+  --repo OWNER/REPO \
+  --pull-request NUMBER \
+  --review-mode manual \
+  --requester USER \
+  --organization ORG \
+  --enterprise ENTERPRISE \
+  --cost-center COST_CENTER \
+  --capability-reference CAPABILITY-REFERENCE.json \
   --repo-path /absolute/path/to/checkout \
   --json
 python3 -m review_routing validate \
   --route-file ROUTE.json \
+  --evidence-file EVIDENCE.json \
   --repo OWNER/REPO \
   --pull-request NUMBER \
+  --review-mode automatic \
+  --capability-reference CAPABILITY-REFERENCE.json \
   --repo-path /absolute/path/to/checkout \
   --json
 python3 -m review_routing output-policy --json
@@ -638,6 +741,15 @@ aktuellen PR-State, bindet daraus Repository und PR an eine neue `ProbeRequest`,
 `--qa-available` und `--sec-available` sind ungültig. QA-/SEC-Verfügbarkeit stammt ausschließlich
 aus einem programmatisch injizierten `ReviewerAvailabilityPort`; fehlende, abgelaufene, fremde,
 `unavailable`- oder `unknown`-Evidenz gilt als nicht verfügbar.
+
+`validate` verlangt denselben vollständigen aktuellen Probe-Kontext wie `route`. Es lädt erneut
+den aktuellen PR-State, baut daraus eine neue `ProbeRequest`, führt `ProbePort` genau einmal
+frisch aus, prüft Request-Digest, PR, Principal, Modus und TTL und lädt anschließend
+`ReviewerAvailabilityPort` programmatic-only für den aktuellen Exact Head und Purpose. Die
+Task-6-`CliDependencies` nennen deshalb ausdrücklich `ProbePort`, `PullRequestStatePort`,
+`ReviewerAvailabilityPort` und `ClockPort` neben den bereits benötigten Trust-/Policy-/Diff-Ports.
+Die Route-Datei und ihr `probe_request_digest` können diesen Kontext weder rekonstruieren noch
+autorisieren.
 
 Der Composition Root löst Ports ausschließlich über die generische Runtime-Registry auf. Policy
 und Risikoklassifikation kennen weder `gh` noch HTTP; `__main__.py` importiert keine
@@ -799,9 +911,12 @@ Route:
 | `32` | Exact-Head-Evidenz fehlt oder ist veraltet |
 
 `validate` ist die read-only Brücke zwischen gewählter Route und Merge-Gate-Evidenz. Der Befehl
-lädt die Policy vom Base-Commit, erhebt und klassifiziert den Git-Diff erneut, vergleicht
-erforderliche Reviewer, CI-Checks, Threads, SHAs und Digests, schreibt aber keinen Check-Run und
-erteilt keine GitHub-Freigabe. `output-policy` liest ausschließlich `core/interaction.toml`.
+lädt frische Probe und Reviewer-Verfügbarkeit, die Policy vom Base-Commit, erhebt und
+klassifiziert den Git-Diff erneut und leitet Coverage/Modus aus `GateSnapshot` samt ihrer
+gebundenen Quellen ab. Er berechnet die finale Route neu und validiert erst danach erforderliche
+Reviewer, CI-Checks, Threads, SHAs und Digests. Task-5-Usability, -Route und -Reviewer-Menge
+bleiben untrusted Vorplanfelder. Der Befehl schreibt keinen Check-Run und erteilt keine
+GitHub-Freigabe. `output-policy` liest ausschließlich `core/interaction.toml`.
 
 ## 10. Architektur und SSOT
 

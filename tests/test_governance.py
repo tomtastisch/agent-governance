@@ -226,6 +226,68 @@ class Templates(unittest.TestCase):
                 self.assertTrue(exists(imp), f"Import {imp} in templates/CLAUDE.md zeigt ins Leere")
 
 
+class TaskSixDesignContract(unittest.TestCase):
+    """Task 6 bleibt formal auf frische Evidenz statt auf den Task-5-Vorplan verdrahtet."""
+
+    def setUp(self):
+        self.spec = read(
+            "docs/superpowers/specs/2026-07-26-review-routing-and-output-policy-design.md"
+        )
+        plan = read("docs/superpowers/plans/2026-07-26-review-routing.md")
+        self.task_six = plan.split("### Task 6:", 1)[1].split("### Task 7:", 1)[0]
+        self.adr = read("docs/decisions/0003-review-routing.md")
+
+    def test_gate_evaluation_context_is_complete_and_non_authoritative(self):
+        required = (
+            "PreliminaryRoutePlan",
+            "GateEvaluationContext",
+            "preliminary_plan",
+            "current_pr_state",
+            "probe_request",
+            "fresh_probe",
+            "reviewer_availability",
+            "evaluated_at",
+            "valid_until",
+            "coverage_complete",
+            "copilot_review_mode",
+            "coverage_source",
+            "review_mode_source",
+            "untrusted preliminary",
+        )
+        for token in required:
+            self.assertIn(token, self.spec, f"Design-Spec fehlt Task-6-Vertrag '{token}'")
+            self.assertIn(token, self.task_six, f"Task-6-Plan fehlt Vertrag '{token}'")
+        self.assertNotIn(
+            "decision: RouteDecision",
+            self.task_six,
+            "Task 6 darf die vorläufige RouteDecision nicht als Validierungsautorität übernehmen",
+        )
+        for document in (self.spec, self.task_six, self.adr):
+            self.assertIn(
+                "probe_request_digest",
+                document,
+                "Digest muss ausdrücklich als nicht rekonstruierbare Nicht-Autorität dokumentiert sein",
+            )
+
+    def test_validate_cli_requires_the_fresh_probe_context(self):
+        for token in (
+            "--review-mode",
+            "--requester",
+            "--organization",
+            "--enterprise",
+            "--cost-center",
+            "--capability-reference",
+        ):
+            self.assertIn(token, self.task_six, f"Task-6-CLI fehlt '{token}'")
+        for token in (
+            "ProbePort",
+            "ReviewerAvailabilityPort",
+            "PullRequestStatePort",
+            "ClockPort",
+        ):
+            self.assertIn(token, self.task_six, f"Task-6-CliDependencies fehlt '{token}'")
+
+
 class BranchTags(unittest.TestCase):
     """`core/branch-tags.toml` ist wohlgeformt, git-ref-sicher und driftfrei mit dem Kern (§15)."""
 
