@@ -357,6 +357,52 @@ class LocalGitIntegrationTest(unittest.TestCase):
         self.assertFalse(payload.binary)
         self.assertEqual((payload.additions, payload.deletions), (1000, 1))
 
+    def test_local_big_file_threshold_cannot_hide_a_thousand_text_lines(self):
+        self.fixture.write("payload.txt", "before\n")
+        base_sha = self.fixture.commit("payload base")
+        self.fixture.write("payload.txt", "".join(f"line {index}\n" for index in range(1000)))
+        head_sha = self.fixture.commit("payload head")
+        run_git(self.repo, "config", "core.bigFileThreshold", "1")
+
+        result = LocalGit().load(self.repo, REPOSITORY, base_sha, head_sha)
+
+        payload = next(file for file in result.files if file.path == "payload.txt")
+        self.assertFalse(payload.binary)
+        self.assertEqual((payload.additions, payload.deletions), (1000, 1))
+
+    def test_local_ignore_submodules_cannot_hide_a_changed_gitlink(self):
+        run_git(
+            self.repo,
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            f"160000,{self.base_sha},auth/component",
+        )
+        run_git(self.repo, "commit", "-m", "gitlink base")
+        gitlink_base_sha = run_git(self.repo, "rev-parse", "HEAD").decode("ascii").strip()
+
+        run_git(
+            self.repo,
+            "update-index",
+            "--cacheinfo",
+            f"160000,{gitlink_base_sha},auth/component",
+        )
+        self.fixture.write("note.txt", "harmless\n")
+        run_git(self.repo, "add", "note.txt")
+        run_git(self.repo, "commit", "-m", "changed gitlink")
+        head_sha = run_git(self.repo, "rev-parse", "HEAD").decode("ascii").strip()
+        run_git(self.repo, "config", "diff.ignoreSubmodules", "all")
+
+        result = LocalGit().load(self.repo, REPOSITORY, gitlink_base_sha, head_sha)
+
+        self.assertEqual(
+            {file.path: file.status for file in result.files},
+            {
+                "auth/component": FileStatus.MODIFIED,
+                "note.txt": FileStatus.ADDED,
+            },
+        )
+
     def test_diff_and_policy_reads_do_not_change_the_worktree_or_index(self):
         self.fixture.write("untracked.txt", "keep untracked\n")
         before = run_git(self.repo, "status", "--porcelain=v1", "-z")
@@ -423,6 +469,9 @@ class LocalGitIntegrationTest(unittest.TestCase):
             all("core.attributesFile=/dev/null" in args for args, _ in calls)
         )
         self.assertTrue(
+            all("core.bigFileThreshold=512m" in args for args, _ in calls)
+        )
+        self.assertTrue(
             all(kwargs["env"]["GIT_NO_REPLACE_OBJECTS"] == "1" for _, kwargs in calls)
         )
         self.assertTrue(
@@ -449,6 +498,10 @@ class LocalGitIntegrationTest(unittest.TestCase):
             self.assertIn("--no-ext-diff", args)
             self.assertIn("--no-textconv", args)
             self.assertIn("--no-renames", args)
+            self.assertIn("--ignore-submodules=none", args)
+            self.assertIn("--diff-algorithm=myers", args)
+            self.assertIn("--no-indent-heuristic", args)
+            self.assertIn("--no-relative", args)
             self.assertIn("-z", args)
 
         failure = subprocess.CompletedProcess(

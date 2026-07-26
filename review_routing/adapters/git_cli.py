@@ -28,6 +28,8 @@ from review_routing.contracts import (
 
 
 _GIT_TIMEOUT_SECONDS = 10
+# Gits Standard schützt vor unbeschränkter Diff-Speicherlast; größere Blobs bleiben binär.
+_GIT_BIG_FILE_THRESHOLD = "512m"
 _RAW_MODE_RE = re.compile(rb"[0-7]{6}")
 _RAW_SHA_RE = re.compile(rb"[0-9a-f]{40}")
 _ORIGIN_SCP_RE = re.compile(
@@ -84,6 +86,8 @@ class LocalGit(PolicySourcePort, DiffSourcePort):
             "--no-replace-objects",
             "-c",
             "core.attributesFile=/dev/null",
+            "-c",
+            f"core.bigFileThreshold={_GIT_BIG_FILE_THRESHOLD}",
             "-C",
             str(repo_path),
             *arguments,
@@ -328,6 +332,10 @@ class LocalGit(PolicySourcePort, DiffSourcePort):
             "--no-ext-diff",
             "--no-textconv",
             "--no-renames",
+            "--ignore-submodules=none",
+            "--diff-algorithm=myers",
+            "--no-indent-heuristic",
+            "--no-relative",
             "-z",
             merge_base_sha,
             head_sha,
