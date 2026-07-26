@@ -136,6 +136,30 @@ class RiskClassificationTest(unittest.TestCase):
         self.assertEqual(high.level, RiskLevel.HIGH)
         self.assertIn("high_path:.github/workflows/check.yml", high.reasons)
 
+    def test_security_and_governance_globs_cover_root_and_nested_paths(self):
+        cases = (
+            ("auth/login.py", RiskLevel.CRITICAL, True),
+            ("module/auth/login.py", RiskLevel.CRITICAL, True),
+            ("security/check.py", RiskLevel.CRITICAL, True),
+            ("module/security/check.py", RiskLevel.CRITICAL, True),
+            ("migrations/001.sql", RiskLevel.HIGH, False),
+            ("module/migrations/001.sql", RiskLevel.HIGH, False),
+            ("production/write.py", RiskLevel.CRITICAL, False),
+            ("module/production/write.py", RiskLevel.CRITICAL, False),
+            ("crypto/key.py", RiskLevel.CRITICAL, True),
+            ("module/crypto/key.py", RiskLevel.CRITICAL, True),
+            ("protocol/wire.py", RiskLevel.CRITICAL, True),
+            ("module/protocol/wire.py", RiskLevel.CRITICAL, True),
+            ("secret.txt", RiskLevel.CRITICAL, True),
+            ("module/secret.txt", RiskLevel.CRITICAL, True),
+        )
+
+        for path, expected_level, expected_security in cases:
+            with self.subTest(path=path):
+                result = assess_risk(snapshot(diff_file(path=path)), self.config)
+                self.assertEqual(result.level, expected_level)
+                self.assertEqual(result.security_relevant, expected_security)
+
     def test_explicit_risk_can_raise_but_never_lower_path_risk(self):
         raised = assess_risk(
             snapshot(diff_file(), explicit_risk=RiskLevel.HIGH),

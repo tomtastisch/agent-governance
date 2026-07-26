@@ -27,6 +27,13 @@ def _maximum(left: RiskLevel, right: RiskLevel) -> RiskLevel:
     return left if _LEVEL_RANK[left] >= _LEVEL_RANK[right] else right
 
 
+def _path_matches(path: str, pattern: str) -> bool:
+    """Behandelt ein führendes **/ wie Git-Globs als null oder mehr Verzeichnisebenen."""
+    return fnmatchcase(path, pattern) or (
+        pattern.startswith("**/") and fnmatchcase(path, pattern.removeprefix("**/"))
+    )
+
+
 def _size_level(snapshot: DiffSnapshot, config: RoutingConfig) -> tuple[RiskLevel, str | None]:
     changed_lines = sum(file.additions + file.deletions for file in snapshot.files)
     for level in (RiskLevel.CRITICAL, RiskLevel.HIGH, RiskLevel.MEDIUM):
@@ -61,7 +68,7 @@ def assess_risk(changes: DiffSnapshot, config: RoutingConfig) -> RiskAssessment:
         paths = (file.path,) if file.previous_path is None else (file.path, file.previous_path)
         for path in paths:
             for marker in config.path_markers:
-                if not fnmatchcase(path, marker.glob):
+                if not _path_matches(path, marker.glob):
                     continue
                 marker_level = RiskLevel(marker.level)
                 level = _maximum(level, marker_level)

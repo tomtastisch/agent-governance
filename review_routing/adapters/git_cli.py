@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path, PurePosixPath
 import re
 import subprocess
@@ -78,7 +79,18 @@ class LocalGit(PolicySourcePort, DiffSourcePort):
     """Erhebt nur lokale, SHA-gebundene Git-Objekte ohne Hooks oder Netzwerk."""
 
     def _run_git(self, repo_path: Path, operation: str, *arguments: str) -> bytes:
-        argv = ["git", "-C", str(repo_path), *arguments]
+        argv = [
+            "git",
+            "--no-replace-objects",
+            "-c",
+            "core.attributesFile=/dev/null",
+            "-C",
+            str(repo_path),
+            *arguments,
+        ]
+        environment = os.environ.copy()
+        environment["GIT_ATTR_NOSYSTEM"] = "1"
+        environment["GIT_NO_REPLACE_OBJECTS"] = "1"
         try:
             result = subprocess.run(
                 argv,
@@ -86,6 +98,7 @@ class LocalGit(PolicySourcePort, DiffSourcePort):
                 stderr=subprocess.PIPE,
                 check=False,
                 timeout=_GIT_TIMEOUT_SECONDS,
+                env=environment,
             )
         except (OSError, subprocess.TimeoutExpired) as error:
             raise GitSourceError(f"Lokale Git-Operation fehlgeschlagen: {operation}") from error
@@ -113,18 +126,110 @@ class LocalGit(PolicySourcePort, DiffSourcePort):
             raise GitSourceError("Der Origin stimmt nicht mit der Repository-Identität überein")
         return canonical
 
+    def _reject_local_grafts(self, repo_path: Path) -> None:
+        grafts_raw = self._run_git(
+            repo_path,
+            "Graft-Metadaten lokalisieren",
+            "rev-parse",
+            "--git-path",
+            "info/grafts",
+        )
+        grafts_text = _decode_utf8(grafts_raw, "Graft-Metadaten").strip()
+        if not grafts_text:
+            raise GitSourceError("Git lieferte keinen eindeutigen Graft-Metadatenpfad")
+        grafts_path = Path(grafts_text)
+        if not grafts_path.is_absolute():
+            grafts_path = repo_path / grafts_path
+        try:
+            if grafts_path.exists() and grafts_path.stat().st_size > 0:
+                raise GitSourceError("Lokale Graft-Metadaten sind für SHA-gebundene Evidenz unzulässig")
+        except OSError as error:
+            raise GitSourceError("Lokale Graft-Metadaten können nicht sicher geprüft werden") from error
+
+    def _reject_attribute_sources(
+        self,
+        repo_path: Path,
+        commit_shas: tuple[str, ...],
+    ) -> None:
+        info_attributes_raw = self._run_git(
+            repo_path,
+            "Lokale Attribute lokalisieren",
+            "rev-parse",
+            "--git-path",
+            "info/attributes",
+        )
+        info_attributes_text = _decode_utf8(
+            info_attributes_raw,
+            "Lokale Attribute",
+        ).strip()
+        if not info_attributes_text:
+            raise GitSourceError("Git lieferte keinen eindeutigen lokalen Attributpfad")
+        info_attributes_path = Path(info_attributes_text)
+        if not info_attributes_path.is_absolute():
+            info_attributes_path = repo_path / info_attributes_path
+        try:
+            if info_attributes_path.exists() and info_attributes_path.stat().st_size > 0:
+                raise GitSourceError("Lokale Git-Attribute sind für Diff-Evidenz unzulässig")
+        except OSError as error:
+            raise GitSourceError("Lokale Git-Attribute können nicht sicher geprüft werden") from error
+
+        index_paths = self._run_git(
+            repo_path,
+            "Index-Attribute prüfen",
+            "ls-files",
+            "-z",
+            "--cached",
+        )
+        self._reject_attribute_records(index_paths, "Index")
+        for commit_sha in commit_shas:
+            tree_paths = self._run_git(
+                repo_path,
+                "Commit-Attribute prüfen",
+                "ls-tree",
+                "-r",
+                "-z",
+                "--name-only",
+                commit_sha,
+            )
+            self._reject_attribute_records(tree_paths, "Commit")
+
+        def fail_on_walk_error(error: OSError) -> None:
+            raise GitSourceError("Der Worktree kann nicht vollständig auf Attribute geprüft werden") from error
+
+        for _, directory_names, file_names in os.walk(
+            repo_path,
+            topdown=True,
+            onerror=fail_on_walk_error,
+            followlinks=False,
+        ):
+            directory_names[:] = [name for name in directory_names if name != ".git"]
+            if ".gitattributes" in file_names:
+                raise GitSourceError("Worktree-Attribute sind für Diff-Evidenz unzulässig")
+
+    @classmethod
+    def _reject_attribute_records(cls, output: bytes, source: str) -> None:
+        for raw_path in cls._nul_records(output, f"{source}-Attributpfade"):
+            try:
+                path = normalize_repo_path(_decode_utf8(raw_path, f"{source}-Attributpfad"))
+            except ValueError as error:
+                raise GitSourceError(f"{source}-Attributpfade sind nicht normalisiert") from error
+            if path == ".gitattributes" or path.endswith("/.gitattributes"):
+                raise GitSourceError(f"{source}-Attribute sind für Diff-Evidenz unzulässig")
+
     def _require_commit(self, repo_path: Path, commit_sha: str, field_name: str) -> None:
         try:
             require_full_sha(commit_sha, field_name)
         except ValueError as error:
             raise GitSourceError("Git-Referenzen müssen vollständige Commit-SHAs sein") from error
-        self._run_git(
+        object_type = self._run_git(
             repo_path,
-            "Commitobjekt-Prüfung",
+            "Ungepeelten Objekttyp prüfen",
             "cat-file",
-            "-e",
-            f"{commit_sha}^{{commit}}",
+            "-t",
+            commit_sha,
         )
+        if object_type != b"commit\n":
+            raise GitSourceError("Die angegebene Objekt-SHA bezeichnet kein Commitobjekt")
 
     def read_at_commit(
         self,
@@ -134,6 +239,7 @@ class LocalGit(PolicySourcePort, DiffSourcePort):
         policy_path: PurePosixPath,
     ) -> PolicyDocument:
         canonical = self._bind_repository(repo_path, repository)
+        self._reject_local_grafts(canonical)
         self._require_commit(canonical, commit_sha, "commit_sha")
         try:
             normalized_path = normalize_repo_path(policy_path, "policy_path")
@@ -188,6 +294,7 @@ class LocalGit(PolicySourcePort, DiffSourcePort):
         head_sha: str,
     ) -> DiffSnapshot:
         canonical = self._bind_repository(repo_path, repository)
+        self._reject_local_grafts(canonical)
         self._require_commit(canonical, api_base_sha, "api_base_sha")
         self._require_commit(canonical, head_sha, "head_sha")
         merge_base_raw = self._run_git(
@@ -203,6 +310,10 @@ class LocalGit(PolicySourcePort, DiffSourcePort):
         except ValueError as error:
             raise GitSourceError("Git lieferte keine vollständige Merge-Base-SHA") from error
         self._require_commit(canonical, merge_base_sha, "merge_base_sha")
+        self._reject_attribute_sources(
+            canonical,
+            (api_base_sha, merge_base_sha, head_sha),
+        )
 
         common_arguments = (
             "--no-ext-diff",

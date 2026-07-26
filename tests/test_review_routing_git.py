@@ -151,6 +151,50 @@ class LocalGitIntegrationTest(unittest.TestCase):
                         PurePosixPath("core/review-routing.toml"),
                     )
 
+    def test_annotated_tag_object_sha_is_rejected_without_implicit_peeling(self):
+        head_sha = self.commit_changed_head()
+        run_git(self.repo, "tag", "-a", "annotated", "-m", "synthetic annotated tag", head_sha)
+        tag_object_sha = run_git(self.repo, "rev-parse", "refs/tags/annotated").decode("ascii").strip()
+        self.assertEqual(
+            run_git(self.repo, "cat-file", "-t", tag_object_sha).decode("ascii").strip(),
+            "tag",
+        )
+
+        with self.assertRaises(GitSourceError):
+            LocalGit().load(self.repo, REPOSITORY, tag_object_sha, head_sha)
+        with self.assertRaises(GitSourceError):
+            LocalGit().read_at_commit(
+                self.repo,
+                REPOSITORY,
+                tag_object_sha,
+                PurePosixPath("core/review-routing.toml"),
+            )
+
+    def test_lightweight_tag_resolves_to_the_commit_object_sha_and_remains_valid(self):
+        head_sha = self.commit_changed_head()
+        run_git(self.repo, "tag", "--no-sign", "lightweight", head_sha)
+        lightweight_sha = run_git(
+            self.repo,
+            "rev-parse",
+            "refs/tags/lightweight",
+        ).decode("ascii").strip()
+        self.assertEqual(lightweight_sha, head_sha)
+        self.assertEqual(
+            run_git(self.repo, "cat-file", "-t", lightweight_sha).decode("ascii").strip(),
+            "commit",
+        )
+
+        result = LocalGit().load(self.repo, REPOSITORY, self.base_sha, lightweight_sha)
+        document = LocalGit().read_at_commit(
+            self.repo,
+            REPOSITORY,
+            lightweight_sha,
+            PurePosixPath("core/review-routing.toml"),
+        )
+
+        self.assertEqual(result.head_sha, head_sha)
+        self.assertIn('value = "head"', document.content)
+
     def test_canonical_toplevel_and_origin_are_bound_to_repository_identity(self):
         head_sha = self.commit_changed_head()
         nested = self.repo / "nested"
@@ -198,6 +242,46 @@ class LocalGitIntegrationTest(unittest.TestCase):
         self.assertEqual(result.head_sha, head_sha)
         self.assertEqual(tuple(file.path for file in result.files), ("feature.txt",))
 
+    def test_replace_refs_cannot_substitute_diff_or_policy_objects(self):
+        self.fixture.write("core/review-routing.toml", "schema_version = 1\nvalue = \"original\"\n")
+        self.fixture.write("auth/login.py", "".join(f"line {index}\n" for index in range(1000)))
+        original_head_sha = self.fixture.commit("original head")
+
+        run_git(self.repo, "switch", "-c", "replacement", self.base_sha)
+        self.fixture.write("core/review-routing.toml", "schema_version = 1\nvalue = \"replacement\"\n")
+        self.fixture.write("note.txt", "replacement\n")
+        replacement_sha = self.fixture.commit("replacement head")
+        run_git(self.repo, "switch", "main")
+        run_git(self.repo, "replace", original_head_sha, replacement_sha)
+
+        result = LocalGit().load(self.repo, REPOSITORY, self.base_sha, original_head_sha)
+        document = LocalGit().read_at_commit(
+            self.repo,
+            REPOSITORY,
+            original_head_sha,
+            PurePosixPath("core/review-routing.toml"),
+        )
+
+        self.assertIn("auth/login.py", {file.path for file in result.files})
+        self.assertNotIn("note.txt", {file.path for file in result.files})
+        self.assertIn('value = "original"', document.content)
+        self.assertNotIn('value = "replacement"', document.content)
+
+    def test_local_grafts_fail_closed_before_commit_graph_evidence_is_used(self):
+        head_sha = self.commit_changed_head()
+        grafts_path = self.repo / ".git/info/grafts"
+        grafts_path.write_text(f"{head_sha} {self.base_sha}\n", encoding="ascii")
+
+        with self.assertRaises(GitSourceError):
+            LocalGit().load(self.repo, REPOSITORY, self.base_sha, head_sha)
+        with self.assertRaises(GitSourceError):
+            LocalGit().read_at_commit(
+                self.repo,
+                REPOSITORY,
+                head_sha,
+                PurePosixPath("core/review-routing.toml"),
+            )
+
     def test_rename_and_ambiguous_copy_candidates_are_delete_and_add(self):
         self.fixture.write("old.txt", "same\n")
         self.fixture.write("copy-source.txt", "copy\n")
@@ -230,6 +314,26 @@ class LocalGitIntegrationTest(unittest.TestCase):
 
         self.assertEqual(tuple(file.path for file in result.files), tuple(sorted(unusual_paths)))
         self.assertTrue(all(file.status is FileStatus.ADDED for file in result.files))
+
+    def test_committed_binary_attribute_cannot_hide_a_thousand_text_lines(self):
+        self.fixture.write("payload.txt", "before\n")
+        base_sha = self.fixture.commit("payload base")
+        self.fixture.write(".gitattributes", "payload.txt binary\n")
+        self.fixture.write("payload.txt", "".join(f"line {index}\n" for index in range(1000)))
+        head_sha = self.fixture.commit("candidate attributes")
+
+        with self.assertRaises(GitSourceError):
+            LocalGit().load(self.repo, REPOSITORY, base_sha, head_sha)
+
+    def test_uncommitted_binary_attribute_cannot_change_commit_to_commit_diffstat(self):
+        self.fixture.write("payload.txt", "before\n")
+        base_sha = self.fixture.commit("payload base")
+        self.fixture.write("payload.txt", "".join(f"line {index}\n" for index in range(1000)))
+        head_sha = self.fixture.commit("payload head")
+        self.fixture.write(".gitattributes", "payload.txt binary\n")
+
+        with self.assertRaises(GitSourceError):
+            LocalGit().load(self.repo, REPOSITORY, base_sha, head_sha)
 
     def test_diff_and_policy_reads_do_not_change_the_worktree_or_index(self):
         self.fixture.write("untracked.txt", "keep untracked\n")
@@ -287,6 +391,16 @@ class LocalGitIntegrationTest(unittest.TestCase):
         self.assertTrue(all(isinstance(args, list) for args, _ in calls))
         self.assertTrue(all(kwargs["timeout"] == 10 for _, kwargs in calls))
         self.assertTrue(all(kwargs.get("shell", False) is False for _, kwargs in calls))
+        self.assertTrue(all("--no-replace-objects" in args for args, _ in calls))
+        self.assertTrue(
+            all("core.attributesFile=/dev/null" in args for args, _ in calls)
+        )
+        self.assertTrue(
+            all(kwargs["env"]["GIT_NO_REPLACE_OBJECTS"] == "1" for _, kwargs in calls)
+        )
+        self.assertTrue(
+            all(kwargs["env"]["GIT_ATTR_NOSYSTEM"] == "1" for _, kwargs in calls)
+        )
         diff_calls = [args for args, _ in calls if "diff" in args]
         self.assertTrue(diff_calls)
         for args in diff_calls:
