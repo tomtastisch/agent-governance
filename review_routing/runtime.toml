@@ -1,2 +1,7 @@
 schema_version = 1
-modules = ["review_routing.adapters.toml_config", "review_routing.policy"]
+modules = [
+  "review_routing.adapters.toml_config",
+  "review_routing.policy",
+  "review_routing.risk",
+  "review_routing.adapters.git_cli",
+]

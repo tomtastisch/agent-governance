@@ -53,10 +53,12 @@ class ImportBoundaryTest(unittest.TestCase):
     def test_contracts_imports_no_project_module(self):
         self.assertEqual(imported_review_routing_modules(ROOT / "review_routing/contracts.py"), set())
 
-    def test_registry_policy_and_toml_adapter_import_only_contracts(self):
+    def test_domain_and_adapter_modules_import_only_contracts(self):
         for relative_path in (
             "review_routing/registry.py",
             "review_routing/policy.py",
+            "review_routing/risk.py",
+            "review_routing/adapters/git_cli.py",
             "review_routing/adapters/toml_config.py",
         ):
             with self.subTest(relative_path=relative_path):
@@ -101,6 +103,17 @@ class RegistryFailureTest(unittest.TestCase):
         from review_routing.policy import RoutingPolicy
 
         self.assertIsInstance(RuntimeRegistry.bootstrap(None).resolve(RoutingPolicyPort), RoutingPolicy)
+
+    def test_bootstrap_resolves_risk_and_local_git_ports(self):
+        from review_routing.adapters.git_cli import LocalGit
+        from review_routing.contracts import DiffSourcePort, PolicySourcePort, RiskClassifierPort
+        from review_routing.risk import RiskClassifier
+
+        registry = RuntimeRegistry.bootstrap(None)
+
+        self.assertIsInstance(registry.resolve(RiskClassifierPort), RiskClassifier)
+        self.assertIsInstance(registry.resolve(PolicySourcePort), LocalGit)
+        self.assertIsInstance(registry.resolve(DiffSourcePort), LocalGit)
 
 
 if __name__ == "__main__":

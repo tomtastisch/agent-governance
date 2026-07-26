@@ -140,7 +140,12 @@ class RuntimeBootstrapTest(unittest.TestCase):
         self.assertEqual(raw["schema_version"], 1)
         self.assertEqual(
             raw["modules"],
-            ["review_routing.adapters.toml_config", "review_routing.policy"],
+            [
+                "review_routing.adapters.toml_config",
+                "review_routing.policy",
+                "review_routing.risk",
+                "review_routing.adapters.git_cli",
+            ],
         )
 
     def test_bootstrap_resolves_toml_config_from_the_packaged_manifest(self):

@@ -8,9 +8,11 @@ from enum import Enum
 import hashlib
 import json
 import math
+from pathlib import Path, PurePosixPath
 import re
 from types import MappingProxyType
 from typing import Mapping, Protocol
+import unicodedata
 
 
 SHA_RE = re.compile(r"[0-9a-f]{40}")
@@ -47,6 +49,10 @@ class InvalidFactoryError(RegistryError):
 
 class RuntimeTrustMismatchError(RegistryError):
     """Ein externer, vertrauenswürdiger Runtime-Pin passt nicht zum Manifest."""
+
+
+class GitSourceError(RuntimeError):
+    """Die lokale Git-Quelle kann keine vertrauensgebundene Evidenz liefern."""
 
 
 class DocumentTrust(str, Enum):
@@ -89,6 +95,22 @@ class RiskLevel(str, Enum):
     CRITICAL = "critical"
 
 
+class DiffMode(str, Enum):
+    MERGE_BASE_TO_HEAD = "merge_base_to_head"
+
+
+class DetectionMode(str, Enum):
+    DISABLED = "disabled"
+
+
+class FileStatus(str, Enum):
+    ADDED = "added"
+    MODIFIED = "modified"
+    DELETED = "deleted"
+    RENAMED = "renamed"
+    COPIED = "copied"
+
+
 class ReviewRoute(str, Enum):
     LOCAL_CHECKS = "local_checks"
     COPILOT = "copilot"
@@ -128,6 +150,41 @@ def _require_bool(value: object, field_name: str) -> None:
 def _require_bool_or_none(value: object, field_name: str) -> None:
     if value is not None and type(value) is not bool:
         raise ValueError(f"{field_name} must be a boolean or unknown")
+
+
+def require_full_sha(value: str, field_name: str) -> None:
+    """Akzeptiert ausschließlich vollständige kleingeschriebene SHA-1-Objektkennungen."""
+    if not isinstance(value, str) or not SHA_RE.fullmatch(value):
+        raise ValueError(f"{field_name} must be 40 lowercase hexadecimal characters")
+
+
+def require_repository(value: str) -> None:
+    """Validiert die normalisierte GitHub-Identität OWNER/REPO ohne URL-Semantik."""
+    if not isinstance(value, str) or not re.fullmatch(
+        r"[A-Za-z0-9](?:[A-Za-z0-9_.-]*[A-Za-z0-9])?/"
+        r"[A-Za-z0-9](?:[A-Za-z0-9_.-]*[A-Za-z0-9])?",
+        value,
+    ):
+        raise ValueError("repository must be a normalized OWNER/REPO identifier")
+    if any(part in {".", ".."} for part in value.split("/")):
+        raise ValueError("repository must be a normalized OWNER/REPO identifier")
+
+
+def normalize_repo_path(value: str | PurePosixPath, field_name: str = "path") -> str:
+    """Normalisiert einen geschlossenen relativen Repo-Pfad nach Unicode-NFC."""
+    if not isinstance(value, (str, PurePosixPath)):
+        raise ValueError(f"{field_name} must be a relative POSIX path")
+    raw = str(value)
+    if (
+        not raw
+        or raw == "."
+        or raw.startswith("/")
+        or "\\" in raw
+        or "\x00" in raw
+        or any(part in {"", ".", ".."} for part in raw.split("/"))
+    ):
+        raise ValueError(f"{field_name} must be a normalized relative POSIX path")
+    return unicodedata.normalize("NFC", raw)
 
 
 def _freeze_reviewers(reviewers: frozenset[Reviewer] | set[Reviewer]) -> frozenset[Reviewer]:
@@ -318,6 +375,120 @@ class RiskAssessment:
 
 
 @dataclass(frozen=True)
+class DiffFile:
+    path: str
+    status: FileStatus
+    additions: int
+    deletions: int
+    binary: bool
+    previous_path: str | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.status, FileStatus):
+            raise ValueError("status must be a FileStatus value")
+        path = normalize_repo_path(self.path)
+        previous_path = (
+            normalize_repo_path(self.previous_path, "previous_path")
+            if self.previous_path is not None
+            else None
+        )
+        requires_previous = self.status in {FileStatus.RENAMED, FileStatus.COPIED}
+        if requires_previous != (previous_path is not None):
+            raise ValueError("previous_path is required exactly for renamed and copied files")
+        for field_name in ("additions", "deletions"):
+            value = getattr(self, field_name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"{field_name} must be a non-negative integer")
+        _require_bool(self.binary, "binary")
+        if self.binary and (self.additions != 0 or self.deletions != 0):
+            raise ValueError("binary files must have zero additions and deletions")
+        object.__setattr__(self, "path", path)
+        object.__setattr__(self, "previous_path", previous_path)
+
+
+@dataclass(frozen=True)
+class DiffSnapshot:
+    schema_version: int
+    repository: str
+    api_base_sha: str
+    merge_base_sha: str
+    head_sha: str
+    diff_mode: DiffMode
+    rename_detection: DetectionMode
+    copy_detection: DetectionMode
+    files: tuple[DiffFile, ...]
+    explicit_risk: RiskLevel | None = None
+    security_relevant: bool | None = None
+    risk_reasons: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.schema_version != 1 or isinstance(self.schema_version, bool):
+            raise ValueError("schema_version must be 1")
+        require_repository(self.repository)
+        for field_name in ("api_base_sha", "merge_base_sha", "head_sha"):
+            require_full_sha(getattr(self, field_name), field_name)
+        if self.diff_mode is not DiffMode.MERGE_BASE_TO_HEAD:
+            raise ValueError("diff_mode must be merge_base_to_head")
+        if self.rename_detection is not DetectionMode.DISABLED:
+            raise ValueError("rename_detection must be disabled")
+        if self.copy_detection is not DetectionMode.DISABLED:
+            raise ValueError("copy_detection must be disabled")
+        files = tuple(self.files)
+        if not all(isinstance(file, DiffFile) for file in files):
+            raise ValueError("files must contain DiffFile values")
+        files = tuple(
+            sorted(
+                files,
+                key=lambda file: (file.path, file.status.value, file.previous_path or ""),
+            )
+        )
+        current_paths = [file.path for file in files]
+        if len(set(current_paths)) != len(current_paths):
+            raise ValueError("diff paths must be unique after NFC normalization")
+        previous_paths = {file.previous_path for file in files if file.previous_path is not None}
+        if previous_paths & set(current_paths):
+            raise ValueError("previous paths must not duplicate current diff paths")
+        if self.explicit_risk is not None and not isinstance(self.explicit_risk, RiskLevel):
+            raise ValueError("explicit_risk must be a RiskLevel or absent")
+        _require_bool_or_none(self.security_relevant, "security_relevant")
+        reasons = tuple(self.risk_reasons)
+        if any(not isinstance(reason, str) or not reason or "\x00" in reason for reason in reasons):
+            raise ValueError("risk_reasons must contain non-empty NUL-free strings")
+        object.__setattr__(self, "files", files)
+        object.__setattr__(self, "risk_reasons", tuple(sorted(reasons)))
+
+    @property
+    def diff_digest(self) -> str:
+        """Bindet den vollständigen normalisierten Snapshot an eine kanonische SHA-256-Identität."""
+        document = {
+            "api_base_sha": self.api_base_sha,
+            "copy_detection": self.copy_detection.value,
+            "diff_mode": self.diff_mode.value,
+            "explicit_risk": self.explicit_risk.value if self.explicit_risk is not None else None,
+            "files": [
+                {
+                    "additions": file.additions,
+                    "binary": file.binary,
+                    "deletions": file.deletions,
+                    "path": file.path,
+                    "previous_path": file.previous_path,
+                    "status": file.status.value,
+                }
+                for file in self.files
+            ],
+            "head_sha": self.head_sha,
+            "merge_base_sha": self.merge_base_sha,
+            "rename_detection": self.rename_detection.value,
+            "repository": self.repository,
+            "risk_reasons": list(self.risk_reasons),
+            "schema_version": self.schema_version,
+            "security_relevant": self.security_relevant,
+        }
+        canonical = json.dumps(document, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+@dataclass(frozen=True)
 class QaCostEstimate:
     model: str | None = None
     estimated_input_tokens: int | None = None
@@ -446,6 +617,36 @@ class RoutingPolicyPort(ABC):
     @abstractmethod
     def route(self, request: ReviewRequest, config: RoutingConfig) -> RouteDecision:
         """Leitet read-only die erforderliche Review-Route aus der normativen Matrix ab."""
+
+
+class RiskClassifierPort(ABC):
+    @abstractmethod
+    def assess(self, snapshot: DiffSnapshot, config: RoutingConfig) -> RiskAssessment:
+        """Klassifiziert den vollständigen vertrauensgebundenen Diff deterministisch."""
+
+
+class PolicySourcePort(ABC):
+    @abstractmethod
+    def read_at_commit(
+        self,
+        repo_path: Path,
+        repository: str,
+        commit_sha: str,
+        policy_path: PurePosixPath,
+    ) -> PolicyDocument:
+        """Liest eine Policy ausschließlich aus einem verifizierten Commitobjekt."""
+
+
+class DiffSourcePort(ABC):
+    @abstractmethod
+    def load(
+        self,
+        repo_path: Path,
+        repository: str,
+        api_base_sha: str,
+        head_sha: str,
+    ) -> DiffSnapshot:
+        """Erhebt den vollständigen Merge-Base→Head-Diff aus lokalen Git-Objekten."""
 
 
 @dataclass(frozen=True)
