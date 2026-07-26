@@ -26,7 +26,6 @@ _REVIEW_ROUTES = {
     "copilot_qa_sec",
     "qa",
     "qa_sec",
-    "blocker",
 }
 
 

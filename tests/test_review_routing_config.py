@@ -97,12 +97,13 @@ class RoutingPolicyFileTest(unittest.TestCase):
     def test_parser_rejects_unknown_route_and_empty_required_checks(self):
         policy = (ROOT / "core/review-routing.toml").read_text(encoding="utf-8")
         invalid_route = policy.replace('medium = "copilot"', 'medium = "fallback"', 1)
+        computed_blocker = policy.replace('medium = "copilot"', 'medium = "blocker"', 1)
         empty_checks = policy.replace(
             '[[gate.required_checks]]\nname = "agent-governance/review-gate"\nsource_app_slug = "agent-governance-review-gate"\n',
             "",
         )
 
-        for content in (invalid_route, empty_checks):
+        for content in (invalid_route, computed_blocker, empty_checks):
             with self.subTest(content=content):
                 with self.assertRaises(PolicyValidationError):
                     TomlConfig().parse_routing(

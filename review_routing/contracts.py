@@ -120,6 +120,23 @@ def _require_finite_non_negative(value: float | None, field_name: str) -> None:
         raise ValueError(f"{field_name} must be finite and non-negative")
 
 
+def _require_bool(value: object, field_name: str) -> None:
+    if type(value) is not bool:
+        raise ValueError(f"{field_name} must be a boolean")
+
+
+def _require_bool_or_none(value: object, field_name: str) -> None:
+    if value is not None and type(value) is not bool:
+        raise ValueError(f"{field_name} must be a boolean or unknown")
+
+
+def _freeze_reviewers(reviewers: frozenset[Reviewer] | set[Reviewer]) -> frozenset[Reviewer]:
+    frozen = frozenset(reviewers)
+    if not all(isinstance(reviewer, Reviewer) for reviewer in frozen):
+        raise ValueError("reviewers must be Reviewer values")
+    return frozen
+
+
 def canonical_policy_digest(policy: Mapping[str, object]) -> str:
     """Bindet die vollständig validierte TOML-Struktur an eine kanonische SHA-256-Identität."""
     canonical = json.dumps(policy, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -245,7 +262,16 @@ class ProbeSignals:
     provider_status: DiagnosticStatus
     permission_status: DiagnosticStatus
     capability: CapabilityEvidence | None
+    repository: str
+    principal: BillingPrincipal
+    review_mode: str
     observed_at: datetime
+
+    def __post_init__(self) -> None:
+        _require_non_empty(self.repository, "repository")
+        _require_non_empty(self.review_mode, "review_mode")
+        if self.review_mode != self.principal.review_mode:
+            raise ValueError("review_mode must match the authoritative billing principal")
 
 
 @dataclass(frozen=True)
@@ -255,12 +281,22 @@ class ProbeReport:
     signals: ProbeSignals
     usage: Usage
 
+    def __post_init__(self) -> None:
+        _require_bool(self.copilot_usable, "copilot_usable")
+
 
 @dataclass(frozen=True)
 class RiskAssessment:
     level: RiskLevel
     security_relevant: bool
     reasons: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        _require_bool(self.security_relevant, "security_relevant")
+        reasons = tuple(self.reasons)
+        if not all(isinstance(reason, str) for reason in reasons):
+            raise ValueError("reasons must contain strings")
+        object.__setattr__(self, "reasons", reasons)
 
 
 @dataclass(frozen=True)
@@ -315,11 +351,13 @@ class ReviewRequest:
             _require_non_empty(getattr(self, field_name), field_name)
         _require_digest(self.runtime_digest, "runtime_digest")
         _require_digest(self.diff_digest, "diff_digest")
-        if self.copilot_coverage_complete not in (True, False, None):
-            raise ValueError("copilot_coverage_complete must be true, false or unknown")
+        _require_bool(self.copilot_usable, "copilot_usable")
+        _require_bool_or_none(self.copilot_coverage_complete, "copilot_coverage_complete")
+        _require_bool(self.qa_available, "qa_available")
+        _require_bool(self.sec_available, "sec_available")
         if self.copilot_review_mode not in {"full", "degraded", "unknown"}:
             raise ValueError("copilot_review_mode must be full, degraded or unknown")
-        object.__setattr__(self, "prior_reviewers", frozenset(self.prior_reviewers))
+        object.__setattr__(self, "prior_reviewers", _freeze_reviewers(self.prior_reviewers))
 
 
 @dataclass(frozen=True)
@@ -352,8 +390,13 @@ class RouteDecision:
             _require_non_empty(getattr(self, field_name), field_name)
         for field_name in ("policy_digest", "runtime_digest", "diff_digest"):
             _require_digest(getattr(self, field_name), field_name)
-        object.__setattr__(self, "required_reviewers", frozenset(self.required_reviewers))
-        object.__setattr__(self, "prior_reviewers", frozenset(self.prior_reviewers))
+        _require_bool(self.security_relevant, "security_relevant")
+        _require_bool(self.copilot_usable, "copilot_usable")
+        _require_bool_or_none(self.copilot_coverage_complete, "copilot_coverage_complete")
+        _require_bool(self.qa_available, "qa_available")
+        _require_bool(self.sec_available, "sec_available")
+        object.__setattr__(self, "required_reviewers", _freeze_reviewers(self.required_reviewers))
+        object.__setattr__(self, "prior_reviewers", _freeze_reviewers(self.prior_reviewers))
 
 
 @dataclass(frozen=True)

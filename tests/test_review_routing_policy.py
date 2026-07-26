@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Verhaltensspezifikation für die deterministische Review-Route."""
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import unittest
@@ -29,22 +30,33 @@ SHA_A = "a" * 40
 SHA_B = "b" * 40
 
 
-def capability() -> CapabilityEvidence:
-    return CapabilityEvidence(
-        repository="tomtastisch/agent-governance",
-        principal=BillingPrincipal(
-            kind="personal",
-            identifier="tom",
-            review_mode="manual",
-            requester="tom",
-            pull_request_author="tom",
-            source="operator_evidence",
-            observed_at=NOW,
-            expires_at=NOW + timedelta(hours=1),
-        ),
-        review_mode="manual",
+def principal(*, identifier: str = "tom", review_mode: str = "manual") -> BillingPrincipal:
+    return BillingPrincipal(
+        kind="personal",
+        identifier=identifier,
+        review_mode=review_mode,
+        requester="tom",
+        pull_request_author="tom",
+        source="operator_evidence",
         observed_at=NOW,
         expires_at=NOW + timedelta(hours=1),
+    )
+
+
+def capability(
+    *,
+    repository: str = "tomtastisch/agent-governance",
+    billing_principal: BillingPrincipal | None = None,
+    review_mode: str = "manual",
+    observed_at: datetime = NOW,
+    expires_at: datetime | None = None,
+) -> CapabilityEvidence:
+    return CapabilityEvidence(
+        repository=repository,
+        principal=billing_principal or principal(review_mode=review_mode),
+        review_mode=review_mode,
+        observed_at=observed_at,
+        expires_at=expires_at or observed_at + timedelta(hours=1),
         source="completed_review",
     )
 
@@ -56,6 +68,9 @@ def signals(status: DiagnosticStatus) -> ProbeSignals:
         provider_status=DiagnosticStatus.AVAILABLE,
         permission_status=DiagnosticStatus.AVAILABLE,
         capability=capability(),
+        repository="tomtastisch/agent-governance",
+        principal=principal(),
+        review_mode="manual",
         observed_at=NOW,
     )
 
@@ -121,6 +136,9 @@ class UsabilityClassificationTest(unittest.TestCase):
                 provider_status=DiagnosticStatus.BUDGET_BLOCKED,
                 permission_status=DiagnosticStatus.AVAILABLE,
                 capability=capability(),
+                repository="tomtastisch/agent-governance",
+                principal=principal(),
+                review_mode="manual",
                 observed_at=NOW,
             )
         )
@@ -135,12 +153,113 @@ class UsabilityClassificationTest(unittest.TestCase):
                 provider_status=DiagnosticStatus.AVAILABLE,
                 permission_status=DiagnosticStatus.AVAILABLE,
                 capability=None,
+                repository="tomtastisch/agent-governance",
+                principal=principal(),
+                review_mode="manual",
                 observed_at=NOW,
             )
         )
 
         self.assertFalse(usable)
         self.assertEqual(status, DiagnosticStatus.UNKNOWN)
+
+    def test_capability_must_match_the_authoritative_probe_context(self):
+        cases = {
+            "foreign_repository": capability(repository="tomtastisch/other"),
+            "foreign_principal": capability(billing_principal=principal(identifier="other")),
+            "foreign_review_mode": capability(
+                billing_principal=principal(review_mode="automatic"),
+                review_mode="automatic",
+            ),
+            "future": capability(observed_at=NOW + timedelta(minutes=1)),
+            "expired": capability(
+                observed_at=NOW - timedelta(hours=2),
+                expires_at=NOW - timedelta(hours=1),
+            ),
+        }
+
+        for name, evidence in cases.items():
+            with self.subTest(name=name):
+                usable, status = classify_usability(
+                    ProbeSignals(
+                        billing_status=DiagnosticStatus.AVAILABLE,
+                        usage_status=DiagnosticStatus.AVAILABLE,
+                        provider_status=DiagnosticStatus.AVAILABLE,
+                        permission_status=DiagnosticStatus.AVAILABLE,
+                        capability=evidence,
+                        repository="tomtastisch/agent-governance",
+                        principal=principal(),
+                        review_mode="manual",
+                        observed_at=NOW,
+                    )
+                )
+                self.assertEqual((usable, status), (False, DiagnosticStatus.UNKNOWN))
+
+    def test_current_capability_for_the_authoritative_context_is_usable(self):
+        self.assertEqual(
+            classify_usability(signals(DiagnosticStatus.AVAILABLE)),
+            (True, DiagnosticStatus.AVAILABLE),
+        )
+
+
+class ContractValidationTest(unittest.TestCase):
+    """Geschlossene Werttypen und Collections bleiben gegen Python-Sonderfälle robust."""
+
+    def test_boolean_fields_reject_strings_and_integer_lookalikes(self):
+        for invalid in ("true", 0, 1):
+            with self.subTest(target="risk", invalid=invalid):
+                with self.assertRaises(ValueError):
+                    RiskAssessment(RiskLevel.LOW, invalid)
+            for field_name in (
+                "copilot_usable",
+                "coverage_complete",
+                "qa_available",
+                "sec_available",
+            ):
+                with self.subTest(target=field_name, invalid=invalid):
+                    with self.assertRaises(ValueError):
+                        request(**{field_name: invalid})
+
+        decision = route_review(request(), TomlConfig().parse_routing(
+            PolicyDocument(
+                content=(ROOT / "core/review-routing.toml").read_text(encoding="utf-8"),
+                trust="development",
+                source="core/review-routing.toml",
+            )
+        ))
+        for field_name in (
+            "security_relevant",
+            "copilot_usable",
+            "copilot_coverage_complete",
+            "qa_available",
+            "sec_available",
+        ):
+            for invalid in ("true", 0, 1):
+                with self.subTest(target=field_name, invalid=invalid):
+                    with self.assertRaises(ValueError):
+                        replace(decision, **{field_name: invalid})
+
+    def test_task_two_collections_are_defensively_frozen(self):
+        reasons = ["path marker"]
+        prior_reviewers = {Reviewer.COPILOT}
+        assessment = RiskAssessment(RiskLevel.LOW, False, reasons)
+        review_request = request(prior_reviewers=prior_reviewers)
+        decision = route_review(review_request, TomlConfig().parse_routing(
+            PolicyDocument(
+                content=(ROOT / "core/review-routing.toml").read_text(encoding="utf-8"),
+                trust="development",
+                source="core/review-routing.toml",
+            )
+        ))
+        reasons.append("late mutation")
+        prior_reviewers.add(Reviewer.QA)
+
+        self.assertEqual(assessment.reasons, ("path marker",))
+        self.assertEqual(review_request.prior_reviewers, frozenset({Reviewer.COPILOT}))
+        self.assertIsInstance(decision.required_reviewers, frozenset)
+        self.assertIsInstance(decision.prior_reviewers, frozenset)
+        with self.assertRaises(AttributeError):
+            decision.required_reviewers.add(Reviewer.QA)
 
 
 class RoutePolicyTest(unittest.TestCase):

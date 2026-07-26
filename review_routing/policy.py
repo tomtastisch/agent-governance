@@ -50,7 +50,12 @@ def classify_usability(signals: ProbeSignals) -> tuple[bool, DiagnosticStatus]:
     status = next(candidate for candidate in _STATUS_PRECEDENCE if candidate in statuses)
     if status not in {DiagnosticStatus.AVAILABLE, DiagnosticStatus.LOW_BUDGET}:
         return False, status
-    if signals.capability is None or signals.capability.expires_at <= signals.observed_at:
+    if signals.capability is None or not signals.capability.is_valid_for(
+        signals.repository,
+        signals.principal,
+        signals.review_mode,
+        signals.observed_at,
+    ):
         return False, DiagnosticStatus.UNKNOWN
     return True, status
 
