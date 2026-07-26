@@ -335,6 +335,28 @@ class LocalGitIntegrationTest(unittest.TestCase):
         with self.assertRaises(GitSourceError):
             LocalGit().load(self.repo, REPOSITORY, base_sha, head_sha)
 
+    def test_foreign_git_attr_source_cannot_hide_a_thousand_text_lines(self):
+        self.fixture.write("payload.txt", "before\n")
+        base_sha = self.fixture.commit("payload base")
+        self.fixture.write("payload.txt", "".join(f"line {index}\n" for index in range(1000)))
+        head_sha = self.fixture.commit("payload head")
+
+        run_git(self.repo, "switch", "-c", "attribute-source", base_sha)
+        self.fixture.write(".gitattributes", "payload.txt binary\n")
+        attribute_source_sha = self.fixture.commit("foreign attribute source")
+        run_git(self.repo, "switch", "main")
+
+        with patch.dict(
+            os.environ,
+            {"GIT_ATTR_SOURCE": attribute_source_sha},
+            clear=False,
+        ):
+            result = LocalGit().load(self.repo, REPOSITORY, base_sha, head_sha)
+
+        payload = next(file for file in result.files if file.path == "payload.txt")
+        self.assertFalse(payload.binary)
+        self.assertEqual((payload.additions, payload.deletions), (1000, 1))
+
     def test_diff_and_policy_reads_do_not_change_the_worktree_or_index(self):
         self.fixture.write("untracked.txt", "keep untracked\n")
         before = run_git(self.repo, "status", "--porcelain=v1", "-z")
@@ -385,8 +407,13 @@ class LocalGitIntegrationTest(unittest.TestCase):
             calls.append((args, kwargs))
             return real_run(args, **kwargs)
 
-        with patch("review_routing.adapters.git_cli.subprocess.run", side_effect=observe):
-            LocalGit().load(self.repo, REPOSITORY, self.base_sha, head_sha)
+        with patch.dict(
+            os.environ,
+            {"GIT_UNTRUSTED_SENTINEL": "must-not-propagate"},
+            clear=False,
+        ):
+            with patch("review_routing.adapters.git_cli.subprocess.run", side_effect=observe):
+                LocalGit().load(self.repo, REPOSITORY, self.base_sha, head_sha)
 
         self.assertTrue(all(isinstance(args, list) for args, _ in calls))
         self.assertTrue(all(kwargs["timeout"] == 10 for _, kwargs in calls))
@@ -400,6 +427,21 @@ class LocalGitIntegrationTest(unittest.TestCase):
         )
         self.assertTrue(
             all(kwargs["env"]["GIT_ATTR_NOSYSTEM"] == "1" for _, kwargs in calls)
+        )
+        expected_environment_keys = {
+            "GIT_ATTR_NOSYSTEM",
+            "GIT_CONFIG_GLOBAL",
+            "GIT_CONFIG_NOSYSTEM",
+            "GIT_CONFIG_SYSTEM",
+            "GIT_NO_LAZY_FETCH",
+            "GIT_NO_REPLACE_OBJECTS",
+            "GIT_OPTIONAL_LOCKS",
+            "GIT_TERMINAL_PROMPT",
+            "LC_ALL",
+            "PATH",
+        }
+        self.assertTrue(
+            all(set(kwargs["env"]) == expected_environment_keys for _, kwargs in calls)
         )
         diff_calls = [args for args, _ in calls if "diff" in args]
         self.assertTrue(diff_calls)

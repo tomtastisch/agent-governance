@@ -88,9 +88,18 @@ class LocalGit(PolicySourcePort, DiffSourcePort):
             str(repo_path),
             *arguments,
         ]
-        environment = os.environ.copy()
-        environment["GIT_ATTR_NOSYSTEM"] = "1"
-        environment["GIT_NO_REPLACE_OBJECTS"] = "1"
+        environment = {
+            "PATH": os.environ.get("PATH", os.defpath),
+            "LC_ALL": "C",
+            "GIT_ATTR_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_SYSTEM": "/dev/null",
+            "GIT_NO_LAZY_FETCH": "1",
+            "GIT_NO_REPLACE_OBJECTS": "1",
+            "GIT_OPTIONAL_LOCKS": "0",
+            "GIT_TERMINAL_PROMPT": "0",
+        }
         try:
             result = subprocess.run(
                 argv,
