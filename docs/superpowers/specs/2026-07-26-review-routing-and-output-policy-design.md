@@ -404,7 +404,12 @@ Probe:
 | `24` | Leere, unvollständige oder ungültige Antwort |
 
 Eine explizit erkannte Quoten-/Budgetblockade ist eine erfolgreiche Probe und liefert `0`, obwohl
-`copilot_usable = false` gilt.
+`copilot_usable = false` gilt. Das setzt voraus, dass die Blockade von einer erfolgreich
+abgerufenen autoritativen Quelle stammt. Liegt zusätzlich oder stattdessen nur Operator-Evidenz
+vor, während eine erforderliche API wegen fehlender Rechte nicht geprüft werden konnte, bleiben
+`routing_status = budget_blocked` und `copilot_usable = false`, der Prozess meldet die technische
+Unvollständigkeit aber mit Exitcode `20`. Die JSON-Evidenz bleibt auch bei einem Exitcode ungleich
+null vollständig auswertbar.
 
 Route:
 
@@ -492,6 +497,12 @@ Unabhängig vom Wert müssen ausgegeben werden:
 Der Schalter darf keine Toolausgaben, Review-Findings, Auditnachweise oder Merge-Gates
 wegdefinieren. Höher priorisierte Harness-/Systemvorgaben zu Statusmeldungen gelten weiterhin;
 die Governance darf deren Unterdrückung nicht versprechen.
+
+Mechanisch beweisbar sind Schema, Defaultwert, Parser, fail-closed Validierung sowie die
+Verdrahtung in Kern, Adaptern und Einstiegsvorlagen. Ob ein fremder Harness freiwillige
+Zwischenmeldungen tatsächlich vollständig unterdrückt, bleibt eine Harness-Fähigkeit und wird
+nicht durch einen Python-Unit-Test vorgetäuscht. Ein nicht durchsetzender Harness muss die
+Abweichung offen melden.
 
 Damit der Wert vor der ersten freiwilligen Zwischenmeldung bekannt ist:
 
