@@ -1,0 +1,47 @@
+# ADR 0003: Deterministisches Review-Routing aus zentraler Policy
+
+Status: angenommen · Datum: 2026-07-26
+
+## Kontext
+
+Review-Routen müssen aus Reviewzweck, Risikoklasse und einer belastbar festgestellten binären
+Copilot-Verwendbarkeit entstehen. Verbrauchs- und Billinginformationen sind diagnostisch wichtig,
+dürfen aber keine Route aus einem geschätzten Restbudget ableiten. Gleichzeitig muss ein
+Copilot-`COMMENTED`-Review als technische Evidenz prüfbar sein, ohne ihn fälschlich als
+GitHub-`APPROVED` zu bezeichnen.
+
+## Entscheidung
+
+`core/review-routing.toml` ist die einzige normative Quelle für Diff-Schwellen, Pfadmarker,
+Routingmatrix und Gate-Check-Identitäten. Die Policy nimmt ausschließlich `copilot_usable` als
+binäre Routing-Eingabe an. Diagnosestatus wie `low_budget`, `budget_blocked` oder
+`permission_denied` bleiben als getrennte Evidenz erhalten. Es gibt weder eine `remaining`-
+Berechnung als Routing-Eingabe noch eine Budgetreservierung.
+
+Ein Copilot-Review kann ausschließlich als `valid_review_evidence` gelten, wenn es als
+`COMMENTED` auf dem Exact Head vollständig und ohne offene Findings belegt ist; es ist keine
+GitHub-Freigabe. Unklare, degradierte oder ausgeschlossene Abdeckung ergänzt unabhängig von der
+Risikoklasse den erforderlichen QA-Anteil.
+
+Probe und Route bleiben read-only. Sie fordern keine Reviews an, veröffentlichen keinen
+Check-Run und ändern weder GitHub- noch lokale Konfigurationszustände. Die paketierte
+`review_routing/runtime.toml` ist getrennt von der Policy die einzige Bootstrap-Quelle für
+Adaptermodule. Eine externe, passende Publisher-/Installations-Pinbindung kann diese Runtime als
+`installed` ausweisen; ein Source-Checkout bleibt `development` und damit nicht gate-fähig.
+
+## Konsequenzen
+
+Die Routingentscheidung ist reproduzierbar und fail-closed. Kandidatenpolicy kann keine
+Laufzeitadapter austauschen. Für die spätere Veröffentlichung eines Required Checks bleiben die
+dedizierte Publisher-App, deren Installation und die serverseitige Durchsetzung getrennte
+Aufgaben.
+
+## Verworfene Alternativen
+
+- Markdown- oder Prompt-Matrix: nicht deterministisch ausführbar und nicht ausreichend testbar.
+- Shell-Skript mit eingebetteter Policy: vermischt I/O, Klassifikation und Routing.
+- Restbudget-Routing: Limits und Verbrauch sind nicht verlässlich genug und wurden als
+  Routing-Eingang verworfen.
+- Optimistischer Copilot-Retry bei unbekanntem Zustand: verletzt fail-closed und kann Kosten
+  auslösen.
+- Pauschale QA nach jedem Cluster: vermeidet keine unnötigen Kosten risikobasiert.

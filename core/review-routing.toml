@@ -1,0 +1,87 @@
+schema_version = 1
+
+[risk.thresholds]
+medium = 100
+high = 300
+critical = 800
+
+[[risk.path_markers]]
+glob = "core/**"
+level = "critical"
+security_relevant = false
+
+[[risk.path_markers]]
+glob = "review_routing/contracts.py"
+level = "critical"
+security_relevant = false
+
+[[risk.path_markers]]
+glob = ".github/**"
+level = "high"
+security_relevant = false
+
+[[risk.path_markers]]
+glob = "**/migrations/**"
+level = "high"
+security_relevant = false
+
+[[risk.path_markers]]
+glob = "**/production/**"
+level = "critical"
+security_relevant = false
+
+[[risk.path_markers]]
+glob = "**/auth/**"
+level = "critical"
+security_relevant = true
+
+[[risk.path_markers]]
+glob = "**/security/**"
+level = "critical"
+security_relevant = true
+
+[[risk.path_markers]]
+glob = "**/*secret*"
+level = "critical"
+security_relevant = true
+
+[[risk.path_markers]]
+glob = "**/crypto/**"
+level = "critical"
+security_relevant = true
+
+[[risk.path_markers]]
+glob = "**/protocol/**"
+level = "critical"
+security_relevant = true
+
+[routing.checkpoint.usable]
+low = "local_checks"
+medium = "copilot"
+high = "copilot_qa"
+critical = "copilot_qa_sec"
+
+[routing.checkpoint.unusable]
+low = "qa"
+medium = "qa"
+high = "qa"
+critical = "qa_sec"
+
+[routing.final_exact_head.usable]
+low = "copilot"
+medium = "copilot"
+high = "copilot_qa"
+critical = "copilot_qa_sec"
+
+[routing.final_exact_head.unusable]
+low = "qa"
+medium = "qa"
+high = "qa"
+critical = "qa_sec"
+
+[gate.publisher]
+expected_app_slug = "agent-governance-review-gate"
+
+[[gate.required_checks]]
+name = "agent-governance/review-gate"
+source_app_slug = "agent-governance-review-gate"
