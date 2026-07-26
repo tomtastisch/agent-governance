@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 import hashlib
 import json
@@ -53,6 +53,38 @@ class RuntimeTrustMismatchError(RegistryError):
 
 class GitSourceError(RuntimeError):
     """Die lokale Git-Quelle kann keine vertrauensgebundene Evidenz liefern."""
+
+
+class ProbePortError(RuntimeError):
+    """Basisfehler für einen sanitisierten externen Probe-Port."""
+
+
+class PermissionDeniedError(ProbePortError):
+    """Die dokumentierte API hat den read-only Zugriff abgelehnt."""
+
+
+class RateLimitedError(ProbePortError):
+    """Die dokumentierte API hat den read-only Zugriff gedrosselt."""
+
+
+class ProviderUnavailableError(ProbePortError):
+    """GitHub oder der öffentliche Statusdienst ist nicht verfügbar."""
+
+
+class PortTimeoutError(ProbePortError):
+    """Ein externer read-only Port hat sein Zeitlimit überschritten."""
+
+
+class MalformedResponseError(ProbePortError):
+    """Eine externe Antwort ist syntaktisch nicht auswertbar."""
+
+
+class IncompleteResponseError(ProbePortError):
+    """Eine externe Antwort verletzt ihren geschlossenen Pflichtfeldvertrag."""
+
+
+class UnknownContextError(ProbePortError):
+    """Der Billing- oder Principal-Kontext ist nicht eindeutig belegbar."""
 
 
 class DocumentTrust(str, Enum):
@@ -127,14 +159,32 @@ class Reviewer(str, Enum):
     SEC = "sec"
 
 
+class PullRequestStateSource(str, Enum):
+    GITHUB_API = "github_api"
+
+
+class ProbeTechnicalError(str, Enum):
+    PERMISSION_DENIED = "permission_denied"
+    RATE_LIMITED = "rate_limited"
+    PROVIDER_UNAVAILABLE = "provider_unavailable"
+    TIMEOUT = "timeout"
+    UNKNOWN_CONTEXT = "unknown_context"
+    INCOMPLETE_RESPONSE = "incomplete_response"
+
+
 def _require_digest(value: str, field_name: str) -> None:
     if not DIGEST_RE.fullmatch(value):
         raise ValueError(f"{field_name} must be a sha256 digest")
 
 
 def _require_non_empty(value: str, field_name: str) -> None:
-    if not value:
+    if not isinstance(value, str) or not value:
         raise ValueError(f"{field_name} must be non-empty")
+
+
+def _require_code(value: str, field_name: str) -> None:
+    if not isinstance(value, str) or not re.fullmatch(r"[a-z][a-z0-9_]*", value):
+        raise ValueError(f"{field_name} must be a normalized evidence code")
 
 
 def _require_finite_non_negative(value: float | None, field_name: str) -> None:
@@ -256,10 +306,13 @@ class RoutingConfig:
 class Usage:
     used: float | None
     limit: float | None
+    unit: str | None = None
 
     def __post_init__(self) -> None:
         _require_finite_non_negative(self.used, "used")
         _require_finite_non_negative(self.limit, "limit")
+        if self.unit not in {None, "credits", "requests"}:
+            raise ValueError("unit must be credits, requests or unknown")
 
     @property
     def remaining(self) -> float | None:
@@ -282,6 +335,19 @@ class BillingPrincipal:
     def __post_init__(self) -> None:
         for field_name in ("kind", "identifier", "review_mode", "source"):
             _require_non_empty(getattr(self, field_name), field_name)
+        if self.kind not in {"personal", "organization", "enterprise", "cost_center", "unknown"}:
+            raise ValueError("kind is not supported")
+        if self.review_mode not in {"manual", "automatic"}:
+            raise ValueError("review_mode must be manual or automatic")
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", self.identifier):
+            raise ValueError("identifier must be normalized")
+        for field_name in ("requester", "pull_request_author"):
+            value = getattr(self, field_name)
+            if value is not None and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", value):
+                raise ValueError(f"{field_name} must be normalized")
+        _require_code(self.source, "source")
+        _iso_z(self.observed_at)
+        _iso_z(self.expires_at)
         if self.expires_at <= self.observed_at:
             raise ValueError("expires_at must be after observed_at")
 
@@ -311,8 +377,14 @@ class CapabilityEvidence:
     source: str
 
     def __post_init__(self) -> None:
-        for field_name in ("repository", "review_mode", "source"):
+        require_repository(self.repository)
+        for field_name in ("review_mode", "source"):
             _require_non_empty(getattr(self, field_name), field_name)
+        if self.review_mode not in {"manual", "automatic"}:
+            raise ValueError("review_mode must be manual or automatic")
+        _require_code(self.source, "source")
+        _iso_z(self.observed_at)
+        _iso_z(self.expires_at)
         if self.review_mode != self.principal.review_mode:
             raise ValueError("review_mode must match the billing principal")
         if self.expires_at <= self.observed_at:
@@ -343,10 +415,37 @@ class ProbeSignals:
     observed_at: datetime
 
     def __post_init__(self) -> None:
-        _require_non_empty(self.repository, "repository")
-        _require_non_empty(self.review_mode, "review_mode")
+        require_repository(self.repository)
+        if self.review_mode not in {"manual", "automatic"}:
+            raise ValueError("review_mode must be manual or automatic")
+        _iso_z(self.observed_at)
         if self.review_mode != self.principal.review_mode:
             raise ValueError("review_mode must match the authoritative billing principal")
+
+
+@dataclass(frozen=True)
+class BillingContext:
+    kind: str
+    identity: str
+    evidence: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        for field_name in ("kind", "identity"):
+            _require_non_empty(getattr(self, field_name), field_name)
+        if self.kind not in {"personal", "organization", "enterprise", "cost_center", "unknown"}:
+            raise ValueError("kind is not supported")
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", self.identity):
+            raise ValueError("identity must be normalized")
+        evidence = tuple(self.evidence)
+        for item in evidence:
+            _require_code(item, "evidence")
+        object.__setattr__(self, "evidence", evidence)
+
+
+def _iso_z(value: datetime) -> str:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError("datetime values must be timezone-aware")
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 @dataclass(frozen=True)
@@ -355,9 +454,202 @@ class ProbeReport:
     routing_status: DiagnosticStatus
     signals: ProbeSignals
     usage: Usage
+    repository: str
+    review_mode: str
+    requester: str | None
+    pull_request_author: str | None
+    billing_principal: BillingPrincipal
+    billing_context: BillingContext
+    billing_model: str
+    technical_status: DiagnosticStatus
+    technical_error: ProbeTechnicalError | None
+    capability_status: str
+    evidence: tuple[str, ...] = ()
+    warnings: tuple[str, ...] = ()
+    schema_version: int = 1
 
     def __post_init__(self) -> None:
+        if self.schema_version != 1 or isinstance(self.schema_version, bool):
+            raise ValueError("schema_version must be 1")
         _require_bool(self.copilot_usable, "copilot_usable")
+        require_repository(self.repository)
+        if self.review_mode not in {"manual", "automatic"}:
+            raise ValueError("review_mode must be manual or automatic")
+        if self.billing_model not in {"ai_credits", "premium_requests", "unknown"}:
+            raise ValueError("billing_model is not supported")
+        if self.capability_status not in {"absent", "invalid", "expired", "valid"}:
+            raise ValueError("capability_status is not supported")
+        if self.technical_error is not None and not isinstance(
+            self.technical_error,
+            ProbeTechnicalError,
+        ):
+            raise ValueError("technical_error must be a ProbeTechnicalError or absent")
+        if self.signals.principal.identity != self.billing_principal.identity:
+            raise ValueError("signals and report must use the same billing principal")
+        if self.signals.repository != self.repository or self.signals.review_mode != self.review_mode:
+            raise ValueError("signals must be bound to the report context")
+        for field_name in ("evidence", "warnings"):
+            values = tuple(getattr(self, field_name))
+            for item in values:
+                _require_code(item, field_name)
+            object.__setattr__(self, field_name, values)
+
+    @property
+    def observed_at(self) -> datetime:
+        return self.signals.observed_at
+
+    def to_dict(self) -> dict[str, object]:
+        """Serialisiert ausschließlich den geschlossenen, sanitisierten Probe-Vertrag."""
+        capability = self.signals.capability
+        return {
+            "schema_version": self.schema_version,
+            "observed_at": _iso_z(self.observed_at),
+            "repository": self.repository,
+            "review_mode": self.review_mode,
+            "requester": self.requester,
+            "pull_request_author": self.pull_request_author,
+            "billing_principal": {
+                "kind": self.billing_principal.kind,
+                "identifier": self.billing_principal.identifier,
+                "review_mode": self.billing_principal.review_mode,
+                "requester": self.billing_principal.requester,
+                "pull_request_author": self.billing_principal.pull_request_author,
+                "source": self.billing_principal.source,
+                "observed_at": _iso_z(self.billing_principal.observed_at),
+                "expires_at": _iso_z(self.billing_principal.expires_at),
+            },
+            "billing_context": {
+                "kind": self.billing_context.kind,
+                "identity": self.billing_context.identity,
+                "evidence": list(self.billing_context.evidence),
+            },
+            "billing_model": self.billing_model,
+            "usage": {
+                "used": self.usage.used,
+                "limit": self.usage.limit,
+                "remaining": self.usage.remaining,
+                "unit": self.usage.unit,
+            },
+            "signals": {
+                "billing_status": self.signals.billing_status.value,
+                "usage_status": self.signals.usage_status.value,
+                "provider_status": self.signals.provider_status.value,
+                "api_status": self.signals.permission_status.value,
+            },
+            "routing_status": self.routing_status.value,
+            "technical_status": self.technical_status.value,
+            "technical_error": self.technical_error.value if self.technical_error is not None else None,
+            "copilot_usable": self.copilot_usable,
+            "capability_evidence": {
+                "status": self.capability_status,
+                "expires_at": _iso_z(capability.expires_at) if capability is not None else None,
+            },
+            "evidence": list(self.evidence),
+            "warnings": list(self.warnings),
+        }
+
+
+@dataclass(frozen=True)
+class CommandResult:
+    """Rohe Prozessbytes, die ausschließlich innerhalb des Adapters verarbeitet werden."""
+
+    return_code: int
+    stdout: bytes
+    stderr: bytes
+
+    def __post_init__(self) -> None:
+        if isinstance(self.return_code, bool) or not isinstance(self.return_code, int):
+            raise ValueError("return_code must be an integer")
+        if not isinstance(self.stdout, bytes) or not isinstance(self.stderr, bytes):
+            raise ValueError("stdout and stderr must be bytes")
+
+
+@dataclass(frozen=True)
+class StatusSnapshot:
+    status: DiagnosticStatus
+    source: str
+    observed_at: datetime
+
+    def __post_init__(self) -> None:
+        if self.status not in {
+            DiagnosticStatus.AVAILABLE,
+            DiagnosticStatus.PROVIDER_UNAVAILABLE,
+            DiagnosticStatus.UNKNOWN,
+        }:
+            raise ValueError("status snapshot has an unsupported diagnostic status")
+        _require_code(self.source, "source")
+        _iso_z(self.observed_at)
+
+
+@dataclass(frozen=True)
+class PullRequestState:
+    repository: str
+    pull_request_number: int
+    base_ref: str
+    api_base_sha: str
+    head_sha: str
+    author: str
+    observed_at: datetime
+    source: PullRequestStateSource
+
+    def __post_init__(self) -> None:
+        require_repository(self.repository)
+        if (
+            isinstance(self.pull_request_number, bool)
+            or not isinstance(self.pull_request_number, int)
+            or self.pull_request_number <= 0
+        ):
+            raise ValueError("pull_request_number must be a positive integer")
+        for field_name in ("base_ref", "author"):
+            value = getattr(self, field_name)
+            if not isinstance(value, str) or not value or "\x00" in value:
+                raise ValueError(f"{field_name} must be a non-empty NUL-free string")
+        for field_name in ("api_base_sha", "head_sha"):
+            require_full_sha(getattr(self, field_name), field_name)
+        if self.source is not PullRequestStateSource.GITHUB_API:
+            raise ValueError("source must be github_api")
+        _iso_z(self.observed_at)
+
+
+@dataclass(frozen=True)
+class ProbeRequest:
+    repository: str
+    review_mode: str
+    manual_requester: str | None = None
+    pull_request_number: int | None = None
+    organization: str | None = None
+    enterprise: str | None = None
+    cost_center: str | None = None
+    capability_evidence: CapabilityEvidence | None = None
+
+    def __post_init__(self) -> None:
+        require_repository(self.repository)
+        if self.review_mode not in {"manual", "automatic"}:
+            raise ValueError("review_mode must be manual or automatic")
+        if self.review_mode == "manual":
+            if not isinstance(self.manual_requester, str) or not self.manual_requester:
+                raise ValueError("manual mode requires manual_requester")
+        elif self.manual_requester is not None:
+            raise ValueError("automatic mode forbids manual_requester")
+        if self.review_mode == "automatic" and (
+            isinstance(self.pull_request_number, bool)
+            or not isinstance(self.pull_request_number, int)
+            or self.pull_request_number <= 0
+        ):
+            raise ValueError("automatic mode requires a positive pull_request_number")
+        if self.pull_request_number is not None and (
+            isinstance(self.pull_request_number, bool)
+            or not isinstance(self.pull_request_number, int)
+            or self.pull_request_number <= 0
+        ):
+            raise ValueError("pull_request_number must be a positive integer")
+        for field_name in ("manual_requester", "organization", "enterprise", "cost_center"):
+            value = getattr(self, field_name)
+            if value is not None and (
+                not isinstance(value, str)
+                or not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9_.-]*[A-Za-z0-9])?", value)
+            ):
+                raise ValueError(f"{field_name} must be a normalized identifier")
 
 
 @dataclass(frozen=True)
@@ -647,6 +939,36 @@ class DiffSourcePort(ABC):
         head_sha: str,
     ) -> DiffSnapshot:
         """Erhebt den vollständigen Merge-Base→Head-Diff aus lokalen Git-Objekten."""
+
+
+class CommandPort(ABC):
+    @abstractmethod
+    def run(self, argv: tuple[str, ...], timeout_seconds: float) -> CommandResult:
+        """Führt einen read-only Prozess mit geschlossenem argv- und Zeitlimitvertrag aus."""
+
+
+class StatusPort(ABC):
+    @abstractmethod
+    def fetch(self, timeout_seconds: float) -> StatusSnapshot:
+        """Liest den öffentlichen Providerzustand ohne Authentifizierungsdaten."""
+
+
+class ClockPort(ABC):
+    @abstractmethod
+    def now(self) -> datetime:
+        """Liefert einen timezone-aware Zeitpunkt für Evidenzbindungen."""
+
+
+class ProbePort(ABC):
+    @abstractmethod
+    def probe(self, request: ProbeRequest) -> ProbeReport:
+        """Erhebt die read-only Copilot-Verwendbarkeit für den gebundenen Kontext."""
+
+
+class PullRequestStatePort(ABC):
+    @abstractmethod
+    def load(self, repository: str, pull_request_number: int) -> PullRequestState:
+        """Lädt Base-Ref sowie vollständige Base-/Head-SHAs aus der GitHub-API."""
 
 
 @dataclass(frozen=True)

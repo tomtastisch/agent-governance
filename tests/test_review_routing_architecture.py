@@ -2,6 +2,7 @@
 """Architekturregeln für die importblinde Review-Routing-Laufzeit."""
 import ast
 from dataclasses import dataclass
+import inspect
 from pathlib import Path
 from typing import get_args, get_origin, get_type_hints
 import unittest
@@ -59,6 +60,7 @@ class ImportBoundaryTest(unittest.TestCase):
             "review_routing/policy.py",
             "review_routing/risk.py",
             "review_routing/adapters/git_cli.py",
+            "review_routing/adapters/github_gh.py",
             "review_routing/adapters/toml_config.py",
         ):
             with self.subTest(relative_path=relative_path):
@@ -114,6 +116,50 @@ class RegistryFailureTest(unittest.TestCase):
         self.assertIsInstance(registry.resolve(RiskClassifierPort), RiskClassifier)
         self.assertIsInstance(registry.resolve(PolicySourcePort), LocalGit)
         self.assertIsInstance(registry.resolve(DiffSourcePort), LocalGit)
+
+    def test_bootstrap_resolves_github_ports(self):
+        from review_routing.adapters.github_gh import (
+            GitHubGhProbe,
+            GitHubStatus,
+            SubprocessCommand,
+            SystemClock,
+        )
+        from review_routing.contracts import (
+            ClockPort,
+            CommandPort,
+            ProbePort,
+            PullRequestStatePort,
+            StatusPort,
+        )
+
+        registry = RuntimeRegistry.bootstrap(None)
+
+        self.assertIsInstance(registry.resolve(CommandPort), SubprocessCommand)
+        self.assertIsInstance(registry.resolve(StatusPort), GitHubStatus)
+        self.assertIsInstance(registry.resolve(ClockPort), SystemClock)
+        self.assertIsInstance(registry.resolve(ProbePort), GitHubGhProbe)
+        self.assertIsInstance(registry.resolve(PullRequestStatePort), GitHubGhProbe)
+
+    def test_github_port_signatures_are_closed(self):
+        from review_routing.contracts import (
+            ClockPort,
+            CommandPort,
+            ProbePort,
+            PullRequestStatePort,
+            StatusPort,
+        )
+
+        expected = {
+            CommandPort.run: ("self", "argv", "timeout_seconds"),
+            StatusPort.fetch: ("self", "timeout_seconds"),
+            ClockPort.now: ("self",),
+            ProbePort.probe: ("self", "request"),
+            PullRequestStatePort.load: ("self", "repository", "pull_request_number"),
+        }
+
+        for method, parameter_names in expected.items():
+            with self.subTest(method=method.__qualname__):
+                self.assertEqual(tuple(inspect.signature(method).parameters), parameter_names)
 
 
 if __name__ == "__main__":

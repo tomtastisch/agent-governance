@@ -1,0 +1,12 @@
+{
+  "components": [
+    {
+      "name": "API Requests",
+      "status": "operational"
+    },
+    {
+      "name": "Copilot",
+      "status": "operational"
+    }
+  ]
+}
