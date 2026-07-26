@@ -101,29 +101,50 @@ Diagnose; `evidence` dokumentiert alle Eingangssignale.
 `copilot_usable = true` darf nur entstehen, wenn alle für den konkreten Kontext erforderlichen
 Signale positiv und aktuell sind:
 
-1. Abrechnungskontext ist belastbar bestimmt.
-2. Usage-/Lizenzantwort ist syntaktisch und semantisch vollständig genug.
-3. Keine explizite Quoten- oder Budgetblockade liegt vor.
-4. Kein aktuelles Rate Limit oder Provider-Ausfall liegt vor.
-5. Repository und Benutzer sind für Copilot Code Review berechtigt beziehungsweise konfiguriert,
-   soweit dies über dokumentierte Schnittstellen prüfbar ist.
+1. Reviewmodus (`manual` oder `automatic`), Requester, PR-Autor und der daraus folgende
+   Billing-Principal sind belastbar bestimmt.
+2. Abrechnungskontext und Billing-Modell dieses Principals sind belastbar bestimmt.
+3. Usage-/Lizenzantwort ist syntaktisch und semantisch vollständig genug.
+4. Keine explizite Quoten- oder Budgetblockade liegt vor.
+5. Kein aktuelles Rate Limit oder Provider-Ausfall liegt vor.
+6. Es liegt eine zeitlich gültige positive Capability-Evidenz für Repository, Principal und
+   Reviewmodus vor.
 
 GitHub bietet nicht für jeden persönlichen Kontext einen read-only „Can review now“-Endpunkt.
-Die CLI muss diese Evidenzgrenze im JSON nennen. Der nach Aufhebung des Billing-Locks geplante
-reale Copilot-Review ist deshalb der abschließende Live-Positivnachweis, nicht Teil der Unit-Tests.
+Historische Usage ohne Blockade ist deshalb allein **keine** positive Capability-Evidenz. Zulässige
+positive Evidenz ist:
+
+- ein erfolgreich abgeschlossenes Copilot-Review für denselben Repository-/Principal-/
+  Reviewmodus-Kontext innerhalb der konfigurierten Gültigkeitsdauer; oder
+- explizite, datierte Operator-Evidenz einer GitHub-Einstellung, die Code Review für diesen
+  Kontext als nutzbar ausweist.
+
+Fehlt sie, bleibt die Diagnose `unknown` und `copilot_usable = false`. Der nach Aufhebung des
+Billing-Locks vom Nutzer ausdrücklich freizugebende einmalige Dispatch ist der Bootstrap- und
+Live-Positivnachweis. Er gehört nicht zum read-only Probe und nicht zu Unit-Tests. Sein Ergebnis
+kann anschließend als zeitlich begrenzte Capability-Evidenz verwendet werden.
 
 ### 3.4 Keine automatische Kontext-Erfindung
 
-Der Probe bestimmt den Kontext repo- und benutzerbezogen:
+Der Probe bestimmt den Kontext review- und principalbezogen:
 
-- persönlicher Kontext: User-Usage-Endpunkt;
-- Organisationskontext: Organisation-Usage und, bei ausreichenden Rechten, Copilot-Sitzzuordnung;
+- manueller Review: anfordernder Benutzer ist der zunächst zu prüfende Billing-Principal;
+- automatischer Review: PR-Autor ist der zunächst zu prüfende Billing-Principal;
+- persönlicher Kontext: User-Usage-Endpunkt des Principals;
+- Organisationskontext: Organisation-Usage und, bei ausreichenden Rechten, Sitz- oder
+  Policy-Zuordnung;
 - Enterprise-/Cost-Center-Kontext: nur bei explizit konfigurierter oder API-belegter Zuordnung;
 - Legacy-Kontext: offizieller Premium-Request-Endpunkt als Kompatibilitätspfad.
 
 Eine Organisationsmitgliedschaft allein beweist keine von dieser Organisation bezahlte
-Copilot-Lizenz. Fehlen die Rechte zur Sitz- oder Billing-Prüfung, lautet die Diagnose
-`permission_denied` beziehungsweise der Kontext `unknown`; die Route bleibt fail-closed.
+Copilot-Lizenz. Für Mitglieder ohne eigene Copilot-Sitzzuordnung kann Code Review je nach
+Organisations-/Enterprise-Policy trotzdem der Organisation, dem Enterprise oder einem Cost Center
+zugerechnet werden. Ist mehr als ein Principal möglich oder fehlen die Rechte zur Sitz-, Policy-
+oder Billing-Prüfung, lautet der Principal `unknown`; die Route bleibt fail-closed.
+
+Der typisierte `BillingPrincipal` enthält `kind`, `identifier`, `review_mode`, `requester`,
+`pull_request_author`, `source`, `observed_at` und `expires_at`. Eine implizite Ableitung allein aus
+dem Repository-Eigentümer ist unzulässig.
 
 ### 3.5 Probe, Route und Dispatch bleiben getrennt
 
@@ -171,8 +192,43 @@ Die Risikoklasse ist das Maximum aus:
 Manuelle Marker dürfen Risiko erhöhen, nie automatisch senken. Fehlen erforderliche Diff-Daten
 oder ist die Klassifikation widersprüchlich, gilt `critical`, nicht `low`.
 
+Security-Relevanz ist zusätzlich ein eigenes boolesches Ergebnis
+`security_relevant = true | false`. Jeder kritische Security-/Auth-/Secret-/Krypto-/
+Protokollmarker setzt es auf `true`; ein expliziter Vorgangsmarker kann es nur einschalten, nie
+ausschalten. `security_relevant = true` erzwingt SEC unabhängig von der numerischen Risikoklasse.
+Damit kann eine kleine, aber sicherheitskritische Änderung nicht als bloßes `high` ohne SEC laufen.
+
 Die konkreten Globs und Schwellen stehen ausschließlich in `core/review-routing.toml`. Kern,
 Adapter, Templates und Python-Code duplizieren die Werte nicht.
+
+Die Risikoeingabe ist ein geschlossenes `DiffSnapshot`-Schema Version 1:
+
+```text
+schema_version
+repository
+base_sha
+head_sha
+files[]:
+  path
+  status = added | modified | deleted | renamed | copied
+  additions
+  deletions
+  binary
+explicit_risk          optional, kann nur erhöhen
+security_relevant     optional, true kann nur erhöhen
+risk_reasons[]         optional, reine Evidenztexte ohne Steuerwirkung
+```
+
+Pflichtfelder sind Schema, Repository, beide SHAs und für jede Datei alle aufgeführten
+Dateifelder. Pfade sind normalisierte relative POSIX-Pfade in Unicode-NFC: kein führender Slash,
+kein `.`/`..`, kein Backslash, kein NUL und keine doppelte Darstellung desselben Pfads.
+`additions`/`deletions` sind nichtnegative Ganzzahlen; Binärdateien tragen jeweils `0`.
+
+Abhängigkeits-/Blast-Radius-Daten sind nur dann erforderlich, wenn ein konfigurierter Pfadmarker
+sie für diese Dateiklasse verlangt. Fehlen **erforderliche** Felder, wird der Snapshot als
+ungültig abgelehnt; die aufrufende Policy behandelt ihn fail-closed wie `critical`. Optionale
+Felder werden nicht als heimliches `false` interpretiert. Issue-/PR-Freitext ist keine
+vertrauenswürdige Risikoeingabe.
 
 ### 4.3 Reviewer-Routen
 
@@ -189,6 +245,10 @@ blocker
 `local_checks` ist nur für einen risikoarmen Checkpoint zulässig und niemals eine Merge-Evidenz.
 Jede andere erfolgreiche Route nennt die erforderliche unabhängige Reviewer-Menge.
 
+Die folgenden Tabellen sind eine **nicht normative Designansicht**. Nach der Implementierung ist
+`core/review-routing.toml` die einzige normative Matrix; jede menschenlesbare Darstellung wird aus
+ihr generiert oder ausdrücklich als historischer Entscheidungsstand gekennzeichnet.
+
 ## 5. Entscheidungsmatrix
 
 Deterministische lokale Tests und statische Prüfungen laufen in jedem Fall.
@@ -197,17 +257,17 @@ Deterministische lokale Tests und statische Prüfungen laufen in jedem Fall.
 
 | Risiko | Copilot nutzbar | Route |
 |---|---:|---|
-| `low` | beliebig | `local_checks` |
+| `low` | `true` | `local_checks` |
 | `medium` | `true` | `copilot` |
 | `high` | `true` | `copilot_qa` |
 | `critical` | `true` | `copilot_qa_sec` |
-| `medium` oder `high` | `false` | `qa` |
+| `low`, `medium` oder `high` | `false` | `qa` |
 | `critical` | `false` | `qa_sec` |
 
 Damit entfällt die heutige pauschale QA nach jedem Cluster. Bei nutzbarem Copilot entscheidet das
 Risiko, ob QA zusätzlich erforderlich ist. Bei nicht nutzbarem Copilot ist QA der einzige
-Reviewpfad. Ein risikoarmer Checkpoint erzeugt keinen LLM-Review, weil die unabhängige finale
-Exact-Head-Prüfung davon unberührt bleibt.
+Reviewpfad. `local_checks` ist ausschließlich bei `low` **und** positiv belegtem Copilot-Kontext
+zulässig; bei `false/unknown` verlangt auch ein kleiner Checkpoint mindestens QA.
 
 ### 5.2 Finales Exact-Head-Review
 
@@ -221,6 +281,13 @@ Exact-Head-Prüfung davon unberührt bleibt.
 
 Ist ein erforderlicher QA- oder SEC-Kontext nicht verfügbar, wird aus der vorgesehenen Route
 `blocker`. Es gibt keinen Merge mit reduzierter Reviewer-Menge.
+
+Für beide Tabellen gilt als überlagernde Invariante:
+
+- `security_relevant = true` ergänzt SEC;
+- nachweislich ausgeschlossene oder nicht verifizierbare Copilot-Dateiabdeckung ergänzt QA;
+- ein degradierter oder unbekannter Copilot-Reviewmodus ergänzt QA;
+- bei `copilot_usable = false` wird Copilot vollständig entfernt, niemals erneut versucht.
 
 ### 5.3 Korrekturrunde
 
@@ -287,10 +354,82 @@ Governance-Vertrag nur, wenn ein deterministischer Validator mindestens belegt:
 - kein Fehler-/Nicht-prüfbar-Ergebnis;
 - kein ungelöstes Copilot-Finding;
 - keine neuere Copilot-Anforderung ohne abgeschlossenes Review.
+- Reviewmodus `full` statt `degraded`/`unknown`;
+- vollständige Zuordnung aller Diff-Dateien zu `reviewed`, `excluded` oder `unverified`;
+- keine Datei in `excluded` oder `unverified`, sofern die Route nicht zusätzlich QA verlangt;
+- bei zusätzlich erforderlicher QA: QA deckt alle ausgeschlossenen/nicht verifizierbaren Dateien
+  und ihre direkten Auswirkungen auf demselben Exact Head ab.
 
 Der Validator bezeichnet dies als `valid_review_evidence`, nie als GitHub-`APPROVED`.
 Serverseitige Erzwingung als Required Check ist Abhängigkeit von Issue #3 und nicht durch ein
 lokales positives Ergebnis ersetzt.
+
+GitHub schließt bestimmte Dateitypen von Copilot Code Review aus und kann bei nicht verfügbaren
+Actions-Fähigkeiten degradiert prüfen. `COMMENTED + Exact Head + null Findings` beweist deshalb
+allein keine vollständige Abdeckung. Kann der Validator die Abdeckung oder den Modus nicht positiv
+belegen, wird Copilot-Evidenz nur als teilweise gewertet und die erforderliche Route um QA
+erweitert. Fehlt anschließend die QA-Evidenz, bleibt das Gate rot.
+
+Der Evidenzvertrag enthält pro Diff-Datei:
+
+```text
+path
+status
+coverage = reviewed | excluded | unverified
+coverage_source
+reviewer
+```
+
+sowie `copilot_review_mode = full | degraded | unknown`. Freitextkommentare werden nicht als
+Abdeckungsbeweis interpretiert.
+
+### 7.3 Stabiler Gate-Vertrag
+
+`validate` verarbeitet einen vollständigen `GateSnapshot`:
+
+```text
+repository
+pull_request_number
+base_sha
+head_sha
+route_decision
+diff_files
+required_check_names
+check_runs
+review_requests
+reviews
+review_file_coverage
+threads
+observed_at
+```
+
+Seine Ausgabe ist ein stabiles, publizierbares `GateResult`:
+
+```text
+check_name = agent-governance/review-gate
+conclusion = success | failure
+repository
+pull_request_number
+base_sha
+head_sha
+policy_digest
+evidence_digest
+required_reviewers
+validated_reviewers
+unresolved_thread_count
+reasons
+observed_at
+```
+
+Nur `success` ist positiv; `neutral`, `skipped`, `cancelled`, fehlend und unbekannt werden nicht
+erzeugt beziehungsweise fail-closed als `failure` abgebildet. `policy_digest` bindet das Ergebnis
+an die konkrete TOML-Policy, `evidence_digest` an den kanonisch serialisierten Snapshot.
+
+Der read-only Lieferumfang gibt dieses Ergebnis nur als JSON aus. Ein typisierter
+`GatePublisherPort` legt den späteren Übergabevertrag fest, besitzt hier aber bewusst keine
+schreibende Implementierung. Eine GitHub-App beziehungsweise ein anderer Publisher aus Issue #3
+muss den stabilen Checknamen und exakt dieselbe Provenienz verwenden. Das lokale Ergebnis wird
+niemals als bereits veröffentlichter Required Check bezeichnet.
 
 ## 8. Read-only GitHub-Adapter
 
@@ -320,7 +459,18 @@ Tokens, Headerwerte, Secret-Fragmente und Tokenlängen werden weder geloggt noch
 ### 9.1 Befehle
 
 ```text
-python3 -m review_routing probe --repo OWNER/REPO --json
+python3 -m review_routing probe \
+  --repo OWNER/REPO \
+  --review-mode manual \
+  --requester USER \
+  --capability-evidence CAPABILITY.json \
+  --json
+python3 -m review_routing probe \
+  --repo OWNER/REPO \
+  --review-mode automatic \
+  --pull-request NUMBER \
+  --capability-evidence CAPABILITY.json \
+  --json
 python3 -m review_routing route \
   --probe-file PROBE.json \
   --purpose final_exact_head \
@@ -328,10 +478,26 @@ python3 -m review_routing route \
   --head-sha HEAD \
   --diff-file DIFF.json \
   --json
+python3 -m review_routing validate \
+  --route-file ROUTE.json \
+  --evidence-file EVIDENCE.json \
+  --json
+python3 -m review_routing validate \
+  --route-file ROUTE.json \
+  --repo OWNER/REPO \
+  --pull-request NUMBER \
+  --json
+python3 -m review_routing output-policy --json
 ```
 
-Der Composition Root instanziiert den GitHub-Adapter. Policy und Risikoklassifikation kennen
-weder `gh` noch HTTP.
+Bei `manual` ist `--requester` Pflicht; bei `automatic` wird der PR-Autor read-only aus dem
+angegebenen PR ermittelt. Eine Capability-Datei ist ein versioniertes, ablaufendes
+Evidenzartefakt, keine freie Behauptung. Fehlt sie oder passt Principal/Repository/Reviewmodus
+nicht, bleibt `copilot_usable = false`.
+
+Der Composition Root löst Ports ausschließlich über die generische Runtime-Registry auf. Policy
+und Risikoklassifikation kennen weder `gh` noch HTTP; `__main__.py` importiert keine
+Adapterimplementierung.
 
 ### 9.2 Probe-JSON
 
@@ -340,6 +506,16 @@ weder `gh` noch HTTP.
   "schema_version": 1,
   "observed_at": "2026-07-26T00:00:00Z",
   "repository": "owner/repository",
+  "review_mode": "manual",
+  "requester": "requester",
+  "pull_request_author": null,
+  "billing_principal": {
+    "kind": "personal",
+    "identifier": "requester",
+    "source": "github_api",
+    "observed_at": "2026-07-26T00:00:00Z",
+    "expires_at": "2026-07-26T00:15:00Z"
+  },
   "billing_context": {
     "kind": "personal",
     "identity": "redacted-or-non-secret-name",
@@ -359,6 +535,10 @@ weder `gh` noch HTTP.
   },
   "routing_status": "budget_blocked",
   "copilot_usable": false,
+  "capability_evidence": {
+    "status": "absent",
+    "expires_at": null
+  },
   "evidence": [],
   "warnings": []
 }
@@ -377,7 +557,8 @@ sind. Das Feld beeinflusst `copilot_usable` und die Route nicht.
   "head_sha": "HEAD",
   "risk": {
     "level": "high",
-    "reasons": ["security_path"]
+    "security_relevant": false,
+    "reasons": ["high_changed_lines"]
   },
   "copilot_usable": true,
   "required_reviewers": ["copilot", "qa"],
@@ -420,6 +601,10 @@ Route:
 | `31` | Policy, Probe oder Eingabe ungültig |
 | `32` | Exact-Head-Evidenz fehlt oder ist veraltet |
 
+`validate` ist die read-only Brücke zwischen gewählter Route und Merge-Gate-Evidenz. Der Befehl
+vergleicht erforderliche Reviewer, CI-Checks, Threads und SHAs, schreibt aber keinen Check-Run und
+erteilt keine GitHub-Freigabe. `output-policy` liest ausschließlich `core/interaction.toml`.
+
 ## 10. Architektur und SSOT
 
 Vorgesehene Struktur:
@@ -432,12 +617,14 @@ review_routing/
   __init__.py
   __main__.py
   contracts.py
+  registry.py
   policy.py
   risk.py
-  ports.py
+  evidence.py
   adapters/
     __init__.py
     github_gh.py
+    toml_config.py
 tests/
   fixtures/review-routing/
   test_review_routing_contracts.py
@@ -447,17 +634,36 @@ tests/
   test_review_routing_cli.py
 ```
 
-- `contracts.py`: Enums und unveränderliche Datenträger.
-- `ports.py`: Protokolle für Usage-/Availability-/Review-Evidenzquellen.
+- `contracts.py`: **einziges Vertragsmodul** für sämtliche Ports, Domänen-, Konfigurations-,
+  Evidenz- und Fehlertypen; ohne Import aus einem anderen Projektmodul.
+- `registry.py`: generische Laufzeitregistrierung und Factory-Auflösung; kennt nur das
+  Vertragsmodul sowie per SSOT geladene Modulnamen.
 - `policy.py`: reine Routingfunktion.
 - `risk.py`: reine Risikoklassifikation aus TOML und Diff-Metadaten.
+- `evidence.py`: reine Exact-Head-/Reviewer-/Check-/Thread-Validierung.
 - `github_gh.py`: einziger Ort für GitHub-Endpunkte, `gh` und HTTP-Klassifikation.
-- `__main__.py`: Composition Root und CLI.
+- `toml_config.py`: strikte TOML-Implementierung des Konfigurationsports.
+- `__main__.py`: Composition Root und CLI; importiert keine Adapterimplementierung.
 - `core/review-routing.toml`: einzige Quelle für Matrix, Schwellen und Risikomarker.
 - `core/interaction.toml`: einzige Quelle für den Zwischenstatus-Schalter.
 
 Keine Routingwerte werden in Kernprosa, Adaptern oder Templates kopiert. Diese Stellen benennen
 nur Invarianten und verweisen auf die Policy.
+
+`core/review-routing.toml` enthält unter `[runtime]` die geschlossene Liste registrierbarer
+Adaptermodule und die Priorität je Port. `registry.py` lädt sie über `importlib`; jedes Adaptermodul
+meldet eine Factory mit deklarierten benötigten/angebotenen Ports an. Die Composition Root ruft nur
+die generische Registry auf und nennt `GitHubGhProbe` oder `TomlConfig` nirgends.
+
+Ein AST-basierter Architekturtest erzwingt:
+
+- außer `contracts.py` importiert kein Fach-/Adaptermodul ein anderes Fach-/Adaptermodul;
+- `policy.py`, `risk.py`, `evidence.py` und Adapter importieren projektintern ausschließlich
+  `review_routing.contracts`;
+- `__main__.py` kennt nur `contracts` und `registry`, keine Adapter;
+- alle Factory-Module stammen aus der TOML-SSOT;
+- fehlende, konkurrierende oder zyklisch abhängige Provider werden typisiert und fail-closed
+  gemeldet.
 
 Der bestehende Harness-Port `review.primary` bleibt zunächst erhalten. Neue Harness-Bindings
 `review.fallback`, `review.usage_probe`, `review.availability_probe` oder
@@ -511,6 +717,30 @@ Damit der Wert vor der ersten freiwilligen Zwischenmeldung bekannt ist:
 - Install-Prompt und Template-Zuordnung übernehmen die zusätzliche Datei;
 - Drift-Tests erzwingen, dass alle Einstiegsvorlagen dieselbe SSOT laden.
 
+### 11.1 Harness-Fähigkeiten und Abnahme
+
+| Harness | Ladepfad | Durchsetzung | Ehrliche Zusage |
+|---|---|---|---|
+| Claude Code | `@`-Import der TOML plus Adapterregel | promptbasiert/best-effort | freiwillige Meldungen unterdrücken; native/systemische Ausgaben bleiben möglich |
+| Codex | verpflichtende erste Leseaktion plus Adapterregel | promptbasiert/best-effort | freiwillige Meldungen unterdrücken; App-/System-Updates bleiben möglich |
+| MCP-Orchestrator | explizite Übergabe des validierten Werts an den gestarteten Agenten | abhängig vom Zielharness | Fähigkeit muss gemeldet werden; unbekannt ist nicht „greift“ |
+| anderer Harness | neuer Adapter nach Port-Vertrag | zunächst unbekannt | bis zum positiven Harness-Test nur advisory |
+
+Messbare Akzeptanzfälle je unterstütztem Harness:
+
+1. `false`, triviale toolgestützte Aufgabe ohne Blocker: keine freiwillige Fortschrittsmeldung,
+   genau ein Abschluss.
+2. `false`, fehlende notwendige Entscheidung: genau die erforderliche Rückfrage bleibt sichtbar.
+3. `false`, Fehler/Sicherheitsbefund: Befund und Abschluss bleiben sichtbar.
+4. `true`, gleiche triviale Aufgabe: normales Harness-Zwischenverhalten ist zulässig.
+5. ungültige/fehlende TOML: fail-closed kein freiwilliger Status; Konfigurationsfehler wird an einer
+   verpflichtenden Ausgabegrenze gemeldet.
+
+Parser, Default, Template-Wiring und ein simulierter Message-Policy-Entscheider werden automatisiert
+getestet. Die echten Claude-/Codex-Fälle sind nach Installation als Harness-Akzeptanztests zu
+protokollieren. Bis dahin lautet der Status `best_effort`, nicht „vollständig nativ erzwungen“.
+Issue #4 und die PR-Beschreibung verwenden dieselbe Abgrenzung.
+
 ## 12. Teststrategie
 
 Alle GitHub-Antworten werden als lokale Fixtures oder Fake-Port-Antworten bereitgestellt. Kein Test
@@ -531,21 +761,33 @@ Mindestens:
 11. Unvollständige Antwort → `unknown`, Exitcode `24`.
 12. Unbekannter Abrechnungskontext → `unknown`, Exitcode `23`.
 13. Organisationsmitgliedschaft ohne Sitzbeleg erzeugt keinen Organisationskontext.
-14. Checkpoint-Matrix für alle vier Risiken und beide Verwendbarkeitswerte.
-15. Final-Matrix für alle vier Risiken und beide Verwendbarkeitswerte.
-16. Korrekturrunde behält erforderliche Reviewer und ersetzt unbrauchbaren Copilot durch QA.
-17. Kein Copilot-Retry bei `false`.
-18. Fehlender verpflichtender QA-/SEC-Kontext → `blocker`.
-19. QA-Kosten können verpflichtende Reviewer nicht entfernen.
-20. Exact-Head-Mismatch → keine gültige Evidenz, Exitcode `32`.
-21. Copilot-`COMMENTED` mit korrektem Head und null Findings → gültige technische Evidenz.
-22. Copilot-`COMMENTED` auf altem Head oder mit offenem Finding → ungültig.
-23. Kein Mergepfad ohne vollständige Exact-Head-Reviewer-Menge.
-24. Secret-/Header-/Tokenwerte erscheinen nicht in JSON oder Fehlermeldungen.
-25. `intermediate_status = false` ist der Repository-Default.
-26. Ungültiger/nicht-boolescher Ausgabewert fällt fail-closed.
-27. Kern, Policy, Adapter, Templates, README und Installationsanleitung bleiben driftfrei.
-28. Bestehende 25 Governance-Tests bleiben grün.
+14. Manuell versus automatisch bestimmt Requester beziehungsweise PR-Autor als Principal.
+15. Mehrdeutiger oder nicht belegbarer Billing-Principal → `unknown`.
+16. Abgelaufene, fremde oder fehlende positive Capability-Evidenz → nicht nutzbar.
+17. Gültige Capability-Evidenz mit passendem Principal/Repo/Modus → nutzbar.
+18. Checkpoint-Matrix für alle vier Risiken und beide Verwendbarkeitswerte; `false` verlangt
+    ausnahmslos QA.
+19. Final-Matrix für alle vier Risiken und beide Verwendbarkeitswerte.
+20. Security-Relevanz erzwingt SEC unabhängig von Diff-Größe/Risikoklasse.
+21. Ausgeschlossene, unverified oder degradierte Copilot-Abdeckung erzwingt QA.
+22. Korrekturrunde behält erforderliche Reviewer und ersetzt unbrauchbaren Copilot durch QA.
+23. Kein Copilot-Retry bei `false`.
+24. Fehlender verpflichtender QA-/SEC-Kontext → `blocker`.
+25. QA-Kosten können verpflichtende Reviewer nicht entfernen.
+26. Exact-Head-Mismatch → keine gültige Evidenz, Exitcode `32`.
+27. Copilot-`COMMENTED` mit korrektem Head, voller Abdeckung und null Findings → gültige
+    technische Evidenz.
+28. Copilot-`COMMENTED` auf altem Head, mit offenem Finding oder ohne Abdeckungsbeleg → ungültig.
+29. GateResult enthält stabilen Checknamen, Policy-/Evidenzdigest und vollständige Provenienz.
+30. Kein Mergepfad ohne vollständige Exact-Head-Reviewer-Menge.
+31. Versioniertes Diff-Schema, Pfadnormalisierung und fehlende Pflichtfelder fail-closed.
+32. Registry löst Provider aus SSOT auf; Composition Root bleibt importblind.
+33. Secret-/Header-/Tokenwerte erscheinen nicht in JSON oder Fehlermeldungen.
+34. `intermediate_status = false` ist der Repository-Default.
+35. Ungültiger/nicht-boolescher Ausgabewert fällt fail-closed.
+36. Simulierter Message-Policy-Entscheider erhält Rückfragen/Blocker/Fehler/Abschluss.
+37. Kern, Policy, Adapter, Templates, README und Installationsanleitung bleiben driftfrei.
+38. Bestehende 25 Governance-Tests bleiben grün.
 
 ## 13. Umsetzungsschnitt
 
@@ -591,6 +833,15 @@ Der PR kann die Governance erst dann als für diesen Funktionsumfang einsatzbere
 Issue #3 abhängig: Ohne technisch erzwungenen Required Check beziehungsweise entschiedenen
 CI-Unverfügbarkeitspfad ist das fail-closed Merge-Gate weiterhin nur organisatorisch, nicht
 serverseitig erzwungen. Dieser PR darf diese externe Grenze nicht als erledigt darstellen.
+
+Die unabhängige ST-Bereitschaftsprüfung hat außerdem zwei getrennte Bestandsdefekte bestätigt:
+
+- Issue #6: CI-Testumfang, Pflichtstages und Nachweisartefakte erfüllen Kern §11/§13 noch nicht.
+- Issue #7: SemVer-Quelle, CHANGELOG, Tags/Releases erfüllen Kern §12 noch nicht.
+
+Beide bleiben außerhalb von Issue #4/PR #5. Dieser PR kann seinen eigenen Funktionsumfang
+vollständig liefern, darf aber die gesamte Agent-Governance erst nach Abschluss von #3, #6 und #7
+als vollumfänglich einsatzbereit bezeichnen.
 
 ## 16. Verworfene Alternativen
 
