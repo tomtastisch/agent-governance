@@ -210,6 +210,7 @@ head_sha
 files[]:
   path
   status = added | modified | deleted | renamed | copied
+  previous_path          Pflicht bei renamed/copied, sonst verboten
   additions
   deletions
   binary
@@ -222,6 +223,8 @@ Pflichtfelder sind Schema, Repository, beide SHAs und für jede Datei alle aufge
 Dateifelder. Pfade sind normalisierte relative POSIX-Pfade in Unicode-NFC: kein führender Slash,
 kein `.`/`..`, kein Backslash, kein NUL und keine doppelte Darstellung desselben Pfads.
 `additions`/`deletions` sind nichtnegative Ganzzahlen; Binärdateien tragen jeweils `0`.
+Bei `renamed` und `copied` werden sowohl `previous_path` als auch `path` gegen alle Pfadmarker
+klassifiziert; das Maximum beider Pfade gilt.
 
 Abhängigkeits- und Blast-Radius-Metadaten gehören nicht zu Schema Version 1 und dürfen nicht
 implizit erwartet werden. Sollen sie später die Route steuern, erfordert dies eine neue
@@ -234,6 +237,20 @@ Jeder Pfadmarker in `core/review-routing.toml` ist ein geschlossenes Objekt aus 
 und `security_relevant`. Ein Marker ohne eines dieser Felder, mit einem unbekannten Feld oder
 einem ungültigen Level macht die Policy ungültig. Damit sind Risikostufe und SEC-Auslösung
 explizit, ohne im Klassifikator aus Dateinamen abgeleitet zu werden.
+
+Ein geschlossenes Schema beweist noch keine Vollständigkeit. Deshalb akzeptiert `route` keine frei
+gelieferte Diff-Datei als autoritative Eingabe. Ein `DiffSourcePort` liest den vollständigen Diff
+read-only aus dem lokalen Git-Objektbestand für die beiden vollständigen Commit-SHAs. Der Adapter
+prüft, dass beide Objekte Commits sind, erhebt Status, alten und neuen Pfad, Binärkennzeichen sowie
+Zeilenzahlen und verwirft nicht auflösbare oder widersprüchliche Ergebnisse. Tests verwenden einen
+Fake-Port; reale Tests lösen keine GitHub-Anfrage aus.
+
+Der kanonische SHA-256-`diff_digest` des vollständigen `DiffSnapshot` wird in jede
+`RouteDecision` übernommen. `validate` erhebt denselben Diff über den vertrauenswürdigen Port
+erneut und nutzt injizierte `RiskClassifierPort`- und `RoutingPolicyPort`-Verträge zur erneuten
+Klassifikation und Entscheidung. Es vergleicht Repository, SHAs, Digest, Risiko,
+`security_relevant`, Route und Reviewer-Menge. Eine ausgelassene Datei, ein versteckter alter
+Rename-/Copy-Pfad oder eine abweichende Klassifikation macht das Gate ungültig.
 
 ### 4.3 Reviewer-Routen
 
@@ -397,7 +414,6 @@ repository
 pull_request_number
 base_sha
 head_sha
-diff_files
 check_runs
 review_requests
 reviews
@@ -406,8 +422,11 @@ threads
 observed_at
 ```
 
-Die Namen und erwarteten Quellen aller Pflichtchecks stammen ausschließlich aus der geladenen,
-vertrauenswürdigen `core/review-routing.toml`-Policy. Sie sind kein Feld externer Evidenz.
+Die Namen und erwarteten Quellen aller Pflichtchecks stammen ausschließlich aus der geladenen
+Basispolicy `core/review-routing.toml` am vollständigen `base_sha`. Für ein gate-fähiges Ergebnis
+wird dieses SHA zusammen mit Base-Ref und Head-SHA read-only über einen `PullRequestStatePort` aus
+der GitHub-PR-Metadatenquelle erhoben; der Aufrufer darf es nicht frei wählen. Sie sind kein Feld
+externer Evidenz und werden niemals aus dem PR-Head geladen.
 Jeder Policy-Eintrag bindet `name` und `source_app_slug`; ein gleichnamiger Check aus einer anderen
 Quelle erfüllt die Pflicht nicht. Der Validator lehnt eine leere Pflichtcheckliste sowie unbekannte
 oder doppelte Einträge bereits beim Laden der Policy ab.
@@ -421,7 +440,12 @@ repository
 pull_request_number
 base_sha
 head_sha
+base_ref
+pr_state_source
+policy_source_ref
+policy_source_path
 policy_digest
+diff_digest
 evidence_digest
 required_reviewers
 validated_reviewers
@@ -435,10 +459,28 @@ erzeugt beziehungsweise fail-closed als `failure` abgebildet. `policy_digest` bi
 an die konkrete TOML-Policy, `evidence_digest` an den kanonisch serialisierten Snapshot.
 
 `RoutingConfig.policy_digest` ist der SHA-256-Digest der kanonisch serialisierten, vollständig
-validierten Policy. Jede `RouteDecision` übernimmt diesen Digest. `validate` lädt dieselbe Policy
-erneut, prüft `RouteDecision.policy_digest == RoutingConfig.policy_digest` und verwirft
-abweichende oder fehlende Digests. Dadurch kann weder ein Route-JSON noch ein Evidence-JSON die
-verwendete Policy austauschen oder Pflichtchecks entfernen.
+validierten Policy. Für gate-fähige Routen lädt ein `PolicySourcePort` diese Policy read-only mit
+`git show <api-erhobenes-base_sha>:core/review-routing.toml`; Arbeitsbaum, frei übergebene SHAs
+und PR-Head sind keine Vertrauensquelle. Jede `RouteDecision` übernimmt Digest, vollständigen
+Source-Commit, Base-Ref, PR-State-Quelle und Pfad.
+`validate` lädt dieselbe Basispolicy erneut und verwirft abweichende oder fehlende Provenienz.
+Dadurch kann weder der PR selbst noch ein Route-/Evidence-JSON Pflichtchecks, Quellen oder
+Routingregeln abschwächen.
+
+Ändert ein PR die Policy, bleibt für sein Gate die Basispolicy maßgeblich; die Kandidatenpolicy
+wird zusätzlich streng geparst und getestet, aber erst nach Merge zur Basispolicy eines
+Folge-PRs. Für den einmaligen Bootstrap dieses PRs existiert am Base-SHA noch keine Policy.
+Deshalb darf das neue Werkzeug für PR #5 selbst keinen positiven publizierbaren `GateResult`
+behaupten und liefert `trusted_base_policy_missing`. Die Bootstrap-Freigabe erfolgt nach dem
+bisherigen Kernvertrag durch unabhängige Exact-Head-Reviews und die explizite Mergeentscheidung
+des Nutzers. Erst ein späterer PR kann den neuen Gate-Vertrag vollständig gegen eine geschützte
+Basispolicy ausführen.
+
+Solange Issue #3 Base-Branch-Schutz, erwarteten Base-Ref und Publisher-App noch nicht technisch
+erzwingt, ist auch ein API-erhobener Base-SHA nur lokale Validierungsevidenz, kein veröffentlichter
+Required Check. Der spätere Publisher muss Base-Ref und Protection/Ruleset gegen seine
+außerhalb des PR-Heads verwaltete App-Konfiguration prüfen. Ein Offline-Aufruf mit expliziten SHAs
+ist ausschließlich diagnostisch und trägt `gate_eligible = false`.
 
 `RouteDecision` wird dem Validator separat übergeben; der externe `GateSnapshot` enthält keine
 zweite, potenziell abweichende Kopie der Routingentscheidung.
@@ -505,19 +547,21 @@ python3 -m review_routing probe \
   --json
 python3 -m review_routing route \
   --probe-file PROBE.json \
+  --repo OWNER/REPO \
+  --pull-request NUMBER \
   --purpose final_exact_head \
-  --base-sha BASE \
-  --head-sha HEAD \
-  --diff-file DIFF.json \
+  --repo-path /absolute/path/to/checkout \
   --json
 python3 -m review_routing validate \
   --route-file ROUTE.json \
   --evidence-file EVIDENCE.json \
+  --repo-path /absolute/path/to/checkout \
   --json
 python3 -m review_routing validate \
   --route-file ROUTE.json \
   --repo OWNER/REPO \
   --pull-request NUMBER \
+  --repo-path /absolute/path/to/checkout \
   --json
 python3 -m review_routing output-policy --json
 ```
@@ -585,6 +629,8 @@ sind. Das Feld beeinflusst `copilot_usable` und die Route nicht.
 {
   "schema_version": 1,
   "purpose": "final_exact_head",
+  "pull_request_number": 5,
+  "base_ref": "main",
   "base_sha": "BASE",
   "head_sha": "HEAD",
   "risk": {
@@ -595,7 +641,11 @@ sind. Das Feld beeinflusst `copilot_usable` und die Route nicht.
   "copilot_usable": true,
   "required_reviewers": ["copilot", "qa"],
   "route": "copilot_qa",
+  "policy_source_ref": "BASE",
+  "policy_source_path": "core/review-routing.toml",
   "policy_digest": "sha256:...",
+  "diff_digest": "sha256:...",
+  "gate_eligible": true,
   "merge_evidence_required": true,
   "dispatch_permitted": false
 }
@@ -631,11 +681,12 @@ Route:
 |---:|---|
 | `0` | Deterministische Route gewählt |
 | `30` | Erforderlicher unabhängiger Reviewer nicht verfügbar (`blocker`) |
-| `31` | Policy, Probe oder Eingabe ungültig |
+| `31` | Policy, Probe, Diffquelle oder Eingabe ungültig; schließt fehlende Basispolicy ein |
 | `32` | Exact-Head-Evidenz fehlt oder ist veraltet |
 
 `validate` ist die read-only Brücke zwischen gewählter Route und Merge-Gate-Evidenz. Der Befehl
-vergleicht erforderliche Reviewer, CI-Checks, Threads und SHAs, schreibt aber keinen Check-Run und
+lädt die Policy vom Base-Commit, erhebt und klassifiziert den Git-Diff erneut, vergleicht
+erforderliche Reviewer, CI-Checks, Threads, SHAs und Digests, schreibt aber keinen Check-Run und
 erteilt keine GitHub-Freigabe. `output-policy` liest ausschließlich `core/interaction.toml`.
 
 ## 10. Architektur und SSOT
@@ -656,6 +707,7 @@ review_routing/
   evidence.py
   adapters/
     __init__.py
+    git_cli.py
     github_gh.py
     toml_config.py
 tests/
@@ -674,11 +726,17 @@ tests/
 - `policy.py`: reine Routingfunktion.
 - `risk.py`: reine Risikoklassifikation aus TOML und Diff-Metadaten.
 - `evidence.py`: reine Exact-Head-/Reviewer-/Check-/Thread-Validierung.
+- `git_cli.py`: vollständige read-only Diff- und Policy-Erhebung aus Commitobjekten.
 - `github_gh.py`: einziger Ort für GitHub-Endpunkte, `gh` und HTTP-Klassifikation.
 - `toml_config.py`: strikte TOML-Implementierung des Konfigurationsports.
 - `__main__.py`: Composition Root und CLI; importiert keine Adapterimplementierung.
 - `core/review-routing.toml`: einzige Quelle für Matrix, Schwellen und Risikomarker.
 - `core/interaction.toml`: einzige Quelle für den Zwischenstatus-Schalter.
+
+`RiskClassifierPort` und `RoutingPolicyPort` liegen wie alle anderen Ports in `contracts.py`.
+`evidence.py` importiert weder `risk.py` noch `policy.py`, sondern erhält beide Implementierungen
+injiziert. Damit bleibt die erneute Gate-Klassifikation real, ohne die Importblindheit der
+Architektur zu brechen.
 
 Keine Routingwerte werden in Kernprosa, Adaptern oder Templates kopiert. Diese Stellen benennen
 nur Invarianten und verweisen auf die Policy.
@@ -811,9 +869,11 @@ Mindestens:
 27. Copilot-`COMMENTED` mit korrektem Head, voller Abdeckung und null Findings → gültige
     technische Evidenz.
 28. Copilot-`COMMENTED` auf altem Head, mit offenem Finding oder ohne Abdeckungsbeleg → ungültig.
-29. GateResult enthält stabilen Checknamen, Policy-/Evidenzdigest und vollständige Provenienz.
+29. GateResult enthält stabilen Checknamen, Basispolicy-Quelle, Policy-/Diff-/Evidenzdigest und
+    vollständige Provenienz.
 30. Kein Mergepfad ohne vollständige Exact-Head-Reviewer-Menge.
-31. Versioniertes Diff-Schema, Pfadnormalisierung und fehlende Pflichtfelder fail-closed.
+31. Versioniertes Diff-Schema, Pfadnormalisierung, Rename-/Copy-Quellpfad und fehlende
+    Pflichtfelder fail-closed.
 32. Registry löst Provider aus SSOT auf; Composition Root bleibt importblind.
 33. Secret-/Header-/Tokenwerte erscheinen nicht in JSON oder Fehlermeldungen.
 34. `intermediate_status = false` ist der Repository-Default.
@@ -821,6 +881,17 @@ Mindestens:
 36. Simulierter Message-Policy-Entscheider erhält Rückfragen/Blocker/Fehler/Abschluss.
 37. Kern, Policy, Adapter, Templates, README und Installationsanleitung bleiben driftfrei.
 38. Bestehende 25 Governance-Tests bleiben grün.
+39. Policyänderung nur am PR-Head schwächt die Basispolicy nicht ab.
+40. Fehlende Basispolicy im Bootstrap erzeugt keinen positiven GateResult.
+41. Vollständiger Git-Diff enthält Add/Modify/Delete/Rename/Copy und klassifiziert beide Pfade.
+42. Fehlende/zusätzliche/veränderte Diff-Datei oder abweichender `diff_digest` macht das Gate
+    ungültig.
+43. Validate klassifiziert den vertrauenswürdig erhobenen Diff erneut und vergleicht Risiko,
+    Security-Flag, Route und Reviewer-Menge exakt.
+44. Gate-fähige Route übernimmt Base-Ref/Base-SHA/Head-SHA aus PR-Metadaten und verwirft
+    caller-selektierte SHAs.
+45. Wechsel von Base-Ref oder Head zwischen Route und Validate macht die Evidenz ungültig;
+    Offline-SHAs bleiben ausdrücklich `gate_eligible = false`.
 
 ## 13. Umsetzungsschnitt
 

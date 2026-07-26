@@ -39,6 +39,7 @@ sources. The CLI is the composition root and never dispatches a paid review.
 - `review_routing/policy.py`: pure usability classifier and reviewer route selector.
 - `review_routing/evidence.py`: pure Copilot/QA/SEC exact-head evidence validation.
 - `review_routing/adapters/toml_config.py`: strict TOML configuration port implementation.
+- `review_routing/adapters/git_cli.py`: trusted read-only policy and complete diff acquisition.
 - `review_routing/adapters/github_gh.py`: documented GitHub endpoints and error classification.
 - `review_routing/__main__.py`: argument parsing, composition root, JSON and exitcodes.
 - `tests/test_review_routing_*.py`: behavior specifications.
@@ -57,10 +58,21 @@ sources. The CLI is the composition root and never dispatches a paid review.
 - Create: `review_routing/adapters/toml_config.py`
 - Create: `tests/test_review_routing_config.py`
 - Create: `tests/test_review_routing_architecture.py`
-- Modify: `tests/test_governance.py`
 
 **Interfaces:**
-- Produces `ConfigPort.load_routing(path: Path) -> RoutingConfig`.
+- Produces
+  `ConfigPort.parse_routing(document: PolicyDocument) -> RoutingConfig`.
+- Declares
+  `PolicySourcePort.read_at_commit(
+      repository_path: Path,
+      commit_sha: str,
+      policy_path: str,
+  ) -> PolicyDocument`.
+- Declares `DiffSourcePort.load(repository: str, base_sha: str, head_sha: str) -> DiffSnapshot`.
+- Declares
+  `PullRequestStatePort.load(repository: str, pull_request_number: int) -> PullRequestState`.
+- Declares `RiskClassifierPort.assess(snapshot, config) -> RiskAssessment`.
+- Declares `RoutingPolicyPort.route(request, config) -> RouteDecision`.
 - Produces `RuntimeRegistry.register(factory: AdapterFactory) -> None` and
   `RuntimeRegistry.resolve(port: type[T]) -> T`.
 - Produces: TOML tables `risk.thresholds`, `risk.path_markers`,
@@ -88,8 +100,9 @@ Assert that `gate.required_checks` is non-empty and every entry contains only `n
 `source_app_slug`. Assert that `gate.publisher.expected_app_slug` is non-empty. Also assert that
 every `risk.path_markers` entry contains only `glob`, `level` and `security_relevant`.
 
-Also require `core/core.md`, both adapters, QA role/template, README and the ADR to reference the
-same `core/review-routing.toml`, without copying the complete route matrix.
+At this stage, require only the TOML, parser, contracts, registry and ADR to agree. Full
+core/adapter/template/README drift tests are deliberately deferred to Task 7, where those files
+are first modified.
 
 - [ ] **Step 2: Run the focused tests and confirm RED**
 
@@ -117,22 +130,27 @@ The ADR records the binary usability decision, diagnostic status preservation, n
 remaining-budget routing, COMMENTED evidence mapping, read-only boundary and rejected
 alternatives.
 
-Put every enum, immutable record, port protocol and typed error in `contracts.py`; it imports no
-project module. Implement strict TOML parsing in `adapters/toml_config.py`. Reject unknown keys,
-unsupported schema versions, non-positive/non-monotonic thresholds, incomplete tables, invalid
-routes and absent matrix cells.
+Put the config/registry records, declared ports and typed errors needed by this task in
+`contracts.py`; it imports no project module. Every later task adds its new domain/evidence types
+to this same module before implementing behavior—no second contracts module is allowed.
+Implement strict TOML parsing in `adapters/toml_config.py`. Reject unknown keys, unsupported
+schema versions, non-positive/non-monotonic thresholds, incomplete tables, invalid routes and
+absent matrix cells.
 
 Add `[runtime] adapter_modules = [...]` to the TOML. `registry.py` imports configured modules with
-`importlib`; factories declare provided/required ports. Add AST tests proving policy/risk/evidence/
-adapters import only `contracts`, `__main__` imports no adapter, and missing/duplicate/cyclic
-providers fail typed.
+`importlib`; factories declare provided/required ports. In this task, AST-test only the modules
+that exist now: `contracts.py` imports no project module; `registry.py` and `toml_config.py` know
+only the contracts boundary. Test missing/duplicate/cyclic providers with typed failures.
+Each later task extends this same architecture test when its new module first exists; no
+vacuously passing checks for absent modules.
 
 - [ ] **Step 4: Run focused and existing tests**
 
 Run:
 
 ```bash
-python3 -m unittest tests.test_review_routing_config tests.test_governance -v
+python3 -m unittest tests.test_review_routing_config \
+  tests.test_review_routing_architecture tests.test_governance -v
 ```
 
 Expected: all pass.
@@ -141,16 +159,17 @@ Expected: all pass.
 
 ```bash
 git add core/review-routing.toml docs/decisions/0003-review-routing.md review_routing \
-  tests/test_review_routing_config.py tests/test_review_routing_architecture.py \
-  tests/test_governance.py
+  tests/test_review_routing_config.py tests/test_review_routing_architecture.py
 git commit -m "feat(governance): define review routing policy"
 ```
 
 ### Task 2: Domain contracts and deterministic route policy
 
 **Files:**
+- Modify: `review_routing/contracts.py`
 - Create: `review_routing/policy.py`
 - Create: `tests/test_review_routing_policy.py`
+- Modify: `tests/test_review_routing_architecture.py`
 
 **Interfaces:**
 - Produces enums `DiagnosticStatus`, `ReviewPurpose`, `RiskLevel`, `ReviewRoute`, `Reviewer`.
@@ -160,6 +179,7 @@ git commit -m "feat(governance): define review routing policy"
   `classify_usability(signals: ProbeSignals) -> tuple[bool, DiagnosticStatus]`.
 - Produces:
   `route_review(request: ReviewRequest, config: RoutingConfig) -> RouteDecision`.
+- Implements `RoutingPolicyPort`.
 
 - [ ] **Step 1: Write failing status and matrix tests**
 
@@ -191,7 +211,7 @@ the numeric risk.
 python3 -m unittest tests.test_review_routing_policy -v
 ```
 
-Expected: import failure for `review_routing.contracts`.
+Expected: failure because `review_routing.policy` does not exist.
 
 - [ ] **Step 3: Implement immutable validated contracts**
 
@@ -216,7 +236,11 @@ the matrix requires that reviewer.
 usage without a valid capability record never creates `copilot_usable = true`.
 
 `RoutingConfig` contains the canonical `policy_digest`. Every `RouteDecision` copies this digest;
-route serialization must never synthesize or omit it.
+route serialization must never synthesize or omit it. It also carries `policy_source_ref`,
+`policy_source_path`, `diff_digest` and all policy-relevant request inputs needed for deterministic
+revalidation.
+
+Extend the architecture test so `policy.py` imports only `contracts.py`.
 
 - [ ] **Step 4: Implement status precedence and policy lookup**
 
@@ -248,26 +272,39 @@ python3 -m unittest tests.test_review_routing_policy -v
 - [ ] **Step 6: Commit**
 
 ```bash
-git add review_routing tests/test_review_routing_policy.py
+git add review_routing tests/test_review_routing_policy.py \
+  tests/test_review_routing_architecture.py
 git commit -m "feat(governance): implement deterministic review policy"
 ```
 
 ### Task 3: Deterministic risk classifier
 
 **Files:**
+- Modify: `review_routing/contracts.py`
 - Create: `review_routing/risk.py`
+- Create: `review_routing/adapters/git_cli.py`
 - Create: `tests/test_review_routing_risk.py`
+- Create: `tests/test_review_routing_git.py`
+- Modify: `tests/test_review_routing_architecture.py`
 
 **Interfaces:**
 - Consumes: `RoutingConfig`, `DiffSnapshot`, `RiskLevel`, `RiskAssessment`.
 - Produces:
   `assess_risk(changes: DiffSnapshot, config: RoutingConfig) -> RiskAssessment`.
+- Implements `RiskClassifierPort`.
+- Implements `PolicySourcePort` and `DiffSourcePort` with read-only local Git commands.
 
 - [ ] **Step 1: Write failing boundary and path tests**
 
 Cover one below/at/above each threshold, maximum-of-signals behavior, critical/high glob markers,
 explicit risk escalation, inability to lower, separate `security_relevant`, missing diff data,
-invalid negative counts and the closed versioned DiffSnapshot schema.
+invalid negative counts and the closed versioned DiffSnapshot schema. Require `previous_path`
+exactly for renamed/copied files and classify old and new paths.
+
+Adapter tests create temporary local repositories and cover complete add/modify/delete/rename/copy
+enumeration, binary files, exact full-SHA validation, missing/non-commit objects, policy reads at
+the base commit, a policy changed only on head, conflicting Git metadata and sanitized failures.
+No test accesses GitHub or a network.
 
 Example:
 
@@ -297,7 +334,7 @@ self.assertIn("critical_path:core/core.md", assessment.reasons)
 - [ ] **Step 2: Run and confirm RED**
 
 ```bash
-python3 -m unittest tests.test_review_routing_risk -v
+python3 -m unittest tests.test_review_routing_risk tests.test_review_routing_git -v
 ```
 
 - [ ] **Step 3: Implement pure maximum-based classification**
@@ -305,32 +342,42 @@ python3 -m unittest tests.test_review_routing_risk -v
 Use `fnmatch.fnmatchcase`, deterministic sorted reasons and explicit threshold reason names.
 Consume the closed `DiffSnapshot` directly; do not introduce a second reduced change schema.
 Normalize paths as relative NFC POSIX paths and reject absolute, `..`, backslash, duplicate and NUL
-forms. Missing required data classifies `CRITICAL` with `incomplete_diff_metadata`.
+forms. Missing required data classifies `CRITICAL` with `incomplete_diff_metadata`. Compute the
+canonical SHA-256 `diff_digest`.
+
+Implement the Git adapter by full object IDs, not mutable branch names. Reconcile NUL-delimited
+name-status and numstat output fail-closed; never accept caller-supplied file lists as
+authoritative. Extend the architecture test so `risk.py` and `git_cli.py` import only contracts.
 
 - [ ] **Step 4: Run and confirm GREEN**
 
 ```bash
-python3 -m unittest tests.test_review_routing_risk -v
+python3 -m unittest tests.test_review_routing_risk tests.test_review_routing_git -v
 ```
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add review_routing/risk.py tests/test_review_routing_risk.py
+git add review_routing/contracts.py review_routing/risk.py review_routing/adapters/git_cli.py \
+  tests/test_review_routing_risk.py tests/test_review_routing_git.py \
+  tests/test_review_routing_architecture.py
 git commit -m "feat(governance): classify review risk deterministically"
 ```
 
 ### Task 4: GitHub read-only probe adapter
 
 **Files:**
+- Modify: `review_routing/contracts.py`
 - Create: `review_routing/adapters/github_gh.py`
 - Create: `tests/test_review_routing_github.py`
 - Create: `tests/fixtures/review-routing/ai-credits.json`
 - Create: `tests/fixtures/review-routing/legacy-premium.json`
 - Create: `tests/fixtures/review-routing/status-operational.json`
+- Modify: `tests/test_review_routing_architecture.py`
 
 **Interfaces:**
 - Implements contract ports `CommandPort`, `StatusPort`, `ClockPort`, `ProbePort`.
+- Implements `PullRequestStatePort` from documented GitHub PR metadata.
 - Produces `GitHubGhProbe.probe(repository, context, billing_model) -> ProbeReport`.
 - Uses documented API version `2026-03-10`.
 
@@ -356,6 +403,7 @@ Cover:
 - valid recent capability evidence;
 - endpoint selection and API version header;
 - no raw stderr/header/token material in `ProbeReport.to_dict()`.
+- exact repository, PR number, Base-Ref, full Base-SHA and full Head-SHA from PR metadata.
 
 - [ ] **Step 2: Run and confirm RED**
 
@@ -369,6 +417,7 @@ Invoke `gh api --include` without embedding credentials. Parse only HTTP status,
 headers and JSON. Discard raw authorization/cookie headers and raw stderr after classification.
 Use `urllib.request` only for the public GitHub Status components endpoint, with timeout and an
 injectable client in tests.
+Extend the architecture test so `github_gh.py` imports only contracts.
 
 Automatic context rules:
 
@@ -390,8 +439,9 @@ python3 -m unittest tests.test_review_routing_github -v
 - [ ] **Step 5: Commit**
 
 ```bash
-git add review_routing/adapters/github_gh.py \
-  tests/test_review_routing_github.py tests/fixtures/review-routing
+git add review_routing/contracts.py review_routing/adapters/github_gh.py \
+  tests/test_review_routing_github.py tests/fixtures/review-routing \
+  tests/test_review_routing_architecture.py
 git commit -m "feat(governance): probe Copilot availability read only"
 ```
 
@@ -400,12 +450,20 @@ git commit -m "feat(governance): probe Copilot availability read only"
 **Files:**
 - Create: `review_routing/__main__.py`
 - Create: `tests/test_review_routing_cli.py`
+- Modify: `tests/test_review_routing_architecture.py`
 
 **Interfaces:**
 - Consumes all earlier package interfaces.
 - Produces `main(argv: Sequence[str] | None = None) -> int`.
 - Produces injectable
-  `CliDependencies(probe: ProbePort, routing_config: Path, clock: Clock)`.
+  `CliDependencies(
+      probe: ProbePort,
+      pull_request_state: PullRequestStatePort,
+      config: ConfigPort,
+      policy_source: PolicySourcePort,
+      diff_source: DiffSourcePort,
+      clock: ClockPort,
+  )`.
 - Commands initially: `probe`, `route`; output is one JSON object on stdout.
 
 - [ ] **Step 1: Write failing CLI tests**
@@ -415,7 +473,11 @@ permission/rate/provider/unknown/incomplete exitcodes `20`–`24`, every route, 
 input `31`, invalid SHA, invalid JSON and no dispatch side effect. Probe tests require
 `--review-mode manual --requester USER` or
 `--review-mode automatic --pull-request NUMBER`, plus a matching capability-evidence input before
-`copilot_usable` may become true.
+`copilot_usable` may become true. Route tests provide repository/PR number and prove the CLI reads
+the actual Base-Ref/Base-SHA/Head-SHA through `PullRequestStatePort`, then reads policy from that
+Base-SHA and the complete diff through injected ports. A missing Basispolicy, caller-supplied file
+list/SHA or policy source from head/worktree must fail with `31`. An explicitly separate offline
+diagnostic mode may accept SHAs but must serialize `gate_eligible = false`.
 
 - [ ] **Step 2: Run and confirm RED**
 
@@ -428,7 +490,9 @@ python3 -m unittest tests.test_review_routing_cli -v
 The JSON object includes `schema_version`, `observed_at`, repository, context, model, usage,
 signals, routing status, binary usability, evidence and warnings. Write diagnostics only inside
 the JSON; stdout contains no progress prose. Invalid invocations use exit `31` with a sanitized
-JSON error.
+JSON error. `route` serializes trusted policy provenance and `diff_digest`. The Composition Root
+resolves every adapter through `RuntimeRegistry` and imports no concrete adapter module; extend
+the architecture test accordingly.
 
 - [ ] **Step 4: Run and confirm GREEN**
 
@@ -439,15 +503,18 @@ python3 -m unittest tests.test_review_routing_cli -v
 - [ ] **Step 5: Commit**
 
 ```bash
-git add review_routing/__main__.py tests/test_review_routing_cli.py
+git add review_routing/__main__.py tests/test_review_routing_cli.py \
+  tests/test_review_routing_architecture.py
 git commit -m "feat(governance): expose review routing CLI"
 ```
 
 ### Task 6: Exact-head evidence validator
 
 **Files:**
+- Modify: `review_routing/contracts.py`
 - Create: `review_routing/evidence.py`
 - Create: `tests/test_review_routing_evidence.py`
+- Modify: `tests/test_review_routing_architecture.py`
 
 **Interfaces:**
 - Produces contract records `ReviewRecord`, `ThreadRecord`, `CheckRecord`, `FileCoverage`,
@@ -456,11 +523,14 @@ git commit -m "feat(governance): expose review routing CLI"
   `validate_exact_head(
       decision: RouteDecision,
       evidence: GateSnapshot,
-      config: RoutingConfig,
+      trusted_config: RoutingConfig,
+      trusted_diff: DiffSnapshot,
+      risk_classifier: RiskClassifierPort,
+      routing_policy: RoutingPolicyPort,
   ) -> GateResult`.
 - Extends CLI with:
   `validate --route-file ROUTE.json --evidence-file EVIDENCE.json
-  --config core/review-routing.toml --json`.
+  --repo-path /absolute/path/to/checkout --json`.
 
 - [ ] **Step 1: Write failing evidence tests**
 
@@ -470,7 +540,11 @@ successful exact-head checks, unresolved non-Copilot thread, correction head inv
 excluded/unverified files, degraded/unknown Copilot mode, QA coverage replacement, stable check
 name and deterministic policy/evidence digests. Also cover a route policy-digest mismatch,
 an empty trusted required-check policy, a spoofed same-name check from the wrong app slug and an
-attempt to inject required check names through evidence.
+attempt to inject required check names through evidence. Cover a policy changed only on head,
+missing Basispolicy during bootstrap, missing/extra/changed diff files, rename/copy source-path
+evasion, diff-digest mismatch, changed risk/security result and changed route/reviewer set. Cover
+caller-selected SHAs versus API PR state, changed Base-Ref/Head between route and validate and
+offline `gate_eligible = false`.
 
 - [ ] **Step 2: Run and confirm RED**
 
@@ -492,15 +566,22 @@ GateResult(
 
 Only all required reviewers + all policy-required successful checks from their expected app
 sources + zero unresolved threads is valid.
-Every diff file must have positive coverage by the route's reviewer set. The result includes repo,
-PR, base/head, policy digest, evidence digest, reviewer sets and observation time. Define a
+Recompute risk and routing from `trusted_diff` and `trusted_config`; require exact equality with
+the decision's repository, SHAs, policy provenance/digest, diff digest, risk, security flag, route
+and reviewer set. Every file from the trusted diff must have positive coverage by the route's
+reviewer set. The result includes repo, PR, base/head, trusted policy source/path/digest, diff
+digest, evidence digest, reviewer sets and observation time. Define a
 `GatePublisherPort.publish(result: GateResult) -> PublicationReceipt` in contracts but provide no
 writer in this read-only PR. The receipt and port contract define the deterministic idempotency key
 over repository/PR/head/policy/evidence digests, the dedicated publisher app identity and mandatory
 read-only head revalidation immediately before a future write.
 
-Wire the `validate` CLI command. Valid evidence returns `0`; missing, stale or contradictory
-exact-head evidence returns `32` with sanitized reasons.
+Wire the `validate` CLI command. For gate-fähige decisions it reloads PR state through
+`PullRequestStatePort`, then policy from the API-erhobenen `base_sha` and diff from the local Git
+object store via ports, never from head/worktree or evidence JSON. Valid evidence returns `0`;
+missing, stale or contradictory exact-head evidence returns `32` with sanitized reasons. The
+bootstrap case with no Basispolicy returns `31` and cannot emit a successful GateResult.
+Extend the architecture test so `evidence.py` imports only contracts.
 
 - [ ] **Step 4: Run and confirm GREEN**
 
@@ -511,8 +592,9 @@ python3 -m unittest tests.test_review_routing_evidence -v
 - [ ] **Step 5: Commit**
 
 ```bash
-git add review_routing/evidence.py review_routing/__main__.py \
-  tests/test_review_routing_evidence.py tests/test_review_routing_cli.py
+git add review_routing/contracts.py review_routing/evidence.py review_routing/__main__.py \
+  tests/test_review_routing_evidence.py tests/test_review_routing_cli.py \
+  tests/test_review_routing_architecture.py
 git commit -m "feat(governance): validate exact head review evidence"
 ```
 
@@ -560,12 +642,16 @@ README/INSTALL/tools include:
 ```bash
 python3 -m review_routing probe --repo OWNER/REPO --json
 python3 -m review_routing route --probe-file probe.json \
-  --purpose final_exact_head --base-sha BASE --head-sha HEAD \
-  --diff-file diff.json --json
+  --repo OWNER/REPO \
+  --pull-request NUMBER --purpose final_exact_head \
+  --repo-path /absolute/path/to/checkout \
+  --json
 python3 -m unittest discover -s tests -v
 ```
 
-Document required GitHub permissions, context limits, live-positive-test procedure and Issue #3.
+Document required GitHub permissions, context limits, trusted Basispolicy, the one-time
+`trusted_base_policy_missing` bootstrap behavior of PR #5, live-positive-test procedure and
+Issue #3.
 
 - [ ] **Step 5: Run all tests**
 
@@ -594,9 +680,11 @@ git commit -m "docs(governance): wire deterministic review routing"
 python3 -m unittest tests.test_review_routing_config \
   tests.test_review_routing_policy \
   tests.test_review_routing_risk \
+  tests.test_review_routing_git \
   tests.test_review_routing_github \
   tests.test_review_routing_cli \
-  tests.test_review_routing_evidence -v
+  tests.test_review_routing_evidence \
+  tests.test_review_routing_architecture -v
 ```
 
 - [ ] **Step 2: Run complete regression and syntax checks**
