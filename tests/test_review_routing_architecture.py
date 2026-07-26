@@ -128,6 +128,7 @@ class ImportBoundaryTest(unittest.TestCase):
             "review_routing/registry.py",
             "review_routing/policy.py",
             "review_routing/risk.py",
+            "review_routing/evidence.py",
             "review_routing/adapters/git_cli.py",
             "review_routing/adapters/github_gh.py",
             "review_routing/adapters/toml_config.py",
@@ -233,6 +234,15 @@ class RegistryFailureTest(unittest.TestCase):
         self.assertIsInstance(registry.resolve(ProbePort), GitHubGhProbe)
         self.assertIsInstance(registry.resolve(PullRequestStatePort), GitHubGhProbe)
 
+    def test_bootstrap_resolves_evidence_validator_port(self):
+        from review_routing.contracts import EvidenceValidatorPort
+        from review_routing.evidence import EvidenceValidator
+
+        self.assertIsInstance(
+            RuntimeRegistry.bootstrap(None).resolve(EvidenceValidatorPort),
+            EvidenceValidator,
+        )
+
     def test_bootstrap_injects_the_exact_operator_trust_into_a_positive_probe(self):
         from review_routing.adapters import github_gh
         from review_routing.contracts import (
@@ -321,6 +331,8 @@ class RegistryFailureTest(unittest.TestCase):
             ProbePort,
             PullRequestStatePort,
             StatusPort,
+            EvidenceValidatorPort,
+            GatePublisherPort,
         )
 
         expected = {
@@ -346,6 +358,17 @@ class RegistryFailureTest(unittest.TestCase):
                 "review_mode",
                 "observed_at",
             ),
+            EvidenceValidatorPort.validate: (
+                "self",
+                "context",
+                "evidence",
+                "runtime",
+                "trusted_config",
+                "trusted_diff",
+                "risk_classifier",
+                "routing_policy",
+            ),
+            GatePublisherPort.publish: ("self", "result"),
         }
 
         for method, parameter_names in expected.items():

@@ -169,6 +169,40 @@ class ReviewerAvailabilitySource(str, Enum):
     HARNESS_RUNTIME = "harness_runtime"
 
 
+class CoverageStatus(str, Enum):
+    REVIEWED = "reviewed"
+    EXCLUDED = "excluded"
+    UNVERIFIED = "unverified"
+
+
+class BoundEvidenceSourceKind(str, Enum):
+    GITHUB_API = "github_api"
+    HARNESS_RUNTIME = "harness_runtime"
+    UNAVAILABLE = "unavailable"
+
+
+class CopilotReviewMode(str, Enum):
+    FULL = "full"
+    DEGRADED = "degraded"
+    UNKNOWN = "unknown"
+
+
+class ReviewState(str, Enum):
+    COMMENTED = "COMMENTED"
+    APPROVED = "APPROVED"
+    CHANGES_REQUESTED = "CHANGES_REQUESTED"
+    PENDING = "PENDING"
+    ERROR = "ERROR"
+
+
+class CheckConclusion(str, Enum):
+    SUCCESS = "success"
+    FAILURE = "failure"
+    SKIPPED = "skipped"
+    CANCELLED = "cancelled"
+    PENDING = "pending"
+
+
 class PullRequestStateSource(str, Enum):
     GITHUB_API = "github_api"
 
@@ -1448,6 +1482,584 @@ class DiffSnapshot:
 
 
 @dataclass(frozen=True)
+class BoundEvidenceSource:
+    """Maschinenlesbare Quelle, gebunden an einen zeitlich gültigen Exact-Head-Kontext."""
+
+    kind: BoundEvidenceSourceKind
+    source_id: str
+    repository: str
+    pull_request_number: int
+    head_sha: str
+    observed_at: datetime
+    valid_until: datetime
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.kind, BoundEvidenceSourceKind):
+            raise ValueError("kind must be a BoundEvidenceSourceKind")
+        _require_code(self.source_id, "source_id")
+        require_repository(self.repository)
+        if (
+            isinstance(self.pull_request_number, bool)
+            or not isinstance(self.pull_request_number, int)
+            or self.pull_request_number <= 0
+        ):
+            raise ValueError("pull_request_number must be a positive integer")
+        require_full_sha(self.head_sha, "head_sha")
+        _iso_z(self.observed_at)
+        _iso_z(self.valid_until)
+        if self.valid_until <= self.observed_at:
+            raise ValueError("valid_until must be after observed_at")
+
+    def is_valid_for(
+        self,
+        repository: str,
+        pull_request_number: int,
+        head_sha: str,
+        evaluated_at: datetime,
+    ) -> bool:
+        _iso_z(evaluated_at)
+        return (
+            self.kind is not BoundEvidenceSourceKind.UNAVAILABLE
+            and self.repository == repository
+            and self.pull_request_number == pull_request_number
+            and self.head_sha == head_sha
+            and self.observed_at <= evaluated_at < self.valid_until
+        )
+
+
+@dataclass(frozen=True)
+class ReviewRecord:
+    reviewer: Reviewer
+    actor_login: str
+    app_slug: str
+    state: ReviewState
+    commit_sha: str
+    submitted_at: datetime
+    findings_count: int
+    source: BoundEvidenceSource
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.reviewer, Reviewer):
+            raise ValueError("reviewer must be a Reviewer")
+        for field_name in ("actor_login", "app_slug"):
+            value = getattr(self, field_name)
+            if not isinstance(value, str) or not value or "\x00" in value:
+                raise ValueError(f"{field_name} must be a non-empty NUL-free string")
+        if not isinstance(self.state, ReviewState):
+            raise ValueError("state must be a ReviewState")
+        require_full_sha(self.commit_sha, "commit_sha")
+        _iso_z(self.submitted_at)
+        if (
+            isinstance(self.findings_count, bool)
+            or not isinstance(self.findings_count, int)
+            or self.findings_count < 0
+        ):
+            raise ValueError("findings_count must be a non-negative integer")
+        if not isinstance(self.source, BoundEvidenceSource):
+            raise ValueError("source must be a BoundEvidenceSource")
+
+
+@dataclass(frozen=True)
+class ThreadRecord:
+    thread_id: str
+    reviewer: Reviewer | None
+    head_sha: str
+    unresolved: bool
+    source: BoundEvidenceSource
+
+    def __post_init__(self) -> None:
+        _require_non_empty(self.thread_id, "thread_id")
+        if self.reviewer is not None and not isinstance(self.reviewer, Reviewer):
+            raise ValueError("reviewer must be a Reviewer or absent")
+        require_full_sha(self.head_sha, "head_sha")
+        _require_bool(self.unresolved, "unresolved")
+        if not isinstance(self.source, BoundEvidenceSource):
+            raise ValueError("source must be a BoundEvidenceSource")
+
+
+@dataclass(frozen=True)
+class CheckRecord:
+    name: str
+    source_app_slug: str
+    head_sha: str
+    conclusion: CheckConclusion
+    completed_at: datetime
+    source: BoundEvidenceSource
+
+    def __post_init__(self) -> None:
+        for field_name in ("name", "source_app_slug"):
+            value = getattr(self, field_name)
+            if not isinstance(value, str) or not value or "\x00" in value:
+                raise ValueError(f"{field_name} must be a non-empty NUL-free string")
+        require_full_sha(self.head_sha, "head_sha")
+        if not isinstance(self.conclusion, CheckConclusion):
+            raise ValueError("conclusion must be a CheckConclusion")
+        _iso_z(self.completed_at)
+        if not isinstance(self.source, BoundEvidenceSource):
+            raise ValueError("source must be a BoundEvidenceSource")
+
+
+@dataclass(frozen=True)
+class FileCoverage:
+    path: str
+    status: FileStatus
+    coverage: CoverageStatus
+    reviewer: Reviewer
+    coverage_source: BoundEvidenceSource
+    previous_path: str | None = None
+
+    def __post_init__(self) -> None:
+        path = normalize_repo_path(self.path)
+        previous_path = (
+            normalize_repo_path(self.previous_path, "previous_path")
+            if self.previous_path is not None
+            else None
+        )
+        if not isinstance(self.status, FileStatus):
+            raise ValueError("status must be a FileStatus")
+        requires_previous = self.status in {FileStatus.RENAMED, FileStatus.COPIED}
+        if requires_previous != (previous_path is not None):
+            raise ValueError("previous_path is required exactly for renamed and copied files")
+        if not isinstance(self.coverage, CoverageStatus):
+            raise ValueError("coverage must be a CoverageStatus")
+        if not isinstance(self.reviewer, Reviewer):
+            raise ValueError("reviewer must be a Reviewer")
+        if not isinstance(self.coverage_source, BoundEvidenceSource):
+            raise ValueError("coverage_source must be a BoundEvidenceSource")
+        if (
+            self.coverage_source.kind is BoundEvidenceSourceKind.UNAVAILABLE
+            and self.coverage is not CoverageStatus.UNVERIFIED
+        ):
+            raise ValueError("unavailable coverage source can only be unverified")
+        object.__setattr__(self, "path", path)
+        object.__setattr__(self, "previous_path", previous_path)
+
+
+@dataclass(frozen=True)
+class GateSnapshot:
+    schema_version: int
+    repository: str
+    pull_request_number: int
+    base_sha: str
+    head_sha: str
+    check_runs: tuple[CheckRecord, ...]
+    review_requests: tuple[ReviewRecord, ...]
+    reviews: tuple[ReviewRecord, ...]
+    review_file_coverage: tuple[FileCoverage, ...]
+    copilot_review_mode: CopilotReviewMode
+    review_mode_source: BoundEvidenceSource
+    threads: tuple[ThreadRecord, ...]
+    observed_at: datetime
+    valid_until: datetime
+
+    def __post_init__(self) -> None:
+        if self.schema_version != 1 or isinstance(self.schema_version, bool):
+            raise ValueError("schema_version must be 1")
+        require_repository(self.repository)
+        if (
+            isinstance(self.pull_request_number, bool)
+            or not isinstance(self.pull_request_number, int)
+            or self.pull_request_number <= 0
+        ):
+            raise ValueError("pull_request_number must be a positive integer")
+        require_full_sha(self.base_sha, "base_sha")
+        require_full_sha(self.head_sha, "head_sha")
+        collections = {
+            "check_runs": (self.check_runs, CheckRecord),
+            "review_requests": (self.review_requests, ReviewRecord),
+            "reviews": (self.reviews, ReviewRecord),
+            "review_file_coverage": (self.review_file_coverage, FileCoverage),
+            "threads": (self.threads, ThreadRecord),
+        }
+        for field_name, (values, expected_type) in collections.items():
+            frozen = tuple(values)
+            if not all(isinstance(value, expected_type) for value in frozen):
+                raise ValueError(f"{field_name} contains an invalid record")
+            object.__setattr__(self, field_name, frozen)
+        if not isinstance(self.copilot_review_mode, CopilotReviewMode):
+            raise ValueError("copilot_review_mode must be a CopilotReviewMode")
+        if not isinstance(self.review_mode_source, BoundEvidenceSource):
+            raise ValueError("review_mode_source must be a BoundEvidenceSource")
+        _iso_z(self.observed_at)
+        _iso_z(self.valid_until)
+        if self.valid_until <= self.observed_at:
+            raise ValueError("valid_until must be after observed_at")
+        check_keys = tuple(
+            (check.name, check.source_app_slug, check.head_sha) for check in self.check_runs
+        )
+        if len(check_keys) != len(set(check_keys)):
+            raise ValueError("check records must be unique by name, source and head")
+        for field_name in ("review_requests", "reviews"):
+            review_keys = tuple(
+                (
+                    review.reviewer,
+                    review.actor_login,
+                    review.app_slug,
+                    review.state,
+                    review.commit_sha,
+                    review.submitted_at,
+                )
+                for review in getattr(self, field_name)
+            )
+            if len(review_keys) != len(set(review_keys)):
+                raise ValueError(f"{field_name} must not contain duplicate records")
+        coverage_keys = tuple(
+            (
+                coverage.path,
+                coverage.status,
+                coverage.previous_path,
+                coverage.reviewer,
+            )
+            for coverage in self.review_file_coverage
+        )
+        if len(coverage_keys) != len(set(coverage_keys)):
+            raise ValueError("file coverage records must be unique per reviewer and diff entry")
+        thread_ids = tuple(thread.thread_id for thread in self.threads)
+        if len(thread_ids) != len(set(thread_ids)):
+            raise ValueError("thread records must have unique identifiers")
+        object.__setattr__(
+            self,
+            "check_runs",
+            tuple(
+                sorted(
+                    self.check_runs,
+                    key=lambda value: (
+                        value.name,
+                        value.source_app_slug,
+                        value.head_sha,
+                        value.completed_at,
+                    ),
+                )
+            ),
+        )
+        for field_name in ("review_requests", "reviews"):
+            object.__setattr__(
+                self,
+                field_name,
+                tuple(
+                    sorted(
+                        getattr(self, field_name),
+                        key=lambda value: (
+                            value.reviewer.value,
+                            value.commit_sha,
+                            value.submitted_at,
+                            value.actor_login,
+                        ),
+                    )
+                ),
+            )
+        object.__setattr__(
+            self,
+            "review_file_coverage",
+            tuple(
+                sorted(
+                    self.review_file_coverage,
+                    key=lambda value: (
+                        value.path,
+                        value.status.value,
+                        value.previous_path or "",
+                        value.reviewer.value,
+                    ),
+                )
+            ),
+        )
+        object.__setattr__(
+            self,
+            "threads",
+            tuple(sorted(self.threads, key=lambda value: value.thread_id)),
+        )
+
+    @property
+    def evidence_digest(self) -> str:
+        def source_document(source: BoundEvidenceSource) -> dict[str, object]:
+            return {
+                "head_sha": source.head_sha,
+                "kind": source.kind.value,
+                "observed_at": _iso_z(source.observed_at),
+                "pull_request_number": source.pull_request_number,
+                "repository": source.repository,
+                "source_id": source.source_id,
+                "valid_until": _iso_z(source.valid_until),
+            }
+
+        document = {
+            "base_sha": self.base_sha,
+            "check_runs": [
+                {
+                    "completed_at": _iso_z(check.completed_at),
+                    "conclusion": check.conclusion.value,
+                    "head_sha": check.head_sha,
+                    "name": check.name,
+                    "source": source_document(check.source),
+                    "source_app_slug": check.source_app_slug,
+                }
+                for check in self.check_runs
+            ],
+            "copilot_review_mode": self.copilot_review_mode.value,
+            "head_sha": self.head_sha,
+            "observed_at": _iso_z(self.observed_at),
+            "pull_request_number": self.pull_request_number,
+            "repository": self.repository,
+            "review_file_coverage": [
+                {
+                    "coverage": item.coverage.value,
+                    "coverage_source": source_document(item.coverage_source),
+                    "path": item.path,
+                    "previous_path": item.previous_path,
+                    "reviewer": item.reviewer.value,
+                    "status": item.status.value,
+                }
+                for item in self.review_file_coverage
+            ],
+            "review_mode_source": source_document(self.review_mode_source),
+            "review_requests": [
+                {
+                    "actor_login": review.actor_login,
+                    "app_slug": review.app_slug,
+                    "commit_sha": review.commit_sha,
+                    "findings_count": review.findings_count,
+                    "reviewer": review.reviewer.value,
+                    "source": source_document(review.source),
+                    "state": review.state.value,
+                    "submitted_at": _iso_z(review.submitted_at),
+                }
+                for review in self.review_requests
+            ],
+            "reviews": [
+                {
+                    "actor_login": review.actor_login,
+                    "app_slug": review.app_slug,
+                    "commit_sha": review.commit_sha,
+                    "findings_count": review.findings_count,
+                    "reviewer": review.reviewer.value,
+                    "source": source_document(review.source),
+                    "state": review.state.value,
+                    "submitted_at": _iso_z(review.submitted_at),
+                }
+                for review in self.reviews
+            ],
+            "schema_version": self.schema_version,
+            "threads": [
+                {
+                    "head_sha": thread.head_sha,
+                    "reviewer": thread.reviewer.value if thread.reviewer else None,
+                    "source": source_document(thread.source),
+                    "thread_id": thread.thread_id,
+                    "unresolved": thread.unresolved,
+                }
+                for thread in self.threads
+            ],
+            "valid_until": _iso_z(self.valid_until),
+        }
+        canonical = json.dumps(document, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+@dataclass(frozen=True)
+class PreliminaryRoutePlan:
+    schema_version: int
+    repository: str
+    pull_request_number: int
+    purpose: ReviewPurpose
+    base_ref: str
+    base_sha: str
+    merge_base_sha: str
+    head_sha: str
+    pr_state_source: PullRequestStateSource
+    risk: RiskAssessment
+    policy_source_ref: str
+    policy_source_path: str
+    policy_digest: str
+    runtime_digest: str
+    runtime_trust: RuntimeTrust
+    diff_digest: str
+    copilot_usable: bool
+    copilot_coverage_complete: bool | None
+    copilot_review_mode: CopilotReviewMode
+    route: ReviewRoute
+    required_reviewers: frozenset[Reviewer]
+    gate_status: str
+    gate_eligible: bool
+
+    def __post_init__(self) -> None:
+        if self.schema_version != 1 or isinstance(self.schema_version, bool):
+            raise ValueError("schema_version must be 1")
+        require_repository(self.repository)
+        if (
+            isinstance(self.pull_request_number, bool)
+            or not isinstance(self.pull_request_number, int)
+            or self.pull_request_number <= 0
+        ):
+            raise ValueError("pull_request_number must be a positive integer")
+        if not isinstance(self.purpose, ReviewPurpose):
+            raise ValueError("purpose must be a ReviewPurpose")
+        for field_name in ("base_ref", "policy_source_ref", "policy_source_path", "gate_status"):
+            _require_non_empty(getattr(self, field_name), field_name)
+        for field_name in ("base_sha", "merge_base_sha", "head_sha"):
+            require_full_sha(getattr(self, field_name), field_name)
+        if self.pr_state_source is not PullRequestStateSource.GITHUB_API:
+            raise ValueError("pr_state_source must be github_api")
+        if not isinstance(self.risk, RiskAssessment):
+            raise ValueError("risk must be a RiskAssessment")
+        for field_name in ("policy_digest", "runtime_digest", "diff_digest"):
+            _require_digest(getattr(self, field_name), field_name)
+        if not isinstance(self.runtime_trust, RuntimeTrust):
+            raise ValueError("runtime_trust must be a RuntimeTrust")
+        _require_bool(self.copilot_usable, "copilot_usable")
+        _require_bool_or_none(self.copilot_coverage_complete, "copilot_coverage_complete")
+        if not isinstance(self.copilot_review_mode, CopilotReviewMode):
+            raise ValueError("copilot_review_mode must be a CopilotReviewMode")
+        if not isinstance(self.route, ReviewRoute):
+            raise ValueError("route must be a ReviewRoute")
+        object.__setattr__(self, "required_reviewers", _freeze_reviewers(self.required_reviewers))
+        _require_bool(self.gate_eligible, "gate_eligible")
+
+
+@dataclass(frozen=True)
+class GateEvaluationContext:
+    preliminary_plan: PreliminaryRoutePlan
+    current_pr_state: PullRequestState
+    probe_request: ProbeRequest
+    fresh_probe: ProbeReport
+    reviewer_availability: ReviewerAvailabilitySnapshot
+    evaluated_at: datetime
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.preliminary_plan, PreliminaryRoutePlan):
+            raise ValueError("preliminary_plan must be a PreliminaryRoutePlan")
+        if not isinstance(self.current_pr_state, PullRequestState):
+            raise ValueError("current_pr_state must be a PullRequestState")
+        if not isinstance(self.probe_request, ProbeRequest):
+            raise ValueError("probe_request must be a ProbeRequest")
+        if not isinstance(self.fresh_probe, ProbeReport):
+            raise ValueError("fresh_probe must be a ProbeReport")
+        if not isinstance(self.reviewer_availability, ReviewerAvailabilitySnapshot):
+            raise ValueError("reviewer_availability must be a ReviewerAvailabilitySnapshot")
+        _iso_z(self.evaluated_at)
+
+
+@dataclass(frozen=True)
+class GateResult:
+    check_name: str
+    conclusion: str
+    repository: str
+    pull_request_number: int
+    base_ref: str
+    base_sha: str
+    head_sha: str
+    pr_state_source: PullRequestStateSource
+    policy_source_ref: str
+    policy_source_path: str
+    policy_digest: str
+    runtime_digest: str
+    runtime_trust: RuntimeTrust
+    diff_digest: str
+    evidence_digest: str
+    required_reviewers: frozenset[Reviewer]
+    validated_reviewers: frozenset[Reviewer]
+    unresolved_thread_count: int
+    reasons: tuple[str, ...]
+    observed_at: datetime
+
+    def __post_init__(self) -> None:
+        if self.check_name != "agent-governance/review-gate":
+            raise ValueError("check_name must be the stable governance gate name")
+        if self.conclusion not in {"success", "failure"}:
+            raise ValueError("conclusion must be success or failure")
+        require_repository(self.repository)
+        if (
+            isinstance(self.pull_request_number, bool)
+            or not isinstance(self.pull_request_number, int)
+            or self.pull_request_number <= 0
+        ):
+            raise ValueError("pull_request_number must be a positive integer")
+        _require_non_empty(self.base_ref, "base_ref")
+        for field_name in ("base_sha", "head_sha"):
+            require_full_sha(getattr(self, field_name), field_name)
+        if self.pr_state_source is not PullRequestStateSource.GITHUB_API:
+            raise ValueError("pr_state_source must be github_api")
+        for field_name in ("policy_source_ref", "policy_source_path"):
+            _require_non_empty(getattr(self, field_name), field_name)
+        for field_name in ("policy_digest", "runtime_digest", "diff_digest", "evidence_digest"):
+            _require_digest(getattr(self, field_name), field_name)
+        if not isinstance(self.runtime_trust, RuntimeTrust):
+            raise ValueError("runtime_trust must be a RuntimeTrust")
+        object.__setattr__(self, "required_reviewers", _freeze_reviewers(self.required_reviewers))
+        object.__setattr__(self, "validated_reviewers", _freeze_reviewers(self.validated_reviewers))
+        if (
+            isinstance(self.unresolved_thread_count, bool)
+            or not isinstance(self.unresolved_thread_count, int)
+            or self.unresolved_thread_count < 0
+        ):
+            raise ValueError("unresolved_thread_count must be a non-negative integer")
+        reasons = tuple(self.reasons)
+        for reason in reasons:
+            if (
+                not isinstance(reason, str)
+                or not reason
+                or len(reason) > 240
+                or not re.fullmatch(r"[a-z0-9][a-z0-9_./:-]*", reason)
+            ):
+                raise ValueError("reason must be a sanitized evidence code")
+        object.__setattr__(self, "reasons", tuple(sorted(set(reasons))))
+        _iso_z(self.observed_at)
+        if self.conclusion == "success" and (
+            self.reasons
+            or self.unresolved_thread_count
+            or self.required_reviewers != self.validated_reviewers
+        ):
+            raise ValueError("successful gate result must be complete and reason-free")
+        if self.conclusion == "failure" and not self.reasons:
+            raise ValueError("failed gate result must name at least one sanitized reason")
+
+    @property
+    def idempotency_key(self) -> str:
+        document = {
+            "evidence_digest": self.evidence_digest,
+            "head_sha": self.head_sha,
+            "policy_digest": self.policy_digest,
+            "pull_request_number": self.pull_request_number,
+            "repository": self.repository,
+            "runtime_digest": self.runtime_digest,
+        }
+        canonical = json.dumps(document, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+@dataclass(frozen=True)
+class PublicationReceipt:
+    repository: str
+    pull_request_number: int
+    head_sha: str
+    check_name: str
+    publisher_app_slug: str
+    publication_id: str
+    idempotency_key: str
+    published_at: datetime
+    head_revalidated_at: datetime
+
+    def __post_init__(self) -> None:
+        require_repository(self.repository)
+        if (
+            isinstance(self.pull_request_number, bool)
+            or not isinstance(self.pull_request_number, int)
+            or self.pull_request_number <= 0
+        ):
+            raise ValueError("pull_request_number must be a positive integer")
+        require_full_sha(self.head_sha, "head_sha")
+        for field_name in ("check_name", "publisher_app_slug", "publication_id"):
+            _require_non_empty(getattr(self, field_name), field_name)
+        _require_digest(self.idempotency_key, "idempotency_key")
+        _iso_z(self.published_at)
+        _iso_z(self.head_revalidated_at)
+        if (
+            self.head_revalidated_at > self.published_at
+            or (self.published_at - self.head_revalidated_at).total_seconds() > 30
+        ):
+            raise ValueError("head must be revalidated immediately before publication")
+
+
+@dataclass(frozen=True)
 class QaCostEstimate:
     model: str | None = None
     estimated_input_tokens: int | None = None
@@ -1680,6 +2292,27 @@ class ReviewerAvailabilityPort(ABC):
         purpose: ReviewPurpose,
     ) -> ReviewerAvailabilitySnapshot:
         """Lädt die programmatic-only QA-/SEC-Verfügbarkeit für den Exact-Head-Kontext."""
+
+
+class EvidenceValidatorPort(ABC):
+    @abstractmethod
+    def validate(
+        self,
+        context: GateEvaluationContext,
+        evidence: GateSnapshot,
+        runtime: RuntimeProvenance,
+        trusted_config: RoutingConfig,
+        trusted_diff: DiffSnapshot,
+        risk_classifier: RiskClassifierPort,
+        routing_policy: RoutingPolicyPort,
+    ) -> GateResult:
+        """Validiert vollständige Exact-Head-Evidenz gegen erneut erhobene Vertrauensquellen."""
+
+
+class GatePublisherPort(ABC):
+    @abstractmethod
+    def publish(self, result: GateResult) -> PublicationReceipt:
+        """Publiziert nach erneuter Head-Prüfung idempotent; in diesem PR ohne Implementierung."""
 
 
 @dataclass(frozen=True)

@@ -642,5 +642,769 @@ class StatusParserCorrectionTest(unittest.TestCase):
                 )
 
 
+class ExactHeadGateTest(unittest.TestCase):
+    """Gate-Evidenz wird ausschließlich aus frischen Exact-Head-Quellen abgeleitet."""
+
+    def setUp(self):
+        from pathlib import Path
+
+        from review_routing.adapters.toml_config import TomlConfig
+        from review_routing.contracts import (
+            DetectionMode,
+            DiffFile,
+            DiffMode,
+            DiffSnapshot,
+            DocumentTrust,
+            PolicyDocument,
+            PullRequestState,
+            PullRequestStateSource,
+            Reviewer,
+            ReviewerAvailabilityEvidence,
+            ReviewerAvailabilitySnapshot,
+            ReviewerAvailabilitySource,
+            ReviewerAvailabilityStatus,
+            ReviewPurpose,
+            RuntimeProvenance,
+            RuntimeTrust,
+        )
+        from review_routing.registry import RuntimeRegistry
+        from tests import test_review_routing_cli as cli_fixtures
+
+        self.base = "a" * 40
+        self.head = "b" * 40
+        self.merge_base = "c" * 40
+        self.repository = REPOSITORY
+        self.pr = 5
+        self.request = __import__(
+            "review_routing.contracts",
+            fromlist=["ProbeRequest"],
+        ).ProbeRequest(
+            repository=self.repository,
+            review_mode="manual",
+            manual_requester="tom",
+            pull_request_number=self.pr,
+            capability_reference=CapabilityEvidenceReference(
+                schema_version=1,
+                source=CapabilityEvidenceSource.OPERATOR_PINNED,
+                repository=self.repository,
+                review_mode="manual",
+                principal_identity=("personal", "tom", "manual", "tom", None),
+                source_reference="verified_capability",
+                artifact=b"{}",
+            ),
+        )
+        previous_now = cli_fixtures.NOW
+        cli_fixtures.NOW = NOW
+        try:
+            self.probe = cli_fixtures.probe_report(usable=True, request=self.request)
+        finally:
+            cli_fixtures.NOW = previous_now
+        self.state = PullRequestState(
+            repository=self.repository,
+            pull_request_number=self.pr,
+            base_ref="main",
+            api_base_sha=self.base,
+            head_sha=self.head,
+            author="author",
+            observed_at=NOW,
+            source=PullRequestStateSource.GITHUB_API,
+        )
+        self.diff = DiffSnapshot(
+            schema_version=1,
+            repository=self.repository,
+            api_base_sha=self.base,
+            merge_base_sha=self.merge_base,
+            head_sha=self.head,
+            diff_mode=DiffMode.MERGE_BASE_TO_HEAD,
+            rename_detection=DetectionMode.DISABLED,
+            copy_detection=DetectionMode.DISABLED,
+            files=(
+                DiffFile(
+                    path="src/application.py",
+                    status=__import__(
+                        "review_routing.contracts",
+                        fromlist=["FileStatus"],
+                    ).FileStatus.MODIFIED,
+                    additions=1,
+                    deletions=0,
+                    binary=False,
+                ),
+            ),
+        )
+        root = Path(__file__).resolve().parents[1]
+        self.config = TomlConfig().parse_routing(
+            PolicyDocument(
+                content=(root / "core/review-routing.toml").read_text(encoding="utf-8"),
+                trust=DocumentTrust.COMMIT_OBJECT,
+                source=f"{self.base}:core/review-routing.toml",
+            )
+        )
+        self.registry = RuntimeRegistry.bootstrap(None)
+        self.runtime = RuntimeProvenance(
+            digest=self.registry.runtime_provenance.digest,
+            trust=RuntimeTrust.INSTALLED,
+        )
+        self.assessment = self.registry.resolve(
+            __import__(
+                "review_routing.contracts",
+                fromlist=["RiskClassifierPort"],
+            ).RiskClassifierPort
+        ).assess(self.diff, self.config)
+        self.availability = ReviewerAvailabilitySnapshot(
+            evidence=tuple(
+                ReviewerAvailabilityEvidence(
+                    reviewer=reviewer,
+                    status=ReviewerAvailabilityStatus.AVAILABLE,
+                    repository=self.repository,
+                    pull_request_number=self.pr,
+                    head_sha=self.head,
+                    purpose=ReviewPurpose.FINAL_EXACT_HEAD,
+                    observed_at=NOW - timedelta(minutes=1),
+                    expires_at=NOW + timedelta(minutes=5),
+                    source=ReviewerAvailabilitySource.HARNESS_RUNTIME,
+                    reason="harness_role_context",
+                )
+                for reviewer in (Reviewer.QA, Reviewer.SEC)
+            )
+        )
+
+    def source(self, *, kind="github_api", repository=None, head=None, valid_until=None):
+        from review_routing.contracts import BoundEvidenceSource, BoundEvidenceSourceKind
+
+        return BoundEvidenceSource(
+            kind=BoundEvidenceSourceKind(kind),
+            source_id="github_graphql",
+            repository=repository or self.repository,
+            pull_request_number=self.pr,
+            head_sha=head or self.head,
+            observed_at=NOW - timedelta(minutes=1),
+            valid_until=valid_until or NOW + timedelta(minutes=5),
+        )
+
+    def plan(self, **changes):
+        from review_routing.contracts import (
+            CopilotReviewMode,
+            PreliminaryRoutePlan,
+            PullRequestStateSource,
+            Reviewer,
+            ReviewPurpose,
+            ReviewRoute,
+        )
+
+        values = {
+            "schema_version": 1,
+            "repository": self.repository,
+            "pull_request_number": self.pr,
+            "purpose": ReviewPurpose.FINAL_EXACT_HEAD,
+            "base_ref": "main",
+            "base_sha": self.base,
+            "merge_base_sha": self.merge_base,
+            "head_sha": self.head,
+            "pr_state_source": PullRequestStateSource.GITHUB_API,
+            "risk": self.assessment,
+            "policy_source_ref": self.base,
+            "policy_source_path": "core/review-routing.toml",
+            "policy_digest": self.config.policy_digest,
+            "runtime_digest": self.runtime.digest,
+            "runtime_trust": self.runtime.trust,
+            "diff_digest": self.diff.diff_digest,
+            "copilot_usable": False,
+            "copilot_coverage_complete": None,
+            "copilot_review_mode": CopilotReviewMode.UNKNOWN,
+            "route": ReviewRoute.QA,
+            "required_reviewers": frozenset({Reviewer.SEC}),
+            "gate_status": "forged_success",
+            "gate_eligible": True,
+        }
+        values.update(changes)
+        return PreliminaryRoutePlan(**values)
+
+    def snapshot(self, **changes):
+        from review_routing.contracts import (
+            CheckConclusion,
+            CheckRecord,
+            CopilotReviewMode,
+            CoverageStatus,
+            FileCoverage,
+            FileStatus,
+            GateSnapshot,
+            Reviewer,
+            ReviewRecord,
+            ReviewState,
+        )
+
+        source = self.source()
+        values = {
+            "schema_version": 1,
+            "repository": self.repository,
+            "pull_request_number": self.pr,
+            "base_sha": self.base,
+            "head_sha": self.head,
+            "check_runs": tuple(
+                CheckRecord(
+                    name=required.name,
+                    source_app_slug=required.source_app_slug,
+                    head_sha=self.head,
+                    conclusion=CheckConclusion.SUCCESS,
+                    completed_at=NOW,
+                    source=source,
+                )
+                for required in self.config.required_checks
+            ),
+            "review_requests": (),
+            "reviews": (
+                ReviewRecord(
+                    reviewer=Reviewer.COPILOT,
+                    actor_login="copilot-pull-request-reviewer[bot]",
+                    app_slug="copilot-pull-request-reviewer",
+                    state=ReviewState.COMMENTED,
+                    commit_sha=self.head,
+                    submitted_at=NOW,
+                    findings_count=0,
+                    source=source,
+                ),
+            ),
+            "review_file_coverage": (
+                FileCoverage(
+                    path="src/application.py",
+                    status=FileStatus.MODIFIED,
+                    coverage=CoverageStatus.REVIEWED,
+                    reviewer=Reviewer.COPILOT,
+                    coverage_source=source,
+                ),
+            ),
+            "copilot_review_mode": CopilotReviewMode.FULL,
+            "review_mode_source": source,
+            "threads": (),
+            "observed_at": NOW - timedelta(minutes=1),
+            "valid_until": NOW + timedelta(minutes=5),
+        }
+        values.update(changes)
+        return GateSnapshot(**values)
+
+    def context(self, plan=None, **changes):
+        from review_routing.contracts import GateEvaluationContext
+
+        values = {
+            "preliminary_plan": plan or self.plan(),
+            "current_pr_state": self.state,
+            "probe_request": self.request,
+            "fresh_probe": self.probe,
+            "reviewer_availability": self.availability,
+            "evaluated_at": NOW,
+        }
+        values.update(changes)
+        return GateEvaluationContext(**values)
+
+    def validate(self, *, context=None, snapshot=None, diff=None, config=None):
+        from review_routing.contracts import EvidenceValidatorPort, RiskClassifierPort, RoutingPolicyPort
+
+        return self.registry.resolve(EvidenceValidatorPort).validate(
+            context or self.context(),
+            snapshot or self.snapshot(),
+            self.runtime,
+            config or self.config,
+            diff or self.diff,
+            self.registry.resolve(RiskClassifierPort),
+            self.registry.resolve(RoutingPolicyPort),
+        )
+
+    def test_valid_commented_copilot_exact_head_is_success_without_approved_claim(self):
+        result = self.validate()
+
+        self.assertEqual(result.conclusion, "success")
+        self.assertEqual(result.check_name, "agent-governance/review-gate")
+        self.assertEqual(
+            {reviewer.value for reviewer in result.validated_reviewers},
+            {"copilot"},
+        )
+        self.assertNotIn("APPROVED", repr(result))
+
+    def test_preliminary_route_usability_reviewers_and_gate_claims_are_not_authority(self):
+        result = self.validate(
+            context=self.context(
+                self.plan(
+                    copilot_usable=False,
+                    route=__import__(
+                        "review_routing.contracts",
+                        fromlist=["ReviewRoute"],
+                    ).ReviewRoute.BLOCKER,
+                    gate_eligible=True,
+                )
+            )
+        )
+
+        self.assertEqual(result.conclusion, "success")
+        self.assertEqual(
+            {reviewer.value for reviewer in result.required_reviewers},
+            {"copilot"},
+        )
+
+    def test_wrong_bot_old_head_open_thread_and_newer_pending_request_fail(self):
+        from dataclasses import replace
+        from review_routing.contracts import ReviewRecord, Reviewer, ReviewState, ThreadRecord
+
+        base = self.snapshot()
+        wrong = replace(base.reviews[0], actor_login="not-copilot")
+        pending = ReviewRecord(
+            reviewer=Reviewer.COPILOT,
+            actor_login="copilot-pull-request-reviewer[bot]",
+            app_slug="copilot-pull-request-reviewer",
+            state=ReviewState.PENDING,
+            commit_sha=self.head,
+            submitted_at=NOW + timedelta(seconds=1),
+            findings_count=0,
+            source=self.source(),
+        )
+        thread = ThreadRecord(
+            thread_id="thread_1",
+            reviewer=None,
+            head_sha=self.head,
+            unresolved=True,
+            source=self.source(),
+        )
+
+        result = self.validate(
+            snapshot=replace(
+                base,
+                reviews=(wrong,),
+                review_requests=(pending,),
+                threads=(thread,),
+            )
+        )
+
+        self.assertEqual(result.conclusion, "failure")
+        self.assertIn("missing_reviewer:copilot", result.reasons)
+        self.assertIn("unresolved_review_threads", result.reasons)
+
+    def test_wrong_app_check_and_stale_coverage_sources_fail_closed(self):
+        from dataclasses import replace
+
+        base = self.snapshot()
+        wrong_check = replace(base.check_runs[0], source_app_slug="spoofed-app")
+        stale_source = self.source(valid_until=NOW)
+        stale_coverage = replace(
+            base.review_file_coverage[0],
+            coverage_source=stale_source,
+        )
+
+        result = self.validate(
+            snapshot=replace(
+                base,
+                check_runs=(wrong_check,),
+                review_file_coverage=(stale_coverage,),
+            )
+        )
+
+        self.assertEqual(result.conclusion, "failure")
+        self.assertTrue(any(reason.startswith("missing_check:") for reason in result.reasons))
+        self.assertIn("file_not_covered:src/application.py", result.reasons)
+
+    def test_foreign_probe_and_coverage_source_cannot_authorize_the_gate(self):
+        from dataclasses import replace
+
+        foreign_probe = replace(
+            self.probe,
+            request_digest="sha256:" + "0" * 64,
+        )
+        snapshot = self.snapshot()
+        foreign_source = replace(
+            snapshot.review_file_coverage[0].coverage_source,
+            repository="other/repository",
+        )
+        result = self.validate(
+            context=self.context(fresh_probe=foreign_probe),
+            snapshot=replace(
+                snapshot,
+                review_file_coverage=(
+                    replace(
+                        snapshot.review_file_coverage[0],
+                        coverage_source=foreign_source,
+                    ),
+                ),
+            ),
+        )
+
+        self.assertIn("fresh_probe_invalid", result.reasons)
+        self.assertIn("file_not_covered:src/application.py", result.reasons)
+
+    def test_policy_diff_risk_and_pr_state_provenance_mismatches_fail(self):
+        from dataclasses import replace
+
+        result = self.validate(
+            context=self.context(self.plan(policy_digest="sha256:" + "0" * 64))
+        )
+        self.assertIn("policy_provenance_mismatch", result.reasons)
+
+        changed = replace(
+            self.diff,
+            files=(
+                replace(self.diff.files[0], additions=900),
+            ),
+        )
+        result = self.validate(diff=changed)
+        self.assertIn("diff_provenance_mismatch", result.reasons)
+        self.assertIn("risk_assessment_mismatch", result.reasons)
+
+        empty_checks = replace(self.config, required_checks=())
+        result = self.validate(
+            context=self.context(
+                self.plan(policy_digest=empty_checks.policy_digest)
+            ),
+            config=empty_checks,
+        )
+        self.assertIn("required_checks_empty", result.reasons)
+
+    def test_evidence_digest_and_idempotency_key_are_deterministic(self):
+        first = self.validate()
+        second = self.validate(snapshot=self.snapshot())
+
+        self.assertEqual(first.evidence_digest, second.evidence_digest)
+        self.assertEqual(first.idempotency_key, second.idempotency_key)
+
+    def test_copilot_never_accepts_approved_pending_error_or_old_head(self):
+        from dataclasses import replace
+        from review_routing.contracts import ReviewState
+
+        for state in (
+            ReviewState.APPROVED,
+            ReviewState.PENDING,
+            ReviewState.ERROR,
+            ReviewState.CHANGES_REQUESTED,
+        ):
+            with self.subTest(state=state):
+                snapshot = self.snapshot()
+                result = self.validate(
+                    snapshot=replace(
+                        snapshot,
+                        reviews=(replace(snapshot.reviews[0], state=state),),
+                    )
+                )
+                self.assertIn("missing_reviewer:copilot", result.reasons)
+        snapshot = self.snapshot()
+        result = self.validate(
+            snapshot=replace(
+                snapshot,
+                reviews=(replace(snapshot.reviews[0], commit_sha="d" * 40),),
+            )
+        )
+        self.assertIn("missing_reviewer:copilot", result.reasons)
+
+    def test_all_non_successful_or_missing_required_checks_fail(self):
+        from dataclasses import replace
+        from review_routing.contracts import CheckConclusion
+
+        for conclusion in (
+            CheckConclusion.FAILURE,
+            CheckConclusion.SKIPPED,
+            CheckConclusion.CANCELLED,
+            CheckConclusion.PENDING,
+        ):
+            with self.subTest(conclusion=conclusion):
+                snapshot = self.snapshot()
+                result = self.validate(
+                    snapshot=replace(
+                        snapshot,
+                        check_runs=(
+                            replace(snapshot.check_runs[0], conclusion=conclusion),
+                        ),
+                    )
+                )
+                self.assertTrue(
+                    any(
+                        reason.startswith("check_not_successful:")
+                        for reason in result.reasons
+                    )
+                )
+        result = self.validate(
+            snapshot=replace(self.snapshot(), check_runs=())
+        )
+        self.assertTrue(any(reason.startswith("missing_check:") for reason in result.reasons))
+
+    def test_degraded_or_excluded_copilot_coverage_requires_exact_head_qa(self):
+        from dataclasses import replace
+        from review_routing.contracts import (
+            BoundEvidenceSourceKind,
+            CopilotReviewMode,
+            CoverageStatus,
+            FileCoverage,
+            Reviewer,
+            ReviewRecord,
+            ReviewState,
+        )
+
+        snapshot = self.snapshot()
+        qa_source = replace(
+            self.source(),
+            kind=BoundEvidenceSourceKind.HARNESS_RUNTIME,
+            source_id="qa_exact_head",
+        )
+        qa_review = ReviewRecord(
+            reviewer=Reviewer.QA,
+            actor_login="qa-agent",
+            app_slug="codex-qa-agent",
+            state=ReviewState.APPROVED,
+            commit_sha=self.head,
+            submitted_at=NOW,
+            findings_count=0,
+            source=qa_source,
+        )
+        qa_coverage = FileCoverage(
+            path=snapshot.review_file_coverage[0].path,
+            status=snapshot.review_file_coverage[0].status,
+            coverage=CoverageStatus.REVIEWED,
+            reviewer=Reviewer.QA,
+            coverage_source=qa_source,
+        )
+        result = self.validate(
+            snapshot=replace(
+                snapshot,
+                reviews=(*snapshot.reviews, qa_review),
+                review_file_coverage=(
+                    replace(
+                        snapshot.review_file_coverage[0],
+                        coverage=CoverageStatus.EXCLUDED,
+                    ),
+                    qa_coverage,
+                ),
+                copilot_review_mode=CopilotReviewMode.DEGRADED,
+            )
+        )
+
+        self.assertEqual(result.conclusion, "success")
+        self.assertEqual(
+            {reviewer.value for reviewer in result.required_reviewers},
+            {"copilot", "qa"},
+        )
+
+    def test_missing_or_stale_availability_is_never_inferred(self):
+        from dataclasses import replace
+        from review_routing.contracts import ReviewerAvailabilitySnapshot
+
+        snapshot = self.snapshot()
+        qa_source = replace(
+            self.source(),
+            kind=__import__(
+                "review_routing.contracts",
+                fromlist=["BoundEvidenceSourceKind"],
+            ).BoundEvidenceSourceKind.HARNESS_RUNTIME,
+            source_id="qa_exact_head",
+        )
+        qa_review = replace(
+            snapshot.reviews[0],
+            reviewer=__import__(
+                "review_routing.contracts",
+                fromlist=["Reviewer"],
+            ).Reviewer.QA,
+            actor_login="qa-agent",
+            app_slug="codex-qa-agent",
+            state=__import__(
+                "review_routing.contracts",
+                fromlist=["ReviewState"],
+            ).ReviewState.APPROVED,
+            source=qa_source,
+        )
+        qa_coverage = replace(
+            snapshot.review_file_coverage[0],
+            reviewer=__import__(
+                "review_routing.contracts",
+                fromlist=["Reviewer"],
+            ).Reviewer.QA,
+            coverage_source=qa_source,
+        )
+        fallback_snapshot = replace(
+            snapshot,
+            reviews=(qa_review,),
+            review_file_coverage=(qa_coverage,),
+            copilot_review_mode=__import__(
+                "review_routing.contracts",
+                fromlist=["CopilotReviewMode"],
+            ).CopilotReviewMode.UNKNOWN,
+            review_mode_source=replace(
+                snapshot.review_mode_source,
+                kind=__import__(
+                    "review_routing.contracts",
+                    fromlist=["BoundEvidenceSourceKind"],
+                ).BoundEvidenceSourceKind.UNAVAILABLE,
+            ),
+        )
+        result = self.validate(
+            context=self.context(
+                reviewer_availability=ReviewerAvailabilitySnapshot()
+            ),
+            snapshot=fallback_snapshot,
+        )
+        self.assertIn("required_reviewer_unavailable", result.reasons)
+
+        stale = replace(
+            self.availability.evidence[0],
+            observed_at=NOW - timedelta(minutes=10),
+            expires_at=NOW - timedelta(minutes=1),
+        )
+        result = self.validate(
+            context=self.context(
+                reviewer_availability=ReviewerAvailabilitySnapshot(
+                    evidence=(stale, self.availability.evidence[1])
+                )
+            ),
+            snapshot=fallback_snapshot,
+        )
+        self.assertIn("reviewer_availability_invalid", result.reasons)
+
+    def test_extra_coverage_future_evidence_and_development_runtime_fail(self):
+        from dataclasses import replace
+        from review_routing.contracts import FileCoverage, FileStatus, RuntimeTrust
+
+        snapshot = self.snapshot()
+        extra = FileCoverage(
+            path="not-in-diff.py",
+            status=FileStatus.MODIFIED,
+            coverage=snapshot.review_file_coverage[0].coverage,
+            reviewer=snapshot.review_file_coverage[0].reviewer,
+            coverage_source=snapshot.review_file_coverage[0].coverage_source,
+        )
+        result = self.validate(
+            snapshot=replace(
+                snapshot,
+                review_file_coverage=(*snapshot.review_file_coverage, extra),
+                reviews=(
+                    replace(
+                        snapshot.reviews[0],
+                        submitted_at=NOW + timedelta(seconds=1),
+                    ),
+                ),
+            )
+        )
+        self.assertIn("evidence_diff_mismatch", result.reasons)
+        self.assertIn("future_review_timestamp", result.reasons)
+
+        installed = self.runtime
+        self.runtime = replace(self.runtime, trust=RuntimeTrust.DEVELOPMENT)
+        try:
+            result = self.validate(
+                context=self.context(
+                    self.plan(runtime_trust=RuntimeTrust.DEVELOPMENT)
+                )
+            )
+        finally:
+            self.runtime = installed
+        self.assertIn("runtime_not_installed", result.reasons)
+
+    def test_security_diff_cannot_remove_qa_or_sec_from_final_route(self):
+        from dataclasses import replace
+        from review_routing.contracts import (
+            BoundEvidenceSourceKind,
+            DiffFile,
+            FileCoverage,
+            Reviewer,
+            ReviewRecord,
+            ReviewState,
+            RiskClassifierPort,
+        )
+
+        security_diff = replace(
+            self.diff,
+            files=(
+                DiffFile(
+                    path="src/security/auth/guard.py",
+                    status=self.diff.files[0].status,
+                    additions=1,
+                    deletions=0,
+                    binary=False,
+                ),
+            ),
+        )
+        assessment = self.registry.resolve(RiskClassifierPort).assess(
+            security_diff,
+            self.config,
+        )
+        plan = self.plan(
+            risk=assessment,
+            diff_digest=security_diff.diff_digest,
+        )
+        snapshot = self.snapshot()
+        copilot_coverage = replace(
+            snapshot.review_file_coverage[0],
+            path="src/security/auth/guard.py",
+        )
+        harness_source = replace(
+            self.source(),
+            kind=BoundEvidenceSourceKind.HARNESS_RUNTIME,
+            source_id="independent_roles",
+        )
+        qa_review = ReviewRecord(
+            reviewer=Reviewer.QA,
+            actor_login="qa-agent",
+            app_slug="codex-qa-agent",
+            state=ReviewState.APPROVED,
+            commit_sha=self.head,
+            submitted_at=NOW,
+            findings_count=0,
+            source=harness_source,
+        )
+        qa_coverage = FileCoverage(
+            path="src/security/auth/guard.py",
+            status=security_diff.files[0].status,
+            coverage=copilot_coverage.coverage,
+            reviewer=Reviewer.QA,
+            coverage_source=harness_source,
+        )
+        result = self.validate(
+            context=self.context(plan),
+            diff=security_diff,
+            snapshot=replace(
+                snapshot,
+                reviews=(*snapshot.reviews, qa_review),
+                review_file_coverage=(copilot_coverage, qa_coverage),
+            ),
+        )
+
+        self.assertEqual(
+            {reviewer.value for reviewer in result.required_reviewers},
+            {"copilot", "qa", "sec"},
+        )
+        self.assertIn("missing_reviewer:sec", result.reasons)
+
+    def test_publication_receipt_requires_immediate_head_revalidation(self):
+        from review_routing.contracts import PublicationReceipt
+
+        with self.assertRaises(ValueError):
+            PublicationReceipt(
+                repository=self.repository,
+                pull_request_number=self.pr,
+                head_sha=self.head,
+                check_name="agent-governance/review-gate",
+                publisher_app_slug="agent-governance-review-gate",
+                publication_id="check_1",
+                idempotency_key="sha256:" + "1" * 64,
+                published_at=NOW,
+                head_revalidated_at=NOW - timedelta(minutes=1),
+            )
+
+    def test_task_six_contracts_reject_boolean_integer_lookalikes_and_duplicates(self):
+        from dataclasses import replace
+
+        with self.assertRaises(ValueError):
+            replace(self.plan(), pull_request_number=True)
+        with self.assertRaises(ValueError):
+            replace(self.snapshot(), schema_version=True)
+        with self.assertRaises(ValueError):
+            replace(
+                self.snapshot(),
+                check_runs=(
+                    self.snapshot().check_runs[0],
+                    self.snapshot().check_runs[0],
+                ),
+            )
+        with self.assertRaises(ValueError):
+            replace(
+                self.snapshot(),
+                reviews=(
+                    self.snapshot().reviews[0],
+                    self.snapshot().reviews[0],
+                ),
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

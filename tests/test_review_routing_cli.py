@@ -1097,5 +1097,174 @@ class RouteCliTest(unittest.TestCase):
                 self.assertEqual(stderr, "")
 
 
+class ValidateCliTest(unittest.TestCase):
+    """Validate erhebt den Gate-Kontext frisch und bleibt read-only."""
+
+    def _route_and_evidence(self, directory: Path):
+        report = probe_report(usable=False)
+        deps = dependencies(
+            report,
+            installed=True,
+            reviewer_availability=FakeReviewerAvailability(),
+        )
+        route_code, route_payload, _, _ = invoke(
+            [
+                "route", "--repo", REPOSITORY, "--pull-request", "5",
+                "--review-mode", "manual", "--requester", "tom",
+                "--purpose", "final_exact_head", "--repo-path", str(ROOT), "--json",
+            ],
+            deps,
+        )
+        self.assertEqual(route_code, 0)
+        source = {
+            "kind": "harness_runtime",
+            "source_id": "qa_exact_head",
+            "repository": REPOSITORY,
+            "pull_request_number": 5,
+            "head_sha": HEAD_SHA,
+            "observed_at": "2026-07-27T08:59:00Z",
+            "valid_until": "2026-07-27T09:05:00Z",
+        }
+        github_source = {
+            **source,
+            "kind": "github_api",
+            "source_id": "github_checks_api",
+        }
+        evidence = {
+            "schema_version": 1,
+            "repository": REPOSITORY,
+            "pull_request_number": 5,
+            "base_sha": BASE_SHA,
+            "head_sha": HEAD_SHA,
+            "check_runs": [{
+                "name": "agent-governance/review-gate",
+                "source_app_slug": "agent-governance-review-gate",
+                "head_sha": HEAD_SHA,
+                "conclusion": "success",
+                "completed_at": "2026-07-27T09:00:00Z",
+                "source": github_source,
+            }],
+            "review_requests": [],
+            "reviews": [{
+                "reviewer": "qa",
+                "actor_login": "qa-agent",
+                "app_slug": "codex-qa-agent",
+                "state": "APPROVED",
+                "commit_sha": HEAD_SHA,
+                "submitted_at": "2026-07-27T09:00:00Z",
+                "findings_count": 0,
+                "source": source,
+            }],
+            "review_file_coverage": [{
+                "path": "src/application.py",
+                "status": "modified",
+                "previous_path": None,
+                "coverage": "reviewed",
+                "reviewer": "qa",
+                "coverage_source": source,
+            }],
+            "copilot_review_mode": "unknown",
+            "review_mode_source": {
+                **source,
+                "kind": "unavailable",
+                "source_id": "copilot_mode_unavailable",
+            },
+            "threads": [],
+            "observed_at": "2026-07-27T08:59:00Z",
+            "valid_until": "2026-07-27T09:05:00Z",
+        }
+        route_file = directory / "route.json"
+        evidence_file = directory / "evidence.json"
+        route_file.write_text(json.dumps(route_payload), encoding="utf-8")
+        evidence_file.write_text(json.dumps(evidence), encoding="utf-8")
+        return deps, route_file, evidence_file
+
+    @staticmethod
+    def _arguments(route_file: Path, evidence_file: Path) -> list[str]:
+        return [
+            "validate", "--route-file", str(route_file),
+            "--evidence-file", str(evidence_file),
+            "--repo", REPOSITORY, "--pull-request", "5",
+            "--review-mode", "manual", "--requester", "tom",
+            "--repo-path", str(ROOT), "--json",
+        ]
+
+    def test_validate_returns_success_only_for_complete_fresh_exact_head_evidence(self):
+        with tempfile.TemporaryDirectory() as directory_value:
+            deps, route_file, evidence_file = self._route_and_evidence(
+                Path(directory_value)
+            )
+            probe_calls = len(deps.probe.requests)  # type: ignore[union-attr]
+            state_calls = len(deps.pull_request_state.calls)  # type: ignore[union-attr]
+            availability_calls = len(deps.reviewer_availability.calls)  # type: ignore[union-attr]
+            code, payload, _, stderr = invoke(
+                self._arguments(route_file, evidence_file),
+                deps,
+            )
+            self.assertEqual(len(deps.probe.requests), probe_calls + 1)  # type: ignore[union-attr]
+            self.assertEqual(len(deps.pull_request_state.calls), state_calls + 1)  # type: ignore[union-attr]
+            self.assertEqual(
+                len(deps.reviewer_availability.calls),  # type: ignore[union-attr]
+                availability_calls + 1,
+            )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["conclusion"], "success")
+        self.assertEqual(payload["validated_reviewers"], ["qa"])
+        self.assertFalse(payload["published"])
+        self.assertEqual(stderr, "")
+
+    def test_validate_returns_32_for_spoofed_check_and_31_for_unknown_field(self):
+        with tempfile.TemporaryDirectory() as directory_value:
+            directory = Path(directory_value)
+            deps, route_file, evidence_file = self._route_and_evidence(directory)
+            evidence = json.loads(evidence_file.read_text(encoding="utf-8"))
+            evidence["check_runs"][0]["source_app_slug"] = "spoofed-app"
+            evidence_file.write_text(json.dumps(evidence), encoding="utf-8")
+            code, payload, _, _ = invoke(
+                self._arguments(route_file, evidence_file),
+                deps,
+            )
+            self.assertEqual(code, 32)
+            self.assertEqual(payload["conclusion"], "failure")
+            evidence["injected_required_checks"] = ["attacker/check"]
+            evidence_file.write_text(json.dumps(evidence), encoding="utf-8")
+            code, payload, _, _ = invoke(
+                self._arguments(route_file, evidence_file),
+                deps,
+            )
+
+        self.assertEqual(code, 31)
+        self.assertEqual(payload, {"schema_version": 1, "error": "invalid_input"})
+
+    def test_validate_missing_base_policy_and_duplicate_json_field_are_exit_31(self):
+        from dataclasses import replace
+
+        with tempfile.TemporaryDirectory() as directory_value:
+            directory = Path(directory_value)
+            deps, route_file, evidence_file = self._route_and_evidence(directory)
+            missing_policy = replace(
+                deps,
+                policy_source=FakePolicySource(missing=True),
+            )
+            code, payload, _, _ = invoke(
+                self._arguments(route_file, evidence_file),
+                missing_policy,
+            )
+            self.assertEqual(code, 31)
+            self.assertEqual(payload["error"], "invalid_input")
+            evidence_file.write_text(
+                '{"schema_version":1,"schema_version":1}',
+                encoding="utf-8",
+            )
+            code, payload, _, _ = invoke(
+                self._arguments(route_file, evidence_file),
+                deps,
+            )
+
+        self.assertEqual(code, 31)
+        self.assertEqual(payload["error"], "invalid_input")
+
+
 if __name__ == "__main__":
     unittest.main()
