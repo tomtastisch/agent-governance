@@ -30,16 +30,23 @@ SHA_A = "a" * 40
 SHA_B = "b" * 40
 
 
-def principal(*, identifier: str = "tom", review_mode: str = "manual") -> BillingPrincipal:
+def principal(
+    *,
+    identifier: str = "tom",
+    review_mode: str = "manual",
+    source: str = "operator_evidence",
+    observed_at: datetime = NOW,
+    expires_at: datetime | None = None,
+) -> BillingPrincipal:
     return BillingPrincipal(
         kind="personal",
         identifier=identifier,
         review_mode=review_mode,
         requester="tom",
         pull_request_author="tom",
-        source="operator_evidence",
-        observed_at=NOW,
-        expires_at=NOW + timedelta(hours=1),
+        source=source,
+        observed_at=observed_at,
+        expires_at=expires_at or observed_at + timedelta(hours=1),
     )
 
 
@@ -199,6 +206,106 @@ class UsabilityClassificationTest(unittest.TestCase):
         self.assertEqual(
             classify_usability(signals(DiagnosticStatus.AVAILABLE)),
             (True, DiagnosticStatus.AVAILABLE),
+        )
+
+    def test_reobserved_principal_with_same_stable_identity_is_usable(self):
+        embedded_principal = principal(
+            source="first_observation",
+            observed_at=NOW - timedelta(hours=2),
+            expires_at=NOW + timedelta(hours=2),
+        )
+        authoritative_principal = principal(
+            source="fresh_observation",
+            observed_at=NOW - timedelta(minutes=1),
+            expires_at=NOW + timedelta(hours=3),
+        )
+        evidence = capability(
+            billing_principal=embedded_principal,
+            observed_at=NOW - timedelta(hours=1),
+            expires_at=NOW + timedelta(hours=1),
+        )
+
+        self.assertEqual(embedded_principal.identity, authoritative_principal.identity)
+        self.assertEqual(
+            classify_usability(
+                ProbeSignals(
+                    billing_status=DiagnosticStatus.AVAILABLE,
+                    usage_status=DiagnosticStatus.AVAILABLE,
+                    provider_status=DiagnosticStatus.AVAILABLE,
+                    permission_status=DiagnosticStatus.AVAILABLE,
+                    capability=evidence,
+                    repository="tomtastisch/agent-governance",
+                    principal=authoritative_principal,
+                    review_mode="manual",
+                    observed_at=NOW,
+                )
+            ),
+            (True, DiagnosticStatus.AVAILABLE),
+        )
+
+    def test_capability_rejects_invalid_authoritative_principal_and_identity_drift(self):
+        embedded_principal = principal(
+            observed_at=NOW - timedelta(hours=1),
+            expires_at=NOW + timedelta(hours=3),
+        )
+        evidence = capability(
+            billing_principal=embedded_principal,
+            observed_at=NOW - timedelta(minutes=30),
+            expires_at=NOW + timedelta(hours=1),
+        )
+        cases = {
+            "expired_authoritative": principal(
+                observed_at=NOW - timedelta(hours=2),
+                expires_at=NOW - timedelta(hours=1),
+            ),
+            "future_authoritative": principal(
+                observed_at=NOW + timedelta(minutes=1),
+                expires_at=NOW + timedelta(hours=1),
+            ),
+            "different_identity": principal(identifier="other"),
+        }
+
+        for name, authoritative_principal in cases.items():
+            with self.subTest(name=name):
+                self.assertEqual(
+                    classify_usability(
+                        ProbeSignals(
+                            billing_status=DiagnosticStatus.AVAILABLE,
+                            usage_status=DiagnosticStatus.AVAILABLE,
+                            provider_status=DiagnosticStatus.AVAILABLE,
+                            permission_status=DiagnosticStatus.AVAILABLE,
+                            capability=evidence,
+                            repository="tomtastisch/agent-governance",
+                            principal=authoritative_principal,
+                            review_mode="manual",
+                            observed_at=NOW,
+                        )
+                    ),
+                    (False, DiagnosticStatus.UNKNOWN),
+                )
+
+    def test_capability_must_not_outlive_its_embedded_principal(self):
+        embedded_principal = principal(expires_at=NOW + timedelta(minutes=30))
+        evidence = capability(
+            billing_principal=embedded_principal,
+            expires_at=NOW + timedelta(hours=1),
+        )
+
+        self.assertEqual(
+            classify_usability(
+                ProbeSignals(
+                    billing_status=DiagnosticStatus.AVAILABLE,
+                    usage_status=DiagnosticStatus.AVAILABLE,
+                    provider_status=DiagnosticStatus.AVAILABLE,
+                    permission_status=DiagnosticStatus.AVAILABLE,
+                    capability=evidence,
+                    repository="tomtastisch/agent-governance",
+                    principal=embedded_principal,
+                    review_mode="manual",
+                    observed_at=NOW,
+                )
+            ),
+            (False, DiagnosticStatus.UNKNOWN),
         )
 
 

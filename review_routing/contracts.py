@@ -228,6 +228,21 @@ class BillingPrincipal:
         if self.expires_at <= self.observed_at:
             raise ValueError("expires_at must be after observed_at")
 
+    @property
+    def identity(self) -> tuple[str, str, str, str | None, str | None]:
+        """Liefert die stabile Principal-Identität ohne zeitliche Evidenzmetadaten."""
+        return (
+            self.kind,
+            self.identifier,
+            self.review_mode,
+            self.requester,
+            self.pull_request_author,
+        )
+
+    def is_valid_at(self, now: datetime) -> bool:
+        """Prüft die zeitlich begrenzte Principal-Evidenz fail-closed."""
+        return self.observed_at <= now < self.expires_at
+
 
 @dataclass(frozen=True)
 class CapabilityEvidence:
@@ -249,9 +264,12 @@ class CapabilityEvidence:
     def is_valid_for(self, repository: str, principal: BillingPrincipal, review_mode: str, now: datetime) -> bool:
         return (
             self.repository == repository
-            and self.principal == principal
+            and self.principal.identity == principal.identity
             and self.review_mode == review_mode
+            and principal.is_valid_at(now)
             and self.observed_at <= now < self.expires_at
+            and self.principal.is_valid_at(self.observed_at)
+            and self.expires_at <= self.principal.expires_at
         )
 
 
