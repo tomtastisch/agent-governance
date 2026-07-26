@@ -22,6 +22,7 @@ from review_routing.contracts import (
     BlockEvidenceSource,
     BlockEvidenceVerifierPort,
     BlockVerification,
+    CapabilityArtifactKind,
     CapabilityEvidence,
     CapabilityEvidenceReference,
     CapabilityEvidenceSource,
@@ -51,9 +52,12 @@ from review_routing.contracts import (
     StatusPort,
     StatusSnapshot,
     OperatorEvidencePin,
+    OperatorEvidenceTrustPort,
+    RuntimeTrustSource,
     UnknownContextError,
     Usage,
     VerifiedBlockEvidence,
+    require_full_sha,
     require_repository,
 )
 
@@ -62,7 +66,6 @@ API_VERSION = "2026-03-10"
 STATUS_URL = "https://www.githubstatus.com/api/v2/components.json"
 DEFAULT_TIMEOUT_SECONDS = 10.0
 PRINCIPAL_VALIDITY = timedelta(minutes=15)
-CAPABILITY_VALIDITY = timedelta(minutes=15)
 COPILOT_REVIEWERS = {
     "copilot-pull-request-reviewer[bot]",
     "github-copilot[bot]",
@@ -364,10 +367,12 @@ def _parse_utc(value: object, field_name: str) -> datetime:
 def _absent_capability() -> CapabilityVerification:
     return CapabilityVerification(
         status=EvidenceVerificationStatus.ABSENT,
-        trust=EvidenceTrust.DEVELOPMENT,
+        trust=EvidenceTrust.UNVERIFIED,
         source=None,
+        artifact_kind=None,
         source_reference=None,
         artifact_digest=None,
+        pin_source=None,
         evidence=None,
     )
 
@@ -375,6 +380,8 @@ def _absent_capability() -> CapabilityVerification:
 def _invalid_capability(
     reference: CapabilityEvidenceReference,
     artifact_digest: str | None = None,
+    artifact_kind: CapabilityArtifactKind | None = None,
+    pin_source: RuntimeTrustSource | None = None,
     *,
     expired: bool = False,
 ) -> CapabilityVerification:
@@ -384,25 +391,34 @@ def _invalid_capability(
             if expired
             else EvidenceVerificationStatus.INVALID
         ),
-        trust=EvidenceTrust.DEVELOPMENT,
+        trust=EvidenceTrust.UNVERIFIED,
         source=reference.source,
+        artifact_kind=artifact_kind,
         source_reference=reference.source_reference,
         artifact_digest=artifact_digest,
+        pin_source=pin_source,
         evidence=None,
     )
 
 
+class DevelopmentOperatorEvidenceTrust(OperatorEvidenceTrustPort):
+    """Source-Checkout-Default ohne externen Operator-Pin."""
+
+    def load(self, source_reference: str) -> OperatorEvidencePin | None:
+        return None
+
+
 class CapabilityEvidenceVerifier(CapabilityEvidenceVerifierPort):
-    """Verifiziert GitHub-Review- oder extern gepinnte Operator-Capabilities."""
+    """Erzeugt Capability nur aus extern gepinntem Operator-Kontext."""
 
     def __init__(
         self,
         command: CommandPort,
-        operator_pins: Mapping[str, OperatorEvidencePin],
+        operator_trust: OperatorEvidenceTrustPort,
         timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
     ):
         self._command = command
-        self._operator_pins = dict(operator_pins)
+        self._operator_trust = operator_trust
         self._timeout_seconds = timeout_seconds
 
     def verify(
@@ -421,24 +437,51 @@ class CapabilityEvidenceVerifier(CapabilityEvidenceVerifierPort):
             or reference.review_mode != review_mode
         ):
             return _invalid_capability(reference)
-        if reference.source is CapabilityEvidenceSource.GITHUB_COMPLETED_REVIEW:
-            return self._verify_github(reference, principal, observed_at)
         return self._verify_operator(reference, principal, observed_at)
 
-    def _verify_github(
+    def _verify_completed_review(
         self,
         reference: CapabilityEvidenceReference,
         principal: BillingPrincipal,
-        observed_at: datetime,
+        document: Mapping[str, object],
+        artifact_digest: str,
+        pin: OperatorEvidencePin,
+        artifact_observed_at: datetime,
+        expires_at: datetime,
     ) -> CapabilityVerification:
-        assert reference.pull_request_number is not None
-        assert reference.review_id is not None
+        pull_request_number = document["pull_request_number"]
+        review_id = document["review_id"]
+        review_commit_sha = document["review_commit_sha"]
+        if (
+            isinstance(pull_request_number, bool)
+            or not isinstance(pull_request_number, int)
+            or pull_request_number <= 0
+            or isinstance(review_id, bool)
+            or not isinstance(review_id, int)
+            or review_id <= 0
+            or not isinstance(review_commit_sha, str)
+        ):
+            return _invalid_capability(
+                reference,
+                artifact_digest,
+                CapabilityArtifactKind.COMPLETED_REVIEW_CONTEXT,
+                pin.pin_source,
+            )
+        try:
+            require_full_sha(review_commit_sha, "review_commit_sha")
+        except ValueError:
+            return _invalid_capability(
+                reference,
+                artifact_digest,
+                CapabilityArtifactKind.COMPLETED_REVIEW_CONTEXT,
+                pin.pin_source,
+            )
         response = _request_json(
             self._command,
             self._timeout_seconds,
             (
                 f"/repos/{reference.repository}/pulls/"
-                f"{reference.pull_request_number}/reviews/{reference.review_id}"
+                f"{pull_request_number}/reviews/{review_id}"
             ),
         ).payload
         expected_keys = {"id", "user", "state", "commit_id", "submitted_at"}
@@ -446,54 +489,58 @@ class CapabilityEvidenceVerifier(CapabilityEvidenceVerifierPort):
             return _invalid_capability(reference)
         user = response["user"]
         if (
-            response["id"] != reference.review_id
+            isinstance(response["id"], bool)
+            or response["id"] != review_id
             or not isinstance(user, dict)
             or user.get("login") not in COPILOT_REVIEWERS
             or response["state"] != "COMMENTED"
-            or not isinstance(response["commit_id"], str)
+            or response["commit_id"] != review_commit_sha
         ):
-            return _invalid_capability(reference)
+            return _invalid_capability(
+                reference,
+                artifact_digest,
+                CapabilityArtifactKind.COMPLETED_REVIEW_CONTEXT,
+                pin.pin_source,
+            )
         try:
             submitted_at = _parse_utc(response["submitted_at"], "submitted_at")
-            review_commit_sha = response["commit_id"]
-            if len(review_commit_sha) != 40 or any(
-                character not in "0123456789abcdef" for character in review_commit_sha
-            ):
-                raise ValueError
-        except (IncompleteResponseError, ValueError):
-            return _invalid_capability(reference)
-        selected = {
-            "commit_id": review_commit_sha,
-            "id": reference.review_id,
-            "pull_request_number": reference.pull_request_number,
-            "repository": reference.repository,
-            "reviewer": user["login"],
-            "state": response["state"],
-            "submitted_at": submitted_at.isoformat().replace("+00:00", "Z"),
-        }
-        artifact_digest = _canonical_digest(selected)
-        expires_at = min(submitted_at + CAPABILITY_VALIDITY, principal.expires_at)
-        if not submitted_at <= observed_at < expires_at:
-            return _invalid_capability(reference, artifact_digest, expired=True)
+        except IncompleteResponseError:
+            return _invalid_capability(
+                reference,
+                artifact_digest,
+                CapabilityArtifactKind.COMPLETED_REVIEW_CONTEXT,
+                pin.pin_source,
+            )
+        if submitted_at != artifact_observed_at:
+            return _invalid_capability(
+                reference,
+                artifact_digest,
+                CapabilityArtifactKind.COMPLETED_REVIEW_CONTEXT,
+                pin.pin_source,
+            )
         evidence = CapabilityEvidence(
             repository=reference.repository,
             principal=principal,
             review_mode=reference.review_mode,
-            observed_at=submitted_at,
+            observed_at=artifact_observed_at,
             expires_at=expires_at,
-            source=CapabilityEvidenceSource.GITHUB_COMPLETED_REVIEW,
-            source_reference=f"github_review_{reference.review_id}",
+            source=CapabilityEvidenceSource.OPERATOR_PINNED,
+            artifact_kind=CapabilityArtifactKind.COMPLETED_REVIEW_CONTEXT,
+            source_reference=reference.source_reference,
             artifact_digest=artifact_digest,
-            pull_request_number=reference.pull_request_number,
-            review_id=reference.review_id,
+            pin_source=pin.pin_source,
+            pull_request_number=pull_request_number,
+            review_id=review_id,
             review_commit_sha=review_commit_sha,
         )
         return CapabilityVerification(
             status=EvidenceVerificationStatus.VERIFIED,
             trust=EvidenceTrust.VERIFIED,
             source=evidence.source,
+            artifact_kind=evidence.artifact_kind,
             source_reference=evidence.source_reference,
             artifact_digest=artifact_digest,
+            pin_source=evidence.pin_source,
             evidence=evidence,
         )
 
@@ -503,14 +550,18 @@ class CapabilityEvidenceVerifier(CapabilityEvidenceVerifierPort):
         principal: BillingPrincipal,
         observed_at: datetime,
     ) -> CapabilityVerification:
-        assert reference.artifact is not None
         document = _parse_artifact(reference.artifact)
         artifact_digest = _canonical_digest(document)
-        pin = self._operator_pins.get(reference.source_reference)
-        if pin is None or pin.expected_digest != artifact_digest:
+        pin = self._operator_trust.load(reference.source_reference)
+        if (
+            pin is None
+            or pin.source_reference != reference.source_reference
+            or pin.expected_digest != artifact_digest
+        ):
             return _invalid_capability(reference, artifact_digest)
-        expected_keys = {
+        common_keys = {
             "schema_version",
+            "kind",
             "repository",
             "principal_identity",
             "review_mode",
@@ -518,25 +569,64 @@ class CapabilityEvidenceVerifier(CapabilityEvidenceVerifierPort):
             "expires_at",
             "source_reference",
         }
-        if set(document) != expected_keys:
+        try:
+            artifact_kind = CapabilityArtifactKind(document["kind"])
+        except (KeyError, ValueError, TypeError):
             return _invalid_capability(reference, artifact_digest)
+        expected_keys = set(common_keys)
+        if artifact_kind is CapabilityArtifactKind.COMPLETED_REVIEW_CONTEXT:
+            expected_keys.update({"pull_request_number", "review_id", "review_commit_sha"})
+        if set(document) != expected_keys:
+            return _invalid_capability(
+                reference,
+                artifact_digest,
+                artifact_kind,
+                pin.pin_source,
+            )
         try:
             identity = tuple(document["principal_identity"])
             artifact_observed_at = _parse_utc(document["observed_at"], "observed_at")
             expires_at = _parse_utc(document["expires_at"], "expires_at")
         except (TypeError, IncompleteResponseError):
-            return _invalid_capability(reference, artifact_digest)
+            return _invalid_capability(
+                reference,
+                artifact_digest,
+                artifact_kind,
+                pin.pin_source,
+            )
         if (
-            document["schema_version"] != 1
+            isinstance(document["schema_version"], bool)
+            or document["schema_version"] != 1
             or document["repository"] != reference.repository
             or identity != principal.identity
             or document["review_mode"] != reference.review_mode
             or document["source_reference"] != reference.source_reference
             or expires_at > principal.expires_at
         ):
-            return _invalid_capability(reference, artifact_digest)
+            return _invalid_capability(
+                reference,
+                artifact_digest,
+                artifact_kind,
+                pin.pin_source,
+            )
         if not artifact_observed_at <= observed_at < expires_at:
-            return _invalid_capability(reference, artifact_digest, expired=True)
+            return _invalid_capability(
+                reference,
+                artifact_digest,
+                artifact_kind,
+                pin.pin_source,
+                expired=True,
+            )
+        if artifact_kind is CapabilityArtifactKind.COMPLETED_REVIEW_CONTEXT:
+            return self._verify_completed_review(
+                reference,
+                principal,
+                document,
+                artifact_digest,
+                pin,
+                artifact_observed_at,
+                expires_at,
+            )
         evidence = CapabilityEvidence(
             repository=reference.repository,
             principal=principal,
@@ -544,15 +634,19 @@ class CapabilityEvidenceVerifier(CapabilityEvidenceVerifierPort):
             observed_at=artifact_observed_at,
             expires_at=expires_at,
             source=CapabilityEvidenceSource.OPERATOR_PINNED,
+            artifact_kind=CapabilityArtifactKind.OPERATOR_SETTING,
             source_reference=reference.source_reference,
             artifact_digest=artifact_digest,
+            pin_source=pin.pin_source,
         )
         return CapabilityVerification(
             status=EvidenceVerificationStatus.VERIFIED,
             trust=EvidenceTrust.VERIFIED,
             source=evidence.source,
+            artifact_kind=evidence.artifact_kind,
             source_reference=evidence.source_reference,
             artifact_digest=artifact_digest,
+            pin_source=evidence.pin_source,
             evidence=evidence,
         )
 
@@ -560,10 +654,11 @@ class CapabilityEvidenceVerifier(CapabilityEvidenceVerifierPort):
 def _absent_block() -> BlockVerification:
     return BlockVerification(
         status=EvidenceVerificationStatus.ABSENT,
-        trust=EvidenceTrust.DEVELOPMENT,
+        trust=EvidenceTrust.UNVERIFIED,
         source=None,
         source_reference=None,
         artifact_digest=None,
+        pin_source=None,
         evidence=None,
     )
 
@@ -571,8 +666,8 @@ def _absent_block() -> BlockVerification:
 class BlockEvidenceVerifier(BlockEvidenceVerifierPort):
     """Verifiziert Blockaden; Caller-Artefakte greifen nur mit externem Digest-Pin."""
 
-    def __init__(self, operator_pins: Mapping[str, OperatorEvidencePin]):
-        self._operator_pins = dict(operator_pins)
+    def __init__(self, operator_trust: OperatorEvidenceTrustPort):
+        self._operator_trust = operator_trust
 
     def _invalid(
         self,
@@ -587,10 +682,11 @@ class BlockEvidenceVerifier(BlockEvidenceVerifierPort):
                 if expired
                 else EvidenceVerificationStatus.INVALID
             ),
-            trust=EvidenceTrust.DEVELOPMENT,
+            trust=EvidenceTrust.UNVERIFIED,
             source=reference.source,
             source_reference=reference.source_reference,
             artifact_digest=artifact_digest,
+            pin_source=None,
             evidence=None,
         )
 
@@ -609,13 +705,16 @@ class BlockEvidenceVerifier(BlockEvidenceVerifierPort):
             or reference.principal_identity != principal.identity
             or reference.review_mode != review_mode
             or reference.source is not BlockEvidenceSource.OPERATOR_PINNED
-            or reference.artifact is None
         ):
             return self._invalid(reference)
         document = _parse_artifact(reference.artifact)
         artifact_digest = _canonical_digest(document)
-        pin = self._operator_pins.get(reference.source_reference)
-        if pin is None or pin.expected_digest != artifact_digest:
+        pin = self._operator_trust.load(reference.source_reference)
+        if (
+            pin is None
+            or pin.source_reference != reference.source_reference
+            or pin.expected_digest != artifact_digest
+        ):
             return self._invalid(reference, artifact_digest)
         expected_keys = {
             "schema_version",
@@ -637,7 +736,8 @@ class BlockEvidenceVerifier(BlockEvidenceVerifierPort):
         except (ValueError, TypeError, IncompleteResponseError):
             return self._invalid(reference, artifact_digest)
         if (
-            document["schema_version"] != 1
+            isinstance(document["schema_version"], bool)
+            or document["schema_version"] != 1
             or document["repository"] != repository
             or identity != principal.identity
             or document["review_mode"] != review_mode
@@ -658,6 +758,7 @@ class BlockEvidenceVerifier(BlockEvidenceVerifierPort):
             source=BlockEvidenceSource.OPERATOR_PINNED,
             source_reference=reference.source_reference,
             artifact_digest=artifact_digest,
+            pin_source=pin.pin_source,
         )
         return BlockVerification(
             status=EvidenceVerificationStatus.VERIFIED,
@@ -665,6 +766,7 @@ class BlockEvidenceVerifier(BlockEvidenceVerifierPort):
             source=evidence.source,
             source_reference=evidence.source_reference,
             artifact_digest=artifact_digest,
+            pin_source=evidence.pin_source,
             evidence=evidence,
         )
 
@@ -966,10 +1068,11 @@ class GitHubGhProbe(ProbePort, PullRequestStatePort):
                 if request.block_reference is None
                 else BlockVerification(
                     status=EvidenceVerificationStatus.INVALID,
-                    trust=EvidenceTrust.DEVELOPMENT,
+                    trust=EvidenceTrust.UNVERIFIED,
                     source=request.block_reference.source,
                     source_reference=request.block_reference.source_reference,
                     artifact_digest=None,
+                    pin_source=None,
                     evidence=None,
                 )
             )
@@ -998,6 +1101,16 @@ class GitHubGhProbe(ProbePort, PullRequestStatePort):
             usage_status,
             provider_status,
             permission_status,
+            *(
+                (_diagnostic_for_error(capability_error),)
+                if capability_error is not None
+                else ()
+            ),
+            *(
+                (_diagnostic_for_error(block_error),)
+                if block_error is not None
+                else ()
+            ),
         )
         routing_status = next(
             status for status in _STATUS_PRECEDENCE if status in technical_statuses
@@ -1107,6 +1220,7 @@ class GitHubFactory:
         CommandPort,
         StatusPort,
         ClockPort,
+        OperatorEvidenceTrustPort,
         CapabilityEvidenceVerifierPort,
         BlockEvidenceVerifierPort,
         ProbePort,
@@ -1120,8 +1234,12 @@ class GitHubFactory:
         command = SubprocessCommand()
         clock = SystemClock()
         status = GitHubStatus(clock=clock)
-        capability_verifier = CapabilityEvidenceVerifier(command=command, operator_pins={})
-        block_verifier = BlockEvidenceVerifier(operator_pins={})
+        operator_trust = DevelopmentOperatorEvidenceTrust()
+        capability_verifier = CapabilityEvidenceVerifier(
+            command=command,
+            operator_trust=operator_trust,
+        )
+        block_verifier = BlockEvidenceVerifier(operator_trust=operator_trust)
         probe = GitHubGhProbe(
             command=command,
             status=status,
@@ -1133,6 +1251,7 @@ class GitHubFactory:
             CommandPort: command,
             StatusPort: status,
             ClockPort: clock,
+            OperatorEvidenceTrustPort: operator_trust,
             CapabilityEvidenceVerifierPort: capability_verifier,
             BlockEvidenceVerifierPort: block_verifier,
             ProbePort: probe,

@@ -173,14 +173,16 @@ class ProbeTechnicalError(str, Enum):
 
 
 class CapabilityEvidenceSource(str, Enum):
-    GITHUB_COMPLETED_REVIEW = "github_completed_review"
     OPERATOR_PINNED = "operator_pinned"
 
 
 class BlockEvidenceSource(str, Enum):
-    GITHUB_API = "github_api"
-    PROVIDER_API = "provider_api"
     OPERATOR_PINNED = "operator_pinned"
+
+
+class CapabilityArtifactKind(str, Enum):
+    OPERATOR_SETTING = "operator_setting"
+    COMPLETED_REVIEW_CONTEXT = "completed_review_context"
 
 
 class BlockEvidenceKind(str, Enum):
@@ -197,7 +199,7 @@ class EvidenceVerificationStatus(str, Enum):
 
 
 class EvidenceTrust(str, Enum):
-    DEVELOPMENT = "development"
+    UNVERIFIED = "unverified"
     VERIFIED = "verified"
 
 
@@ -413,12 +415,12 @@ class BillingPrincipal:
 class OperatorEvidencePin:
     source_reference: str
     expected_digest: str
-    source: RuntimeTrustSource
+    pin_source: RuntimeTrustSource
 
     def __post_init__(self) -> None:
         _require_code(self.source_reference, "source_reference")
         _require_digest(self.expected_digest, "expected_digest")
-        if self.source not in {
+        if self.pin_source not in {
             RuntimeTrustSource.PUBLISHER_APP,
             RuntimeTrustSource.INSTALLED_CONFIG,
         }:
@@ -433,9 +435,7 @@ class CapabilityEvidenceReference:
     review_mode: str
     principal_identity: tuple[str, str, str, str | None, str | None]
     source_reference: str
-    pull_request_number: int | None = None
-    review_id: int | None = None
-    artifact: bytes | None = None
+    artifact: bytes
 
     def __post_init__(self) -> None:
         if self.schema_version != 1 or isinstance(self.schema_version, bool):
@@ -451,18 +451,10 @@ class CapabilityEvidenceReference:
             _require_principal_identity(self.principal_identity),
         )
         _require_code(self.source_reference, "source_reference")
-        if self.source is CapabilityEvidenceSource.GITHUB_COMPLETED_REVIEW:
-            for field_name in ("pull_request_number", "review_id"):
-                value = getattr(self, field_name)
-                if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-                    raise ValueError(f"{field_name} must be a positive integer")
-            if self.artifact is not None:
-                raise ValueError("GitHub review references forbid caller artifact content")
-        else:
-            if self.pull_request_number is not None or self.review_id is not None:
-                raise ValueError("operator references forbid GitHub review identifiers")
-            if not isinstance(self.artifact, bytes) or not self.artifact:
-                raise ValueError("operator references require untrusted artifact bytes")
+        if self.source is not CapabilityEvidenceSource.OPERATOR_PINNED:
+            raise ValueError("capability source must be operator_pinned")
+        if not isinstance(self.artifact, bytes) or not self.artifact:
+            raise ValueError("operator references require untrusted artifact bytes")
 
 
 @dataclass(frozen=True)
@@ -473,7 +465,7 @@ class BlockEvidenceReference:
     review_mode: str
     principal_identity: tuple[str, str, str, str | None, str | None]
     source_reference: str
-    artifact: bytes | None = None
+    artifact: bytes
 
     def __post_init__(self) -> None:
         if self.schema_version != 1 or isinstance(self.schema_version, bool):
@@ -489,11 +481,10 @@ class BlockEvidenceReference:
             _require_principal_identity(self.principal_identity),
         )
         _require_code(self.source_reference, "source_reference")
-        if self.source is BlockEvidenceSource.OPERATOR_PINNED:
-            if not isinstance(self.artifact, bytes) or not self.artifact:
-                raise ValueError("operator references require untrusted artifact bytes")
-        elif self.artifact is not None:
-            raise ValueError("provider references forbid caller artifact content")
+        if self.source is not BlockEvidenceSource.OPERATOR_PINNED:
+            raise ValueError("block source must be operator_pinned")
+        if not isinstance(self.artifact, bytes) or not self.artifact:
+            raise ValueError("operator references require untrusted artifact bytes")
 
 
 @dataclass(frozen=True)
@@ -504,8 +495,10 @@ class CapabilityEvidence:
     observed_at: datetime
     expires_at: datetime
     source: CapabilityEvidenceSource
+    artifact_kind: CapabilityArtifactKind
     source_reference: str
     artifact_digest: str
+    pin_source: RuntimeTrustSource
     pull_request_number: int | None = None
     review_id: int | None = None
     review_commit_sha: str | None = None
@@ -517,6 +510,15 @@ class CapabilityEvidence:
             raise ValueError("review_mode must be manual or automatic")
         if not isinstance(self.source, CapabilityEvidenceSource):
             raise ValueError("source must be a CapabilityEvidenceSource")
+        if self.source is not CapabilityEvidenceSource.OPERATOR_PINNED:
+            raise ValueError("capability source must be operator_pinned")
+        if not isinstance(self.artifact_kind, CapabilityArtifactKind):
+            raise ValueError("artifact_kind must be a CapabilityArtifactKind")
+        if self.pin_source not in {
+            RuntimeTrustSource.PUBLISHER_APP,
+            RuntimeTrustSource.INSTALLED_CONFIG,
+        }:
+            raise ValueError("pin_source must be an external trusted source")
         _require_code(self.source_reference, "source_reference")
         _require_digest(self.artifact_digest, "artifact_digest")
         _iso_z(self.observed_at)
@@ -525,7 +527,7 @@ class CapabilityEvidence:
             raise ValueError("review_mode must match the billing principal")
         if self.expires_at <= self.observed_at:
             raise ValueError("expires_at must be after observed_at")
-        if self.source is CapabilityEvidenceSource.GITHUB_COMPLETED_REVIEW:
+        if self.artifact_kind is CapabilityArtifactKind.COMPLETED_REVIEW_CONTEXT:
             for field_name in ("pull_request_number", "review_id"):
                 value = getattr(self, field_name)
                 if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
@@ -555,8 +557,10 @@ class CapabilityVerification:
     status: EvidenceVerificationStatus
     trust: EvidenceTrust
     source: CapabilityEvidenceSource | None
+    artifact_kind: CapabilityArtifactKind | None
     source_reference: str | None
     artifact_digest: str | None
+    pin_source: RuntimeTrustSource | None
     evidence: CapabilityEvidence | None
 
     def __post_init__(self) -> None:
@@ -568,19 +572,26 @@ class CapabilityVerification:
             if (
                 self.trust is not EvidenceTrust.VERIFIED
                 or self.source is None
+                or self.artifact_kind is None
                 or self.source_reference is None
                 or self.artifact_digest is None
+                or self.pin_source not in {
+                    RuntimeTrustSource.PUBLISHER_APP,
+                    RuntimeTrustSource.INSTALLED_CONFIG,
+                }
                 or self.evidence is None
             ):
                 raise ValueError("verified capability must carry complete trusted provenance")
             if (
                 self.evidence.source is not self.source
+                or self.evidence.artifact_kind is not self.artifact_kind
                 or self.evidence.source_reference != self.source_reference
                 or self.evidence.artifact_digest != self.artifact_digest
+                or self.evidence.pin_source is not self.pin_source
             ):
                 raise ValueError("verified capability provenance must match its evidence")
-        elif self.evidence is not None:
-            raise ValueError("non-verified capability must not carry routing evidence")
+        elif self.evidence is not None or self.trust is EvidenceTrust.VERIFIED:
+            raise ValueError("non-verified capability must not carry verified trust or evidence")
 
 
 @dataclass(frozen=True)
@@ -595,6 +606,7 @@ class VerifiedBlockEvidence:
     source: BlockEvidenceSource
     source_reference: str
     artifact_digest: str
+    pin_source: RuntimeTrustSource
 
     def __post_init__(self) -> None:
         if self.schema_version != 1 or isinstance(self.schema_version, bool):
@@ -617,6 +629,11 @@ class VerifiedBlockEvidence:
             raise ValueError("source must be a BlockEvidenceSource")
         _require_code(self.source_reference, "source_reference")
         _require_digest(self.artifact_digest, "artifact_digest")
+        if self.pin_source not in {
+            RuntimeTrustSource.PUBLISHER_APP,
+            RuntimeTrustSource.INSTALLED_CONFIG,
+        }:
+            raise ValueError("pin_source must be an external trusted source")
 
     def is_valid_for(
         self,
@@ -640,6 +657,7 @@ class BlockVerification:
     source: BlockEvidenceSource | None
     source_reference: str | None
     artifact_digest: str | None
+    pin_source: RuntimeTrustSource | None
     evidence: VerifiedBlockEvidence | None
 
     def __post_init__(self) -> None:
@@ -653,6 +671,10 @@ class BlockVerification:
                 or self.source is None
                 or self.source_reference is None
                 or self.artifact_digest is None
+                or self.pin_source not in {
+                    RuntimeTrustSource.PUBLISHER_APP,
+                    RuntimeTrustSource.INSTALLED_CONFIG,
+                }
                 or self.evidence is None
             ):
                 raise ValueError("verified block must carry complete trusted provenance")
@@ -660,10 +682,11 @@ class BlockVerification:
                 self.evidence.source is not self.source
                 or self.evidence.source_reference != self.source_reference
                 or self.evidence.artifact_digest != self.artifact_digest
+                or self.evidence.pin_source is not self.pin_source
             ):
                 raise ValueError("verified block provenance must match its evidence")
-        elif self.evidence is not None:
-            raise ValueError("non-verified block must not carry routing evidence")
+        elif self.evidence is not None or self.trust is EvidenceTrust.VERIFIED:
+            raise ValueError("non-verified block must not carry verified trust or evidence")
 
 
 @dataclass(frozen=True)
@@ -849,10 +872,22 @@ class ProbeReport:
                     if capability_verification is not None
                     else None
                 ),
+                "artifact_kind": (
+                    capability_verification.artifact_kind.value
+                    if capability_verification is not None
+                    and capability_verification.artifact_kind is not None
+                    else None
+                ),
+                "pin_source": (
+                    capability_verification.pin_source.value
+                    if capability_verification is not None
+                    and capability_verification.pin_source is not None
+                    else None
+                ),
                 "trust": (
                     capability_verification.trust.value
                     if capability_verification is not None
-                    else EvidenceTrust.DEVELOPMENT.value
+                    else EvidenceTrust.UNVERIFIED.value
                 ),
             },
             "block_evidence": {
@@ -883,10 +918,16 @@ class ProbeReport:
                     if block_verification is not None
                     else None
                 ),
+                "pin_source": (
+                    block_verification.pin_source.value
+                    if block_verification is not None
+                    and block_verification.pin_source is not None
+                    else None
+                ),
                 "trust": (
                     block_verification.trust.value
                     if block_verification is not None
-                    else EvidenceTrust.DEVELOPMENT.value
+                    else EvidenceTrust.UNVERIFIED.value
                 ),
             },
             "evidence": list(self.evidence),
@@ -1321,6 +1362,12 @@ class ProbePort(ABC):
         """Erhebt die read-only Copilot-Verwendbarkeit für den gebundenen Kontext."""
 
 
+class OperatorEvidenceTrustPort(ABC):
+    @abstractmethod
+    def load(self, source_reference: str) -> OperatorEvidencePin | None:
+        """Lädt einen programmatic-only externen Digest-Pin oder meldet ihn als fehlend."""
+
+
 class CapabilityEvidenceVerifierPort(ABC):
     @abstractmethod
     def verify(
@@ -1358,6 +1405,7 @@ class CliDependencies:
     """Programmatic-only Grenze für externe, vertrauenswürdige Abhängigkeiten."""
 
     runtime_trust_port: RuntimeTrustPort | None = None
+    operator_evidence_trust_port: OperatorEvidenceTrustPort | None = None
 
 
 class AdapterFactory(Protocol):

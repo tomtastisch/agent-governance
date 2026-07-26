@@ -11,8 +11,6 @@ import unittest
 
 from review_routing.adapters.github_gh import (
     API_VERSION,
-    BlockEvidenceVerifier,
-    CapabilityEvidenceVerifier,
     GitHubGhProbe,
     GitHubStatus,
     SubprocessCommand,
@@ -23,6 +21,7 @@ from review_routing.contracts import (
     BlockEvidenceReference,
     BlockEvidenceSource,
     BlockVerification,
+    CapabilityArtifactKind,
     CapabilityEvidence,
     CapabilityEvidenceReference,
     CapabilityEvidenceSource,
@@ -33,12 +32,16 @@ from review_routing.contracts import (
     DiagnosticStatus,
     EvidenceTrust,
     EvidenceVerificationStatus,
+    IncompleteResponseError,
     MalformedResponseError,
     PermissionDeniedError,
     PortTimeoutError,
+    ProviderUnavailableError,
     ProbeRequest,
     PullRequestState,
     PullRequestStateSource,
+    RateLimitedError,
+    RuntimeTrustSource,
     StatusPort,
     StatusSnapshot,
     VerifiedBlockEvidence,
@@ -179,15 +182,14 @@ def capability_reference(
     )
     return CapabilityEvidenceReference(
         schema_version=1,
-        source=CapabilityEvidenceSource.GITHUB_COMPLETED_REVIEW,
+        source=CapabilityEvidenceSource.OPERATOR_PINNED,
         repository=repository,
         review_mode=review_mode,
         principal_identity=billing_principal.identity,
         source_reference=(
             "expired_capability" if expires_at <= NOW else "verified_capability"
         ),
-        pull_request_number=5,
-        review_id=7,
+        artifact=b'{"untrusted":true}',
     )
 
 
@@ -195,12 +197,14 @@ class FakeCapabilityVerifier:
     def verify(self, reference, repository, principal, review_mode, observed_at):
         if reference is None:
             return CapabilityVerification(
-                EvidenceVerificationStatus.ABSENT,
-                EvidenceTrust.DEVELOPMENT,
-                None,
-                None,
-                None,
-                None,
+                status=EvidenceVerificationStatus.ABSENT,
+                trust=EvidenceTrust.UNVERIFIED,
+                source=None,
+                artifact_kind=None,
+                source_reference=None,
+                artifact_digest=None,
+                pin_source=None,
+                evidence=None,
             )
         if (
             reference.repository != repository
@@ -208,21 +212,25 @@ class FakeCapabilityVerifier:
             or reference.review_mode != review_mode
         ):
             return CapabilityVerification(
-                EvidenceVerificationStatus.INVALID,
-                EvidenceTrust.DEVELOPMENT,
-                reference.source,
-                reference.source_reference,
-                None,
-                None,
+                status=EvidenceVerificationStatus.INVALID,
+                trust=EvidenceTrust.UNVERIFIED,
+                source=reference.source,
+                artifact_kind=None,
+                source_reference=reference.source_reference,
+                artifact_digest=None,
+                pin_source=None,
+                evidence=None,
             )
         if reference.source_reference == "expired_capability":
             return CapabilityVerification(
-                EvidenceVerificationStatus.EXPIRED,
-                EvidenceTrust.DEVELOPMENT,
-                reference.source,
-                reference.source_reference,
-                "sha256:" + "a" * 64,
-                None,
+                status=EvidenceVerificationStatus.EXPIRED,
+                trust=EvidenceTrust.UNVERIFIED,
+                source=reference.source,
+                artifact_kind=CapabilityArtifactKind.OPERATOR_SETTING,
+                source_reference=reference.source_reference,
+                artifact_digest="sha256:" + "a" * 64,
+                pin_source=RuntimeTrustSource.PUBLISHER_APP,
+                evidence=None,
             )
         evidence = CapabilityEvidence(
             repository=repository,
@@ -230,20 +238,21 @@ class FakeCapabilityVerifier:
             review_mode=review_mode,
             observed_at=observed_at - timedelta(minutes=5),
             expires_at=min(observed_at + timedelta(minutes=10), principal.expires_at),
-            source=CapabilityEvidenceSource.GITHUB_COMPLETED_REVIEW,
+            source=CapabilityEvidenceSource.OPERATOR_PINNED,
+            artifact_kind=CapabilityArtifactKind.OPERATOR_SETTING,
             source_reference=reference.source_reference,
             artifact_digest="sha256:" + "a" * 64,
-            pull_request_number=reference.pull_request_number,
-            review_id=reference.review_id,
-            review_commit_sha=HEAD_SHA,
+            pin_source=RuntimeTrustSource.PUBLISHER_APP,
         )
         return CapabilityVerification(
-            EvidenceVerificationStatus.VERIFIED,
-            EvidenceTrust.VERIFIED,
-            evidence.source,
-            evidence.source_reference,
-            evidence.artifact_digest,
-            evidence,
+            status=EvidenceVerificationStatus.VERIFIED,
+            trust=EvidenceTrust.VERIFIED,
+            source=evidence.source,
+            artifact_kind=evidence.artifact_kind,
+            source_reference=evidence.source_reference,
+            artifact_digest=evidence.artifact_digest,
+            pin_source=evidence.pin_source,
+            evidence=evidence,
         )
 
 
@@ -251,12 +260,13 @@ class FakeBlockVerifier:
     def verify(self, reference, repository, principal, review_mode, observed_at):
         if reference is None:
             return BlockVerification(
-                EvidenceVerificationStatus.ABSENT,
-                EvidenceTrust.DEVELOPMENT,
-                None,
-                None,
-                None,
-                None,
+                status=EvidenceVerificationStatus.ABSENT,
+                trust=EvidenceTrust.UNVERIFIED,
+                source=None,
+                source_reference=None,
+                artifact_digest=None,
+                pin_source=None,
+                evidence=None,
             )
         kind = (
             BlockEvidenceKind.QUOTA_EXHAUSTED
@@ -271,38 +281,55 @@ class FakeBlockVerifier:
             review_mode=review_mode,
             observed_at=observed_at - timedelta(minutes=1),
             expires_at=observed_at + timedelta(minutes=10),
-            source=BlockEvidenceSource.PROVIDER_API,
+            source=BlockEvidenceSource.OPERATOR_PINNED,
             source_reference=reference.source_reference,
             artifact_digest="sha256:" + "b" * 64,
+            pin_source=RuntimeTrustSource.INSTALLED_CONFIG,
         )
         return BlockVerification(
-            EvidenceVerificationStatus.VERIFIED,
-            EvidenceTrust.VERIFIED,
-            evidence.source,
-            evidence.source_reference,
-            evidence.artifact_digest,
-            evidence,
+            status=EvidenceVerificationStatus.VERIFIED,
+            trust=EvidenceTrust.VERIFIED,
+            source=evidence.source,
+            source_reference=evidence.source_reference,
+            artifact_digest=evidence.artifact_digest,
+            pin_source=evidence.pin_source,
+            evidence=evidence,
         )
+
+
+class ErrorVerifier:
+    def __init__(self, error):
+        self.error = error
+
+    def verify(self, reference, repository, principal, review_mode, observed_at):
+        raise self.error
 
 
 def block_reference(kind: str) -> BlockEvidenceReference:
     return BlockEvidenceReference(
         schema_version=1,
-        source=BlockEvidenceSource.PROVIDER_API,
+        source=BlockEvidenceSource.OPERATOR_PINNED,
         repository=REPOSITORY,
         review_mode="manual",
         principal_identity=capability_reference().principal_identity,
         source_reference=kind,
+        artifact=b'{"untrusted":true}',
     )
 
 
-def adapter(command: CommandPort, status: StatusPort | None = None) -> GitHubGhProbe:
+def adapter(
+    command: CommandPort,
+    status: StatusPort | None = None,
+    *,
+    capability_verifier=None,
+    block_verifier=None,
+) -> GitHubGhProbe:
     return GitHubGhProbe(
         command=command,
         status=status or FakeStatus(),
         clock=FakeClock(),
-        capability_verifier=FakeCapabilityVerifier(),
-        block_verifier=FakeBlockVerifier(),
+        capability_verifier=capability_verifier or FakeCapabilityVerifier(),
+        block_verifier=block_verifier or FakeBlockVerifier(),
     )
 
 
@@ -314,9 +341,17 @@ class GitHubProbeTest(unittest.TestCase):
         replies: dict[str, CommandResult | Exception],
         probe_request: ProbeRequest | None = None,
         status: FakeStatus | None = None,
+        *,
+        capability_verifier=None,
+        block_verifier=None,
     ):
         command = FakeCommand(replies)
-        probe_adapter = adapter(command, status)
+        probe_adapter = adapter(
+            command,
+            status,
+            capability_verifier=capability_verifier,
+            block_verifier=block_verifier,
+        )
         return probe_adapter.probe(probe_request or request()), command
 
     def test_personal_ai_credits_use_valid_capability_without_routing_on_remaining(self):
@@ -467,6 +502,47 @@ class GitHubProbeTest(unittest.TestCase):
                 )
                 self.assertTrue(report.copilot_usable)
                 self.assertIsNone(report.signals.billing_status)
+
+    def test_actions_billing_lock_annotation_is_not_a_copilot_block(self):
+        payload = {
+            **fixture("ai-credits.json"),
+            "annotations": [
+                "The job was not started because recent account payments have failed."
+            ],
+        }
+        report, _ = self.probe(
+            personal_replies(response(200, payload)),
+            request(capability_reference=capability_reference()),
+        )
+
+        self.assertTrue(report.copilot_usable)
+        self.assertIsNone(report.signals.billing_status)
+
+    def test_capability_and_block_verifier_errors_control_routing_status(self):
+        cases = (
+            (PermissionDeniedError("safe"), DiagnosticStatus.PERMISSION_DENIED),
+            (RateLimitedError("safe"), DiagnosticStatus.RATE_LIMITED),
+            (ProviderUnavailableError("safe"), DiagnosticStatus.PROVIDER_UNAVAILABLE),
+            (PortTimeoutError("safe"), DiagnosticStatus.PROVIDER_UNAVAILABLE),
+            (MalformedResponseError("safe"), DiagnosticStatus.UNKNOWN),
+            (IncompleteResponseError("safe"), DiagnosticStatus.UNKNOWN),
+        )
+        for verifier_name in ("capability", "block"):
+            for error, expected in cases:
+                with self.subTest(verifier=verifier_name, error=type(error).__name__):
+                    kwargs = {
+                        f"{verifier_name}_verifier": ErrorVerifier(error),
+                    }
+                    report, _ = self.probe(
+                        personal_replies(),
+                        request(
+                            capability_reference=capability_reference(),
+                            block_reference=block_reference("budget_blocked"),
+                        ),
+                        **kwargs,
+                    )
+                    self.assertFalse(report.copilot_usable)
+                    self.assertEqual(report.routing_status, expected)
 
     def test_permission_rate_and_provider_failures_are_sanitized(self):
         cases = (
@@ -632,8 +708,33 @@ class GitHubProbeTest(unittest.TestCase):
             },
         )
         serialized = json.dumps(document, sort_keys=True)
+        self.assertEqual(
+            document["capability_evidence"]["artifact_kind"],
+            "operator_setting",
+        )
+        self.assertEqual(
+            document["capability_evidence"]["pin_source"],
+            "publisher_app",
+        )
+        self.assertEqual(document["capability_evidence"]["trust"], "verified")
         for forbidden in ("stderr", "stdout", "authorization", "cookie", "token"):
             self.assertNotIn(forbidden, serialized.lower())
+        self.assertNotIn("untrusted", serialized.lower())
+
+    def test_block_json_has_separate_verified_pin_provenance(self):
+        report, _ = self.probe(
+            personal_replies(),
+            request(
+                capability_reference=capability_reference(),
+                block_reference=block_reference("budget_blocked"),
+            ),
+        )
+
+        block = report.to_dict()["block_evidence"]
+        self.assertEqual(block["status"], "verified")
+        self.assertEqual(block["source"], "operator_pinned")
+        self.assertEqual(block["pin_source"], "installed_config")
+        self.assertEqual(block["trust"], "verified")
 
 
 class PullRequestStateTest(unittest.TestCase):
@@ -780,6 +881,10 @@ class ClosedContractTest(unittest.TestCase):
             request(manual_requester=None)
         with self.assertRaises(ValueError):
             request(review_mode="automatic", manual_requester="tom", pull_request_number=5)
+        with self.assertRaises(ValueError):
+            replace(capability_reference(), schema_version=True)
+        with self.assertRaises(ValueError):
+            replace(block_reference("budget_blocked"), schema_version=True)
 
     def test_command_result_requires_bytes_and_non_boolean_return_code(self):
         with self.assertRaises(ValueError):

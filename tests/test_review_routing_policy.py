@@ -11,6 +11,7 @@ from review_routing.contracts import (
     BillingPrincipal,
     BlockEvidenceKind,
     BlockEvidenceSource,
+    CapabilityArtifactKind,
     CapabilityEvidence,
     CapabilityEvidenceSource,
     DiagnosticStatus,
@@ -23,6 +24,7 @@ from review_routing.contracts import (
     RiskAssessment,
     RiskLevel,
     RuntimeTrust,
+    RuntimeTrustSource,
     Usage,
     VerifiedBlockEvidence,
 )
@@ -69,8 +71,10 @@ def capability(
         observed_at=observed_at,
         expires_at=expires_at or observed_at + timedelta(hours=1),
         source=CapabilityEvidenceSource.OPERATOR_PINNED,
+        artifact_kind=CapabilityArtifactKind.OPERATOR_SETTING,
         source_reference="verified_capability",
         artifact_digest="sha256:" + "e" * 64,
+        pin_source=RuntimeTrustSource.PUBLISHER_APP,
     )
 
 
@@ -99,6 +103,7 @@ def signals(status: DiagnosticStatus) -> ProbeSignals:
             source=BlockEvidenceSource.OPERATOR_PINNED,
             source_reference="verified_block",
             artifact_digest="sha256:" + "f" * 64,
+            pin_source=RuntimeTrustSource.INSTALLED_CONFIG,
         )
     elif status is DiagnosticStatus.PERMISSION_DENIED:
         permission_status = status

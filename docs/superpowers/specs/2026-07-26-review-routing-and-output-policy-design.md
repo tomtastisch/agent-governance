@@ -44,9 +44,10 @@ Referenzstand der Analyse: `origin/main@97c4044f01cebf011f5442bf312dfcc0dcfc0098
 Verbrauch, Limit, Budget und Restwert bleiben Diagnosefelder. Die Usage-Antwort beschreibt
 ausschließlich Verbrauch; weder freie `status`-Felder noch ein dort auftauchendes `limit` gelten
 als Blockade-, Capability- oder Budgetevidenz. Eine Blockade oder Erschöpfung darf nur ein
-separater Verifier aus aktueller Provider-/API-Evidenz oder einem extern digest-gepinnten
-Operator-Artefakt rekonstruieren. Ein berechnetes oder geschätztes Restbudget entscheidet nicht,
-welcher Reviewer verwendet wird.
+separater Verifier aus einem extern digest-gepinnten Operator-Artefakt rekonstruieren. GitHub
+Actions-Billing-Annotationen und allgemeine Provider-/API-Antworten sind keine
+Copilot-Blockade. Ein berechnetes oder geschätztes Restbudget entscheidet nicht, welcher Reviewer
+verwendet wird.
 
 Insbesondere gibt es:
 
@@ -87,7 +88,7 @@ Abbildung:
 |---|---:|---|
 | `available` | `true` | Positive, aktuelle und vollständige Evidenz |
 | `low_budget` | `true` | Nutzbar; Restbudget beeinflusst die Route nicht |
-| `quota_exhausted` | `false` | Nur mit expliziter Provider-/API-/Operator-Evidenz |
+| `quota_exhausted` | `false` | Nur mit extern gepinnter Operator-Evidenz |
 | `budget_blocked` | `false` | Separat verifizierte aktuelle Budgetblockade |
 | `rate_limited` | `false` | Kein belastbarer Reviewpfad in diesem Versuch |
 | `provider_unavailable` | `false` | Providerpfad nicht erreichbar |
@@ -117,21 +118,32 @@ Signale positiv und aktuell sind:
    Reviewmodus vor.
 
 GitHub bietet nicht für jeden persönlichen Kontext einen read-only „Can review now“-Endpunkt.
-Historische Usage ohne Blockade ist deshalb allein **keine** positive Capability-Evidenz. Zulässige
-positive Evidenz ist:
+Historische Usage ohne Blockade und ein abgeschlossenes GitHub-Review allein sind deshalb
+**keine** positive Capability-Evidenz. Zulässig ist ausschließlich ein versioniertes
+Operator-Artefakt, dessen kanonischer SHA-256-Digest außerhalb des CLI durch die Publisher-App
+oder installierte Konfiguration fest gepinnt ist. Sein geschlossener Typ ist:
 
-- ein über die GitHub-API erneut geladenes, erfolgreich abgeschlossenes Copilot-Review für
-  denselben Repository-/Principal-/Reviewmodus-Kontext innerhalb der konfigurierten
-  Gültigkeitsdauer; oder
-- ein datiertes Operator-Artefakt, dessen kanonischer SHA-256-Digest außerhalb des CLI durch die
-  Publisher-App oder installierte Konfiguration fest gepinnt ist.
+- `operator_setting`: eine direkt an Repository, Principal und Reviewmodus gebundene, zeitlich
+  begrenzte Operator-Freigabe; oder
+- `completed_review_context`: eine Bindung an Repository, stabile Principal-Identität,
+  Reviewmodus, PR, Review-ID, Review-Commit, Zeitpunkt und Ablauf.
+
+Bei `completed_review_context` wird das referenzierte Review erst **nach** erfolgreicher
+Pin-Prüfung read-only über GitHub erneut geladen. Es muss Copilot, `COMMENTED`, Review-ID,
+Review-Commit und Zeitpunkt exakt bestätigen. Das API-Review kann Principal und Reviewmodus nicht
+selbst binden und darf daher niemals allein oder für einen anderen Principal/Modus Capability
+erzeugen.
 
 `ProbeRequest` transportiert dafür nur eine nicht vertrauenswürdige Referenz. Er kann weder
-`trust`, erwarteten Digest noch Issuer setzen. `CapabilityEvidenceVerifierPort` und
+`trust`, erwarteten Digest noch Issuer setzen. `OperatorEvidenceTrustPort` liefert den externen
+Digest-Pin ausschließlich programmatisch; sein erforderliches `pin_source` ist geschlossen auf
+`publisher_app` oder `installed_config`. `CapabilityEvidenceVerifierPort` und
 `BlockEvidenceVerifierPort` rekonstruieren routingfähige Evidenz samt geschlossener Provenienz.
+`ABSENT`, `INVALID` und `EXPIRED` bleiben ausnahmslos `unverified`.
 Eine gleich alte oder neuere verifizierte Blockade schlägt die Capability; ein danach
 abgeschlossenes Review schlägt eine ältere Blockade. Technische Permission-, Rate- oder
-Providerfehler schlagen beide Caches, abgelaufene Evidenz wird ignoriert.
+Providerfehler einschließlich entsprechender Verifierfehler schlagen beide Caches, abgelaufene
+Evidenz wird ignoriert.
 
 Fehlt sie, bleibt die Diagnose `unknown` und `copilot_usable = false`. Der nach Aufhebung des
 Billing-Locks vom Nutzer ausdrücklich freizugebende einmalige Dispatch ist der Bootstrap- und
@@ -605,10 +617,12 @@ python3 -m review_routing output-policy --json
 ```
 
 Bei `manual` ist `--requester` Pflicht; bei `automatic` wird der PR-Autor read-only aus dem
-angegebenen PR ermittelt. Eine Capability-Referenz ist nicht vertrauenswürdig und kann nur auf
-ein GitHub-Review oder ein extern gepinntes Operator-Artefakt zeigen. Der CLI besitzt keine Flags
-für Trust, Issuer oder erwartete Digests. Fehlt die Referenz, scheitert ihre Verifikation oder
-passt Principal/Repository/Reviewmodus nicht, bleibt `copilot_usable = false`.
+angegebenen PR ermittelt. Eine Capability-Referenz ist ausschließlich ein nicht
+vertrauenswürdiges Operator-Artefakt. Der CLI besitzt keine Flags für Quelle, Trust, Issuer,
+Pin-Quelle oder erwartete Digests. `OperatorEvidenceTrustPort` wird ausschließlich programmatisch
+über `CliDependencies` injiziert; die normale Source-Checkout-CLI besitzt keine Pins. Fehlt die
+Referenz, scheitert ihre Verifikation oder passt Principal/Repository/Reviewmodus nicht, bleibt
+`copilot_usable = false`.
 
 Der Composition Root löst Ports ausschließlich über die generische Runtime-Registry auf. Policy
 und Risikoklassifikation kennen weder `gh` noch HTTP; `__main__.py` importiert keine
@@ -653,11 +667,13 @@ Adapterimplementierung.
   "copilot_usable": false,
   "capability_evidence": {
     "status": "absent",
+    "artifact_kind": null,
     "expires_at": null,
     "source": null,
     "source_reference": null,
     "artifact_digest": null,
-    "trust": "development"
+    "trust": "unverified",
+    "pin_source": null
   },
   "block_evidence": {
     "status": "absent",
@@ -665,7 +681,8 @@ Adapterimplementierung.
     "source": null,
     "source_reference": null,
     "artifact_digest": null,
-    "trust": "development"
+    "trust": "unverified",
+    "pin_source": null
   },
   "evidence": [],
   "warnings": []
@@ -943,8 +960,9 @@ Mindestens:
    als Routing- oder Budgetevidenz übernommen.
 2. AI Credits ohne separate autoritative Budgetquelle; `limit = remaining = null`.
 3. Legacy Premium Requests.
-4. Separat verifiziertes ausgeschöpftes Kontingent → `copilot_usable = false`.
-5. Separat verifiziertes blockiertes Budget → `false`.
+4. Extern gepinntes Operator-Artefakt für ausgeschöpftes Kontingent →
+   `copilot_usable = false`.
+5. Extern gepinntes Operator-Artefakt für blockiertes Budget → `false`.
 6. `low_budget`, aber tatsächlich nutzbar → `true`, identische Route wie `available`.
 7. Rate Limit → `false`, Exitcode `21`.
 8. Provider-Ausfall → `false`, Exitcode `22`.
@@ -956,55 +974,65 @@ Mindestens:
     persönlichen Fallbackkontext.
 14. Manuell versus automatisch bestimmt Requester beziehungsweise PR-Autor als Principal.
 15. Mehrdeutiger oder nicht belegbarer Billing-Principal → `unknown`.
-16. Abgelaufene, fremde, ungepinnte oder fehlende Capability-Referenz → nicht nutzbar.
-17. Von einem Verifier rekonstruierte Capability mit geschlossenem Source-/Digest-Nachweis und
-    passendem Principal/Repo/Modus → nutzbar.
-18. Checkpoint-Matrix für alle vier Risiken und beide Verwendbarkeitswerte; `false` verlangt
+16. Abgelaufene, fremde, ungepinnte oder fehlende Capability-Referenz → nicht nutzbar und niemals
+    `trust=verified`.
+17. Von einem Verifier aus `operator_setting` oder `completed_review_context` rekonstruierte
+    Capability mit geschlossenem Source-/Digest-/`pin_source`-Nachweis und passendem
+    Principal/Repo/Modus → nutzbar.
+18. Ein GitHub-Review allein ist keine Capability; `completed_review_context` wird erst nach
+    erfolgreichem externem Pin gegen Bot, `COMMENTED`, PR, Review-ID, Commit und Zeitpunkt
+    revalidiert.
+19. Dasselbe API-Review kann nicht für einen anderen Principal oder Reviewmodus positiv werden.
+20. Capability- und Block-Verifierfehler besitzen dieselbe Routing-Priorität wie übrige
+    Permission-, Rate-, Provider-, Timeout- und Malformed/Incomplete-Fehler.
+21. API-/Provider-Blockquellen und `bool` als Schema-, PR- oder Review-ID werden fail-closed
+    abgelehnt; eine Actions-Billing-Lock-Annotation ist kein Copilot-Block.
+22. Checkpoint-Matrix für alle vier Risiken und beide Verwendbarkeitswerte; `false` verlangt
     ausnahmslos QA.
-19. Final-Matrix für alle vier Risiken und beide Verwendbarkeitswerte.
-20. Security-Relevanz erzwingt SEC unabhängig von Diff-Größe/Risikoklasse.
-21. Ausgeschlossene, unverified oder degradierte Copilot-Abdeckung erzwingt QA.
-22. Korrekturrunde behält erforderliche Reviewer und ersetzt unbrauchbaren Copilot durch QA.
-23. Kein Copilot-Retry bei `false`.
-24. Fehlender verpflichtender QA-/SEC-Kontext → `blocker`.
-25. QA-Kosten können verpflichtende Reviewer nicht entfernen.
-26. Exact-Head-Mismatch → keine gültige Evidenz, Exitcode `32`.
-27. Copilot-`COMMENTED` mit korrektem Head, voller Abdeckung und null Findings → gültige
+23. Final-Matrix für alle vier Risiken und beide Verwendbarkeitswerte.
+24. Security-Relevanz erzwingt SEC unabhängig von Diff-Größe/Risikoklasse.
+25. Ausgeschlossene, unverified oder degradierte Copilot-Abdeckung erzwingt QA.
+26. Korrekturrunde behält erforderliche Reviewer und ersetzt unbrauchbaren Copilot durch QA.
+27. Kein Copilot-Retry bei `false`.
+28. Fehlender verpflichtender QA-/SEC-Kontext → `blocker`.
+29. QA-Kosten können verpflichtende Reviewer nicht entfernen.
+30. Exact-Head-Mismatch → keine gültige Evidenz, Exitcode `32`.
+31. Copilot-`COMMENTED` mit korrektem Head, voller Abdeckung und null Findings → gültige
     technische Evidenz.
-28. Copilot-`COMMENTED` auf altem Head, mit offenem Finding oder ohne Abdeckungsbeleg → ungültig.
-29. GateResult enthält stabilen Checknamen, Runtime-/Basispolicy-Quelle,
+32. Copilot-`COMMENTED` auf altem Head, mit offenem Finding oder ohne Abdeckungsbeleg → ungültig.
+33. GateResult enthält stabilen Checknamen, Runtime-/Basispolicy-Quelle,
     Runtime-/Policy-/Diff-/Evidenzdigest und vollständige Provenienz.
-30. Kein Mergepfad ohne vollständige Exact-Head-Reviewer-Menge.
-31. Versioniertes Diff-Schema, Pfadnormalisierung, Rename-/Copy-Quellpfad und fehlende
+34. Kein Mergepfad ohne vollständige Exact-Head-Reviewer-Menge.
+35. Versioniertes Diff-Schema, Pfadnormalisierung, Rename-/Copy-Quellpfad und fehlende
     Pflichtfelder fail-closed.
-32. Registry löst Provider aus SSOT auf; Composition Root bleibt importblind.
-33. Secret-/Header-/Tokenwerte erscheinen nicht in JSON oder Fehlermeldungen.
-34. `intermediate_status = false` ist der Repository-Default.
-35. Ungültiger/nicht-boolescher Ausgabewert fällt fail-closed.
-36. Simulierter Message-Policy-Entscheider erhält Rückfragen/Blocker/Fehler/Abschluss.
-37. Kern, Policy, Adapter, Templates, README und Installationsanleitung bleiben driftfrei.
-38. Bestehende 25 Governance-Tests bleiben grün.
-39. Policyänderung nur am PR-Head schwächt die Basispolicy nicht ab.
-40. Fehlende Basispolicy im Bootstrap erzeugt keinen positiven GateResult.
-41. Vollständiger Git-Diff enthält Add/Modify/Delete; vorgerückte/divergierte Base-Zweige nutzen
+36. Registry löst Provider aus SSOT auf; Composition Root bleibt importblind.
+37. Secret-/Header-/Tokenwerte erscheinen nicht in JSON oder Fehlermeldungen.
+38. `intermediate_status = false` ist der Repository-Default.
+39. Ungültiger/nicht-boolescher Ausgabewert fällt fail-closed.
+40. Simulierter Message-Policy-Entscheider erhält Rückfragen/Blocker/Fehler/Abschluss.
+41. Kern, Policy, Adapter, Templates, README und Installationsanleitung bleiben driftfrei.
+42. Bestehende 25 Governance-Tests bleiben grün.
+43. Policyänderung nur am PR-Head schwächt die Basispolicy nicht ab.
+44. Fehlende Basispolicy im Bootstrap erzeugt keinen positiven GateResult.
+45. Vollständiger Git-Diff enthält Add/Modify/Delete; vorgerückte/divergierte Base-Zweige nutzen
     Merge-Base→Head, mehrdeutige Rename-/Copy-Kandidaten werden als Delete+Add klassifiziert.
-42. Fehlende/zusätzliche/veränderte Diff-Datei oder abweichender `diff_digest` macht das Gate
+46. Fehlende/zusätzliche/veränderte Diff-Datei oder abweichender `diff_digest` macht das Gate
     ungültig.
-43. Validate klassifiziert den vertrauenswürdig erhobenen Diff erneut und vergleicht Risiko,
+47. Validate klassifiziert den vertrauenswürdig erhobenen Diff erneut und vergleicht Risiko,
     Security-Flag, Route und Reviewer-Menge exakt.
-44. Gate-fähige Route übernimmt Base-Ref/Base-SHA/Head-SHA aus PR-Metadaten und verwirft
+48. Gate-fähige Route übernimmt Base-Ref/Base-SHA/Head-SHA aus PR-Metadaten und verwirft
     caller-selektierte SHAs.
-45. Wechsel von Base-Ref oder Head zwischen Route und Validate macht die Evidenz ungültig;
+49. Wechsel von Base-Ref oder Head zwischen Route und Validate macht die Evidenz ungültig;
     Offline-SHAs bleiben ausdrücklich `gate_eligible = false`.
-46. Eine `[runtime]`-Injection in der PR-Head-Policy wird abgelehnt und kann Policy-/Diff-Adapter
+50. Eine `[runtime]`-Injection in der PR-Head-Policy wird abgelehnt und kann Policy-/Diff-Adapter
     nicht austauschen; nur die installierte Runtime-Bootstrap-SSOT bestimmt Factories.
-47. Fehlender externer Runtime-Pin bleibt `development`; passender publisher-/installationsseitiger
+51. Fehlender externer Runtime-Pin bleibt `development`; passender publisher-/installationsseitiger
     Pin wird `installed`; abweichender Pin ist ein harter Fehler.
-48. Nach jedem Factory-Slice löst die inkrementell aktualisierte Runtime-SSOT alle bis dahin
+52. Nach jedem Factory-Slice löst die inkrementell aktualisierte Runtime-SSOT alle bis dahin
     angebotenen/benötigten Ports vollständig und zyklusfrei auf.
-49. Lokale CLI ohne injizierten Trust-Port bleibt deterministisch `development`; kein CLI-Argument
+53. Lokale CLI ohne injizierten Trust-Port bleibt deterministisch `development`; kein CLI-Argument
     kann `installed` vortäuschen.
-50. Evidence-Validator und Output-Policy werden über ihre typisierten Ports aufgelöst; GitHub-
+54. Evidence-Validator und Output-Policy werden über ihre typisierten Ports aufgelöst; GitHub-
     Command/Status/Clock/Probe/PR-State-Fakes erfüllen exakt die geschlossenen Signaturen.
 
 ## 13. Umsetzungsschnitt

@@ -402,7 +402,7 @@ python3 -m unittest tests.test_review_routing_risk tests.test_review_routing_git
   tests.test_review_routing_architecture -v
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add review_routing/contracts.py review_routing/runtime.toml review_routing/risk.py \
@@ -439,6 +439,8 @@ git commit -m "feat(governance): classify review risk deterministically"
 - Adds and implements `CapabilityEvidenceVerifierPort.verify(...)` and
   `BlockEvidenceVerifierPort.verify(...)`. `ProbeRequest` carries only untrusted references;
   verified evidence is reconstructed inside these ports.
+- Adds `OperatorEvidenceTrustPort.load(...)`. Only an externally provided `publisher_app` or
+  `installed_config` digest pin can verify evidence; no CLI value is trusted as a pin.
 - Adds
   `PullRequestStatePort.load(
       repository: str,
@@ -471,14 +473,21 @@ Cover:
 - ambiguous organization/enterprise/cost-center principal;
 - unknown enterprise/cost-center context;
 - usage payloads cannot assert quota/budget blocks;
-- externally digest-pinned explicit quota and budget blocks;
+- externally digest-pinned operator-only explicit quota and budget blocks;
 - HTTP 403/permission diagnostics;
 - 429/rate headers;
 - 503/provider unavailable;
 - empty, malformed and incomplete JSON;
 - current verified block plus API permission denial, with the technical error taking precedence;
 - absent/expired/wrong-principal capability evidence;
-- valid recent capability evidence reconstructed from GitHub or an external digest pin;
+- valid recent capability evidence reconstructed only from an externally digest-pinned
+  `operator_setting` or `completed_review_context`;
+- `completed_review_context` revalidation against GitHub bot, `COMMENTED`, PR, review ID,
+  review commit and timestamp only after the external pin matches;
+- an identical API review cannot verify another principal or review mode;
+- API-/provider block sources and bool schema/PR/review IDs fail closed;
+- capability/block verifier errors drive routing precedence;
+- Actions billing-lock annotations do not assert Copilot blocks;
 - interim/multiple `gh api --include` HTTP blocks and safe known stderr diagnostics;
 - endpoint selection and API version header;
 - no raw stderr/header/token material in `ProbeReport.to_dict()`.
@@ -529,7 +538,7 @@ git add review_routing/contracts.py review_routing/runtime.toml \
   review_routing/adapters/github_gh.py \
   tests/test_review_routing_github.py tests/fixtures/review-routing \
   tests/test_review_routing_architecture.py
-git commit -m "feat(governance): probe Copilot availability read only"
+git commit -S -m "feat(governance): probe Copilot availability read only"
 ```
 
 ### Task 5: CLI, JSON and exitcode contract
@@ -545,6 +554,7 @@ git commit -m "feat(governance): probe Copilot availability read only"
 - Produces injectable
   `CliDependencies(
       runtime_trust: RuntimeTrustPort,
+      operator_evidence_trust_port: OperatorEvidenceTrustPort,
       probe: ProbePort,
       pull_request_state: PullRequestStatePort,
       config: ConfigPort,
@@ -562,7 +572,9 @@ input `31`, invalid SHA, invalid JSON and no dispatch side effect. Probe tests r
 `--review-mode manual --requester USER` or
 `--review-mode automatic --pull-request NUMBER`, plus a matching untrusted capability reference
 before a verifier may reconstruct routing evidence and `copilot_usable` may become true. The CLI
-must expose no Trust-, Issuer-, Source- oder Digest-Override. Route tests provide repository/PR
+must expose no Trust-, Issuer-, Source-, Pin-Source- or Digest-Override and no Billing-/Quota-
+assertion. `OperatorEvidenceTrustPort` is injected programmatically through `CliDependencies`;
+the normal source-checkout CLI has no evidence pins. Route tests provide repository/PR
 number and prove the CLI reads
 the actual Base-Ref/Base-SHA/Head-SHA through `PullRequestStatePort`, then reads policy from that
 Base-SHA and the complete diff through injected ports. A missing Basispolicy, caller-supplied file

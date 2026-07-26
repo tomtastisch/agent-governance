@@ -121,6 +121,7 @@ class RegistryFailureTest(unittest.TestCase):
         from review_routing.adapters.github_gh import (
             BlockEvidenceVerifier,
             CapabilityEvidenceVerifier,
+            DevelopmentOperatorEvidenceTrust,
             GitHubGhProbe,
             GitHubStatus,
             SubprocessCommand,
@@ -131,6 +132,7 @@ class RegistryFailureTest(unittest.TestCase):
             CapabilityEvidenceVerifierPort,
             ClockPort,
             CommandPort,
+            OperatorEvidenceTrustPort,
             ProbePort,
             PullRequestStatePort,
             StatusPort,
@@ -141,6 +143,10 @@ class RegistryFailureTest(unittest.TestCase):
         self.assertIsInstance(registry.resolve(CommandPort), SubprocessCommand)
         self.assertIsInstance(registry.resolve(StatusPort), GitHubStatus)
         self.assertIsInstance(registry.resolve(ClockPort), SystemClock)
+        self.assertIsInstance(
+            registry.resolve(OperatorEvidenceTrustPort),
+            DevelopmentOperatorEvidenceTrust,
+        )
         self.assertIsInstance(
             registry.resolve(CapabilityEvidenceVerifierPort),
             CapabilityEvidenceVerifier,
@@ -158,6 +164,7 @@ class RegistryFailureTest(unittest.TestCase):
             CapabilityEvidenceVerifierPort,
             ClockPort,
             CommandPort,
+            OperatorEvidenceTrustPort,
             ProbePort,
             PullRequestStatePort,
             StatusPort,
@@ -169,6 +176,7 @@ class RegistryFailureTest(unittest.TestCase):
             ClockPort.now: ("self",),
             ProbePort.probe: ("self", "request"),
             PullRequestStatePort.load: ("self", "repository", "pull_request_number"),
+            OperatorEvidenceTrustPort.load: ("self", "source_reference"),
             CapabilityEvidenceVerifierPort.verify: (
                 "self",
                 "reference",

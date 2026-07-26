@@ -20,17 +20,25 @@ Berechnung als Routing-Eingabe noch eine Budgetreservierung.
 
 Usage ist ausschließlich eine Verbrauchsmessung (`grossQuantity`). Freie Felder wie `status`
 oder `limit` in einer Usage-Antwort sind weder Capability- noch Blockadeevidenz. Routingfähige
-Capability entsteht nur durch `CapabilityEvidenceVerifierPort`: entweder aus einem erneut über
-die GitHub-API geladenen abgeschlossenen Copilot-Review oder aus einem Operator-Artefakt, dessen
-kanonischer Digest extern durch Publisher-App beziehungsweise installierte Konfiguration gepinnt
-ist. Der Caller liefert nur eine nicht vertrauenswürdige Referenz und kann Trust, Issuer oder den
-erwarteten Digest nicht setzen.
+Capability entsteht nur durch `CapabilityEvidenceVerifierPort` aus einem Operator-Artefakt,
+dessen kanonischer Digest extern durch Publisher-App beziehungsweise installierte Konfiguration
+gepinnt ist. Der geschlossene Artefakttyp ist `operator_setting` oder
+`completed_review_context`. Ein abgeschlossenes GitHub-Review allein bindet weder Principal noch
+Reviewmodus und ist keine Capability. Nur ein zuvor gepinntes `completed_review_context` darf das
+Review anschließend read-only gegen Bot, `COMMENTED`, PR, Review-ID, Commit und Zeitpunkt
+revalidieren. Der Caller liefert nur eine nicht vertrauenswürdige Referenz und kann Quelle, Trust,
+Issuer, `pin_source` oder den erwarteten Digest nicht setzen.
 
 `BlockEvidenceVerifierPort` rekonstruiert Quoten-, Account- oder Budgetblockaden getrennt aus
-aktueller Provider-/API-Evidenz oder ebenfalls extern gepinnter Operator-Evidenz. Eine gleich alte
-oder neuere verifizierte Blockade schlägt eine Capability; ein danach abgeschlossenes Review
-schlägt die ältere Blockade. Technische Permission-, Rate- und Providerfehler haben Vorrang vor
-beiden Caches. Abgelaufene Evidenz bleibt ohne Routingwirkung.
+ausschließlich extern gepinnter Operator-Evidenz. Provider-/API-Antworten und
+Actions-Billing-Lock-Annotationen sind keine Copilot-Blockadeevidenz. `OperatorEvidenceTrustPort`
+liefert den Pin ausschließlich programmatisch über `CliDependencies`; die Source-Checkout-CLI
+kennt keine Pins und besitzt keine Trust-/Digest-Override-Flags. Verifizierte Evidenz trägt
+zwingend `pin_source=publisher_app|installed_config`; abwesende, ungültige und abgelaufene Evidenz
+bleibt `unverified`. Eine gleich alte oder neuere verifizierte Blockade schlägt eine Capability;
+ein danach abgeschlossenes Review schlägt die ältere Blockade. Technische Permission-, Rate- und
+Providerfehler, auch aus den beiden Verifiern, haben Vorrang vor beiden Caches. Abgelaufene Evidenz
+bleibt ohne Routingwirkung.
 
 Ein Copilot-Review kann ausschließlich als `valid_review_evidence` gelten, wenn es als
 `COMMENTED` auf dem Exact Head vollständig und ohne offene Findings belegt ist; es ist keine
