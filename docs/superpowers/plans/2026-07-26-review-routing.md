@@ -73,6 +73,9 @@ sources. The CLI is the composition root and never dispatches a paid review.
 - Only a manifest digest matching an externally supplied pin from `publisher_app` or
   `installed_config` yields `installed`; missing pin is development, mismatched pin is a typed
   hard failure. This PR has no trusted publisher implementation of `RuntimeTrustPort`.
+- `RuntimeRegistry.bootstrap(None)` creates the built-in development-only trust config. A trusted
+  port is injectable only through programmatic `CliDependencies`; no CLI flag may claim installed
+  trust.
 - Produces: TOML tables `risk.thresholds`, `risk.path_markers`,
   `routing.<purpose>.<usable>`, `gate.required_checks` and `gate.publisher`.
 
@@ -422,16 +425,34 @@ git commit -m "feat(governance): classify review risk deterministically"
 - Modify: `tests/test_review_routing_architecture.py`
 
 **Interfaces:**
-- Implements contract ports `CommandPort`, `StatusPort`, `ClockPort`, `ProbePort`.
-- Implements `PullRequestStatePort` from documented GitHub PR metadata.
+- Adds and implements:
+  `CommandPort.run(
+      argv: tuple[str, ...],
+      timeout_seconds: float,
+  ) -> CommandResult`.
+- Adds and implements:
+  `StatusPort.fetch(timeout_seconds: float) -> StatusSnapshot`.
+- Adds and implements:
+  `ClockPort.now() -> datetime`.
+- Adds and implements:
+  `ProbePort.probe(request: ProbeRequest) -> ProbeReport`.
 - Adds
   `PullRequestStatePort.load(
       repository: str,
       pull_request_number: int,
   ) -> PullRequestState`
   and the closed `PullRequestState` type to contracts in this task.
+- `PullRequestState` contains repository, PR number, base ref, full API base SHA, full head SHA,
+  author, observed-at and `source=github_api`.
+- `ProbeRequest` contains repository, review mode, optional manual requester, optional PR number,
+  optional explicit organization/enterprise/cost-center selector and capability evidence; the
+  adapter determines the billing model instead of trusting a caller hint.
+- `CommandResult` contains return code and raw stdout/stderr bytes only inside the adapter
+  boundary. `StatusSnapshot` and all public reports contain only typed/sanitized fields.
+- Typed port errors distinguish permission denied, rate limited, provider unavailable, timeout,
+  malformed/incomplete response and unknown context.
 - Adds the GitHub factory to `runtime.toml` and proves registry resolution in RED/GREEN tests.
-- Produces `GitHubGhProbe.probe(repository, context, billing_model) -> ProbeReport`.
+- Produces `GitHubGhProbe.probe(request: ProbeRequest) -> ProbeReport`.
 - Uses documented API version `2026-03-10`.
 
 - [ ] **Step 1: Write failing adapter tests with fake ports**
@@ -472,6 +493,9 @@ headers and JSON. Discard raw authorization/cookie headers and raw stderr after 
 Use `urllib.request` only for the public GitHub Status components endpoint, with timeout and an
 injectable client in tests.
 Extend the architecture test so `github_gh.py` imports only contracts.
+
+Fake tests implement the exact four port signatures above and assert typed errors are converted to
+the declared diagnostic status/exitcode without raw stderr, headers or credentials escaping.
 
 Automatic context rules:
 
@@ -537,6 +561,7 @@ list/SHA or policy source from head/worktree must fail with `31`. An explicitly 
 diagnostic mode may accept SHAs but must serialize `gate_eligible = false`.
 Tests also prove that only an externally pinned matching runtime digest can produce
 `runtime_trust=installed`; the normal source-checkout CLI dependency is development-only.
+Argparse exposes no runtime-trust/digest override flag.
 
 - [ ] **Step 2: Run and confirm RED**
 
@@ -581,6 +606,15 @@ git commit -m "feat(governance): expose review routing CLI"
 **Interfaces:**
 - Produces contract records `ReviewRecord`, `ThreadRecord`, `CheckRecord`, `FileCoverage`,
   `GateSnapshot`, `GateResult`, `PublicationReceipt`.
+- Adds `EvidenceValidatorPort.validate(
+      decision: RouteDecision,
+      evidence: GateSnapshot,
+      runtime: RuntimeProvenance,
+      trusted_config: RoutingConfig,
+      trusted_diff: DiffSnapshot,
+      risk_classifier: RiskClassifierPort,
+      routing_policy: RoutingPolicyPort,
+  ) -> GateResult`.
 - Produces:
   `validate_exact_head(
       decision: RouteDecision,

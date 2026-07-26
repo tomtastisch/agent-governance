@@ -769,6 +769,10 @@ tests/
 injiziert. Damit bleibt die erneute Gate-Klassifikation real, ohne die Importblindheit der
 Architektur zu brechen.
 
+Analog bieten `evidence.py` und `output_policy.py` ihre Funktionen über
+`EvidenceValidatorPort.validate(...)` beziehungsweise `OutputPolicyPort.decide(...)` an. Nur
+dadurch dürfen ihre Factories in der Runtime-SSOT erscheinen.
+
 Keine Routingwerte werden in Kernprosa, Adaptern oder Templates kopiert. Diese Stellen benennen
 nur Invarianten und verweisen auf die Policy.
 
@@ -797,8 +801,16 @@ Pin ist ein harter Konfigurationsfehler. Dieser PR liefert bewusst keine vertrau
 Publisher-Implementierung des Ports. Tests injizieren Fake-Trust-Konfigurationen; der spätere
 Publisher aus Issue #3 stellt den echten Port außerhalb des PR-Artefakts bereit.
 
-Ausführung direkt
-aus einem PR-Checkout wird als `runtime_trust = development` und `gate_eligible = false`
+Für die reale lokale CLI existiert ein zirkelfreier Default: `RuntimeRegistry.bootstrap(None)`
+erzeugt intern ausschließlich `RuntimeTrustConfig(source=development,
+expected_runtime_digest=None)`. Diese Development-Quelle ist keine Factory und kein externer
+Adapter; sie kann niemals `installed` oder `gate_eligible=true` erzeugen. Ein Publisher darf einen
+vertrauenswürdigen `RuntimeTrustPort` ausschließlich über die programmatische
+`CliDependencies`-Grenze injizieren; es gibt bewusst keinen CLI-Schalter, mit dem ein Benutzer
+`installed` behaupten kann.
+
+Ausführung direkt aus einem PR-Checkout wird als `runtime_trust = development` und
+`gate_eligible = false`
 gekennzeichnet. Issue #3/#7 verantworten später signiertes/publiziertes Artefakt und Publisher-
 Digest; PR #5 liefert lokale Funktionalität und die vollständigen Verträge, behauptet aber keine
 Selbstbeglaubigung seines eigenen Codes.
@@ -957,6 +969,10 @@ Mindestens:
     Pin wird `installed`; abweichender Pin ist ein harter Fehler.
 48. Nach jedem Factory-Slice löst die inkrementell aktualisierte Runtime-SSOT alle bis dahin
     angebotenen/benötigten Ports vollständig und zyklusfrei auf.
+49. Lokale CLI ohne injizierten Trust-Port bleibt deterministisch `development`; kein CLI-Argument
+    kann `installed` vortäuschen.
+50. Evidence-Validator und Output-Policy werden über ihre typisierten Ports aufgelöst; GitHub-
+    Command/Status/Clock/Probe/PR-State-Fakes erfüllen exakt die geschlossenen Signaturen.
 
 ## 13. Umsetzungsschnitt
 

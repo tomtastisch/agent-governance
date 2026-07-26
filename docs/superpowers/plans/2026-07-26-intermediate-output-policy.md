@@ -45,6 +45,10 @@ the non-suppressible safety and audit invariants exactly once.
   `ConfigPort.parse_interaction(document: PolicyDocument) -> InteractionConfig`.
 - Produces:
   `decide_output(kind: MessageKind, config: InteractionConfig) -> OutputDecision`.
+- Adds `OutputPolicyPort.decide(
+      kind: MessageKind,
+      config: InteractionConfig,
+  ) -> OutputDecision`.
 
 - [ ] **Step 1: Write failing parser/default tests**
 
