@@ -186,8 +186,7 @@ Die Risikoklasse ist das Maximum aus:
 1. Größenklasse anhand konfigurierbarer Diff-Schwellen;
 2. Pfadmarkern für Governance-Kern, Verträge, Security, Authentifizierung, Secrets, CI,
    Datenmigrationen, Produktionsschreibpfade und kryptografische/protokollarische Logik;
-3. expliziten maschinenlesbaren Risikomarkern des Vorgangs;
-4. Abhängigkeits- und Blast-Radius-Merkmalen.
+3. expliziten maschinenlesbaren Risikomarkern des Vorgangs.
 
 Manuelle Marker dürfen Risiko erhöhen, nie automatisch senken. Fehlen erforderliche Diff-Daten
 oder ist die Klassifikation widersprüchlich, gilt `critical`, nicht `low`.
@@ -224,11 +223,17 @@ Dateifelder. Pfade sind normalisierte relative POSIX-Pfade in Unicode-NFC: kein 
 kein `.`/`..`, kein Backslash, kein NUL und keine doppelte Darstellung desselben Pfads.
 `additions`/`deletions` sind nichtnegative Ganzzahlen; Binärdateien tragen jeweils `0`.
 
-Abhängigkeits-/Blast-Radius-Daten sind nur dann erforderlich, wenn ein konfigurierter Pfadmarker
-sie für diese Dateiklasse verlangt. Fehlen **erforderliche** Felder, wird der Snapshot als
-ungültig abgelehnt; die aufrufende Policy behandelt ihn fail-closed wie `critical`. Optionale
-Felder werden nicht als heimliches `false` interpretiert. Issue-/PR-Freitext ist keine
-vertrauenswürdige Risikoeingabe.
+Abhängigkeits- und Blast-Radius-Metadaten gehören nicht zu Schema Version 1 und dürfen nicht
+implizit erwartet werden. Sollen sie später die Route steuern, erfordert dies eine neue
+Schema-Version mit vollständig geschlossenen Feldern. Fehlen in Version 1 **erforderliche**
+Felder, wird der Snapshot als ungültig abgelehnt; die aufrufende Policy behandelt ihn fail-closed
+wie `critical`. Optionale Felder werden nicht als heimliches `false` interpretiert.
+Issue-/PR-Freitext ist keine vertrauenswürdige Risikoeingabe.
+
+Jeder Pfadmarker in `core/review-routing.toml` ist ein geschlossenes Objekt aus `glob`, `level`
+und `security_relevant`. Ein Marker ohne eines dieser Felder, mit einem unbekannten Feld oder
+einem ungültigen Level macht die Policy ungültig. Damit sind Risikostufe und SEC-Auslösung
+explizit, ohne im Klassifikator aus Dateinamen abgeleitet zu werden.
 
 ### 4.3 Reviewer-Routen
 
@@ -392,9 +397,7 @@ repository
 pull_request_number
 base_sha
 head_sha
-route_decision
 diff_files
-required_check_names
 check_runs
 review_requests
 reviews
@@ -402,6 +405,12 @@ review_file_coverage
 threads
 observed_at
 ```
+
+Die Namen und erwarteten Quellen aller Pflichtchecks stammen ausschließlich aus der geladenen,
+vertrauenswürdigen `core/review-routing.toml`-Policy. Sie sind kein Feld externer Evidenz.
+Jeder Policy-Eintrag bindet `name` und `source_app_slug`; ein gleichnamiger Check aus einer anderen
+Quelle erfüllt die Pflicht nicht. Der Validator lehnt eine leere Pflichtcheckliste sowie unbekannte
+oder doppelte Einträge bereits beim Laden der Policy ab.
 
 Seine Ausgabe ist ein stabiles, publizierbares `GateResult`:
 
@@ -425,11 +434,34 @@ Nur `success` ist positiv; `neutral`, `skipped`, `cancelled`, fehlend und unbeka
 erzeugt beziehungsweise fail-closed als `failure` abgebildet. `policy_digest` bindet das Ergebnis
 an die konkrete TOML-Policy, `evidence_digest` an den kanonisch serialisierten Snapshot.
 
+`RoutingConfig.policy_digest` ist der SHA-256-Digest der kanonisch serialisierten, vollständig
+validierten Policy. Jede `RouteDecision` übernimmt diesen Digest. `validate` lädt dieselbe Policy
+erneut, prüft `RouteDecision.policy_digest == RoutingConfig.policy_digest` und verwirft
+abweichende oder fehlende Digests. Dadurch kann weder ein Route-JSON noch ein Evidence-JSON die
+verwendete Policy austauschen oder Pflichtchecks entfernen.
+
+`RouteDecision` wird dem Validator separat übergeben; der externe `GateSnapshot` enthält keine
+zweite, potenziell abweichende Kopie der Routingentscheidung.
+
 Der read-only Lieferumfang gibt dieses Ergebnis nur als JSON aus. Ein typisierter
-`GatePublisherPort` legt den späteren Übergabevertrag fest, besitzt hier aber bewusst keine
-schreibende Implementierung. Eine GitHub-App beziehungsweise ein anderer Publisher aus Issue #3
-muss den stabilen Checknamen und exakt dieselbe Provenienz verwenden. Das lokale Ergebnis wird
-niemals als bereits veröffentlichter Required Check bezeichnet.
+`GatePublisherPort` legt den späteren Übergabevertrag fest:
+
+```text
+publish(result: GateResult) -> PublicationReceipt
+```
+
+`PublicationReceipt` enthält Repository, PR, Head-SHA, Checkname, Publisher-App-Slug,
+Publication-ID, Idempotenzschlüssel und Veröffentlichungszeit. Der Idempotenzschlüssel ist der
+SHA-256-Digest aus Repository, PR, Head-SHA, `policy_digest` und `evidence_digest`. Vor jedem
+Schreibvorgang muss der spätere Publisher den aktuellen PR-Head erneut read-only abfragen und
+bei Abweichung ohne Veröffentlichung abbrechen. Als vertrauenswürdige Publisher-Quelle ist eine
+dedizierte, in der Policy festgelegte GitHub-App vorgesehen; ein lokaler Benutzer-Token oder
+beliebiger Workflow gilt nicht automatisch als gleichwertig.
+
+Dieser PR definiert Port und Receipt, besitzt aber bewusst keine schreibende Implementierung.
+Issue #3 verantwortet GitHub-App, Installation, Required-Check-Regel und Publication-Receipt-
+Persistenz. Das lokale Ergebnis wird niemals als bereits veröffentlichter Required Check
+bezeichnet.
 
 ## 8. Read-only GitHub-Adapter
 
@@ -563,6 +595,7 @@ sind. Das Feld beeinflusst `copilot_usable` und die Route nicht.
   "copilot_usable": true,
   "required_reviewers": ["copilot", "qa"],
   "route": "copilot_qa",
+  "policy_digest": "sha256:...",
   "merge_evidence_required": true,
   "dispatch_permitted": false
 }

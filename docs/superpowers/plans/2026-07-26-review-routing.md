@@ -63,7 +63,8 @@ sources. The CLI is the composition root and never dispatches a paid review.
 - Produces `ConfigPort.load_routing(path: Path) -> RoutingConfig`.
 - Produces `RuntimeRegistry.register(factory: AdapterFactory) -> None` and
   `RuntimeRegistry.resolve(port: type[T]) -> T`.
-- Produces: TOML tables `risk.thresholds`, `risk.paths`, `routing.<purpose>.<usable>`.
+- Produces: TOML tables `risk.thresholds`, `risk.path_markers`,
+  `routing.<purpose>.<usable>`, `gate.required_checks` and `gate.publisher`.
 
 - [ ] **Step 1: Write failing TOML/drift tests**
 
@@ -83,6 +84,10 @@ self.assertEqual(
 self.assertNotIn("remaining", json.dumps(raw).lower())
 ```
 
+Assert that `gate.required_checks` is non-empty and every entry contains only `name` and
+`source_app_slug`. Assert that `gate.publisher.expected_app_slug` is non-empty. Also assert that
+every `risk.path_markers` entry contains only `glob`, `level` and `security_relevant`.
+
 Also require `core/core.md`, both adapters, QA role/template, README and the ADR to reference the
 same `core/review-routing.toml`, without copying the complete route matrix.
 
@@ -98,47 +103,19 @@ Expected: failure because the TOML and parser do not exist.
 
 - [ ] **Step 3: Add the minimal policy**
 
-Use exact route values:
+Bootstrap `core/review-routing.toml` from the approved design in specification §§4–5. The
+specification tables are a historical design view only; from this task onward, the TOML file is
+the sole normative source for thresholds and every matrix cell. Do not copy those values into
+Python, Markdown, adapters or templates.
 
-```toml
-schema_version = 1
+Represent each path marker as a closed object with explicit `glob`, `level` and
+`security_relevant`. Add trusted required-check entries with `name` and `source_app_slug`, plus
+the expected dedicated publisher app slug for the later Issue-#3 writer. Reject an empty required
+check list.
 
-[risk.thresholds]
-medium_files = 11
-high_files = 31
-critical_files = 61
-medium_changed_lines = 401
-high_changed_lines = 1201
-critical_changed_lines = 3001
-
-[routing.checkpoint.usable]
-low = "local_checks"
-medium = "copilot"
-high = "copilot_qa"
-critical = "copilot_qa_sec"
-
-[routing.checkpoint.unusable]
-low = "qa"
-medium = "qa"
-high = "qa"
-critical = "qa_sec"
-
-[routing.final_exact_head.usable]
-low = "copilot"
-medium = "copilot"
-high = "copilot_qa"
-critical = "copilot_qa_sec"
-
-[routing.final_exact_head.unusable]
-low = "qa"
-medium = "qa"
-high = "qa"
-critical = "qa_sec"
-```
-
-Add explicit `critical` and `high` path arrays from the approved spec. The ADR records the binary
-usability decision, diagnostic status preservation, no remaining-budget routing, COMMENTED
-evidence mapping, read-only boundary and rejected alternatives.
+The ADR records the binary usability decision, diagnostic status preservation, no
+remaining-budget routing, COMMENTED evidence mapping, read-only boundary and rejected
+alternatives.
 
 Put every enum, immutable record, port protocol and typed error in `contracts.py`; it imports no
 project module. Implement strict TOML parsing in `adapters/toml_config.py`. Reject unknown keys,
@@ -238,6 +215,9 @@ the matrix requires that reviewer.
 `CapabilityEvidence` is repository-, principal- and review-mode-bound and expires. Historical
 usage without a valid capability record never creates `copilot_usable = true`.
 
+`RoutingConfig` contains the canonical `policy_digest`. Every `RouteDecision` copies this digest;
+route serialization must never synthesize or omit it.
+
 - [ ] **Step 4: Implement status precedence and policy lookup**
 
 Use precedence:
@@ -279,10 +259,9 @@ git commit -m "feat(governance): implement deterministic review policy"
 - Create: `tests/test_review_routing_risk.py`
 
 **Interfaces:**
-- Consumes: `RoutingConfig`, `RiskLevel`, `RiskAssessment`.
-- Produces immutable `ChangeSet(files, additions, deletions, explicit_risk)`.
+- Consumes: `RoutingConfig`, `DiffSnapshot`, `RiskLevel`, `RiskAssessment`.
 - Produces:
-  `assess_risk(changes: ChangeSet, config: RoutingConfig) -> RiskAssessment`.
+  `assess_risk(changes: DiffSnapshot, config: RoutingConfig) -> RiskAssessment`.
 
 - [ ] **Step 1: Write failing boundary and path tests**
 
@@ -294,7 +273,21 @@ Example:
 
 ```python
 assessment = assess_risk(
-    ChangeSet(files=("core/core.md",), additions=1, deletions=0),
+    DiffSnapshot(
+        schema_version=1,
+        repository="owner/repository",
+        base_sha="a" * 40,
+        head_sha="b" * 40,
+        files=(
+            DiffFile(
+                path="core/core.md",
+                status=FileStatus.MODIFIED,
+                additions=1,
+                deletions=0,
+                binary=False,
+            ),
+        ),
+    ),
     config,
 )
 self.assertEqual(assessment.level, RiskLevel.CRITICAL)
@@ -310,6 +303,7 @@ python3 -m unittest tests.test_review_routing_risk -v
 - [ ] **Step 3: Implement pure maximum-based classification**
 
 Use `fnmatch.fnmatchcase`, deterministic sorted reasons and explicit threshold reason names.
+Consume the closed `DiffSnapshot` directly; do not introduce a second reduced change schema.
 Normalize paths as relative NFC POSIX paths and reject absolute, `..`, backslash, duplicate and NUL
 forms. Missing required data classifies `CRITICAL` with `incomplete_diff_metadata`.
 
@@ -457,11 +451,16 @@ git commit -m "feat(governance): expose review routing CLI"
 
 **Interfaces:**
 - Produces contract records `ReviewRecord`, `ThreadRecord`, `CheckRecord`, `FileCoverage`,
-  `GateSnapshot`, `GateResult`.
+  `GateSnapshot`, `GateResult`, `PublicationReceipt`.
 - Produces:
-  `validate_exact_head(decision: RouteDecision, evidence: GateSnapshot) -> GateResult`.
+  `validate_exact_head(
+      decision: RouteDecision,
+      evidence: GateSnapshot,
+      config: RoutingConfig,
+  ) -> GateResult`.
 - Extends CLI with:
-  `validate --route-file ROUTE.json --evidence-file EVIDENCE.json --json`.
+  `validate --route-file ROUTE.json --evidence-file EVIDENCE.json
+  --config core/review-routing.toml --json`.
 
 - [ ] **Step 1: Write failing evidence tests**
 
@@ -469,7 +468,9 @@ Cover valid Copilot `COMMENTED`, wrong bot, wrong SHA, pending/error review, unr
 thread, newer pending request, missing QA/SEC, stale QA/SEC, missing/failing/skipped/cancelled CI,
 successful exact-head checks, unresolved non-Copilot thread, correction head invalidation,
 excluded/unverified files, degraded/unknown Copilot mode, QA coverage replacement, stable check
-name and deterministic policy/evidence digests.
+name and deterministic policy/evidence digests. Also cover a route policy-digest mismatch,
+an empty trusted required-check policy, a spoofed same-name check from the wrong app slug and an
+attempt to inject required check names through evidence.
 
 - [ ] **Step 2: Run and confirm RED**
 
@@ -489,10 +490,14 @@ GateResult(
 )
 ```
 
-Only all required reviewers + all required successful checks + zero unresolved threads is valid.
+Only all required reviewers + all policy-required successful checks from their expected app
+sources + zero unresolved threads is valid.
 Every diff file must have positive coverage by the route's reviewer set. The result includes repo,
 PR, base/head, policy digest, evidence digest, reviewer sets and observation time. Define a
-`GatePublisherPort` in contracts but provide no writer in this read-only PR.
+`GatePublisherPort.publish(result: GateResult) -> PublicationReceipt` in contracts but provide no
+writer in this read-only PR. The receipt and port contract define the deterministic idempotency key
+over repository/PR/head/policy/evidence digests, the dedicated publisher app identity and mandatory
+read-only head revalidation immediately before a future write.
 
 Wire the `validate` CLI command. Valid evidence returns `0`; missing, stale or contradictory
 exact-head evidence returns `32` with sanitized reasons.
