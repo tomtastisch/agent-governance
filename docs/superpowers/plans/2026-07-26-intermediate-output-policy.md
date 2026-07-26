@@ -34,12 +34,14 @@ the non-suppressible safety and audit invariants exactly once.
 - Create: `docs/decisions/0004-configurable-intermediate-output.md`
 - Modify: `review_routing/contracts.py`
 - Modify: `review_routing/adapters/toml_config.py`
+- Create: `review_routing/output_policy.py`
 - Create: `tests/test_interaction_policy.py`
+- Modify: `tests/test_review_routing_architecture.py`
 
 **Interfaces:**
 - Produces immutable `InteractionConfig(intermediate_status: bool)`.
 - Produces:
-  `ConfigPort.load_interaction(path: Path) -> InteractionConfig`.
+  `ConfigPort.parse_interaction(document: PolicyDocument) -> InteractionConfig`.
 - Produces:
   `decide_output(kind: MessageKind, config: InteractionConfig) -> OutputDecision`.
 
@@ -50,9 +52,9 @@ config = load_interaction_config(Path("core/interaction.toml"))
 self.assertIs(config.intermediate_status, False)
 ```
 
-Also cover `true`, missing file, missing table/key, string/integer/null-like values, extra unknown
-keys and unsupported schema versions. Unknown/malformed inputs must raise `ConfigurationError`;
-callers treat that fail-closed.
+Also cover `true`, missing table/key, string/integer/null-like values, extra unknown keys and
+unsupported schema versions. Unknown/malformed documents must raise `ConfigurationError`; callers
+treat that fail-closed. Missing-file behavior is exercised at the CLI boundary in Task 2.
 
 - [ ] **Step 2: Run and confirm RED**
 
@@ -62,7 +64,8 @@ python3 -m unittest tests.test_interaction_policy -v
 
 - [ ] **Step 3: Add the SSOT and strict parser**
 
-Exact file:
+Bootstrap `core/interaction.toml` with the following approved design value. Once created, the file
+is the sole normative machine source; Python, templates and prose must not duplicate the default.
 
 ```toml
 schema_version = 1
@@ -73,8 +76,10 @@ intermediate_status = false
 
 Do not use Python truthiness; require `type(value) is bool`. Put `InteractionConfig`,
 `MessageKind` and `OutputDecision` in the single contracts module. The TOML adapter implements
-parsing; a pure decision function preserves `QUESTION`, `BLOCKER`, `APPROVAL`, `SECURITY_WARNING`,
-`ERROR`, `MATERIAL_FINDING` and `FINAL_RESULT` regardless of the boolean.
+parsing. `output_policy.py` implements a pure decision function that preserves `QUESTION`,
+`BLOCKER`, `APPROVAL`, `SECURITY_WARNING`, `ERROR`, `MATERIAL_FINDING` and `FINAL_RESULT`
+regardless of the boolean. Extend the architecture test so `output_policy.py` imports only
+`contracts.py`.
 
 - [ ] **Step 4: Run and confirm GREEN**
 
@@ -87,7 +92,8 @@ python3 -m unittest tests.test_interaction_policy -v
 ```bash
 git add core/interaction.toml docs/decisions/0004-configurable-intermediate-output.md \
   review_routing/contracts.py review_routing/adapters/toml_config.py \
-  tests/test_interaction_policy.py
+  review_routing/output_policy.py tests/test_interaction_policy.py \
+  tests/test_review_routing_architecture.py
 git commit -m "feat(governance): configure intermediate status output"
 ```
 
@@ -105,8 +111,9 @@ git commit -m "feat(governance): configure intermediate status output"
 
 - [ ] **Step 1: Write failing command tests**
 
-Cover default false, explicit true in a temporary config, malformed config and no stdout progress
-prose. Malformed input returns exit `31` with sanitized JSON.
+Cover default false, explicit true in a temporary config, missing file, malformed config and no
+stdout progress prose. Missing/malformed input returns exit `31` with sanitized JSON and the
+decision remains fail-closed for voluntary output.
 
 - [ ] **Step 2: Run and confirm RED**
 
