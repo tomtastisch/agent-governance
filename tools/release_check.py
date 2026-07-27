@@ -273,8 +273,14 @@ def _check_changelog_sections(root, version, r):
         r.add_error("[Unreleased]-Abschnitt fehlt")
     elif len(unreleased_sections) > 1:
         r.add_error(f"{len(unreleased_sections)} [Unreleased]-Abschnitte — genau einer erlaubt")
-    elif release_sections and sections[0] != unreleased_sections[0]:
-        r.add_error("[Unreleased] muss vor versionierten Abschnitten stehen")
+    elif release_sections and sections and unreleased_sections:
+        # Finde den ersten ##-Abschnitt (nach Preamble) und prüfe ob es [Unreleased] ist
+        first_heading_section = next(
+            (s for s in sections if UNRELEASED_HEADING_RE.match(s[0]) or VERSION_HEADING_RE.match(s[0])),
+            None
+        )
+        if first_heading_section and first_heading_section != unreleased_sections[0]:
+            r.add_error("[Unreleased] muss vor versionierten Abschnitten stehen")
 
     for heading, body in unreleased_sections:
         meta = _parse_section(heading, body)
