@@ -7,6 +7,7 @@ import hashlib
 import inspect
 import json
 from pathlib import Path
+import tomllib
 from typing import get_args, get_origin, get_type_hints
 import unittest
 from unittest.mock import patch
@@ -129,6 +130,7 @@ class ImportBoundaryTest(unittest.TestCase):
             "review_routing/policy.py",
             "review_routing/risk.py",
             "review_routing/evidence.py",
+            "review_routing/output_policy.py",
             "review_routing/adapters/git_cli.py",
             "review_routing/adapters/github_gh.py",
             "review_routing/adapters/toml_config.py",
@@ -250,6 +252,19 @@ class RegistryFailureTest(unittest.TestCase):
             RuntimeRegistry.bootstrap(None).resolve(GatePublisherPort)
         with self.assertRaises(MissingProviderError):
             RuntimeRegistry.bootstrap(None).resolve(PriorGateEvidencePort)
+
+    def test_bootstrap_resolves_output_policy_port(self):
+        from review_routing.contracts import OutputPolicyPort
+        from review_routing.output_policy import OutputPolicy
+
+        runtime = tomllib.loads(
+            (ROOT / "review_routing/runtime.toml").read_text(encoding="utf-8")
+        )
+        self.assertIn("review_routing.output_policy", runtime["modules"])
+        self.assertIsInstance(
+            RuntimeRegistry.bootstrap(None).resolve(OutputPolicyPort),
+            OutputPolicy,
+        )
 
     def test_bootstrap_injects_the_exact_operator_trust_into_a_positive_probe(self):
         from review_routing.adapters import github_gh

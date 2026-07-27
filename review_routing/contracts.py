@@ -27,6 +27,10 @@ class PolicyValidationError(PolicyError):
     """Die Policy verletzt den geschlossenen Konfigurationsvertrag."""
 
 
+class ConfigurationError(PolicyValidationError):
+    """Eine zentrale Governance-Konfiguration ist nicht verwendbar."""
+
+
 class RegistryError(RuntimeError):
     """Basisfehler für eine unvollständige oder widersprüchliche Laufzeitbindung."""
 
@@ -248,6 +252,17 @@ class EvidenceTrust(str, Enum):
     VERIFIED = "verified"
 
 
+class MessageKind(str, Enum):
+    VOLUNTARY_INTERMEDIATE = "voluntary_intermediate"
+    QUESTION = "question"
+    BLOCKER = "blocker"
+    APPROVAL = "approval"
+    SECURITY_WARNING = "security_warning"
+    ERROR = "error"
+    MATERIAL_FINDING = "material_finding"
+    FINAL_RESULT = "final_result"
+
+
 def _require_digest(value: str, field_name: str) -> None:
     if not DIGEST_RE.fullmatch(value):
         raise ValueError(f"{field_name} must be a sha256 digest")
@@ -389,6 +404,25 @@ class RoutingConfig:
                 }
             ),
         )
+
+
+@dataclass(frozen=True)
+class InteractionConfig:
+    intermediate_status: bool
+
+    def __post_init__(self) -> None:
+        _require_bool(self.intermediate_status, "intermediate_status")
+
+
+@dataclass(frozen=True)
+class OutputDecision:
+    kind: MessageKind
+    emit: bool
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.kind, MessageKind):
+            raise ValueError("kind must be a MessageKind")
+        _require_bool(self.emit, "emit")
 
 
 @dataclass(frozen=True)
@@ -2265,11 +2299,21 @@ class ConfigPort(ABC):
     def parse_routing(self, document: PolicyDocument) -> RoutingConfig:
         """Validiert und dekodiert eine Routing-Policy aus ihrer vertrauensgebundenen Quelle."""
 
+    @abstractmethod
+    def parse_interaction(self, document: PolicyDocument) -> InteractionConfig:
+        """Validiert und dekodiert die zentrale Ausgabekonfiguration."""
+
 
 class RuntimeTrustPort(ABC):
     @abstractmethod
     def load(self) -> RuntimeTrustConfig:
         """Lädt den extern bestimmten Runtime-Pin ohne Einfluss der Kandidatenpolicy."""
+
+
+class OutputPolicyPort(ABC):
+    @abstractmethod
+    def decide(self, kind: MessageKind, config: InteractionConfig) -> OutputDecision:
+        """Entscheidet rein, ob eine klassifizierte Nachricht ausgegeben werden muss."""
 
 
 class RoutingPolicyPort(ABC):

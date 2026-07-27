@@ -8,8 +8,10 @@ import tomllib
 from review_routing.contracts import (
     AdapterFactory,
     canonical_policy_digest,
+    ConfigurationError,
     ConfigPort,
     GatePublisher,
+    InteractionConfig,
     PathMarker,
     PolicyDocument,
     PolicyValidationError,
@@ -52,6 +54,36 @@ class TomlConfig(ConfigPort):
             publisher=publisher,
             policy_digest=canonical_policy_digest(raw),
         )
+
+    def parse_interaction(self, document: PolicyDocument) -> InteractionConfig:
+        try:
+            raw = tomllib.loads(document.content)
+        except tomllib.TOMLDecodeError as error:
+            raise ConfigurationError(
+                "Die Ausgabekonfiguration ist kein gültiges TOML"
+            ) from error
+        self._require_interaction_exact_keys(
+            raw,
+            {"schema_version", "output"},
+            "Ausgabekonfiguration",
+        )
+        schema_version = raw["schema_version"]
+        if type(schema_version) is not int or schema_version != 1:
+            raise ConfigurationError(
+                "Die Ausgabekonfiguration verwendet keine unterstützte Schema-Version"
+            )
+        output = raw["output"]
+        if not isinstance(output, dict):
+            raise ConfigurationError("Der Ausgabeabschnitt muss eine Tabelle sein")
+        self._require_interaction_exact_keys(
+            output,
+            {"intermediate_status"},
+            "Ausgabeabschnitt",
+        )
+        intermediate_status = output["intermediate_status"]
+        if type(intermediate_status) is not bool:
+            raise ConfigurationError("intermediate_status muss boolesch sein")
+        return InteractionConfig(intermediate_status=intermediate_status)
 
     def _parse_risk(self, risk: object) -> tuple[dict[str, int], list[PathMarker]]:
         if not isinstance(risk, dict):
@@ -138,6 +170,15 @@ class TomlConfig(ConfigPort):
     def _require_exact_keys(value: Mapping[str, object], expected: set[str], context: str) -> None:
         if set(value) != expected:
             raise PolicyValidationError(f"{context} enthält unbekannte oder fehlende Schlüssel")
+
+    @staticmethod
+    def _require_interaction_exact_keys(
+        value: Mapping[str, object],
+        expected: set[str],
+        context: str,
+    ) -> None:
+        if set(value) != expected:
+            raise ConfigurationError(f"{context} enthält unbekannte oder fehlende Schlüssel")
 
 
 class TomlConfigFactory:

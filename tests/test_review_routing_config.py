@@ -147,6 +147,7 @@ class RuntimeBootstrapTest(unittest.TestCase):
                 "review_routing.adapters.git_cli",
                 "review_routing.adapters.github_gh",
                 "review_routing.evidence",
+                "review_routing.output_policy",
             ],
         )
 
