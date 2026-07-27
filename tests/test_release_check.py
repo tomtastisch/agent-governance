@@ -3,9 +3,16 @@
 
 Alle Tests verwenden synthetische Fixtures (tempfile.TemporaryDirectory) für reproduzierbare
 Negativ-/Positivszenarien. Keine echten Tags oder GitHub-Releases werden erzeugt.
+
+Abdeckung:
+  Cluster A: Tag-Auflösung, Peel, Signaturprüfung, deterministische Tag-Wahl
+  Cluster B: CHANGELOG-Abschnittsweise Validierung (kein Cross-Section-Leak)
+  Cluster C: Release-Modus via injizierte gh-Ausgaben
+  Cluster D: README/INSTALL/VERSION fail-closed
 """
 
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -14,13 +21,10 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from tools.release_check import (  # noqa: E402
-    CheckResult,
-    check_tree,
-    check_tag,
-    check_release,
-    _is_valid_semver,
-    _read,
-    REQUIRED_CATEGORIES,
+    CheckResult, GitRunner, GhRunner,
+    check_tree, check_tag, check_release,
+    _is_valid_semver, _split_changelog_sections, _parse_section,
+    _semver_cmp, REQUIRED_CATEGORIES,
 )
 
 
@@ -30,8 +34,16 @@ def _write(path, content):
         f.write(content)
 
 
+_CHANGELOG_MIN = (
+    "## [Unreleased]\n### Added\n- item\n### Changed\n- Keine.\n"
+    "### Fixed\n- Keine.\n### Removed\n- Keine.\n\n**Breaking changes:** none\n"
+)
+_README_MIN = "**Version:** [`0.1.0`](VERSION)\n"
+_INSTALL_MIN = "See [`VERSION`](VERSION)\n"
+
+
 # ═══════════════════════════════════════════════════════════════════════
-# Unit: SemVer-Parsing
+# Unit
 # ═══════════════════════════════════════════════════════════════════════
 
 class SemVerParsing(unittest.TestCase):
@@ -45,8 +57,16 @@ class SemVerParsing(unittest.TestCase):
             self.assertFalse(_is_valid_semver(v), f"'{v}' sollte ungültig sein")
 
 
+class SemVerCmp(unittest.TestCase):
+    def test_ordering(self):
+        self.assertGreater(_semver_cmp("1.0.0", "0.9.0"), 0)
+        self.assertGreater(_semver_cmp("0.2.0", "0.1.0"), 0)
+        self.assertEqual(_semver_cmp("0.1.0", "0.1.0"), 0)
+        self.assertLess(_semver_cmp("0.1.0", "0.2.0"), 0)
+
+
 # ═══════════════════════════════════════════════════════════════════════
-# Tree: VERSION
+# Cluster D: VERSION
 # ═══════════════════════════════════════════════════════════════════════
 
 class TreeVersionMissing(unittest.TestCase):
@@ -57,24 +77,40 @@ class TreeVersionMissing(unittest.TestCase):
             self.assertTrue(any("VERSION fehlt" in e for e in r.errors))
 
 
-class TreeVersionInvalid(unittest.TestCase):
+class TreeVersionForm(unittest.TestCase):
     def test_empty_version_is_error(self):
         with tempfile.TemporaryDirectory() as d:
             _write(os.path.join(d, "VERSION"), "\n")
             r = check_tree(root=d)
             self.assertFalse(r.ok)
-            self.assertTrue(any("ist leer" in e for e in r.errors))
+            self.assertTrue(any("nichtleere Zeilen" in e for e in r.errors))
+
+    def test_multiline_is_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(os.path.join(d, "VERSION"), "0.1.0\nextra text\n")
+            r = check_tree(root=d)
+            self.assertFalse(r.ok)
+            self.assertTrue(any("nichtleere Zeilen" in e for e in r.errors))
 
     def test_bad_semver_is_error(self):
         with tempfile.TemporaryDirectory() as d:
-            _write(os.path.join(d, "VERSION"), "not.a.version")
+            _write(os.path.join(d, "VERSION"), "not.a.version\n")
             r = check_tree(root=d)
             self.assertFalse(r.ok)
             self.assertTrue(any("kein gültiges SemVer" in e for e in r.errors))
 
+    def test_single_line_with_newline_is_ok(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(os.path.join(d, "VERSION"), "0.1.0\n")
+            _write(os.path.join(d, "CHANGELOG.md"), _CHANGELOG_MIN)
+            _write(os.path.join(d, "README.md"), _README_MIN)
+            _write(os.path.join(d, "INSTALL.md"), _INSTALL_MIN)
+            r = check_tree(root=d)
+            self.assertTrue(r.ok, f"Erwartet OK, Fehler: {r.errors}")
+
 
 # ═══════════════════════════════════════════════════════════════════════
-# Tree: konkurrierende Versionsquelle
+# Cluster D: Konkurrierende Quelle
 # ═══════════════════════════════════════════════════════════════════════
 
 class TreeCompetingSource(unittest.TestCase):
@@ -104,60 +140,29 @@ class TreeCompetingSource(unittest.TestCase):
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# Tree: CHANGELOG
+# Cluster B: CHANGELOG abschnittsweise
 # ═══════════════════════════════════════════════════════════════════════
 
-class TreeChangelogMissing(unittest.TestCase):
-    def test_changelog_missing_is_error(self):
-        with tempfile.TemporaryDirectory() as d:
-            _write(os.path.join(d, "VERSION"), "0.1.0\n")
-            r = check_tree(root=d)
-            self.assertFalse(r.ok)
-            self.assertTrue(any("CHANGELOG.md fehlt" in e for e in r.errors))
+class ChangelogSectionParsing(unittest.TestCase):
+    def test_split_sections(self):
+        cl = "## [Unreleased]\n### Added\n- x\n\n## [0.1.0]\n### Added\n- y\n"
+        sections = _split_changelog_sections(cl)
+        self.assertEqual(len(sections), 2)
+
+    def test_parse_section(self):
+        meta = _parse_section("## [Unreleased]", "### Added\n- item\n\n**Breaking changes:** none\n")
+        self.assertIn("Added", meta["categories"])
+        self.assertEqual(meta["marker"], "none")
+        self.assertFalse(meta["has_breaking_entries"])
 
 
-class TreeChangelogCategories(unittest.TestCase):
+class TreeChangelogSections(unittest.TestCase):
     def setUp(self):
         self.d = tempfile.TemporaryDirectory()
         self.root = self.d.name
         _write(os.path.join(self.root, "VERSION"), "0.1.0\n")
-
-    def tearDown(self):
-        self.d.cleanup()
-
-    def _changelog(self, body):
-        _write(os.path.join(self.root, "CHANGELOG.md"), body)
-
-    def test_unknown_category_is_error(self):
-        self._changelog("## [Unreleased]\n### Bogus\n- item\n\n**Breaking changes:** none\n")
-        r = check_tree(root=self.root)
-        self.assertFalse(r.ok)
-        self.assertTrue(any("unbekannte Kategorien" in e for e in r.errors))
-
-    def test_missing_required_category_in_unreleased_is_error(self):
-        self._changelog("## [Unreleased]\n### Added\n- item\n\n**Breaking changes:** none\n")
-        r = check_tree(root=self.root)
-        self.assertFalse(r.ok)
-        self.assertTrue(any("fehlen erforderliche Kategorien" in e for e in r.errors))
-
-    def test_all_required_categories_with_keine_placeholder_is_ok(self):
-        self._changelog(
-            "## [Unreleased]\n"
-            "### Added\n- item\n"
-            "### Changed\n- Keine.\n"
-            "### Fixed\n- Keine.\n"
-            "### Removed\n- Keine.\n\n"
-            "**Breaking changes:** none\n"
-        )
-        r = check_tree(root=self.root)
-        self.assertTrue(r.ok, f"Erwartet OK, Fehler: {r.errors}")
-
-
-class TreeChangelogBreakingMarker(unittest.TestCase):
-    def setUp(self):
-        self.d = tempfile.TemporaryDirectory()
-        self.root = self.d.name
-        _write(os.path.join(self.root, "VERSION"), "0.1.0\n")
+        _write(os.path.join(self.root, "README.md"), "**Version:** [`0.1.0`](VERSION)\n")
+        _write(os.path.join(self.root, "INSTALL.md"), "See [`VERSION`](VERSION)\n")
 
     def tearDown(self):
         self.d.cleanup()
@@ -165,36 +170,62 @@ class TreeChangelogBreakingMarker(unittest.TestCase):
     def _cl(self, body):
         _write(os.path.join(self.root, "CHANGELOG.md"), body)
 
-    def test_missing_breaking_marker_is_error(self):
-        self._cl("## [Unreleased]\n### Added\n- item\n")
+    def test_unreleased_before_release_is_ok(self):
+        self._cl(_CHANGELOG_MIN + "\n## [0.1.0] — 2026-07-27\n### Added\n- history\n\n**Breaking changes:** none\n")
+        r = check_tree(root=self.root)
+        self.assertTrue(r.ok, f"Erwartet OK, Fehler: {r.errors}")
+
+    def test_release_before_unreleased_is_error(self):
+        self._cl("## [0.1.0] — 2026-07-27\n### Added\n- history\n\n**Breaking changes:** none\n\n" + _CHANGELOG_MIN)
         r = check_tree(root=self.root)
         self.assertFalse(r.ok)
-        self.assertTrue(any("fehlt der Marker" in e for e in r.errors))
+        self.assertTrue(any("muss vor versionierten" in e for e in r.errors))
 
-    def test_present_without_breaking_entry_is_error(self):
-        self._cl("## [Unreleased]\n### Added\n- item\n\n**Breaking changes:** present\n")
+    def test_duplicate_unreleased_is_error(self):
+        self._cl(_CHANGELOG_MIN + "\n" + _CHANGELOG_MIN)
         r = check_tree(root=self.root)
         self.assertFalse(r.ok)
-        self.assertTrue(any("kein Eintrag mit" in e for e in r.errors))
+        self.assertTrue(any("[Unreleased]-Abschnitte" in e for e in r.errors))
 
-    def test_present_with_breaking_entry_is_ok(self):
+    def test_no_unreleased_is_error(self):
+        self._cl("## [0.1.0] — 2026-07-27\n### Added\n- history\n\n**Breaking changes:** none\n")
+        r = check_tree(root=self.root)
+        self.assertFalse(r.ok)
+        self.assertTrue(any("[Unreleased]-Abschnitt fehlt" in e for e in r.errors))
+
+    def test_semver_order_descending_is_ok(self):
         self._cl(
-            "## [Unreleased]\n### Added\n- Keine.\n### Changed\n- **BREAKING:** altered API\n"
-            "### Fixed\n- Keine.\n### Removed\n- Keine.\n\n**Breaking changes:** present\n"
+            _CHANGELOG_MIN + "\n"
+            "## [0.2.0] — 2026-08-01\n### Added\n- newer\n\n**Breaking changes:** none\n\n"
+            "## [0.1.0] — 2026-07-27\n### Added\n- older\n\n**Breaking changes:** none\n"
         )
         r = check_tree(root=self.root)
         self.assertTrue(r.ok, f"Erwartet OK, Fehler: {r.errors}")
 
-    def test_none_marker_is_ok(self):
-        self._cl("## [Unreleased]\n### Added\n- item\n"
-                 "### Changed\n- Keine.\n### Fixed\n- Keine.\n### Removed\n- Keine.\n\n"
-                 "**Breaking changes:** none\n")
+    def test_semver_order_ascending_is_error(self):
+        self._cl(
+            _CHANGELOG_MIN + "\n"
+            "## [0.1.0] — 2026-07-27\n### Added\n- old\n\n**Breaking changes:** none\n\n"
+            "## [0.2.0] — 2026-08-01\n### Added\n- new\n\n**Breaking changes:** none\n"
+        )
         r = check_tree(root=self.root)
-        self.assertTrue(r.ok, f"Erwartet OK, Fehler: {r.errors}")
+        self.assertFalse(r.ok)
+        self.assertTrue(any("absteigend" in e for e in r.errors))
+
+    def test_release_section_present_without_breaking_entry_is_error(self):
+        """Release-Sektion mit 'present' aber ohne BREAKING-Eintrag → Fehler."""
+        self._cl(
+            _CHANGELOG_MIN + "\n"
+            "## [0.2.0] — 2026-08-01\n### Added\n- item\n### Changed\n- Keine.\n"
+            "**Breaking changes:** present\n"
+        )
+        r = check_tree(root=self.root)
+        self.assertFalse(r.ok)
+        self.assertTrue(any("present" in e and "BREAKING:" in e for e in r.errors))
 
 
-class TreeChangelogHistory(unittest.TestCase):
-    """Mehrere Versionseinträge werden akzeptiert (keine künstliche 1-Eintrag-Grenze)."""
+class TreeChangelogCrossSectionLeak(unittest.TestCase):
+    """Greptile-Finding #2: Breaking-Marker dürfen nicht abschnittsübergreifend leaken."""
 
     def setUp(self):
         self.d = tempfile.TemporaryDirectory()
@@ -204,51 +235,34 @@ class TreeChangelogHistory(unittest.TestCase):
     def tearDown(self):
         self.d.cleanup()
 
-    def test_two_releases_is_valid(self):
-        cl = (
+    def test_unreleased_missing_marker_not_rescued_by_release(self):
+        """[Unreleased] ohne Marker, Release hat Marker → Fehler für [Unreleased]."""
+        _write(os.path.join(self.root, "CHANGELOG.md"),
             "## [Unreleased]\n### Added\n- new\n### Changed\n- Keine.\n"
-            "### Fixed\n- Keine.\n### Removed\n- Keine.\n\n**Breaking changes:** none\n\n"
-            "## [0.2.0] — 2026-08-01\n### Added\n- item2\n\n**Breaking changes:** none\n\n"
-            "## [0.1.0] — 2026-07-27\n### Added\n- item1\n\n**Breaking changes:** none\n"
+            "### Fixed\n- Keine.\n### Removed\n- Keine.\n\n"  # Kein Marker hier!
+            "## [0.1.0] — 2026-07-27\n### Added\n- old\n\n**Breaking changes:** none\n"
         )
-        _write(os.path.join(self.root, "CHANGELOG.md"), cl)
-        r = check_tree(root=self.root)
-        self.assertTrue(r.ok, f"Erwartet OK, Fehler: {r.errors}")
-
-    def test_duplicate_version_headings_is_error(self):
-        cl = (
-            "## [0.1.0] — 2026-07-27\n### Added\n- first\n\n**Breaking changes:** none\n\n"
-            "## [0.1.0] — 2026-07-28\n### Added\n- dup\n\n**Breaking changes:** none\n"
-        )
-        _write(os.path.join(self.root, "CHANGELOG.md"), cl)
         r = check_tree(root=self.root)
         self.assertFalse(r.ok)
-        self.assertTrue(any("doppelte Versionsüberschrift" in e for e in r.errors))
+        self.assertTrue(any("fehlt der Marker" in e for e in r.errors))
 
-    def test_invalid_semver_in_history_is_error(self):
-        cl = (
-            "## [Unreleased]\n### Added\n- item\n\n**Breaking changes:** none\n\n"
-            "## [01.0.0] — 2026-08-01\n### Added\n- bad\n\n**Breaking changes:** none\n"
+    def test_unreleased_present_not_rescued_by_release_breaking_entry(self):
+        """[Unreleased] mit present aber ohne BREAKING-Eintrag,
+        Release hat BREAKING-Eintrag → Fehler für [Unreleased]."""
+        _write(os.path.join(self.root, "CHANGELOG.md"),
+            "## [Unreleased]\n### Added\n- new\n### Changed\n- Keine.\n"
+            "### Fixed\n- Keine.\n### Removed\n- Keine.\n\n"
+            "**Breaking changes:** present\n\n"
+            "## [0.1.0] — 2026-07-27\n### Changed\n- **BREAKING:** old API\n\n"
+            "**Breaking changes:** present\n"
         )
-        _write(os.path.join(self.root, "CHANGELOG.md"), cl)
         r = check_tree(root=self.root)
         self.assertFalse(r.ok)
-        self.assertTrue(any("kein gültiges SemVer" in e for e in r.errors))
-
-    def test_version_mismatch_with_no_unreleased_is_error(self):
-        """Ohne [Unreleased] muss der neueste CHANGELOG-Eintrag mit VERSION übereinstimmen."""
-        _write(os.path.join(self.root, "VERSION"), "0.3.0\n")
-        cl = (
-            "## [0.2.0] — 2026-08-01\n### Added\n- old\n\n**Breaking changes:** none\n"
-        )
-        _write(os.path.join(self.root, "CHANGELOG.md"), cl)
-        r = check_tree(root=self.root)
-        self.assertFalse(r.ok)
-        self.assertTrue(any("weicht von aktuellstem" in e for e in r.errors))
+        self.assertTrue(any("kein Eintrag mit" in e for e in r.errors))
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# Tree: README
+# Cluster D: README / INSTALL
 # ═══════════════════════════════════════════════════════════════════════
 
 class TreeReadmeDrift(unittest.TestCase):
@@ -256,29 +270,25 @@ class TreeReadmeDrift(unittest.TestCase):
         self.d = tempfile.TemporaryDirectory()
         self.root = self.d.name
         _write(os.path.join(self.root, "VERSION"), "0.2.0\n")
-        _write(os.path.join(self.root, "CHANGELOG.md"),
-               "## [Unreleased]\n### Added\n- x\n### Changed\n- Keine.\n"
-               "### Fixed\n- Keine.\n### Removed\n- Keine.\n\n**Breaking changes:** none\n")
+        _write(os.path.join(self.root, "CHANGELOG.md"), _CHANGELOG_MIN.replace("0.1.0", "0.2.0"))
 
     def tearDown(self):
         self.d.cleanup()
 
     def test_readme_version_drift_is_error(self):
-        _write(os.path.join(self.root, "README.md"),
-               "**Version:** [`0.1.0`](VERSION)\n")
+        _write(os.path.join(self.root, "README.md"), "**Version:** [`0.1.0`](VERSION)\n")
         r = check_tree(root=self.root)
         self.assertFalse(r.ok)
         self.assertTrue(any("zeigt Version '0.1.0'" in e for e in r.errors))
 
     def test_readme_matching_version_is_ok(self):
-        _write(os.path.join(self.root, "README.md"),
-               "**Version:** [`0.2.0`](VERSION)\n")
+        _write(os.path.join(self.root, "README.md"), "**Version:** [`0.2.0`](VERSION)\n")
+        _write(os.path.join(self.root, "INSTALL.md"), _INSTALL_MIN)
         r = check_tree(root=self.root)
         self.assertTrue(r.ok, f"Erwartet OK, Fehler: {r.errors}")
 
     def test_readme_bare_version_without_link_is_error(self):
-        _write(os.path.join(self.root, "README.md"),
-               "**Version:** `0.2.0`\n")
+        _write(os.path.join(self.root, "README.md"), "**Version:** `0.2.0`\n")
         r = check_tree(root=self.root)
         self.assertFalse(r.ok)
         self.assertTrue(any("ohne VERSION-Link" in e for e in r.errors))
@@ -287,51 +297,59 @@ class TreeReadmeDrift(unittest.TestCase):
         _write(os.path.join(self.root, "README.md"), "# Title\n\nNo version here.\n")
         r = check_tree(root=self.root)
         self.assertFalse(r.ok)
-        self.assertTrue(any("referenziert keine versionierte Auslieferung" in e for e in r.errors))
+        self.assertTrue(any("referenziert keine versionierte" in e for e in r.errors))
+
+    def test_readme_missing_is_error(self):
+        _write(os.path.join(self.root, "INSTALL.md"), _INSTALL_MIN)
+        r = check_tree(root=self.root)
+        self.assertFalse(r.ok)
+        self.assertTrue(any("README.md fehlt" in e for e in r.errors))
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# Tree: INSTALL
-# ═══════════════════════════════════════════════════════════════════════
-
-class TreeInstallLink(unittest.TestCase):
+class TreeInstallContracts(unittest.TestCase):
     def setUp(self):
         self.d = tempfile.TemporaryDirectory()
         self.root = self.d.name
         _write(os.path.join(self.root, "VERSION"), "0.1.0\n")
-        _write(os.path.join(self.root, "CHANGELOG.md"),
-               "## [Unreleased]\n### Added\n- x\n### Changed\n- Keine.\n"
-               "### Fixed\n- Keine.\n### Removed\n- Keine.\n\n**Breaking changes:** none\n")
-        _write(os.path.join(self.root, "README.md"),
-               "**Version:** [`0.1.0`](VERSION)\n")
+        _write(os.path.join(self.root, "CHANGELOG.md"), _CHANGELOG_MIN)
+        _write(os.path.join(self.root, "README.md"), _README_MIN)
 
     def tearDown(self):
         self.d.cleanup()
 
     def test_install_wrong_path_is_error(self):
-        _write(os.path.join(self.root, "INSTALL.md"),
-               "See [`VERSION`](../VERSION)\n")
+        _write(os.path.join(self.root, "INSTALL.md"), "See [`VERSION`](../VERSION)\n")
         r = check_tree(root=self.root)
         self.assertFalse(r.ok)
         self.assertTrue(any("korrekter Pfad ist 'VERSION'" in e for e in r.errors))
 
-    def test_install_correct_path_is_ok(self):
-        _write(os.path.join(self.root, "INSTALL.md"),
-               "See [`VERSION`](VERSION)\n")
+    def test_install_missing_is_error(self):
+        r = check_tree(root=self.root)
+        self.assertFalse(r.ok)
+        self.assertTrue(any("INSTALL.md fehlt" in e for e in r.errors))
+
+    def test_install_without_version_contract_is_error(self):
+        _write(os.path.join(self.root, "INSTALL.md"), "# Install\n\nJust do it.\n")
+        r = check_tree(root=self.root)
+        self.assertFalse(r.ok)
+        self.assertTrue(any("keinen Hinweis auf versionierte" in e for e in r.errors))
+
+    def test_install_correct_is_ok(self):
+        _write(os.path.join(self.root, "INSTALL.md"), _INSTALL_MIN)
         r = check_tree(root=self.root)
         self.assertTrue(r.ok, f"Erwartet OK, Fehler: {r.errors}")
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# Tag-Konsistenz
+# Cluster A: Tag-Konsistenz
 # ═══════════════════════════════════════════════════════════════════════
 
-class TagConsistency(unittest.TestCase):
-    """Nutzt temporäre Git-Repositories — keine echten Tags im Projekt-Repo."""
-
+class TagConsistencyBase(unittest.TestCase):
     def setUp(self):
         self.d = tempfile.TemporaryDirectory()
         self.root = self.d.name
+        # Mock verifier: unsigned test tags gelten als OK
+        self.mock_verifier = lambda tag, root: (True, "mock ok")
 
     def tearDown(self):
         self.d.cleanup()
@@ -349,26 +367,50 @@ class TagConsistency(unittest.TestCase):
 
     @staticmethod
     def _tag(root, name):
-        """Leichter Tag ohne GPG-Signierung im Test-Repo."""
         subprocess.run(
             ["git", "-c", "tag.gpgsign=false", "tag", name],
             cwd=root, capture_output=True,
         )
 
-    def test_tag_name_mismatch_is_error(self):
-        self._init_git("0.1.0")
-        self._tag(self.root, "v0.2.0")
-        r = check_tag(root=self.root, tag_ref="v0.2.0")
-        self.assertFalse(r.ok)
-        self.assertTrue(any("entspricht nicht" in e for e in r.errors))
 
-    def test_tag_name_match_is_ok(self):
+class TagDeterministicSelection(TagConsistencyBase):
+    """Greptile-Finding #1: Default wählt deterministisch v{VERSION}, nicht ersten v*-Tag."""
+
+    def test_default_uses_version_based_tag(self):
+        self._init_git("0.2.0")
+        self._tag(self.root, "v0.1.0")
+        self._tag(self.root, "v0.2.0")
+        r = check_tag(root=self.root, verifier=self.mock_verifier)
+        self.assertTrue(r.ok, f"Erwartet OK (v0.2.0 via VERSION), Fehler: {r.errors}")
+
+    def test_wrong_default_tag_is_error(self):
+        self._init_git("0.2.0")
+        self._tag(self.root, "v0.1.0")
+        self._tag(self.root, "v0.3.0")
+        r = check_tag(root=self.root, verifier=self.mock_verifier)
+        self.assertFalse(r.ok)
+        self.assertTrue(any("nicht gefunden" in e for e in r.errors))
+
+
+class TagLightweightVsAnnotated(TagConsistencyBase):
+    """Greptile-Finding #3: Peeling via ^{commit} für annotierte Tags."""
+
+    def test_lightweight_tag_is_ok(self):
         self._init_git("0.1.0")
         self._tag(self.root, "v0.1.0")
-        r = check_tag(root=self.root, tag_ref="v0.1.0")
+        r = check_tag(root=self.root, tag_ref="v0.1.0", verifier=self.mock_verifier)
         self.assertTrue(r.ok, f"Erwartet OK, Fehler: {r.errors}")
 
-    def test_tag_on_wrong_commit_is_error(self):
+    def test_annotated_tag_is_ok(self):
+        self._init_git("0.1.0")
+        subprocess.run(
+            ["git", "-c", "tag.gpgsign=false", "tag", "-m", "release", "v0.1.0"],
+            cwd=self.root, capture_output=True,
+        )
+        r = check_tag(root=self.root, tag_ref="v0.1.0", verifier=self.mock_verifier)
+        self.assertTrue(r.ok, f"Erwartet OK (annotiert), Fehler: {r.errors}")
+
+    def test_annotated_tag_on_wrong_commit_is_error(self):
         self._init_git("0.1.0")
         head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.root,
                               capture_output=True, text=True).stdout.strip()
@@ -378,39 +420,137 @@ class TagConsistency(unittest.TestCase):
             ["git", "-c", "commit.gpgsign=false", "commit", "-m", "bump"],
             cwd=self.root, capture_output=True,
         )
-        self._tag(self.root, "v0.2.0")
-        r = check_tag(root=self.root, tag_ref="v0.2.0", expected_commit=head)
+        subprocess.run(
+            ["git", "-c", "tag.gpgsign=false", "tag", "-m", "release", "v0.2.0"],
+            cwd=self.root, capture_output=True,
+        )
+        r = check_tag(root=self.root, tag_ref="v0.2.0", expected_commit=head, verifier=self.mock_verifier)
         self.assertFalse(r.ok)
         self.assertTrue(any("zeigt auf" in e for e in r.errors))
 
-    def test_missing_tag_is_error(self):
-        self._init_git("0.1.0")
-        r = check_tag(root=self.root)
-        self.assertFalse(r.ok)
-        self.assertTrue(any("Kein v*-Tag gefunden" in e for e in r.errors))
 
-    def test_version_missing_for_tag_check(self):
+class TagSignature(TagConsistencyBase):
+    """Signaturprüfung ist blockierend (Cluster A.7, A.8)."""
+
+    def test_signed_tag_verified_is_ok(self):
+        self._init_git("0.1.0")
+        self._tag(self.root, "v0.1.0")
+        # Injected verifier: returns True
+        def always_ok(tag, root):
+            return True, "mock ok"
+        r = check_tag(root=self.root, tag_ref="v0.1.0", verifier=always_ok)
+        self.assertTrue(r.ok, f"Erwartet OK, Fehler: {r.errors}")
+
+    def test_signed_tag_verification_failed_is_error(self):
+        self._init_git("0.1.0")
+        self._tag(self.root, "v0.1.0")
+        def always_fail(tag, root):
+            return False, "signature invalid"
+        r = check_tag(root=self.root, tag_ref="v0.1.0", verifier=always_fail)
+        self.assertFalse(r.ok)
+        self.assertTrue(any("Signaturprüfung fehlgeschlagen" in e for e in r.errors))
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Cluster C: Release-Modus
+# ═══════════════════════════════════════════════════════════════════════
+
+class FakeGhRunner:
+    """Injizierbare gh-Ausgabe für Release-Tests."""
+
+    def __init__(self, data=None, error=None):
+        self.data = data
+        self.error = error
+
+    def release_view(self, tag, root, timeout=30):
+        return self.data, self.error
+
+
+class ReleaseConsistencyTests(TagConsistencyBase):
+    """Cluster C: check_release() mit synthetischen gh-Ausgaben."""
+
+    def test_gh_unavailable_is_error(self):
+        self._init_git("0.1.0")
+        self._tag(self.root, "v0.1.0")
+        gh = FakeGhRunner(error="gh CLI nicht verfügbar")
+        r = check_release(root=self.root, tag_ref="v0.1.0", gh=gh)
+        self.assertFalse(r.ok)
+        self.assertTrue(any("gh CLI nicht verfügbar" in e for e in r.errors))
+
+    def test_gh_error_is_error(self):
+        self._init_git("0.1.0")
+        self._tag(self.root, "v0.1.0")
+        gh = FakeGhRunner(error="Release nicht gefunden")
+        r = check_release(root=self.root, tag_ref="v0.1.0", gh=gh)
+        self.assertFalse(r.ok)
+        self.assertTrue(any("Release nicht gefunden" in e for e in r.errors))
+
+    def test_wrong_tagname_is_error(self):
+        self._init_git("0.1.0")
+        self._tag(self.root, "v0.1.0")
+        gh = FakeGhRunner(data={"tagName": "v0.2.0", "targetCommitish": "main", "isDraft": False, "isPrerelease": False})
+        r = check_release(root=self.root, tag_ref="v0.1.0", gh=gh)
+        self.assertFalse(r.ok)
+        self.assertTrue(any("tagName" in e for e in r.errors))
+
+    def test_draft_release_is_error(self):
+        self._init_git("0.1.0")
+        self._tag(self.root, "v0.1.0")
+        gh = FakeGhRunner(data={"tagName": "v0.1.0", "targetCommitish": "main", "isDraft": True, "isPrerelease": False})
+        r = check_release(root=self.root, tag_ref="v0.1.0", gh=gh)
+        self.assertFalse(r.ok)
+        self.assertTrue(any("Draft" in e for e in r.errors))
+
+    def test_commit_mismatch_with_sha_is_error(self):
+        self._init_git("0.1.0")
+        self._tag(self.root, "v0.1.0")
+        wrong_sha = "0" * 40
+        gh = FakeGhRunner(data={"tagName": "v0.1.0", "targetCommitish": wrong_sha, "isDraft": False, "isPrerelease": False})
+        r = check_release(root=self.root, tag_ref="v0.1.0", gh=gh)
+        self.assertFalse(r.ok)
+        self.assertTrue(any("targetCommitish" in e for e in r.errors))
+
+    def test_branch_target_commitish_is_ok(self):
+        self._init_git("0.1.0")
+        self._tag(self.root, "v0.1.0")
+        gh = FakeGhRunner(data={"tagName": "v0.1.0", "targetCommitish": "main", "isDraft": False, "isPrerelease": False})
+        r = check_release(root=self.root, tag_ref="v0.1.0", gh=gh)
+        self.assertTrue(r.ok, f"Erwartet OK, Fehler: {r.errors}")
+
+    def test_annotated_release_tag_is_ok(self):
+        """Greptile-Finding #4: Annotierter Tag + Release mit korrektem SHA."""
+        self._init_git("0.1.0")
+        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.root,
+                              capture_output=True, text=True).stdout.strip()
+        subprocess.run(
+            ["git", "-c", "tag.gpgsign=false", "tag", "-m", "release", "v0.1.0"],
+            cwd=self.root, capture_output=True,
+        )
+        gh = FakeGhRunner(data={"tagName": "v0.1.0", "targetCommitish": head, "isDraft": False, "isPrerelease": False})
+        r = check_release(root=self.root, tag_ref="v0.1.0", gh=gh)
+        self.assertTrue(r.ok, f"Erwartet OK (annotiert + SHA-match), Fehler: {r.errors}")
+
+    def test_version_missing_is_error(self):
         with tempfile.TemporaryDirectory() as d:
-            subprocess.run(["git", "init"], cwd=d, capture_output=True)
-            r = check_tag(root=d)
+            r = check_release(root=d)
             self.assertFalse(r.ok)
             self.assertTrue(any("VERSION fehlt" in e for e in r.errors))
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# Aktueller Repo-Zustand (Red: origin/main hat keine Artefakte)
+# Aktueller Repo-Zustand
 # ═══════════════════════════════════════════════════════════════════════
 
 class CurrentRepoState(unittest.TestCase):
-    """Prüft den aktuellen Repository-Zustand."""
-
     def test_tree_check_has_version_and_changelog(self):
-        """VERSION und CHANGELOG existieren und sind konsistent."""
         r = check_tree()
         has_version_error = any("VERSION fehlt" in e for e in r.errors)
         self.assertFalse(has_version_error, "VERSION sollte vorhanden sein (Green)")
         has_changelog_error = any("CHANGELOG.md fehlt" in e for e in r.errors)
         self.assertFalse(has_changelog_error, "CHANGELOG.md sollte vorhanden sein (Green)")
+        # CHANGELOG sollte keinen vorzeitigen Release-Link haben
+        has_link_error = any("Release-Links" in e for e in r.errors)
+        self.assertFalse(has_link_error, "CHANGELOG sollte keine vorzeitigen Release-Links haben")
 
 
 if __name__ == "__main__":

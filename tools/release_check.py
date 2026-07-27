@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """Deterministische Release-Metadaten-Validierung (Kern §12, §15, §16, §17).
 
-Drei Modi — alle read-only:
+Vier Modi — alle read-only:
   tree     Repository-/Tree-Konsistenz (VERSION ↔ CHANGELOG ↔ README ↔ INSTALL)
   tag      Tag-Konsistenz (benötigt Git-Historie und einen Tag-Ref)
   release  GitHub-Release-Konsistenz (benötigt Netzwerk und gh CLI)
+  all      Führt tree + tag aus (für lokale Vollprüfung)
 
 Kein Modus erstellt Tags, Releases oder verändert das Repository.
 """
 
+import json
 import os
 import re
 import subprocess
@@ -25,15 +27,17 @@ SEMVER_RE = re.compile(
 
 VALID_CATEGORIES = {"Added", "Changed", "Fixed", "Removed", "Deprecated", "Security"}
 REQUIRED_CATEGORIES = {"Added", "Changed", "Fixed", "Removed"}
+
 BREAKING_MARKER_RE = re.compile(r"\*\*Breaking changes:\*\*\s*(none|present)", re.IGNORECASE)
 BREAKING_ENTRY_RE = re.compile(r"\*\*BREAKING:\*\*")
 VERSION_HEADING_RE = re.compile(r"^##\s+\[(\d+\.\d+\.\d[^\]]*)\]\s*(?:—\s*(.+))?$", re.MULTILINE)
 UNRELEASED_HEADING_RE = re.compile(r"^##\s+\[Unreleased\]", re.MULTILINE)
 CATEGORY_HEADING_RE = re.compile(r"^###\s+(\w+)", re.MULTILINE)
+SECTION_SPLIT_RE = re.compile(r"(?=^##\s+\[)", re.MULTILINE)
+CHANGELOG_LINK_RE = re.compile(r"^\[(\d+\.\d+\.\d[^\]]*)\]:\s*(https?://\S+)", re.MULTILINE)
 
 STATUS_OK = 0
 STATUS_FAIL = 1
-STATUS_SKIP = 2
 
 
 class CheckResult:
@@ -64,6 +68,67 @@ class CheckResult:
         return STATUS_FAIL
 
 
+# ── Injizierbare Abhängigkeiten ──
+
+
+class GitRunner:
+    """Wrapper für git-CLI-Aufrufe — in Tests austauschbar."""
+
+    @staticmethod
+    def run(args, root, timeout=15):
+        result = subprocess.run(
+            ["git"] + args, cwd=root, capture_output=True, text=True, timeout=timeout
+        )
+        return result.stdout.strip(), result.stderr.strip(), result.returncode
+
+    @staticmethod
+    def peel_to_commit(tag_ref, root):
+        """Löst Tag auf den zugrunde liegenden Commit auf (annotierte Tags peelen)."""
+        out, err, code = GitRunner.run(
+            ["rev-parse", f"{tag_ref}^{{commit}}"], root
+        )
+        if code == 0:
+            return out, ""
+        return "", f"Cannot peel '{tag_ref}' to commit: {err}"
+
+    @staticmethod
+    def verify_signature(tag_ref, root):
+        """Prüft die Signatur eines Tags. Gibt (success: bool, detail: str)."""
+        out, err, code = GitRunner.run(["tag", "-v", tag_ref], root)
+        if code == 0:
+            return True, out
+        return False, err[:200]
+
+
+class GhRunner:
+    """Wrapper für gh-CLI-Aufrufe — in Tests austauschbar."""
+
+    @staticmethod
+    def release_view(tag, root, timeout=30):
+        """Read-only: gh release view --json. Gibt (data: dict|None, error: str|None)."""
+        try:
+            result = subprocess.run(
+                ["gh", "release", "view", tag,
+                 "--json", "tagName,targetCommitish,isDraft,isPrerelease"],
+                cwd=root, capture_output=True, text=True, timeout=timeout
+            )
+        except FileNotFoundError:
+            return None, "gh CLI nicht verfügbar"
+        except subprocess.TimeoutExpired:
+            return None, f"gh release view {tag}: Timeout"
+
+        if result.returncode != 0:
+            return None, f"GitHub-Release '{tag}' nicht gefunden: {result.stderr.strip()[:120]}"
+
+        try:
+            return json.loads(result.stdout), None
+        except json.JSONDecodeError:
+            return None, f"gh release view {tag}: ungültige JSON-Antwort"
+
+
+# ── Hilfsfunktionen ──
+
+
 def _read(rel, root):
     with open(os.path.join(root, rel), encoding="utf-8") as fh:
         return fh.read()
@@ -73,26 +138,39 @@ def _exists(rel, root):
     return os.path.exists(os.path.join(root, rel))
 
 
-def _git(args, root, timeout=15):
-    result = subprocess.run(
-        ["git"] + args, cwd=root, capture_output=True, text=True, timeout=timeout
-    )
-    return result.stdout.strip(), result.stderr.strip(), result.returncode
-
-
 def _is_valid_semver(v):
     return bool(SEMVER_RE.match(v))
 
 
+def _split_changelog_sections(changelog):
+    """Teilt CHANGELOG-Text in Abschnitte: [(heading_line, body), ...]."""
+    parts = SECTION_SPLIT_RE.split(changelog)
+    sections = []
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+        lines = part.split("\n")
+        heading = lines[0].strip()
+        body = "\n".join(lines[1:]).strip() if len(lines) > 1 else ""
+        sections.append((heading, body))
+    return sections
+
+
+def _parse_section(heading, body):
+    """Parst einen CHANGELOG-Abschnitt und gibt Metadaten zurück."""
+    cats = set(CATEGORY_HEADING_RE.findall(body))
+    breaking_marker = BREAKING_MARKER_RE.search(body)
+    has_breaking_entries = bool(BREAKING_ENTRY_RE.search(body))
+    marker_value = breaking_marker.group(1).lower() if breaking_marker else None
+    return {"categories": cats, "marker": marker_value, "has_breaking_entries": has_breaking_entries}
+
+
 # ═══════════════════════════════════════════════════════════════════════
-# Tree-Konsistenz (local-only)
+# Tree-Konsistenz
 # ═══════════════════════════════════════════════════════════════════════
 
 def check_tree(root=None):
-    """Prüft VERSION, CHANGELOG, README, INSTALL auf Konsistenz im Arbeitsbaum.
-
-    Returns CheckResult.
-    """
     if root is None:
         root = ROOT
     r = CheckResult()
@@ -100,40 +178,43 @@ def check_tree(root=None):
     # ── VERSION ──
     if not _exists("VERSION", root):
         r.add_error("VERSION fehlt — autoritative SemVer-Quelle erforderlich (Kern §12)")
-        return r  # Ohne VERSION sind alle weiteren Prüfungen sinnlos.
-
-    version_raw = _read("VERSION", root).strip()
-    version = version_raw.splitlines()[0].strip() if version_raw else ""
-
-    if not version:
-        r.add_error("VERSION ist leer")
         return r
 
+    version_raw = _read("VERSION", root)
+    version_lines = [l for l in version_raw.splitlines() if l.strip()]
+    if len(version_lines) != 1:
+        r.add_error(f"VERSION enthält {len(version_lines)} nichtleere Zeilen — "
+                    "exakt eine SemVer-Zeile erwartet (plus optionales finales Newline)")
+        return r
+
+    version = version_lines[0].strip()
     if not _is_valid_semver(version):
         r.add_error(f"VERSION '{version}' ist kein gültiges SemVer (MAJOR.MINOR.PATCH)")
 
-    # ── keine konkurrierende Versionsquelle ──
     _check_no_competing_source(root, r)
 
     # ── CHANGELOG ──
     if not _exists("CHANGELOG.md", root):
         r.add_error("CHANGELOG.md fehlt (Kern §12 verlangt aktuellen CHANGELOG)")
     else:
-        _check_changelog_content(root, version, r)
+        _check_changelog_sections(root, version, r)
 
-    # ── README ──
-    if _exists("README.md", root):
+    # ── README (fehlend = Fehler) ──
+    if not _exists("README.md", root):
+        r.add_error("README.md fehlt")
+    else:
         _check_readme_version(root, version, r)
 
-    # ── INSTALL ──
-    if _exists("INSTALL.md", root):
+    # ── INSTALL (fehlend = Fehler, ohne Versionsvertrag = Fehler) ──
+    if not _exists("INSTALL.md", root):
+        r.add_error("INSTALL.md fehlt")
+    else:
         _check_install_links(root, r)
 
     return r
 
 
 def _check_no_competing_source(root, r):
-    """Prüft, dass keine TOML-/JSON-Datei einen version-Schlüssel führt."""
     authority = {"VERSION", "CHANGELOG.md"}
     for base, dirs, files in os.walk(root):
         dirs[:] = [d for d in dirs if d not in {".git", "tests", ".github"}]
@@ -153,113 +234,149 @@ def _check_no_competing_source(root, r):
                 r.add_error(f"{rel}: parallele Versionsdatei neben VERSION")
 
 
-def _check_changelog_content(root, version, r):
+def _check_changelog_sections(root, version, r):
+    """Abschnittsweise CHANGELOG-Validierung (Greptile-Finding #2)."""
     changelog = _read("CHANGELOG.md", root)
+    sections = _split_changelog_sections(changelog)
 
-    has_unreleased = bool(UNRELEASED_HEADING_RE.search(changelog))
-
-    # Version headings
-    version_entries = [(m.group(1), m.group(2) or "") for m in VERSION_HEADING_RE.finditer(changelog)]
-
-    # --- Prüfe Heading-Struktur ---
-    if not has_unreleased and not version_entries:
+    if not sections:
         r.add_error("CHANGELOG enthält weder [Unreleased] noch einen versionierten Eintrag")
+        return
 
-    # --- Duplikate ---
-    seen = {}
-    for v, _ in version_entries:
-        if v in seen:
-            r.add_error(f"CHANGELOG: doppelte Versionsüberschrift [{v}]")
-        seen[v] = True
+    # Prüfe Release-Links: dürfen nur für existierende Releases existieren
+    links = dict(CHANGELOG_LINK_RE.findall(changelog))
+    release_tags_present = bool(
+        subprocess.run(["git", "tag", "-l", f"v{version}"], cwd=root,
+                       capture_output=True, text=True).stdout.strip()
+    )
+    if not release_tags_present:
+        # Kein Release-Tag → keine Release-Links in CHANGELOG
+        if links:
+            r.add_error(f"CHANGELOG enthält Release-Links ({sorted(links.keys())}), "
+                        "aber kein v<VERSION>-Tag existiert. Links erst nach Release hinzufügen.")
 
-    # --- SemVer-Validität ---
-    for v, _ in version_entries:
-        if not _is_valid_semver(v):
-            r.add_error(f"CHANGELOG: '[{v}]' ist kein gültiges SemVer")
+    # Klassifiziere Abschnitte
+    unreleased_sections = []
+    release_sections = []
+    for heading, body in sections:
+        if UNRELEASED_HEADING_RE.match(heading):
+            unreleased_sections.append((heading, body))
+        else:
+            m = VERSION_HEADING_RE.match(heading)
+            if m:
+                release_sections.append((m.group(1), m.group(2) or "", body))
+            # Andernfalls ignorieren (Preamble etc.)
 
-    # --- Kategorien ---
-    categories_used = set(CATEGORY_HEADING_RE.findall(changelog))
-    unknown = categories_used - VALID_CATEGORIES
-    if unknown:
-        r.add_error(f"CHANGELOG enthält unbekannte Kategorien: {sorted(unknown)}. "
-                    f"Zulässig: {sorted(VALID_CATEGORIES)}")
+    # ── [Unreleased]-Prüfungen ──
 
-    # --- Breaking-Change-Marker ---
-    if not BREAKING_MARKER_RE.search(changelog):
-        r.add_error("CHANGELOG fehlt der Marker '**Breaking changes:** none' oder '**Breaking changes:** present'")
-    else:
-        has_present = bool(re.search(r"\*\*Breaking changes:\*\*\s*present", changelog, re.IGNORECASE))
-        if has_present:
-            has_breaking_entry = bool(BREAKING_ENTRY_RE.search(changelog))
-            if not has_breaking_entry:
-                r.add_error("'**Breaking changes:** present' gesetzt, aber kein Eintrag mit '**BREAKING:**' Präfix gefunden")
+    if len(unreleased_sections) == 0:
+        r.add_error("[Unreleased]-Abschnitt fehlt")
+    elif len(unreleased_sections) > 1:
+        r.add_error(f"{len(unreleased_sections)} [Unreleased]-Abschnitte — genau einer erlaubt")
+    elif release_sections and sections[0] != unreleased_sections[0]:
+        r.add_error("[Unreleased] muss vor versionierten Abschnitten stehen")
 
-    # --- Unreleased: erforderliche Kategorien müssen existieren ---
-    if has_unreleased:
-        # Extrahiere den [Unreleased]-Block bis zur nächsten ##-Überschrift
-        m = UNRELEASED_HEADING_RE.search(changelog)
-        start = m.end()
-        next_heading = re.search(r"\n##\s", changelog[start:])
-        unreleased_block = changelog[start:start + next_heading.start()] if next_heading else changelog[start:]
-        cats_in_unreleased = set(CATEGORY_HEADING_RE.findall(unreleased_block))
-        missing_req = REQUIRED_CATEGORIES - cats_in_unreleased
-        if missing_req:
-            r.add_error(f"[Unreleased] fehlen erforderliche Kategorien: {sorted(missing_req)}. "
+    for heading, body in unreleased_sections:
+        meta = _parse_section(heading, body)
+        missing = REQUIRED_CATEGORIES - meta["categories"]
+        if missing:
+            r.add_error(f"[Unreleased] fehlen erforderliche Kategorien: {sorted(missing)}. "
                         f"Leere Kategorien mit '- Keine.' füllen.")
+        unknown = meta["categories"] - VALID_CATEGORIES
+        if unknown:
+            r.add_error(f"[Unreleased] enthält unbekannte Kategorien: {sorted(unknown)}")
+        if meta["marker"] is None:
+            r.add_error("[Unreleased] fehlt der Marker '**Breaking changes:** none' oder '**Breaking changes:** present'")
+        elif meta["marker"] == "present" and not meta["has_breaking_entries"]:
+            r.add_error("[Unreleased]: '**Breaking changes:** present' gesetzt, "
+                        "aber kein Eintrag mit '**BREAKING:**' Präfix gefunden")
 
-    # --- Abgleich mit VERSION ---
-    if has_unreleased and version_entries:
-        # Version ist der geplante nächste Release-Stand, aber noch nicht datiert veröffentlicht
-        pass  # Das ist der normale Entwicklungszustand
-    elif not has_unreleased and version_entries:
-        latest = version_entries[0][0]
+    # ── Release-Abschnitt-Prüfungen ──
+
+    seen = {}
+    prev_version = None
+    for ver, date, body in release_sections:
+        if ver in seen:
+            r.add_error(f"CHANGELOG: doppelte Versionsüberschrift [{ver}]")
+        seen[ver] = True
+
+        if not _is_valid_semver(ver):
+            r.add_error(f"CHANGELOG: '[{ver}]' ist kein gültiges SemVer")
+
+        # SemVer-Reihenfolge: höhere Versionen müssen VOR niedrigeren stehen
+        if prev_version is not None:
+            if _semver_cmp(prev_version, ver) <= 0:
+                r.add_error(f"CHANGELOG: [{prev_version}] vor [{ver}] — "
+                            f"Versionen müssen absteigend (neueste zuerst) stehen")
+        prev_version = ver
+
+        meta = _parse_section("", body)
+        unknown = meta["categories"] - VALID_CATEGORIES
+        if unknown:
+            r.add_error(f"[{ver}]: unbekannte Kategorien {sorted(unknown)}")
+        if meta["marker"] is None:
+            r.add_error(f"[{ver}] fehlt der Marker '**Breaking changes:** none' oder '**Breaking changes:** present'")
+        elif meta["marker"] == "present" and not meta["has_breaking_entries"]:
+            r.add_error(f"[{ver}]: '**Breaking changes:** present' ohne '**BREAKING:**' Eintrag")
+
+    # ── Abgleich mit VERSION ──
+    if unreleased_sections:
+        pass  # Entwicklungszustand: Version ist Ziel, noch nicht veröffentlicht
+    elif release_sections:
+        latest = release_sections[0][0]
         if latest != version:
             r.add_error(f"VERSION ({version}) weicht von aktuellstem CHANGELOG-Release ({latest}) ab")
 
 
+def _semver_cmp(a, b):
+    """Vergleicht zwei SemVer-Strings. >0 wenn a > b, 0 wenn gleich, <0 wenn a < b."""
+    def parts(v):
+        core = v.split("-")[0]
+        return tuple(int(x) for x in core.split("."))
+    pa, pb = parts(a), parts(b)
+    if pa > pb: return 1
+    if pa < pb: return -1
+    return 0
+
+
 def _check_readme_version(root, version, r):
-    """Prüft, dass README genau die aktuelle VERSION referenziert — keine Drift."""
     readme = _read("README.md", root)
-    # README zeigt die aktuelle Version als `0.1.0` — muss exakt mit VERSION übereinstimmen.
-    # Suche das Pattern: `**Version:** [`...`](VERSION)`
     linked_version = re.search(r"\*\*Version:\*\*\s+\[`([^`]+)`\]\(VERSION\)", readme)
     if linked_version:
         displayed = linked_version.group(1)
         if displayed != version:
             r.add_error(f"README zeigt Version '{displayed}', aber VERSION enthält '{version}'")
     else:
-        # Auch ein hartcodiertes v0.1.0 ohne Link ist Drift-gefährdet
         bare_version = re.search(r"\*\*Version:\*\*\s+`?(\d+\.\d+\.\d[^`\s]*)`?", readme)
         if bare_version:
             r.add_error(f"README zeigt Hartversion '{bare_version.group(1)}' ohne VERSION-Link — Drift-Gefahr")
-        # Mindestanforderung: README muss VERSION referenzieren
+        # README muss VERSION als autoritative Quelle nennen
         if "VERSION" not in readme and "versioniert" not in readme and "Release-Tag" not in readme:
             r.add_error("README referenziert keine versionierte Auslieferung (VERSION, Release-Tag)")
 
 
 def _check_install_links(root, r):
-    """Prüft, dass INSTALL.md keinen falschen VERSION-Pfad enthält."""
     inst = _read("INSTALL.md", root)
-    # ../VERSION wäre der Pfad von tools/release_check.py aus — falsch im Repo-Root
     if "../VERSION" in inst:
         r.add_error("INSTALL.md referenziert '../VERSION' — korrekter Pfad ist 'VERSION' (vom Repo-Root)")
+    # INSTALL muss den VERSION-Pfad oder Release-Referenz enthalten (kein Warning mehr)
     if "VERSION" not in inst and "Version" not in inst and "Release" not in inst:
-        r.add_warning("INSTALL.md enthält keinen Hinweis auf versionierte Installation")
+        r.add_error("INSTALL.md enthält keinen Hinweis auf versionierte Installation (VERSION/Release)")
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# Tag-Konsistenz (benötigt Git-Historie)
+# Tag-Konsistenz
 # ═══════════════════════════════════════════════════════════════════════
 
-def check_tag(root=None, tag_ref=None, expected_commit=None):
+def check_tag(root=None, tag_ref=None, expected_commit=None, verifier=None):
     """Prüft Konsistenz eines Git-Tags gegen VERSION.
 
     Args:
-        root: Repository-Root (default: erkannt)
-        tag_ref: Tag-Name (z. B. 'v0.1.0'). Wenn None, wird der erste v*-Tag verwendet.
+        root: Repository-Root
+        tag_ref: Tag-Name. Wenn None → deterministisch v{VERSION}
         expected_commit: Erwarteter Commit-SHA. Wenn None, HEAD.
-
-    Returns CheckResult.
+        verifier: Callable(tag_ref, root) → (ok: bool, detail: str).
+                  Wenn None → GitRunner.verify_signature.
     """
     if root is None:
         root = ROOT
@@ -272,30 +389,26 @@ def check_tag(root=None, tag_ref=None, expected_commit=None):
     version = _read("VERSION", root).strip().splitlines()[0].strip()
     expected_tag = f"v{version}"
 
-    # ── Tag-Name ──
+    # ── Tag deterministisch wählen (Greptile-Finding #1) ──
     if tag_ref is None:
-        # Nimm den ersten v*-Tag
-        out, err, code = _git(["tag", "-l", "v*"], root)
-        if code != 0 or not out:
-            r.add_error("Kein v*-Tag gefunden (tag-Liste leer oder git fehlgeschlagen)")
-            return r
-        tag_ref = out.splitlines()[0].strip()
-
+        tag_ref = expected_tag
     if tag_ref != expected_tag:
         r.add_error(f"Tag-Name '{tag_ref}' entspricht nicht 'v{{VERSION}}' = '{expected_tag}'")
 
-    # ── Tag-Commit ──
-    out, err, code = _git(["show-ref", "--hash", "--verify", f"refs/tags/{tag_ref}"], root)
-    if code != 0:
-        # Fallback: versuche tag direkt
-        out, err, code = _git(["show-ref", "--hash", "--verify", f"refs/tags/{tag_ref}"], root)
-    if code != 0:
-        r.add_error(f"Tag '{tag_ref}' nicht auflösbar: {err}")
+    # ── Tag existiert? ──
+    out, err, code = GitRunner.run(["tag", "-l", tag_ref], root)
+    if code != 0 or not out.strip():
+        r.add_error(f"Tag '{tag_ref}' nicht gefunden")
         return r
-    tag_commit = out.strip().splitlines()[0] if out.strip() else ""
+
+    # ── Tag-Commit via peel (Greptile-Finding #3) ──
+    tag_commit, peel_err = GitRunner.peel_to_commit(tag_ref, root)
+    if peel_err:
+        r.add_error(f"Tag '{tag_ref}' nicht auf Commit auflösbar: {peel_err}")
+        return r
 
     if expected_commit is None:
-        out2, err2, code2 = _git(["rev-parse", "HEAD"], root)
+        out2, err2, code2 = GitRunner.run(["rev-parse", "HEAD"], root)
         if code2 != 0:
             r.add_error(f"HEAD nicht auflösbar: {err2}")
             return r
@@ -304,28 +417,27 @@ def check_tag(root=None, tag_ref=None, expected_commit=None):
     if tag_commit != expected_commit:
         r.add_error(f"Tag '{tag_ref}' zeigt auf {tag_commit[:12]}, erwartet {expected_commit[:12]}")
 
-    # ── Tag-Signatur (advisory) ──
-    out, err, code = _git(["tag", "-v", tag_ref], root)
-    if code != 0:
-        r.add_warning(f"Tag '{tag_ref}' nicht verifizierbar (unsigniert oder unbekannter Key): {err[:120]}")
+    # ── Signaturprüfung (blockierend wenn README signierten Tag verlangt) ──
+    vf = verifier or GitRunner.verify_signature
+    sig_ok, sig_detail = vf(tag_ref, root)
+    if not sig_ok:
+        r.add_error(f"Tag '{tag_ref}' Signaturprüfung fehlgeschlagen: {sig_detail[:200]}")
 
     return r
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# GitHub-Release-Konsistenz (benötigt Netzwerk)
+# GitHub-Release-Konsistenz
 # ═══════════════════════════════════════════════════════════════════════
 
-def check_release(root=None, tag_ref=None):
+def check_release(root=None, tag_ref=None, gh=None):
     """Prüft Konsistenz eines GitHub-Releases gegen Tag und VERSION.
-
-    Benötigt gh CLI und Netzwerk. Read-only.
 
     Args:
         root: Repository-Root
-        tag_ref: Tag-Name des Releases. Wenn None, wird v<VERSION> verwendet.
-
-    Returns CheckResult.
+        tag_ref: Tag-Name. Wenn None → v{VERSION}
+        gh: GhRunner-artiges Objekt mit release_view(tag, root) → (dict|None, str|None).
+            Wenn None → GhRunner.release_view.
     """
     if root is None:
         root = ROOT
@@ -340,46 +452,49 @@ def check_release(root=None, tag_ref=None):
 
     if tag_ref is None:
         tag_ref = expected_tag
-
     if tag_ref != expected_tag:
         r.add_error(f"Release-Tag '{tag_ref}' entspricht nicht 'v{{VERSION}}' = '{expected_tag}'")
 
-    # ── Release via gh CLI ──
-    try:
-        result = subprocess.run(
-            ["gh", "release", "view", tag_ref, "--json", "tagName,targetCommitish"],
-            cwd=root, capture_output=True, text=True, timeout=30
-        )
-    except FileNotFoundError:
-        r.add_error("gh CLI nicht verfügbar — Release-Prüfung nicht möglich")
+    # ── Release-Daten via gh ──
+    gh_runner = gh or GhRunner
+    data, error = gh_runner.release_view(tag_ref, root)
+    if error:
+        r.add_error(error)
         return r
-    except subprocess.TimeoutExpired:
-        r.add_error(f"gh release view {tag_ref}: Timeout")
+    if data is None:
+        r.add_error(f"GitHub-Release '{tag_ref}': keine Daten")
         return r
 
-    if result.returncode != 0:
-        r.add_error(f"GitHub-Release '{tag_ref}' nicht gefunden: {result.stderr.strip()[:120]}")
+    # ── tagName ──
+    release_tag_name = data.get("tagName", "")
+    if release_tag_name != tag_ref:
+        r.add_error(f"Release-tagName '{release_tag_name}' != erwartet '{tag_ref}'")
+
+    # ── Draft ──
+    if data.get("isDraft", False):
+        r.add_error(f"GitHub-Release '{tag_ref}' ist ein Draft — muss published sein")
+
+    # ── Commit-Vergleich (Greptile-Finding #4) ──
+    # Peeling: lokalen Tag auf Commit auflösen
+    local_commit, peel_err = GitRunner.peel_to_commit(tag_ref, root)
+    if peel_err:
+        r.add_error(f"Lokaler Tag '{tag_ref}' nicht auf Commit auflösbar: {peel_err}")
         return r
 
-    import json
-    try:
-        data = json.loads(result.stdout)
-    except json.JSONDecodeError:
-        r.add_error(f"gh release view {tag_ref}: ungültige JSON-Antwort")
-        return r
-
-    release_tag = data.get("tagName", "")
-    if release_tag != tag_ref:
-        r.add_error(f"Release-Tag '{release_tag}' weicht von erwartetem Tag '{tag_ref}' ab")
-
-    release_commit = data.get("targetCommitish", "")
-    out, err, code = _git(["show-ref", "--hash", "--verify", f"refs/tags/{tag_ref}"], root)
-    if code != 0:
-        r.add_error(f"Tag '{tag_ref}' für Release-Commit-Vergleich nicht auflösbar")
+    target = data.get("targetCommitish", "")
+    if re.match(r"^[0-9a-f]{40}$", target):
+        # targetCommitish ist ein SHA → direkt vergleichen
+        if target != local_commit:
+            r.add_error(f"Release-targetCommitish ({target[:12]}) != lokaler Tag-Commit ({local_commit[:12]})")
     else:
-        tag_commit = out.strip().splitlines()[0] if out.strip() else ""
-        if re.match(r"^[0-9a-f]{40}$", release_commit) and release_commit != tag_commit:
-            r.add_error(f"Release-Commit ({release_commit[:12]}) weicht von Tag-Commit ({tag_commit[:12]}) ab")
+        # targetCommitish ist ein Branch-Name → lokalen Branch-Head mit Tag-Commit vergleichen
+        # Der Release zeigt via Branch auf einen Commit; prüfe dass der Tag auf dem Branch-Commit liegt
+        out, err, code = GitRunner.run(["rev-parse", target], root)
+        if code == 0:
+            branch_head = out.strip()
+            r.add_warning(f"targetCommitish ist Ref '{target}' (Head: {branch_head[:12]}), "
+                          f"nicht SHA. Tag-Commit: {local_commit[:12]}. "
+                          "Manuelle Prüfung empfohlen.")
 
     return r
 
