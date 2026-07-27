@@ -483,18 +483,18 @@ def check_release(root=None, tag_ref=None, gh=None):
 
     target = data.get("targetCommitish", "")
     if re.match(r"^[0-9a-f]{40}$", target):
-        # targetCommitish ist ein SHA → direkt vergleichen
         if target != local_commit:
-            r.add_error(f"Release-targetCommitish ({target[:12]}) != lokaler Tag-Commit ({local_commit[:12]})")
+            r.add_error(f"Release-targetCommitish ({target[:12]}) weicht von Tag-Commit ({local_commit[:12]}) ab")
     else:
-        # targetCommitish ist ein Branch-Name → lokalen Branch-Head mit Tag-Commit vergleichen
-        # Der Release zeigt via Branch auf einen Commit; prüfe dass der Tag auf dem Branch-Commit liegt
-        out, err, code = GitRunner.run(["rev-parse", target], root)
-        if code == 0:
-            branch_head = out.strip()
-            r.add_warning(f"targetCommitish ist Ref '{target}' (Head: {branch_head[:12]}), "
-                          f"nicht SHA. Tag-Commit: {local_commit[:12]}. "
-                          "Manuelle Prüfung empfohlen.")
+        # Branch/Ref-Name → auf Commit auflösen und vergleichen
+        out, err, code = GitRunner.run(["rev-parse", f"{target}^{{commit}}"], root)
+        if code != 0:
+            out, err, code = GitRunner.run(["rev-parse", target], root)
+        if code != 0:
+            r.add_error(f"targetCommitish '{target}' nicht auflösbar: {err}")
+        elif out.strip() != local_commit:
+            r.add_error(f"Release-targetCommitish '{target}' ({out.strip()[:12]}) "
+                        f"weicht von Tag-Commit ({local_commit[:12]}) ab")
 
     return r
 

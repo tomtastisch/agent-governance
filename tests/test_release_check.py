@@ -508,14 +508,37 @@ class ReleaseConsistencyTests(TagConsistencyBase):
         gh = FakeGhRunner(data={"tagName": "v0.1.0", "targetCommitish": wrong_sha, "isDraft": False, "isPrerelease": False})
         r = check_release(root=self.root, tag_ref="v0.1.0", gh=gh)
         self.assertFalse(r.ok)
-        self.assertTrue(any("targetCommitish" in e for e in r.errors))
+        self.assertTrue(any("weicht von Tag-Commit" in e for e in r.errors))
 
     def test_branch_target_commitish_is_ok(self):
         self._init_git("0.1.0")
         self._tag(self.root, "v0.1.0")
         gh = FakeGhRunner(data={"tagName": "v0.1.0", "targetCommitish": "main", "isDraft": False, "isPrerelease": False})
         r = check_release(root=self.root, tag_ref="v0.1.0", gh=gh)
-        self.assertTrue(r.ok, f"Erwartet OK, Fehler: {r.errors}")
+        self.assertTrue(r.ok, f"Erwartet OK (Branch zeigt auf Tag-Commit), Fehler: {r.errors}")
+
+    def test_release_branch_target_mismatch_is_error(self):
+        """Tag auf Commit A, targetCommitish main zeigt auf Commit B → Fehler."""
+        self._init_git("0.1.0")
+        # Tag auf erstem Commit (HEAD)
+        head_a = subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.root,
+                                capture_output=True, text=True).stdout.strip()
+        self._tag(self.root, "v0.1.0")
+        # Zweiten Commit auf main erzeugen (ohne Tag zu verschieben)
+        _write(os.path.join(self.root, "extra"), "x\n")
+        subprocess.run(["git", "add", "extra"], cwd=self.root, capture_output=True)
+        subprocess.run(
+            ["git", "-c", "commit.gpgsign=false", "commit", "-m", "extra"],
+            cwd=self.root, capture_output=True,
+        )
+        head_b = subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.root,
+                                capture_output=True, text=True).stdout.strip()
+        self.assertNotEqual(head_a, head_b, "Test-Setup: Commits müssen unterschiedlich sein")
+        # Release mit targetCommitish=main zeigt jetzt auf Commit B, Tag v0.1.0 auf Commit A
+        gh = FakeGhRunner(data={"tagName": "v0.1.0", "targetCommitish": "main", "isDraft": False, "isPrerelease": False})
+        r = check_release(root=self.root, tag_ref="v0.1.0", gh=gh)
+        self.assertFalse(r.ok)
+        self.assertTrue(any("targetCommitish" in e for e in r.errors))
 
     def test_annotated_release_tag_is_ok(self):
         """Greptile-Finding #4: Annotierter Tag + Release mit korrektem SHA."""
