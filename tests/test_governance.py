@@ -366,13 +366,23 @@ class ReleaseConsistency(unittest.TestCase):
         self.assertEqual(v, versions[0],
                          f"VERSION ({v}) weicht von aktuellstem CHANGELOG-Eintrag ({versions[0]}) ab")
 
+    VALID_CATEGORIES = {"Added", "Changed", "Fixed", "Removed", "Deprecated", "Security"}
+
     def test_changelog_has_required_categories(self):
+        """CHANGELOG nutzt das vereinbarte Kategorie-Vokabular; leere Kategorien weglassbar."""
         if not exists(self.CHANGELOG_REL):
             self.skipTest(f"{self.CHANGELOG_REL} nicht vorhanden")
         changelog = read(self.CHANGELOG_REL)
-        for cat in ("Added", "Changed", "Fixed", "Removed"):
-            self.assertIn(f"### {cat}", changelog,
-                          f"CHANGELOG fehlt Kategorie '### {cat}'")
+        used = set(re.findall(r"^### (\w+)", changelog, re.MULTILINE))
+        self.assertTrue(used, "CHANGELOG enthält keine Kategorie-Überschriften (### Kategorie)")
+        unknown = used - self.VALID_CATEGORIES
+        self.assertFalse(unknown,
+                         f"CHANGELOG enthält unbekannte Kategorien: {unknown}. "
+                         f"Zulässig: {sorted(self.VALID_CATEGORIES)}")
+        # Mindestens eine der Kern-Kategorien muss verwendet werden
+        core_cats = {"Added", "Changed", "Fixed", "Removed"}
+        self.assertTrue(used & core_cats,
+                        f"CHANGELOG nutzt keine der Kern-Kategorien {sorted(core_cats)}")
 
     def test_changelog_breaking_changes_explicit(self):
         """Breaking Changes müssen im CHANGELOG ausdrücklich gekennzeichnet sein (Kern §12)."""
