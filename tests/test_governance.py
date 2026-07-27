@@ -278,5 +278,140 @@ class BranchTags(unittest.TestCase):
                              f"{rel} verweist noch auf den abgelösten Port vcs.branch_prefix")
 
 
+class ReleaseConsistency(unittest.TestCase):
+    """Autoritative SemVer-Quelle, CHANGELOG- und Release-Metadaten-Konsistenz (Kern §12, §14)."""
+
+    VERSION_REL = "VERSION"
+    CHANGELOG_REL = "CHANGELOG.md"
+    LINK_REL = "https://github.com/tomtastisch/agent-governance/releases/tag"
+
+    # SemVer 2.0.0: MAJOR.MINOR.PATCH[-prerelease][+build]
+    SEMVER_RE = re.compile(
+        r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
+        r"(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)"
+        r"(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?"
+        r"(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"
+    )
+
+    @property
+    def version(self):
+        if not exists(self.VERSION_REL):
+            return None
+        return read(self.VERSION_REL).strip()
+
+    # ── Existenz & Form ──
+
+    def test_version_file_exists(self):
+        self.assertTrue(exists(self.VERSION_REL),
+                        f"{self.VERSION_REL} fehlt — autoritative SemVer-Quelle erforderlich (Kern §12)")
+
+    def test_version_is_valid_semver(self):
+        v = self.version
+        if v is None:
+            self.skipTest(f"{self.VERSION_REL} nicht vorhanden")
+        self.assertRegex(v, self.SEMVER_RE,
+                         f"'{v}' ist kein gültiges SemVer (MAJOR.MINOR.PATCH)")
+
+    def test_no_competing_version_sources(self):
+        """Keine zweite SemVer-Quelle außerhalb VERSION und CHANGELOG."""
+        competing = set()
+        authority = {self.VERSION_REL, self.CHANGELOG_REL}
+        # TOML-Dateien: version = "..."
+        for base, dirs, files in os.walk(ROOT):
+            dirs[:] = [d for d in dirs if d not in {".git", "tests", ".github"}]
+            for name in files:
+                rel = os.path.relpath(os.path.join(base, name), ROOT)
+                if rel in authority:
+                    continue
+                if name.endswith(".toml"):
+                    txt = read(rel)
+                    for m in re.finditer(r'version\s*=\s*"(\d+\.\d+\.\d+[^"]*)"', txt):
+                        competing.add(f"{rel}: version = \"{m.group(1)}\"")
+                elif name.endswith(".json"):
+                    txt = read(rel)
+                    for m in re.finditer(r'"version"\s*:\s*"(\d+\.\d+\.\d+[^"]*)"', txt):
+                        competing.add(f"{rel}: \"version\": \"{m.group(1)}\"")
+                elif name == "VERSION":
+                    continue  # SSOT — bereits geprüft
+                elif name.lower() in ("version.txt", "version", ".version"):
+                    competing.add(f"{rel}: parallele Versionsdatei neben {self.VERSION_REL}")
+        self.assertFalse(competing, f"Konkurrierende Versionsquellen: {competing}")
+
+    # ── CHANGELOG ──
+
+    def test_changelog_exists(self):
+        self.assertTrue(exists(self.CHANGELOG_REL),
+                        f"{self.CHANGELOG_REL} fehlt (Kern §12 verlangt aktuellen CHANGELOG)")
+
+    def test_changelog_has_current_version(self):
+        v = self.version
+        if v is None:
+            self.skipTest(f"{self.VERSION_REL} nicht vorhanden")
+        if not exists(self.CHANGELOG_REL):
+            self.skipTest(f"{self.CHANGELOG_REL} nicht vorhanden")
+        changelog = read(self.CHANGELOG_REL)
+        self.assertIn(f"## [{v}]", changelog,
+                      f"CHANGELOG enthält keinen Eintrag '## [{v}]' für die aktuelle Version")
+
+    def test_changelog_version_matches_source(self):
+        v = self.version
+        if v is None:
+            self.skipTest(f"{self.VERSION_REL} nicht vorhanden")
+        if not exists(self.CHANGELOG_REL):
+            self.skipTest(f"{self.CHANGELOG_REL} nicht vorhanden")
+        changelog = read(self.CHANGELOG_REL)
+        versions = re.findall(r"##\s+\[(\d+\.\d+\.\d[^\]]*)\]", changelog)
+        if not versions:
+            self.skipTest("CHANGELOG enthält keine versionierte Überschrift")
+        self.assertEqual(v, versions[0],
+                         f"VERSION ({v}) weicht von aktuellstem CHANGELOG-Eintrag ({versions[0]}) ab")
+
+    def test_changelog_has_required_categories(self):
+        if not exists(self.CHANGELOG_REL):
+            self.skipTest(f"{self.CHANGELOG_REL} nicht vorhanden")
+        changelog = read(self.CHANGELOG_REL)
+        for cat in ("Added", "Changed", "Fixed", "Removed"):
+            self.assertIn(f"### {cat}", changelog,
+                          f"CHANGELOG fehlt Kategorie '### {cat}'")
+
+    def test_changelog_breaking_changes_explicit(self):
+        """Breaking Changes müssen im CHANGELOG ausdrücklich gekennzeichnet sein (Kern §12)."""
+        if not exists(self.CHANGELOG_REL):
+            self.skipTest(f"{self.CHANGELOG_REL} nicht vorhanden")
+        changelog = read(self.CHANGELOG_REL)
+        # Wenn Breaking Changes existieren, müssen sie unter einer entsprechenden Rubrik stehen.
+        # Der CHANGELOG muss mindestens die Kategorien enthalten; Breaking Changes sind optional.
+        has_breaking_section = "### Breaking" in changelog or "### BREAKING" in changelog
+        has_breaking_text = "**Breaking" in changelog or "BREAKING" in changelog
+        # Kein Fehler, wenn keine Breaking Changes — nur prüfen, dass das Format unterstützt wird.
+        if has_breaking_text and not has_breaking_section:
+            self.fail("CHANGELOG enthält Breaking-Change-Hinweise ohne '### Breaking'-Kategorie")
+
+    def test_changelog_no_imaginary_releases(self):
+        """Keine erfundenen historischen Releases mit Datum, die nie existiert haben."""
+        if not exists(self.CHANGELOG_REL):
+            self.skipTest(f"{self.CHANGELOG_REL} nicht vorhanden")
+        changelog = read(self.CHANGELOG_REL)
+        # Der initiale CHANGELOG darf genau einen versionierten Eintrag enthalten (0.1.0).
+        versions = re.findall(r"##\s+\[(\d+\.\d+\.\d[^\]]*)\]", changelog)
+        self.assertLessEqual(len(versions), 1,
+                             f"CHANGELOG enthält {len(versions)} Versionseinträge — "
+                             f"für den ersten Release wird genau ein Eintrag erwartet")
+
+    # ── README / INSTALL ──
+
+    def test_readme_references_version_source(self):
+        has_ref = "VERSION" in README or "versioniert" in README or "Release-Tag" in README
+        self.assertTrue(has_ref,
+                        "README referenziert keine versionierte Auslieferung oder Release-Tags")
+
+    def test_install_references_versioned_setup(self):
+        inst = read("INSTALL.md")
+        has_ref = ("Version" in inst or "Release" in inst or "versioniert" in inst
+                   or "Tag" in inst or "SemVer" in inst)
+        self.assertTrue(has_ref,
+                        "INSTALL.md enthält keinen Hinweis auf versionierte Installation")
+
+
 if __name__ == "__main__":
     unittest.main()
