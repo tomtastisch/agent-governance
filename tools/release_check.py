@@ -390,16 +390,20 @@ def check_release(root=None, tag_ref=None):
 
 def main():
     if len(sys.argv) < 2:
-        print("usage: python3 tools/release_check.py {tree|tag|release} [args...]", file=sys.stderr)
+        print("usage: python3 tools/release_check.py tree", file=sys.stderr)
+        print("       python3 tools/release_check.py tag [TAG_NAME]", file=sys.stderr)
+        print("       python3 tools/release_check.py release [TAG_NAME]", file=sys.stderr)
         return STATUS_FAIL
 
     mode = sys.argv[1]
     if mode == "tree":
         result = check_tree()
     elif mode == "tag":
-        result = check_tag()
+        tag_ref = sys.argv[2] if len(sys.argv) > 2 else None
+        result = check_tag(tag_ref=tag_ref)
     elif mode == "release":
-        result = check_release()
+        tag_ref = sys.argv[2] if len(sys.argv) > 2 else None
+        result = check_release(tag_ref=tag_ref)
     else:
         print(f"unknown mode: {mode}", file=sys.stderr)
         return STATUS_FAIL
