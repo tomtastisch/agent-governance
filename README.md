@@ -1,5 +1,7 @@
 # Agent-Governance
 
+> **Version:** [`0.1.0`](VERSION) &mdash; [Changelog](CHANGELOG.md)
+
 Harness-agnostisches Regelwerk für LLM-Entwicklungsagenten (Claude Code, Codex, weitere),
 geschnitten nach hexagonalem Prinzip: ein Kern, definierte Ports, austauschbare Adapter,
 genau eine Verdrahtungsstelle je Harness. SSOT: jede Regel steht genau einmal.
@@ -24,12 +26,15 @@ agent-governance/
 │   └── profile.example.md
 ├── tools/
 │   ├── tools.md         # Werkzeug-Katalog (SSOT): Beschreibung, Governance-Nutzen, Install-Weg
+│   ├── release_check.py # Release-Metadaten-Validierung (tree/tag/release)
 │   └── Brewfile         # deterministische CLI-Installation (brew bundle)
 ├── templates/           # kopierfertige Verdrahtungsdateien für die Harness-Homes
 │   ├── README.md        # Zuordnungstabelle Vorlage → Zielort + Root-Pfad-Regeln
 │   ├── CLAUDE.md        # → ~/.claude/CLAUDE.md
 │   ├── AGENTS.md        # → ~/.codex/AGENTS.md
 │   └── claude-agents/   # → ~/.claude/agents/ (Subagent-Wrapper AK/ST/QA/SEC)
+├── VERSION              # autoritative SemVer-Quelle (SSOT)
+├── CHANGELOG.md         # Änderungshistorie (Keep a Changelog)
 ├── tests/               # Konsistenz-/Drift-Tests + advisory Link-Check (Kern §9/§11/§13)
 ├── docs/decisions/      # Entscheidungssätze (ADR): Begründung struktureller Änderungen
 ├── .github/workflows/   # CI-Pipeline (ci.yml)
@@ -58,6 +63,28 @@ Der Kern referenziert ausschließlich benannte Schlüssel; jeder Adapter MUSS si
 
 Das Profil liefert `user`, `stack`, `language`, optional `palette`, `prefs`.
 
+## Versionierung & Releases
+
+Die [autoritative SemVer-Version](VERSION) steht in der Datei `VERSION` — genau eine Quelle
+(SSOT, Kern §9). Ein [CHANGELOG](CHANGELOG.md) führt jeden freigegebenen Stand mit
+`Added`/`Changed`/`Fixed`/`Removed` und kennzeichnet Breaking Changes über den Marker
+`**Breaking changes:** none`/`present`.
+
+- **Stabiler Release:** ein signierter Git-Tag `v<MAJOR>.<MINOR>.<PATCH>` auf demselben Commit
+  wie `VERSION`, verknüpft mit einem [GitHub-Release](https://github.com/tomtastisch/agent-governance/releases).
+  Nur dieser Stand ist ein geprüfter, reproduzierbarer Lieferstand.
+- **`main`-Branch:** beweglicher Entwicklungsstand. Darf nicht mit einem veröffentlichten Release
+  gleichgesetzt werden. Zwischen Releases können auf `main` unveröffentlichte Änderungen liegen.
+- **Installation eines Releases:** `git clone --branch v<MAJOR>.<MINOR>.<PATCH> https://...`
+  oder nach dem Klonen: `git checkout v<MAJOR>.<MINOR>.<PATCH>`.
+- **Verifikation:** `python3 tools/release_check.py tree` prüft die lokale Konsistenz;
+  `python3 tools/release_check.py tag` prüft Tag-Name und -Commit; `python3 tools/release_check.py release`
+  prüft das zugehörige GitHub-Release (benötigt Netzwerk und `gh` CLI).
+
+Tag-Push und GitHub-Release sind externe Aktionen, die erst nach Prüfung aller CI- und
+Review-Gates ausgeführt werden (Kern §17). Ein nur lokal existierender Tag ist kein
+veröffentlichter Release.
+
 ## Übernahme (für Dritte)
 
 Schnellster Weg: den Install-Prompt aus [INSTALL.md](INSTALL.md) unverändert an den Agenten des
@@ -65,8 +92,11 @@ Ziel-Harness geben — ein Prompt für alle Harnesse; er erkennt den Harness, le
 [templates/README.md](templates/README.md) ab, substituiert abweichende Root-Pfade und
 verifiziert fail-closed. Manuell:
 
-1. Verzeichnis nach `~/agent-governance` klonen/kopieren (abweichendes Root: Pfad-Liste in
-   `templates/README.md`, Abschnitt „Root-Pfad" beachten).
+1. Repository klonen — **empfohlen: einen stabilen Release-Tag** (s. o.) statt des beweglichen
+   `main`-Branch verwenden. Der Prompt in [INSTALL.md](INSTALL.md) klont standardmäßig den
+   aktuellen `main`-Stand; für Produktivumgebungen den gewünschten Tag angeben.
+   Zielverzeichnis: `~/agent-governance` (abweichendes Root: Pfad-Liste in `templates/README.md`,
+   Abschnitt „Root-Pfad" beachten).
 2. `profile/profile.example.md` → `profile/profile.md` kopieren und ausfüllen.
 3. Werkzeuge: `brew bundle --file=tools/Brewfile` installiert nur die Pflichtwerkzeuge (bzw.
    Paketmanager des Systems); Katalog `tools/tools.md` durchgehen — optional empfohlene erst nach
@@ -101,8 +131,10 @@ ohne Fremdabhängigkeiten) fällt aus, sobald eine Quelle gegen eine andere drif
   älteren Interpretern überspringt sich nur dieser Block, CI pinnt 3.11 und erzwingt ihn).
 
 `tests/check_links.py` prüft zusätzlich die Erreichbarkeit der Katalog-Links — netzabhängig und
-daher advisory (§13). Die Pipeline (`.github/workflows/ci.yml`) trennt beides klar: blockierende
-Konsistenz-Tests, advisory Link-Check. Lokal: `python3 -m unittest discover -s tests`.
+daher advisory (§13). `tools/release_check.py` validiert die Release-Metadaten (VERSION,
+CHANGELOG, Tags, GitHub-Releases) — lokal via `tree`- und `tag`-Modus, in CI als
+blockierender Job. Die Pipeline (`.github/workflows/ci.yml`) trennt: blockierende
+Konsistenz- und Release-Tests, advisory Link-Check. Lokal: `python3 -m unittest discover -s tests`.
 
 ## Prinzipien der Struktur selbst
 

@@ -2,12 +2,16 @@ name: CI
 
 # Konsistenz-Pipeline des Regelwerks (Kern §13). Da dies ein Prosa-/Governance-Repository ist,
 # realisiert die Pipeline die zutreffenden Stages als reale, greifende Checks (Kern §9, §11):
-# Konsistenz-/Drift-Tests (blockierend) und Link-Erreichbarkeit (advisory, netzabhängig).
+# Konsistenz-/Drift-Tests (blockierend), Release-Metadaten (blockierend) und
+# Link-Erreichbarkeit (advisory, netzabhängig).
 
 on:
   pull_request:
   push:
     branches: [main]
+    tags: ["v*"]
+  release:
+    types: [published]
 
 permissions:
   contents: read
@@ -23,6 +27,57 @@ jobs:
           python-version: "3.11"
       - name: Regelwerk-Konsistenz prüfen
         run: python3 -m unittest discover -s tests -v
+
+  release-metadata:
+    name: Release-Metadaten (blockierend)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Tree-Konsistenz (VERSION, CHANGELOG, README, INSTALL)
+        run: python3 tools/release_check.py tree
+
+  release-tag-check:
+    name: Tag-Konsistenz (nur bei v*-Tags)
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Tag-Name und Commit prüfen
+        run: |
+          TAG_NAME="${GITHUB_REF#refs/tags/}"
+          python3 tools/release_check.py tag "$TAG_NAME"
+
+  release-validate:
+    name: Release-Validierung (nur bei published)
+    if: github.event_name == 'release' && github.event.action == 'published'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Release gegen Tag und VERSION prüfen
+        run: |
+          RELEASE_TAG="${{ github.event.release.tag_name }}"
+          python3 tools/release_check.py release "$RELEASE_TAG"
 
   link-liveness:
     name: Link-Erreichbarkeit (advisory)

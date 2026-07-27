@@ -6,6 +6,11 @@ erkennt seinen Harness selbst, legt die Dateien korrekt ab, substituiert Pfade u
 einen verifizierten Abschlussbericht. Manuelle Alternative: `README.md` (Übernahme) und
 `templates/README.md` (Zuordnungstabelle).
 
+> **Stabiler Release vs. `main`:** Der Prompt klont standardmäßig den beweglichen `main`-Branch.
+> Für Produktivumgebungen sollte ein [Release-Tag](https://github.com/tomtastisch/agent-governance/releases)
+> verwendet werden — siehe `README.md`, Abschnitt „Versionierung & Releases". Die autoritative
+> Version steht in der Datei [`VERSION`](VERSION).
+
 ---
 
 ```text
@@ -40,6 +45,9 @@ SCHRITT 1 — Repository beschaffen und ROOT festlegen
 a) Existiert bereits ein lokaler Klon (prüfe zuerst das Default-Root ~/agent-governance,
    frage sonst nach), nutze ihn und aktualisiere per git pull.
 b) Sonst: git clone https://github.com/tomtastisch/agent-governance ~/agent-governance
+   (Für Produktivumgebungen: einen stabilen Release-Tag klonen statt `main` —
+    `git clone --branch v<MAJOR>.<MINOR>.<PATCH> ...`; die autoritative Version steht
+    in ROOT/VERSION).
 c) Setze ROOT = absoluter Pfad des Klons. Merke: weicht ROOT vom Default ~/agent-governance ab,
    musst du in Schritt 3 in allen kopierten Dateien und in ROOT/adapters/*.md den Pfad
    ~/agent-governance durch ROOT ersetzen (Datei-Liste: ROOT/templates/README.md, Abschnitt
