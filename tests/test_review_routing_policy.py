@@ -513,80 +513,66 @@ class RoutePolicyTest(unittest.TestCase):
         self.assertEqual(decision.required_reviewers, frozenset({Reviewer.QA, Reviewer.SEC}))
 
     def test_correction_unions_adjusted_prior_and_current_final_matrix_floors(self):
+        copilot = frozenset({Reviewer.COPILOT})
+        copilot_qa = frozenset({Reviewer.COPILOT, Reviewer.QA})
+        copilot_qa_sec = frozenset({Reviewer.COPILOT, Reviewer.QA, Reviewer.SEC})
+        qa = frozenset({Reviewer.QA})
+        qa_sec = frozenset({Reviewer.QA, Reviewer.SEC})
         cases = (
-            (
-                "prior_copilot_current_high_usable",
-                frozenset({Reviewer.COPILOT}),
-                RiskLevel.HIGH,
-                True,
-                frozenset({Reviewer.COPILOT, Reviewer.QA}),
-            ),
-            (
-                "prior_copilot_current_critical_usable",
-                frozenset({Reviewer.COPILOT}),
-                RiskLevel.CRITICAL,
-                True,
-                frozenset({Reviewer.COPILOT, Reviewer.QA, Reviewer.SEC}),
-            ),
-            (
-                "prior_copilot_current_high_unusable",
-                frozenset({Reviewer.COPILOT}),
-                RiskLevel.HIGH,
-                False,
-                frozenset({Reviewer.QA}),
-            ),
-            (
-                "prior_copilot_current_critical_unusable",
-                frozenset({Reviewer.COPILOT}),
-                RiskLevel.CRITICAL,
-                False,
-                frozenset({Reviewer.QA, Reviewer.SEC}),
-            ),
-            (
-                "prior_all_current_low_usable",
-                frozenset({Reviewer.COPILOT, Reviewer.QA, Reviewer.SEC}),
-                RiskLevel.LOW,
-                True,
-                frozenset({Reviewer.COPILOT, Reviewer.QA, Reviewer.SEC}),
-            ),
-            (
-                "prior_all_current_low_unusable",
-                frozenset({Reviewer.COPILOT, Reviewer.QA, Reviewer.SEC}),
-                RiskLevel.LOW,
-                False,
-                frozenset({Reviewer.QA, Reviewer.SEC}),
-            ),
-            (
-                "prior_copilot_qa_current_low_usable",
-                frozenset({Reviewer.COPILOT, Reviewer.QA}),
-                RiskLevel.LOW,
-                True,
-                frozenset({Reviewer.COPILOT, Reviewer.QA}),
-            ),
-            (
-                "prior_copilot_qa_current_low_unusable",
-                frozenset({Reviewer.COPILOT, Reviewer.QA}),
-                RiskLevel.LOW,
-                False,
-                frozenset({Reviewer.QA}),
-            ),
-            (
-                "prior_qa_current_low_usable",
-                frozenset({Reviewer.QA}),
-                RiskLevel.LOW,
-                True,
-                frozenset({Reviewer.COPILOT, Reviewer.QA}),
-            ),
-            (
-                "prior_qa_current_low_unusable",
-                frozenset({Reviewer.QA}),
-                RiskLevel.LOW,
-                False,
-                frozenset({Reviewer.QA}),
-            ),
+            # prior {copilot}
+            (copilot, RiskLevel.LOW, True, copilot),
+            (copilot, RiskLevel.LOW, False, qa),
+            (copilot, RiskLevel.MEDIUM, True, copilot),
+            (copilot, RiskLevel.MEDIUM, False, qa),
+            (copilot, RiskLevel.HIGH, True, copilot_qa),
+            (copilot, RiskLevel.HIGH, False, qa),
+            (copilot, RiskLevel.CRITICAL, True, copilot_qa_sec),
+            (copilot, RiskLevel.CRITICAL, False, qa_sec),
+            # prior {copilot, qa}
+            (copilot_qa, RiskLevel.LOW, True, copilot_qa),
+            (copilot_qa, RiskLevel.LOW, False, qa),
+            (copilot_qa, RiskLevel.MEDIUM, True, copilot_qa),
+            (copilot_qa, RiskLevel.MEDIUM, False, qa),
+            (copilot_qa, RiskLevel.HIGH, True, copilot_qa),
+            (copilot_qa, RiskLevel.HIGH, False, qa),
+            (copilot_qa, RiskLevel.CRITICAL, True, copilot_qa_sec),
+            (copilot_qa, RiskLevel.CRITICAL, False, qa_sec),
+            # prior {copilot, qa, sec}
+            (copilot_qa_sec, RiskLevel.LOW, True, copilot_qa_sec),
+            (copilot_qa_sec, RiskLevel.LOW, False, qa_sec),
+            (copilot_qa_sec, RiskLevel.MEDIUM, True, copilot_qa_sec),
+            (copilot_qa_sec, RiskLevel.MEDIUM, False, qa_sec),
+            (copilot_qa_sec, RiskLevel.HIGH, True, copilot_qa_sec),
+            (copilot_qa_sec, RiskLevel.HIGH, False, qa_sec),
+            (copilot_qa_sec, RiskLevel.CRITICAL, True, copilot_qa_sec),
+            (copilot_qa_sec, RiskLevel.CRITICAL, False, qa_sec),
+            # prior {qa}
+            (qa, RiskLevel.LOW, True, copilot_qa),
+            (qa, RiskLevel.LOW, False, qa),
+            (qa, RiskLevel.MEDIUM, True, copilot_qa),
+            (qa, RiskLevel.MEDIUM, False, qa),
+            (qa, RiskLevel.HIGH, True, copilot_qa),
+            (qa, RiskLevel.HIGH, False, qa),
+            (qa, RiskLevel.CRITICAL, True, copilot_qa_sec),
+            (qa, RiskLevel.CRITICAL, False, qa_sec),
+            # prior {qa, sec}
+            (qa_sec, RiskLevel.LOW, True, copilot_qa_sec),
+            (qa_sec, RiskLevel.LOW, False, qa_sec),
+            (qa_sec, RiskLevel.MEDIUM, True, copilot_qa_sec),
+            (qa_sec, RiskLevel.MEDIUM, False, qa_sec),
+            (qa_sec, RiskLevel.HIGH, True, copilot_qa_sec),
+            (qa_sec, RiskLevel.HIGH, False, qa_sec),
+            (qa_sec, RiskLevel.CRITICAL, True, copilot_qa_sec),
+            (qa_sec, RiskLevel.CRITICAL, False, qa_sec),
         )
-        for name, prior, risk, usable, expected in cases:
-            with self.subTest(name=name):
+        self.assertEqual(len(cases), 40, "correction base matrix must contain all 40 cases")
+        self.assertEqual(
+            len({(prior, risk, usable) for prior, risk, usable, _expected in cases}),
+            40,
+            "every correction base-matrix input combination must be unique",
+        )
+        for prior, risk, usable, expected in cases:
+            with self.subTest(prior=prior, risk=risk, usable=usable):
                 decision = route_review(
                     request(
                         purpose=ReviewPurpose.CORRECTION,

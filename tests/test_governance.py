@@ -234,6 +234,7 @@ class TaskSixDesignContract(unittest.TestCase):
             "docs/superpowers/specs/2026-07-26-review-routing-and-output-policy-design.md"
         )
         plan = read("docs/superpowers/plans/2026-07-26-review-routing.md")
+        self.task_two = plan.split("### Task 2:", 1)[1].split("### Task 3:", 1)[0]
         self.task_six = plan.split("### Task 6:", 1)[1].split("### Task 7:", 1)[0]
         self.adr = read("docs/decisions/0003-review-routing.md")
 
@@ -313,6 +314,18 @@ class TaskSixDesignContract(unittest.TestCase):
                     document,
                     f"{document_name} fehlt korrigierten Task-6-Vertrag '{token}'",
                 )
+
+    def test_task_two_correction_contract_is_explicitly_superseded_by_task_six(self):
+        self.assertIn(
+            "adjusted_prior_floor UNION current_final_exact_head_matrix_floor",
+            self.task_two,
+            "Task 2 darf nicht mehr nur die historische Reviewer-Menge als Correction-Vertrag nennen",
+        )
+        self.assertIn(
+            "Task 6",
+            self.task_two,
+            "Der frühe Zwischenstand muss seine verbindliche Ablösung ausdrücklich benennen",
+        )
 
 
 class BranchTags(unittest.TestCase):

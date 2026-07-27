@@ -276,9 +276,17 @@ Use precedence:
 )
 ```
 
-For `CORRECTION`, require a non-empty prior reviewer set. Replace a now-unusable `COPILOT` with
-`QA`, preserve prior QA/SEC requirements, bind the result to the new head, and map the resulting
-reviewer set to one of the declared routes.
+Task 2 initially required only a non-empty prior reviewer set for `CORRECTION`. That intermediate
+rule is explicitly superseded by the Task 6 gate contract. The single binding formula is:
+
+```text
+adjusted_prior_floor UNION current_final_exact_head_matrix_floor
+```
+
+Replace a now-unusable historical `COPILOT` with `QA`, preserve historical QA/SEC, union the
+current `final_exact_head` matrix floor for current risk/usability, then apply the Task 6
+security/coverage/mode/SEC→QA and availability rules. Bind the result to the new head and map the
+complete reviewer set to one of the declared routes.
 
 - [ ] **Step 5: Run focused tests and confirm GREEN**
 
