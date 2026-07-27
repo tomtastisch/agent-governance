@@ -10,6 +10,8 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+  release:
+    types: [published]
 
 permissions:
   contents: read
@@ -56,6 +58,26 @@ jobs:
         run: |
           TAG_NAME="${GITHUB_REF#refs/tags/}"
           python3 tools/release_check.py tag "$TAG_NAME"
+
+  release-validate:
+    name: Release-Validierung (nur bei published)
+    if: github.event_name == 'release' && github.event.action == 'published'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Release gegen Tag und VERSION prüfen
+        run: |
+          RELEASE_TAG="${{ github.event.release.tag_name }}"
+          python3 tools/release_check.py release "$RELEASE_TAG"
 
   link-liveness:
     name: Link-Erreichbarkeit (advisory)
