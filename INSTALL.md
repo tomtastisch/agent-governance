@@ -113,13 +113,17 @@ python3 -m review_routing validate \
 
 python3 -m review_routing output-policy --json
 
+python3 -m review_routing output-policy --config PATH --json
+
 `probe`, `route`, `validate` und `output-policy` sind read-only und lösen keinen
-GitHub-Copilot-Review aus. `output-policy` liest ausschließlich die validierte
-ROOT/core/interaction.toml und gibt bei Erfolg das geschlossene Schema mit `schema_version` und
-`intermediate_status` aus. Fehlende, zu große, UTF-8-ungültige oder semantisch ungültige Eingaben
-liefern ausschließlich sanitisiertes JSON mit `error = "invalid_input"` und Exit 31; Rohdaten und
-Decoderdetails bleiben verborgen. Ein kostenpflichtiger Dispatch benötigt immer eine explizite
-Einzelfreigabe. Keine Billing-,
+GitHub-Copilot-Review aus. `output-policy` liest standardmäßig die validierte
+ROOT/core/interaction.toml. `--config PATH` ist ausschließlich ein optionaler read-only Akzeptanz-/Prüfpfad
+für eine temporäre Eingabe. Sie wird identisch streng validiert; der Override mutiert
+weder die Repository-SSOT noch die Harness-/Home-Konfiguration. Bei Erfolg enthält die Ausgabe das
+geschlossene Schema mit `schema_version` und `intermediate_status`. Fehlende, zu große,
+UTF-8-ungültige oder semantisch ungültige Eingaben liefern ausschließlich sanitisiertes JSON mit
+`error = "invalid_input"` und Exit 31; Rohdaten und Decoderdetails bleiben verborgen. Ein
+kostenpflichtiger Dispatch benötigt immer eine explizite Einzelfreigabe. Keine Billing-,
 Budget-, Trust- oder Digest-Flags ergänzen: diese Schnittstellen existieren absichtlich nicht.
 Die `route`-Ausgabe ist der preliminary Vorplan aus Task 5; erst der Task-6-Validator verarbeitet
 Exact-Head-Evidenz. Rechte- und Kontextgrenzen, `Plan: read`, der einmalige

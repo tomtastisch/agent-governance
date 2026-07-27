@@ -302,6 +302,32 @@ class InteractionPolicyWiring(unittest.TestCase):
             self.assertIn("Exit 31", document, f"{rel} dokumentiert den Fehler-Exit nicht")
             self.assertIn("sanitisiert", document, f"{rel} dokumentiert den sanitisierten Fehlervertrag nicht")
 
+    def test_install_distinguishes_default_policy_from_read_only_config_check(self):
+        installation = read("INSTALL.md")
+        normalized_installation = " ".join(installation.split())
+        self.assertIn("python3 -m review_routing output-policy --json", installation)
+        self.assertIn(
+            "python3 -m review_routing output-policy --config PATH --json",
+            installation,
+            "INSTALL.md dokumentiert den optionalen --config-Prüfpfad nicht",
+        )
+        for token in (
+            "standardmäßig",
+            "optionaler read-only Akzeptanz-/Prüfpfad",
+            "identisch streng validiert",
+            "mutiert weder die Repository-SSOT noch die Harness-/Home-Konfiguration",
+        ):
+            self.assertIn(
+                token,
+                normalized_installation,
+                f"INSTALL.md fehlt Override-Grenze '{token}'",
+            )
+        self.assertNotIn(
+            "`output-policy` liest ausschließlich die validierte",
+            normalized_installation,
+            "INSTALL.md behauptet weiterhin einen exklusiven Defaultpfad",
+        )
+
 
 class ReviewRoutingDocumentation(unittest.TestCase):
     """Routingprosa referenziert die SSOT, statt deren Matrix zu duplizieren."""
