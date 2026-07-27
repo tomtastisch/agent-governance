@@ -482,21 +482,37 @@ def check_release(root=None, tag_ref=None, gh=None):
         return r
 
     target = data.get("targetCommitish", "")
-    if re.match(r"^[0-9a-f]{40}$", target):
-        if target != local_commit:
-            r.add_error(f"Release-targetCommitish ({target[:12]}) weicht von Tag-Commit ({local_commit[:12]}) ab")
-    else:
-        # Branch/Ref-Name → auf Commit auflösen und vergleichen
-        out, err, code = GitRunner.run(["rev-parse", f"{target}^{{commit}}"], root)
-        if code != 0:
-            out, err, code = GitRunner.run(["rev-parse", target], root)
-        if code != 0:
-            r.add_error(f"targetCommitish '{target}' nicht auflösbar: {err}")
-        elif out.strip() != local_commit:
-            r.add_error(f"Release-targetCommitish '{target}' ({out.strip()[:12]}) "
-                        f"weicht von Tag-Commit ({local_commit[:12]}) ab")
+    resolved, resolve_err = _resolve_target_commitish(target, root)
+    if resolve_err:
+        r.add_error(f"targetCommitish '{target}' nicht auflösbar: {resolve_err}")
+    elif resolved != local_commit:
+        r.add_error(f"Release-targetCommitish '{target}' ({resolved[:12]}) "
+                    f"weicht von Tag-Commit ({local_commit[:12]}) ab")
 
     return r
+
+
+def _resolve_target_commitish(target, root):
+    """Löst targetCommitish deterministisch auf einen Commit-SHA auf.
+
+    Priorität:
+      1. 40-stelliger Hex-SHA (direkt)
+      2. refs/heads/<target>
+      3. refs/remotes/origin/<target>
+      4. <target> (normaler Git-Ref)
+
+    Jede Auflösung endet mit git rev-parse ref^{commit} (Peeling).
+    Gibt (sha: str, error: str|None).
+    """
+    if re.match(r"^[0-9a-f]{40}$", target):
+        return target, None
+
+    for ref in (f"refs/heads/{target}", f"refs/remotes/origin/{target}", target):
+        out, err, code = GitRunner.run(["rev-parse", f"{ref}^{{commit}}"], root)
+        if code == 0 and out.strip():
+            return out.strip(), None
+
+    return "", f"'{target}' nicht auflösbar (weder SHA, refs/heads/, refs/remotes/origin/ noch Bare-Ref)"
 
 
 # ═══════════════════════════════════════════════════════════════════════
