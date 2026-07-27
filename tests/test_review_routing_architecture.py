@@ -235,13 +235,21 @@ class RegistryFailureTest(unittest.TestCase):
         self.assertIsInstance(registry.resolve(PullRequestStatePort), GitHubGhProbe)
 
     def test_bootstrap_resolves_evidence_validator_port(self):
-        from review_routing.contracts import EvidenceValidatorPort
+        from review_routing.contracts import (
+            EvidenceValidatorPort,
+            GatePublisherPort,
+            PriorGateEvidencePort,
+        )
         from review_routing.evidence import EvidenceValidator
 
         self.assertIsInstance(
             RuntimeRegistry.bootstrap(None).resolve(EvidenceValidatorPort),
             EvidenceValidator,
         )
+        with self.assertRaises(MissingProviderError):
+            RuntimeRegistry.bootstrap(None).resolve(GatePublisherPort)
+        with self.assertRaises(MissingProviderError):
+            RuntimeRegistry.bootstrap(None).resolve(PriorGateEvidencePort)
 
     def test_bootstrap_injects_the_exact_operator_trust_into_a_positive_probe(self):
         from review_routing.adapters import github_gh
@@ -333,6 +341,7 @@ class RegistryFailureTest(unittest.TestCase):
             StatusPort,
             EvidenceValidatorPort,
             GatePublisherPort,
+            PriorGateEvidencePort,
         )
 
         expected = {
@@ -369,6 +378,12 @@ class RegistryFailureTest(unittest.TestCase):
                 "routing_policy",
             ),
             GatePublisherPort.publish: ("self", "result"),
+            PriorGateEvidencePort.load_immediate: (
+                "self",
+                "repository",
+                "pull_request_number",
+                "current_head_sha",
+            ),
         }
 
         for method, parameter_names in expected.items():

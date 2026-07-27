@@ -86,6 +86,51 @@ Steuerwirkung. Manipulation dieser Felder darf daher das Gate weder positiv noch
 beeinflussen; fremde oder stale Probe-, Reviewer-, Coverage- oder Modusevidenz macht es
 fail-closed rot.
 
+Jedes Review-/Request-Ereignis trägt eine über beide Collections eindeutige `event_id`. Pro
+Reviewer und Exact Head werden zunächst alle autoritativ kontextgebundenen Ereignisse gesammelt,
+danach gewinnt ausschließlich das eindeutig neueste. Ein neueres `ERROR`, `PENDING`,
+`CHANGES_REQUESTED` oder `DISMISSED` entwertet ältere positive Copilot-, QA- oder SEC-Evidenz;
+unterschiedliche Latest Events mit identischem Zeitpunkt bleiben fail-closed. Die
+Eingabereihenfolge ändert weder Ergebnis noch Digest. Für Review, Request und Check gilt:
+
+```text
+event_at <= source.observed_at <= snapshot.observed_at <= evaluated_at < source.valid_until
+evaluated_at < snapshot.valid_until
+```
+
+`GateResult` bindet seinen Purpose und den vollständigen kanonischen Ergebnisvertrag in
+`gate_result_digest`: Checkname, Conclusion, Repository/PR/Purpose, Base-Ref/Base-/Head-SHA/
+PR-State-Quelle, Policy-/Runtime-/Diff-/Evidence-Digests, sortierte Required-/Validated-Reviewer,
+Threadzahl, Reasons und Beobachtungszeit. Der `idempotency_key` bindet mindestens
+Repository/PR/Head/Checkname/Result-Digest. `PublicationReceipt` bindet denselben
+`gate_result_digest` neben Repository/PR/Head/Check, Publisher-App, Publication-ID, Idempotenz,
+`head_revalidated_at` und `published_at`.
+
+Korrekturrunden dürfen ihre vorausgehende Reviewer-Menge ausschließlich aus
+`PriorGateEvidence` beziehen. `PriorGateEvidencePort.load_immediate(repository,
+pull_request_number, current_head_sha)` ist nur programmatisch über `CliDependencies`
+injizierbar; alte Reviewzeilen, Dateien, CLI-Flags und Umgebungsvariablen sind keine Autorität.
+Ohne Port/Ergebnis gilt `correction_prior_gate_unavailable`. Positive Evidenz verlangt exakte
+Repository-/PR-/Current-Head-, Publisher-/Publication-, Digest-, Idempotenz- und Zeitbindung,
+Prior-Conclusion `success`, Purpose ungleich `checkpoint`, nichtleeres
+`required_reviewers == validated_reviewers`, null Reasons und null Threads:
+
+```text
+prior_result.observed_at
+<= receipt.head_revalidated_at
+<= receipt.published_at
+<= prior_evidence.observed_at
+<= current_evaluated_at
+< prior_evidence.valid_until
+```
+
+Bis Issue #3 ein autoritatives Publisher-Ledger einschließlich unmittelbarer
+Latest-/Ancestry-Auswahl bereitstellt, bleibt die produktive positive Korrektur deaktiviert; nur
+ein synthetischer, injizierter Fake-Port belegt den Vertragspositivfall. Die allgemeine
+Findings-Correction bleibt fachlich ungelöst, weil ein zuvor fehlgeschlagenes Gate die
+verlangte Prior-Conclusion-`success` nicht erfüllt. Für `GatePublisherPort` und
+`PriorGateEvidencePort` existiert in diesem read-only Lieferumfang keine Factory.
+
 ## Konsequenzen
 
 Die Routingentscheidung ist reproduzierbar und fail-closed. Kandidatenpolicy kann keine

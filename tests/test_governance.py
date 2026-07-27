@@ -287,6 +287,32 @@ class TaskSixDesignContract(unittest.TestCase):
         ):
             self.assertIn(token, self.task_six, f"Task-6-CliDependencies fehlt '{token}'")
 
+    def test_correction_latest_event_and_result_digest_contract_cannot_drift(self):
+        required = (
+            "PriorGateEvidence",
+            "PriorGateEvidencePort",
+            "load_immediate",
+            "correction_prior_gate_unavailable",
+            "gate_result_digest",
+            "event_id",
+            "DISMISSED",
+            "event_at <= source.observed_at",
+            "evaluated_at < snapshot.valid_until",
+            "Issue #3",
+            "Findings-Correction",
+        )
+        for document_name, document in (
+            ("Design-Spec", self.spec),
+            ("Task-6-Plan", self.task_six),
+            ("ADR 0003", self.adr),
+        ):
+            for token in required:
+                self.assertIn(
+                    token,
+                    document,
+                    f"{document_name} fehlt korrigierten Task-6-Vertrag '{token}'",
+                )
+
 
 class BranchTags(unittest.TestCase):
     """`core/branch-tags.toml` ist wohlgeformt, git-ref-sicher und driftfrei mit dem Kern (§15)."""

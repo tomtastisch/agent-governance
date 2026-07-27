@@ -777,7 +777,7 @@ class ExactHeadGateTest(unittest.TestCase):
             repository=repository or self.repository,
             pull_request_number=self.pr,
             head_sha=head or self.head,
-            observed_at=NOW - timedelta(minutes=1),
+            observed_at=NOW - timedelta(seconds=30),
             valid_until=valid_until or NOW + timedelta(minutes=5),
         )
 
@@ -846,7 +846,7 @@ class ExactHeadGateTest(unittest.TestCase):
                     source_app_slug=required.source_app_slug,
                     head_sha=self.head,
                     conclusion=CheckConclusion.SUCCESS,
-                    completed_at=NOW,
+                    completed_at=NOW - timedelta(minutes=1),
                     source=source,
                 )
                 for required in self.config.required_checks
@@ -855,11 +855,12 @@ class ExactHeadGateTest(unittest.TestCase):
             "reviews": (
                 ReviewRecord(
                     reviewer=Reviewer.COPILOT,
+                    event_id="copilot_review_1",
                     actor_login="copilot-pull-request-reviewer[bot]",
                     app_slug="copilot-pull-request-reviewer",
                     state=ReviewState.COMMENTED,
                     commit_sha=self.head,
-                    submitted_at=NOW,
+                    submitted_at=NOW - timedelta(minutes=1),
                     findings_count=0,
                     source=source,
                 ),
@@ -876,7 +877,7 @@ class ExactHeadGateTest(unittest.TestCase):
             "copilot_review_mode": CopilotReviewMode.FULL,
             "review_mode_source": source,
             "threads": (),
-            "observed_at": NOW - timedelta(minutes=1),
+            "observed_at": NOW - timedelta(seconds=20),
             "valid_until": NOW + timedelta(minutes=5),
         }
         values.update(changes)
@@ -895,6 +896,67 @@ class ExactHeadGateTest(unittest.TestCase):
         }
         values.update(changes)
         return GateEvaluationContext(**values)
+
+    def prior_gate_evidence(self, **changes):
+        from dataclasses import replace
+        from review_routing.contracts import (
+            PriorGateEvidence,
+            PublicationReceipt,
+            ReviewPurpose,
+        )
+
+        current = self.validate()
+        prior_result = replace(
+            current,
+            purpose=ReviewPurpose.FINAL_EXACT_HEAD,
+            head_sha="d" * 40,
+            observed_at=NOW - timedelta(minutes=10),
+        )
+        receipt = PublicationReceipt(
+            repository=self.repository,
+            pull_request_number=self.pr,
+            head_sha=prior_result.head_sha,
+            check_name=prior_result.check_name,
+            publisher_app_slug=self.config.publisher.expected_app_slug,
+            publication_id="prior_check_1",
+            gate_result_digest=prior_result.gate_result_digest,
+            idempotency_key=prior_result.idempotency_key,
+            head_revalidated_at=NOW - timedelta(minutes=9),
+            published_at=NOW - timedelta(minutes=9) + timedelta(seconds=10),
+        )
+        values = {
+            "schema_version": 1,
+            "repository": self.repository,
+            "pull_request_number": self.pr,
+            "current_head_sha": self.head,
+            "prior_gate_result": prior_result,
+            "publication_receipt": receipt,
+            "source_app_slug": self.config.publisher.expected_app_slug,
+            "source_reference": receipt.publication_id,
+            "observed_at": NOW - timedelta(minutes=8),
+            "valid_until": NOW + timedelta(minutes=5),
+        }
+        values.update(changes)
+        return PriorGateEvidence(**values)
+
+    def correction_context(self, prior_gate_evidence=None):
+        from dataclasses import replace
+        from review_routing.contracts import (
+            ReviewerAvailabilitySnapshot,
+            ReviewPurpose,
+        )
+
+        availability = ReviewerAvailabilitySnapshot(
+            evidence=tuple(
+                replace(item, purpose=ReviewPurpose.CORRECTION)
+                for item in self.availability.evidence
+            )
+        )
+        return self.context(
+            self.plan(purpose=ReviewPurpose.CORRECTION),
+            reviewer_availability=availability,
+            prior_gate_evidence=prior_gate_evidence,
+        )
 
     def validate(self, *, context=None, snapshot=None, diff=None, config=None):
         from review_routing.contracts import EvidenceValidatorPort, RiskClassifierPort, RoutingPolicyPort
@@ -948,11 +1010,12 @@ class ExactHeadGateTest(unittest.TestCase):
         wrong = replace(base.reviews[0], actor_login="not-copilot")
         pending = ReviewRecord(
             reviewer=Reviewer.COPILOT,
+            event_id="copilot_request_2",
             actor_login="copilot-pull-request-reviewer[bot]",
             app_slug="copilot-pull-request-reviewer",
             state=ReviewState.PENDING,
             commit_sha=self.head,
-            submitted_at=NOW + timedelta(seconds=1),
+            submitted_at=NOW - timedelta(seconds=45),
             findings_count=0,
             source=self.source(),
         )
@@ -1141,11 +1204,12 @@ class ExactHeadGateTest(unittest.TestCase):
         )
         qa_review = ReviewRecord(
             reviewer=Reviewer.QA,
+            event_id="qa_review_1",
             actor_login="qa-agent",
             app_slug="codex-qa-agent",
             state=ReviewState.APPROVED,
             commit_sha=self.head,
-            submitted_at=NOW,
+            submitted_at=NOW - timedelta(minutes=1),
             findings_count=0,
             source=qa_source,
         )
@@ -1276,7 +1340,7 @@ class ExactHeadGateTest(unittest.TestCase):
             )
         )
         self.assertIn("evidence_diff_mismatch", result.reasons)
-        self.assertIn("future_review_timestamp", result.reasons)
+        self.assertIn("review_event_source_invalid", result.reasons)
 
         installed = self.runtime
         self.runtime = replace(self.runtime, trust=RuntimeTrust.DEVELOPMENT)
@@ -1334,11 +1398,12 @@ class ExactHeadGateTest(unittest.TestCase):
         )
         qa_review = ReviewRecord(
             reviewer=Reviewer.QA,
+            event_id="qa_review_1",
             actor_login="qa-agent",
             app_slug="codex-qa-agent",
             state=ReviewState.APPROVED,
             commit_sha=self.head,
-            submitted_at=NOW,
+            submitted_at=NOW - timedelta(minutes=1),
             findings_count=0,
             source=harness_source,
         )
@@ -1365,6 +1430,217 @@ class ExactHeadGateTest(unittest.TestCase):
         )
         self.assertIn("missing_reviewer:sec", result.reasons)
 
+    def security_gate_inputs(self):
+        from dataclasses import replace
+        from review_routing.contracts import (
+            BoundEvidenceSourceKind,
+            DiffFile,
+            FileCoverage,
+            Reviewer,
+            ReviewRecord,
+            ReviewState,
+            RiskClassifierPort,
+        )
+
+        security_diff = replace(
+            self.diff,
+            files=(
+                DiffFile(
+                    path="src/security/auth/guard.py",
+                    status=self.diff.files[0].status,
+                    additions=1,
+                    deletions=0,
+                    binary=False,
+                ),
+            ),
+        )
+        assessment = self.registry.resolve(RiskClassifierPort).assess(
+            security_diff,
+            self.config,
+        )
+        plan = self.plan(risk=assessment, diff_digest=security_diff.diff_digest)
+        snapshot = self.snapshot()
+        copilot_review = replace(snapshot.reviews[0], event_id="copilot_positive")
+        copilot_coverage = replace(
+            snapshot.review_file_coverage[0],
+            path="src/security/auth/guard.py",
+        )
+        harness_source = replace(
+            self.source(),
+            kind=BoundEvidenceSourceKind.HARNESS_RUNTIME,
+            source_id="independent_roles",
+        )
+        role_reviews = tuple(
+            ReviewRecord(
+                reviewer=reviewer,
+                event_id=f"{reviewer.value}_positive",
+                actor_login=f"{reviewer.value}-agent",
+                app_slug=f"codex-{reviewer.value}-agent",
+                state=ReviewState.APPROVED,
+                commit_sha=self.head,
+                submitted_at=NOW - timedelta(minutes=1),
+                findings_count=0,
+                source=harness_source,
+            )
+            for reviewer in (Reviewer.QA, Reviewer.SEC)
+        )
+        qa_coverage = FileCoverage(
+            path="src/security/auth/guard.py",
+            status=security_diff.files[0].status,
+            coverage=copilot_coverage.coverage,
+            reviewer=Reviewer.QA,
+            coverage_source=harness_source,
+        )
+        return (
+            security_diff,
+            plan,
+            replace(
+                snapshot,
+                reviews=(copilot_review, *role_reviews),
+                review_file_coverage=(copilot_coverage, qa_coverage),
+            ),
+        )
+
+    def test_latest_event_wins_for_copilot_qa_and_sec_and_ties_fail_closed(self):
+        from dataclasses import replace
+        from review_routing.contracts import Reviewer, ReviewRecord, ReviewState
+
+        security_diff, plan, snapshot = self.security_gate_inputs()
+        for reviewer in (Reviewer.COPILOT, Reviewer.QA, Reviewer.SEC):
+            source = next(
+                review.source for review in snapshot.reviews if review.reviewer is reviewer
+            )
+            for state in (
+                ReviewState.PENDING,
+                ReviewState.ERROR,
+                ReviewState.CHANGES_REQUESTED,
+                ReviewState.DISMISSED,
+            ):
+                with self.subTest(reviewer=reviewer, state=state):
+                    newer = ReviewRecord(
+                        reviewer=reviewer,
+                        event_id=f"{reviewer.value}_{state.value.lower()}",
+                        actor_login="request-event",
+                        app_slug="request-source",
+                        state=state,
+                        commit_sha=self.head,
+                        submitted_at=NOW - timedelta(seconds=45),
+                        findings_count=0,
+                        source=source,
+                    )
+                    result = self.validate(
+                        context=self.context(plan),
+                        diff=security_diff,
+                        snapshot=replace(
+                            snapshot,
+                            review_requests=(newer,),
+                        ),
+                    )
+                    self.assertIn(
+                        f"latest_reviewer_state_invalid:{reviewer.value}",
+                        result.reasons,
+                    )
+                    self.assertIn(
+                        f"missing_reviewer:{reviewer.value}",
+                        result.reasons,
+                    )
+            positive = next(
+                review for review in snapshot.reviews if review.reviewer is reviewer
+            )
+            tie = replace(
+                positive,
+                event_id=f"{reviewer.value}_tie",
+                state=ReviewState.PENDING,
+            )
+            result = self.validate(
+                context=self.context(plan),
+                diff=security_diff,
+                snapshot=replace(snapshot, review_requests=(tie,)),
+            )
+            self.assertIn(
+                f"ambiguous_latest_event:{reviewer.value}",
+                result.reasons,
+            )
+
+    def test_review_event_input_order_changes_neither_digest_nor_result(self):
+        from dataclasses import replace
+
+        security_diff, plan, snapshot = self.security_gate_inputs()
+        reversed_snapshot = replace(
+            snapshot,
+            reviews=tuple(reversed(snapshot.reviews)),
+            review_file_coverage=tuple(reversed(snapshot.review_file_coverage)),
+        )
+        first = self.validate(
+            context=self.context(plan),
+            diff=security_diff,
+            snapshot=snapshot,
+        )
+        second = self.validate(
+            context=self.context(plan),
+            diff=security_diff,
+            snapshot=reversed_snapshot,
+        )
+
+        self.assertEqual(snapshot.evidence_digest, reversed_snapshot.evidence_digest)
+        self.assertEqual(first, second)
+
+    def test_event_source_snapshot_and_evaluation_time_order_is_fail_closed(self):
+        from dataclasses import replace
+
+        base = self.snapshot()
+        self.assertEqual(self.validate(snapshot=base).conclusion, "success")
+
+        after_source_review = replace(
+            base.reviews[0],
+            submitted_at=base.reviews[0].source.observed_at + timedelta(seconds=1),
+        )
+        result = self.validate(snapshot=replace(base, reviews=(after_source_review,)))
+        self.assertIn("review_event_source_invalid", result.reasons)
+
+        after_source_check = replace(
+            base.check_runs[0],
+            completed_at=base.check_runs[0].source.observed_at + timedelta(seconds=1),
+        )
+        result = self.validate(snapshot=replace(base, check_runs=(after_source_check,)))
+        self.assertIn("check_event_source_invalid", result.reasons)
+
+        source_after_snapshot = replace(
+            base.reviews[0].source,
+            observed_at=base.observed_at + timedelta(seconds=1),
+        )
+        result = self.validate(
+            snapshot=replace(
+                base,
+                reviews=(
+                    replace(base.reviews[0], source=source_after_snapshot),
+                ),
+            )
+        )
+        self.assertIn("review_event_source_invalid", result.reasons)
+
+        expiring_source = replace(
+            base.check_runs[0].source,
+            valid_until=NOW,
+        )
+        result = self.validate(
+            snapshot=replace(
+                base,
+                check_runs=(
+                    replace(base.check_runs[0], source=expiring_source),
+                ),
+            )
+        )
+        self.assertIn("check_event_source_invalid", result.reasons)
+
+        future_snapshot = replace(
+            base,
+            observed_at=NOW + timedelta(seconds=1),
+            valid_until=NOW + timedelta(minutes=5),
+        )
+        result = self.validate(snapshot=future_snapshot)
+        self.assertIn("evidence_stale", result.reasons)
+
     def test_publication_receipt_requires_immediate_head_revalidation(self):
         from review_routing.contracts import PublicationReceipt
 
@@ -1376,10 +1652,200 @@ class ExactHeadGateTest(unittest.TestCase):
                 check_name="agent-governance/review-gate",
                 publisher_app_slug="agent-governance-review-gate",
                 publication_id="check_1",
+                gate_result_digest="sha256:" + "2" * 64,
                 idempotency_key="sha256:" + "1" * 64,
                 published_at=NOW,
                 head_revalidated_at=NOW - timedelta(minutes=1),
             )
+
+    def test_gate_result_exposes_full_digest_and_purpose_bound_idempotency(self):
+        result = self.validate()
+
+        self.assertEqual(result.purpose.value, "final_exact_head")
+        self.assertRegex(result.gate_result_digest, r"^sha256:[0-9a-f]{64}$")
+        self.assertNotEqual(
+            result.gate_result_digest,
+            __import__("dataclasses").replace(
+                result,
+                purpose=__import__(
+                    "review_routing.contracts",
+                    fromlist=["ReviewPurpose"],
+                ).ReviewPurpose.CHECKPOINT,
+            ).gate_result_digest,
+        )
+
+    def test_prior_gate_contract_is_programmatic_only_and_review_rows_are_not_authority(self):
+        from review_routing.contracts import PriorGateEvidencePort
+
+        self.assertTrue(hasattr(PriorGateEvidencePort, "load_immediate"))
+        result = self.validate(context=self.correction_context(), snapshot=self.snapshot())
+
+        self.assertIn("correction_prior_gate_unavailable", result.reasons)
+
+    def test_correction_accepts_only_fully_bound_injected_prior_gate_evidence(self):
+        prior = self.prior_gate_evidence()
+        result = self.validate(
+            context=self.correction_context(prior),
+            snapshot=self.snapshot(),
+        )
+
+        self.assertEqual(result.conclusion, "success")
+        self.assertNotIn("correction_prior_gate_unavailable", result.reasons)
+        self.assertNotIn("correction_prior_gate_invalid", result.reasons)
+
+    def test_correction_rejects_foreign_digest_publisher_and_time_bound_prior_gate(self):
+        from dataclasses import replace
+        from review_routing.contracts import ReviewPurpose
+
+        valid = self.prior_gate_evidence()
+        checkpoint_result = replace(
+            valid.prior_gate_result,
+            purpose=ReviewPurpose.CHECKPOINT,
+        )
+        empty_result = replace(
+            valid.prior_gate_result,
+            required_reviewers=frozenset(),
+            validated_reviewers=frozenset(),
+        )
+
+        def with_result(result):
+            receipt = replace(
+                valid.publication_receipt,
+                gate_result_digest=result.gate_result_digest,
+                idempotency_key=result.idempotency_key,
+            )
+            return replace(
+                valid,
+                prior_gate_result=result,
+                publication_receipt=receipt,
+            )
+
+        cases = {
+            "repository": replace(valid, repository="other/repository"),
+            "pull_request": replace(valid, pull_request_number=self.pr + 1),
+            "current_head": replace(valid, current_head_sha="e" * 40),
+            "publisher": replace(valid, source_app_slug="foreign-publisher"),
+            "receipt_publisher": replace(
+                valid,
+                publication_receipt=replace(
+                    valid.publication_receipt,
+                    publisher_app_slug="foreign-publisher",
+                ),
+            ),
+            "publication": replace(valid, source_reference="another_publication"),
+            "receipt_repository": replace(
+                valid,
+                publication_receipt=replace(
+                    valid.publication_receipt,
+                    repository="other/repository",
+                ),
+            ),
+            "receipt_pull_request": replace(
+                valid,
+                publication_receipt=replace(
+                    valid.publication_receipt,
+                    pull_request_number=self.pr + 1,
+                ),
+            ),
+            "receipt_head": replace(
+                valid,
+                publication_receipt=replace(
+                    valid.publication_receipt,
+                    head_sha="e" * 40,
+                ),
+            ),
+            "receipt_check": replace(
+                valid,
+                publication_receipt=replace(
+                    valid.publication_receipt,
+                    check_name="foreign/check",
+                ),
+            ),
+            "receipt_digest": replace(
+                valid,
+                publication_receipt=replace(
+                    valid.publication_receipt,
+                    gate_result_digest="sha256:" + "0" * 64,
+                ),
+            ),
+            "receipt_idempotency": replace(
+                valid,
+                publication_receipt=replace(
+                    valid.publication_receipt,
+                    idempotency_key="sha256:" + "0" * 64,
+                ),
+            ),
+            "time_order": replace(
+                valid,
+                observed_at=valid.publication_receipt.published_at - timedelta(seconds=1),
+            ),
+            "expired": replace(
+                valid,
+                observed_at=NOW - timedelta(minutes=2),
+                valid_until=NOW,
+            ),
+            "prior_failure": replace(
+                valid,
+                prior_gate_result=replace(
+                    valid.prior_gate_result,
+                    conclusion="failure",
+                    reasons=("prior_gate_failed",),
+                ),
+            ),
+            "prior_checkpoint": with_result(checkpoint_result),
+            "prior_empty_reviewers": with_result(empty_result),
+        }
+        for name, evidence in cases.items():
+            with self.subTest(name=name):
+                result = self.validate(
+                    context=self.correction_context(evidence),
+                    snapshot=self.snapshot(),
+                )
+                self.assertIn("correction_prior_gate_invalid", result.reasons)
+
+    def test_successful_gate_contract_rejects_reviewer_mismatch_reasons_and_threads(self):
+        from dataclasses import replace
+        from review_routing.contracts import Reviewer
+
+        result = self.validate()
+        invalid_successes = (
+            {
+                "required_reviewers": frozenset({Reviewer.COPILOT, Reviewer.QA}),
+            },
+            {"reasons": ("unexpected_reason",)},
+            {"unresolved_thread_count": 1},
+        )
+        for changes in invalid_successes:
+            with self.subTest(changes=changes):
+                with self.assertRaises(ValueError):
+                    replace(result, **changes)
+
+    def test_gate_result_digest_binds_every_published_decision_dimension(self):
+        from dataclasses import replace
+        from review_routing.contracts import Reviewer, ReviewPurpose
+
+        result = self.validate()
+        mutations = (
+            replace(result, purpose=ReviewPurpose.CORRECTION),
+            replace(
+                result,
+                required_reviewers=frozenset({Reviewer.COPILOT, Reviewer.QA}),
+                validated_reviewers=frozenset({Reviewer.COPILOT, Reviewer.QA}),
+            ),
+            replace(
+                result,
+                conclusion="failure",
+                reasons=("changed_reason",),
+            ),
+            replace(result, policy_digest="sha256:" + "1" * 64),
+            replace(result, runtime_digest="sha256:" + "2" * 64),
+            replace(result, diff_digest="sha256:" + "3" * 64),
+            replace(result, evidence_digest="sha256:" + "4" * 64),
+        )
+        for mutation in mutations:
+            with self.subTest(mutation=mutation):
+                self.assertNotEqual(result.gate_result_digest, mutation.gate_result_digest)
+                self.assertNotEqual(result.idempotency_key, mutation.idempotency_key)
 
     def test_task_six_contracts_reject_boolean_integer_lookalikes_and_duplicates(self):
         from dataclasses import replace

@@ -191,6 +191,7 @@ class ReviewState(str, Enum):
     COMMENTED = "COMMENTED"
     APPROVED = "APPROVED"
     CHANGES_REQUESTED = "CHANGES_REQUESTED"
+    DISMISSED = "DISMISSED"
     PENDING = "PENDING"
     ERROR = "ERROR"
 
@@ -1530,6 +1531,7 @@ class BoundEvidenceSource:
 @dataclass(frozen=True)
 class ReviewRecord:
     reviewer: Reviewer
+    event_id: str
     actor_login: str
     app_slug: str
     state: ReviewState
@@ -1541,6 +1543,7 @@ class ReviewRecord:
     def __post_init__(self) -> None:
         if not isinstance(self.reviewer, Reviewer):
             raise ValueError("reviewer must be a Reviewer")
+        _require_code(self.event_id, "event_id")
         for field_name in ("actor_login", "app_slug"):
             value = getattr(self, field_name)
             if not isinstance(value, str) or not value or "\x00" in value:
@@ -1693,6 +1696,7 @@ class GateSnapshot:
             review_keys = tuple(
                 (
                     review.reviewer,
+                    review.event_id,
                     review.actor_login,
                     review.app_slug,
                     review.state,
@@ -1703,6 +1707,11 @@ class GateSnapshot:
             )
             if len(review_keys) != len(set(review_keys)):
                 raise ValueError(f"{field_name} must not contain duplicate records")
+        event_ids = tuple(
+            review.event_id for review in (*self.review_requests, *self.reviews)
+        )
+        if len(event_ids) != len(set(event_ids)):
+            raise ValueError("review event identifiers must be unique across all collections")
         coverage_keys = tuple(
             (
                 coverage.path,
@@ -1741,6 +1750,7 @@ class GateSnapshot:
                         getattr(self, field_name),
                         key=lambda value: (
                             value.reviewer.value,
+                            value.event_id,
                             value.commit_sha,
                             value.submitted_at,
                             value.actor_login,
@@ -1817,6 +1827,7 @@ class GateSnapshot:
                     "actor_login": review.actor_login,
                     "app_slug": review.app_slug,
                     "commit_sha": review.commit_sha,
+                    "event_id": review.event_id,
                     "findings_count": review.findings_count,
                     "reviewer": review.reviewer.value,
                     "source": source_document(review.source),
@@ -1830,6 +1841,7 @@ class GateSnapshot:
                     "actor_login": review.actor_login,
                     "app_slug": review.app_slug,
                     "commit_sha": review.commit_sha,
+                    "event_id": review.event_id,
                     "findings_count": review.findings_count,
                     "reviewer": review.reviewer.value,
                     "source": source_document(review.source),
@@ -1923,6 +1935,7 @@ class GateEvaluationContext:
     fresh_probe: ProbeReport
     reviewer_availability: ReviewerAvailabilitySnapshot
     evaluated_at: datetime
+    prior_gate_evidence: PriorGateEvidence | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.preliminary_plan, PreliminaryRoutePlan):
@@ -1935,6 +1948,11 @@ class GateEvaluationContext:
             raise ValueError("fresh_probe must be a ProbeReport")
         if not isinstance(self.reviewer_availability, ReviewerAvailabilitySnapshot):
             raise ValueError("reviewer_availability must be a ReviewerAvailabilitySnapshot")
+        if self.prior_gate_evidence is not None and not isinstance(
+            self.prior_gate_evidence,
+            PriorGateEvidence,
+        ):
+            raise ValueError("prior_gate_evidence must be PriorGateEvidence or absent")
         _iso_z(self.evaluated_at)
 
 
@@ -1944,6 +1962,7 @@ class GateResult:
     conclusion: str
     repository: str
     pull_request_number: int
+    purpose: ReviewPurpose
     base_ref: str
     base_sha: str
     head_sha: str
@@ -1973,6 +1992,8 @@ class GateResult:
             or self.pull_request_number <= 0
         ):
             raise ValueError("pull_request_number must be a positive integer")
+        if not isinstance(self.purpose, ReviewPurpose):
+            raise ValueError("purpose must be a ReviewPurpose")
         _require_non_empty(self.base_ref, "base_ref")
         for field_name in ("base_sha", "head_sha"):
             require_full_sha(getattr(self, field_name), field_name)
@@ -2013,14 +2034,41 @@ class GateResult:
             raise ValueError("failed gate result must name at least one sanitized reason")
 
     @property
-    def idempotency_key(self) -> str:
+    def gate_result_digest(self) -> str:
         document = {
+            "base_ref": self.base_ref,
+            "base_sha": self.base_sha,
+            "check_name": self.check_name,
+            "conclusion": self.conclusion,
+            "diff_digest": self.diff_digest,
             "evidence_digest": self.evidence_digest,
             "head_sha": self.head_sha,
+            "observed_at": _iso_z(self.observed_at),
             "policy_digest": self.policy_digest,
+            "policy_source_path": self.policy_source_path,
+            "policy_source_ref": self.policy_source_ref,
+            "pr_state_source": self.pr_state_source.value,
+            "pull_request_number": self.pull_request_number,
+            "purpose": self.purpose.value,
+            "reasons": list(self.reasons),
+            "repository": self.repository,
+            "required_reviewers": sorted(value.value for value in self.required_reviewers),
+            "runtime_digest": self.runtime_digest,
+            "runtime_trust": self.runtime_trust.value,
+            "unresolved_thread_count": self.unresolved_thread_count,
+            "validated_reviewers": sorted(value.value for value in self.validated_reviewers),
+        }
+        canonical = json.dumps(document, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    @property
+    def idempotency_key(self) -> str:
+        document = {
+            "check_name": self.check_name,
+            "gate_result_digest": self.gate_result_digest,
+            "head_sha": self.head_sha,
             "pull_request_number": self.pull_request_number,
             "repository": self.repository,
-            "runtime_digest": self.runtime_digest,
         }
         canonical = json.dumps(document, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
@@ -2034,6 +2082,7 @@ class PublicationReceipt:
     check_name: str
     publisher_app_slug: str
     publication_id: str
+    gate_result_digest: str
     idempotency_key: str
     published_at: datetime
     head_revalidated_at: datetime
@@ -2049,6 +2098,7 @@ class PublicationReceipt:
         require_full_sha(self.head_sha, "head_sha")
         for field_name in ("check_name", "publisher_app_slug", "publication_id"):
             _require_non_empty(getattr(self, field_name), field_name)
+        _require_digest(self.gate_result_digest, "gate_result_digest")
         _require_digest(self.idempotency_key, "idempotency_key")
         _iso_z(self.published_at)
         _iso_z(self.head_revalidated_at)
@@ -2057,6 +2107,44 @@ class PublicationReceipt:
             or (self.published_at - self.head_revalidated_at).total_seconds() > 30
         ):
             raise ValueError("head must be revalidated immediately before publication")
+
+
+@dataclass(frozen=True)
+class PriorGateEvidence:
+    """Programmatic-only Beleg eines unmittelbar vorausgehenden publizierten Gate-Ergebnisses."""
+
+    schema_version: int
+    repository: str
+    pull_request_number: int
+    current_head_sha: str
+    prior_gate_result: GateResult
+    publication_receipt: PublicationReceipt
+    source_app_slug: str
+    source_reference: str
+    observed_at: datetime
+    valid_until: datetime
+
+    def __post_init__(self) -> None:
+        if self.schema_version != 1 or isinstance(self.schema_version, bool):
+            raise ValueError("schema_version must be 1")
+        require_repository(self.repository)
+        if (
+            isinstance(self.pull_request_number, bool)
+            or not isinstance(self.pull_request_number, int)
+            or self.pull_request_number <= 0
+        ):
+            raise ValueError("pull_request_number must be a positive integer")
+        require_full_sha(self.current_head_sha, "current_head_sha")
+        if not isinstance(self.prior_gate_result, GateResult):
+            raise ValueError("prior_gate_result must be a GateResult")
+        if not isinstance(self.publication_receipt, PublicationReceipt):
+            raise ValueError("publication_receipt must be a PublicationReceipt")
+        for field_name in ("source_app_slug", "source_reference"):
+            _require_non_empty(getattr(self, field_name), field_name)
+        _iso_z(self.observed_at)
+        _iso_z(self.valid_until)
+        if self.valid_until <= self.observed_at:
+            raise ValueError("valid_until must be after observed_at")
 
 
 @dataclass(frozen=True)
@@ -2294,6 +2382,17 @@ class ReviewerAvailabilityPort(ABC):
         """Lädt die programmatic-only QA-/SEC-Verfügbarkeit für den Exact-Head-Kontext."""
 
 
+class PriorGateEvidencePort(ABC):
+    @abstractmethod
+    def load_immediate(
+        self,
+        repository: str,
+        pull_request_number: int,
+        current_head_sha: str,
+    ) -> PriorGateEvidence | None:
+        """Lädt ausschließlich das unmittelbar vorausgehende publizierte Gate aus dem Ledger."""
+
+
 class EvidenceValidatorPort(ABC):
     @abstractmethod
     def validate(
@@ -2324,6 +2423,7 @@ class CliDependencies:
     probe: ProbePort | None = None
     pull_request_state: PullRequestStatePort | None = None
     reviewer_availability: ReviewerAvailabilityPort | None = None
+    prior_gate_evidence: PriorGateEvidencePort | None = None
     config: ConfigPort | None = None
     policy_source: PolicySourcePort | None = None
     diff_source: DiffSourcePort | None = None
@@ -2336,6 +2436,7 @@ class CliDependencies:
             "probe": ProbePort,
             "pull_request_state": PullRequestStatePort,
             "reviewer_availability": ReviewerAvailabilityPort,
+            "prior_gate_evidence": PriorGateEvidencePort,
             "config": ConfigPort,
             "policy_source": PolicySourcePort,
             "diff_source": DiffSourcePort,

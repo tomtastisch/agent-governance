@@ -364,14 +364,30 @@ Für beide Tabellen gilt als überlagernde Invariante:
 
 ### 5.3 Korrekturrunde
 
-Die erforderliche Reviewer-Menge des vorausgehenden gültigen Reviews wird auf dem neuen Exact
-Head erneut benötigt. Der Reviewumfang bleibt auf Korrekturdiff und direkte Auswirkungen begrenzt.
+Die erforderliche Reviewer-Menge darf ausschließlich aus einem autoritativ publizierten,
+unmittelbar vorausgehenden erfolgreichen Gate stammen. Beliebige ältere `ReviewRecord`-Zeilen,
+Kommentare oder caller-gelieferte Dateien sind keine Prior-Gate-Autorität. Ein
+`PriorGateEvidencePort` liefert den Beleg ausschließlich programmatisch über `CliDependencies`;
+es gibt dafür keine CLI-Option, Umgebungsvariable oder Dateiquelle.
+
+Ohne Port oder Ergebnis bleibt die Korrekturrunde mit
+`correction_prior_gate_unavailable` fail-closed. Eine positive Verwendung verlangt unter anderem
+exakte Repository-/PR-/Current-Head-, Publisher-/Publication-, Gate-Result-Digest-,
+Idempotenz- und Zeitbindung, ein erfolgreiches Prior-Gate mit Purpose ungleich `checkpoint`,
+eine nichtleere identische Required-/Validated-Reviewer-Menge sowie null Reasons und null
+ungelöste Threads.
 
 - War Copilot erforderlich und ist weiter nutzbar, bleibt Copilot erforderlich.
 - Ist Copilot nun nicht nutzbar, ersetzt QA den Copilot-Anteil.
 - Bereits risikobedingt erforderliche QA-/SEC-Anteile bleiben erhalten.
 - Kein Copilot-Retry bei `copilot_usable = false`.
 - Ein Review des alten Heads wird nie übernommen.
+
+Bis Issue #3 ein autoritatives Publisher-Ledger samt unmittelbarer Latest-/Ancestry-Auswahl
+bereitstellt, bleibt der produktive Positivpfad deaktiviert. Nur Tests dürfen einen vollständig
+gebundenen synthetischen Fake-Port injizieren. Die allgemeine Findings-Correction ist damit noch
+nicht fachlich gelöst: Ein zuvor fehlgeschlagenes Gate erfüllt gerade nicht die verbindliche
+`prior conclusion = success`-Regel.
 
 ## 6. QA-Kosten
 
@@ -411,6 +427,12 @@ Gültige Merge-Evidenz setzt voraus:
 - null ungelöste Review-Threads;
 - die laut Route erforderliche Reviewer-Menge ist vollständig;
 - Folge-Reviews ersetzen ältere Freigaben nur für den neuen Head.
+- jedes Review-/Request-Ereignis besitzt eine über beide Collections eindeutige `event_id`;
+- pro Reviewer und Exact Head entscheidet ausschließlich das neueste autoritative Ereignis;
+- bei unterschiedlichen neuesten Ereignissen mit identischem Zeitpunkt bleibt das Gate rot;
+- für Review, Request und Check gilt
+  `event_at <= source.observed_at <= snapshot.observed_at <= evaluated_at < source.valid_until`
+  sowie `evaluated_at < snapshot.valid_until`.
 
 Lokale Tests sind Diagnose- und Entwicklungsevidenz, aber nach aktuellem Kern keine
 CI-/Merge-Evidenz.
@@ -426,7 +448,7 @@ Governance-Vertrag nur, wenn ein deterministischer Validator mindestens belegt:
 - Review wurde nach dem betreffenden Push abgeschlossen;
 - kein Fehler-/Nicht-prüfbar-Ergebnis;
 - kein ungelöstes Copilot-Finding;
-- keine neuere Copilot-Anforderung ohne abgeschlossenes Review.
+- das neueste Copilot-Ereignis ist ein abgeschlossenes gültiges Review;
 - Reviewmodus `full` statt `degraded`/`unknown`;
 - vollständige Zuordnung aller Diff-Dateien zu `reviewed`, `excluded` oder `unverified`;
 - keine Datei in `excluded` oder `unverified`, sofern die Route nicht zusätzlich QA verlangt;
@@ -436,6 +458,13 @@ Governance-Vertrag nur, wenn ein deterministischer Validator mindestens belegt:
 Der Validator bezeichnet dies als `valid_review_evidence`, nie als GitHub-`APPROVED`.
 Serverseitige Erzwingung als Required Check ist Abhängigkeit von Issue #3 und nicht durch ein
 lokales positives Ergebnis ersetzt.
+
+Die Latest-Event-Regel gilt identisch für Copilot, QA und SEC: Erst werden alle autoritativ
+kontextgebundenen Review- und Request-Ereignisse desselben Reviewers und Exact Heads gesammelt,
+dann wird das eindeutig neueste Ereignis bestimmt und erst danach Actor, App, State und
+Findingszahl geprüft. Ein neueres `ERROR`, `PENDING`, `CHANGES_REQUESTED` oder `DISMISSED`
+entwertet ein älteres positives Review. Die Eingabereihenfolge darf weder Ergebnis noch
+Evidenzdigest ändern.
 
 GitHub schließt bestimmte Dateitypen von Copilot Code Review aus und kann bei nicht verfügbaren
 Actions-Fähigkeiten degradiert prüfen. `COMMENTED + Exact Head + null Findings` beweist deshalb
@@ -532,6 +561,7 @@ GateEvaluationContext:
   probe_request: ProbeRequest
   fresh_probe: ProbeReport
   reviewer_availability: ReviewerAvailabilitySnapshot
+  prior_gate_evidence: PriorGateEvidence | None
   evaluated_at: datetime
 ```
 
@@ -541,6 +571,9 @@ Request-Digest, PR, Principal, Modus und `observed_at <= evaluated_at < valid_un
 es die programmatic-only `reviewer_availability` genau einmal für Repository/PR/Head/Purpose.
 Fremde oder stale Probe-/Availability-Evidenz erzeugt ein rotes Gate. Der in Task 5
 serialisierte `probe_request_digest` allein ist nicht rekonstruierbar und keine Autorität.
+Nur für `correction` lädt die Composition Root zusätzlich
+`PriorGateEvidencePort.load_immediate(repository, pull_request_number, current_head_sha)`.
+Fehlender Port oder `None` wird nicht aus Reviewzeilen rekonstruiert.
 
 Der formale Validator-Vertrag lautet:
 
@@ -577,6 +610,7 @@ check_name = agent-governance/review-gate
 conclusion = success | failure
 repository
 pull_request_number
+purpose
 base_sha
 head_sha
 base_ref
@@ -593,11 +627,18 @@ validated_reviewers
 unresolved_thread_count
 reasons
 observed_at
+gate_result_digest
+idempotency_key
 ```
 
 Nur `success` ist positiv; `neutral`, `skipped`, `cancelled`, fehlend und unbekannt werden nicht
 erzeugt beziehungsweise fail-closed als `failure` abgebildet. `policy_digest` bindet das Ergebnis
-an die konkrete TOML-Policy, `evidence_digest` an den kanonisch serialisierten Snapshot.
+an die konkrete TOML-Policy, `evidence_digest` an den kanonisch serialisierten Snapshot. Der
+`gate_result_digest` bindet den vollständigen kanonischen Ergebnisvertrag: Checkname, Conclusion,
+Repository/PR/Purpose, Base-Ref/Base-/Head-SHA/PR-State-Quelle, Policy-/Runtime-/Diff-/
+Evidence-Digests, sortierte Required-/Validated-Reviewer, Threadzahl, Reasons und `observed_at`.
+Der `idempotency_key` bindet mindestens Repository, PR, Head-SHA, Checkname und
+`gate_result_digest`.
 
 `RoutingConfig.policy_digest` ist der SHA-256-Digest der kanonisch serialisierten, vollständig
 validierten Policy. Für gate-fähige Routen lädt ein `PolicySourcePort` diese Policy read-only mit
@@ -638,9 +679,8 @@ publish(result: GateResult) -> PublicationReceipt
 ```
 
 `PublicationReceipt` enthält Repository, PR, Head-SHA, Checkname, Publisher-App-Slug,
-Publication-ID, Idempotenzschlüssel und Veröffentlichungszeit. Der Idempotenzschlüssel ist der
-SHA-256-Digest aus Repository, PR, Head-SHA, `runtime_digest`, `policy_digest` und
-`evidence_digest`. Vor jedem
+Publication-ID, `gate_result_digest`, Idempotenzschlüssel, `published_at` und
+`head_revalidated_at`. Vor jedem
 Schreibvorgang muss der spätere Publisher den aktuellen PR-Head erneut read-only abfragen und
 bei Abweichung ohne Veröffentlichung abbrechen. Als vertrauenswürdige Publisher-Quelle ist eine
 dedizierte, in der Policy festgelegte GitHub-App vorgesehen; ein lokaler Benutzer-Token oder
@@ -650,6 +690,23 @@ Dieser PR definiert Port und Receipt, besitzt aber bewusst keine schreibende Imp
 Issue #3 verantwortet GitHub-App, Installation, Required-Check-Regel und Publication-Receipt-
 Persistenz. Das lokale Ergebnis wird niemals als bereits veröffentlichter Required Check
 bezeichnet.
+
+Für spätere Korrekturrunden bindet `PriorGateEvidence` Schema, Repository/PR/aktuellen Head,
+vollständigen vorausgehenden `GateResult`, `PublicationReceipt`, Source-App/Reference sowie
+`observed_at`/`valid_until`. Die Zeitkette lautet zwingend:
+
+```text
+prior_result.observed_at
+<= receipt.head_revalidated_at
+<= receipt.published_at
+<= prior_evidence.observed_at
+<= current_evaluated_at
+< prior_evidence.valid_until
+```
+
+Der `PriorGateEvidencePort` ist in diesem read-only Lieferumfang nur ein injizierbarer
+Programmvertrag. Es existiert weder eine Provider- noch eine Writer-Factory; produktive positive
+Korrektur bleibt bis Issue #3 deaktiviert.
 
 ## 8. Read-only GitHub-Adapter
 

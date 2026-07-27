@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Mapping
 
 from review_routing.contracts import (
@@ -37,13 +38,23 @@ _COPILOT_LOGIN = "copilot-pull-request-reviewer[bot]"
 def _source_valid(
     source: BoundEvidenceSource,
     context: GateEvaluationContext,
+    evidence: GateSnapshot,
+    event_at: datetime | None = None,
 ) -> bool:
     state = context.current_pr_state
-    return source.is_valid_for(
-        state.repository,
-        state.pull_request_number,
-        state.head_sha,
-        context.evaluated_at,
+    return (
+        source.is_valid_for(
+            state.repository,
+            state.pull_request_number,
+            state.head_sha,
+            context.evaluated_at,
+        )
+        and source.observed_at <= evidence.observed_at
+        and evidence.observed_at <= context.evaluated_at < evidence.valid_until
+        and (
+            event_at is None
+            or event_at <= source.observed_at
+        )
     )
 
 
@@ -168,11 +179,11 @@ def _snapshot_reasons(
     if not evidence.observed_at <= context.evaluated_at < evidence.valid_until:
         reasons.add("evidence_stale")
     for review in (*evidence.review_requests, *evidence.reviews):
-        if review.submitted_at > context.evaluated_at:
-            reasons.add("future_review_timestamp")
+        if not _source_valid(review.source, context, evidence, review.submitted_at):
+            reasons.add("review_event_source_invalid")
     for check in evidence.check_runs:
-        if check.completed_at > context.evaluated_at:
-            reasons.add("future_check_timestamp")
+        if not _source_valid(check.source, context, evidence, check.completed_at):
+            reasons.add("check_event_source_invalid")
     return reasons
 
 
@@ -194,7 +205,7 @@ def _copilot_coverage_complete(
         set(actual) == expected
         and all(
             item.coverage is CoverageStatus.REVIEWED
-            and _source_valid(item.coverage_source, context)
+            and _source_valid(item.coverage_source, context, evidence)
             for item in actual.values()
         )
     )
@@ -204,7 +215,7 @@ def _review_mode(
     context: GateEvaluationContext,
     evidence: GateSnapshot,
 ) -> str:
-    if not _source_valid(evidence.review_mode_source, context):
+    if not _source_valid(evidence.review_mode_source, context, evidence):
         return CopilotReviewMode.UNKNOWN.value
     return evidence.copilot_review_mode.value
 
@@ -217,44 +228,55 @@ def _validated_reviewers(
     state = context.current_pr_state
     valid: set[Reviewer] = set()
     reasons: set[str] = set()
-    valid_copilot_reviews = []
-    for review in evidence.reviews:
-        if (
-            review.commit_sha != state.head_sha
-            or not _source_valid(review.source, context)
-            or not review.source.observed_at
-            <= review.submitted_at
-            < review.source.valid_until
-            or review.submitted_at > context.evaluated_at
-            or review.findings_count != 0
-        ):
+    events = (
+        *((review, False) for review in evidence.review_requests),
+        *((review, True) for review in evidence.reviews),
+    )
+    for reviewer in required:
+        current_events = [
+            (review, is_review)
+            for review, is_review in events
+            if review.reviewer is reviewer
+            and review.commit_sha == state.head_sha
+            and _source_valid(
+                review.source,
+                context,
+                evidence,
+                review.submitted_at,
+            )
+        ]
+        if not current_events:
             continue
-        if review.reviewer is Reviewer.COPILOT:
+        latest_at = max(review.submitted_at for review, _ in current_events)
+        latest = [
+            (review, is_review)
+            for review, is_review in current_events
+            if review.submitted_at == latest_at
+        ]
+        if len(latest) != 1:
+            reasons.add(f"ambiguous_latest_event:{reviewer.value}")
+            continue
+        review, is_review = latest[0]
+        if not is_review or review.findings_count != 0:
+            reasons.add(f"latest_reviewer_state_invalid:{reviewer.value}")
+            continue
+        if reviewer is Reviewer.COPILOT:
             if (
                 review.actor_login == _COPILOT_LOGIN
                 and review.app_slug == _COPILOT_APP
                 and review.state is ReviewState.COMMENTED
                 and review.source.kind is BoundEvidenceSourceKind.GITHUB_API
             ):
-                valid_copilot_reviews.append(review)
-        elif review.reviewer in {Reviewer.QA, Reviewer.SEC}:
-            if (
-                review.state is ReviewState.APPROVED
-                and review.source.kind is BoundEvidenceSourceKind.HARNESS_RUNTIME
-            ):
-                valid.add(review.reviewer)
-    if valid_copilot_reviews:
-        latest = max(valid_copilot_reviews, key=lambda review: review.submitted_at)
-        newer_incomplete = any(
-            request.reviewer is Reviewer.COPILOT
-            and request.submitted_at > latest.submitted_at
-            and request.state in {ReviewState.PENDING, ReviewState.ERROR}
-            for request in evidence.review_requests
-        )
-        if not newer_incomplete:
-            valid.add(Reviewer.COPILOT)
+                valid.add(reviewer)
+            else:
+                reasons.add("latest_reviewer_state_invalid:copilot")
+        elif (
+            review.state is ReviewState.APPROVED
+            and review.source.kind is BoundEvidenceSourceKind.HARNESS_RUNTIME
+        ):
+            valid.add(reviewer)
         else:
-            reasons.add("newer_copilot_request_incomplete")
+            reasons.add(f"latest_reviewer_state_invalid:{reviewer.value}")
     for reviewer in required - valid:
         reasons.add(f"missing_reviewer:{reviewer.value}")
     return frozenset(valid & set(required)), reasons
@@ -277,9 +299,7 @@ def _checks_reasons(
             and check.source_app_slug == required.source_app_slug
             and check.head_sha == state.head_sha
             and check.source.kind is BoundEvidenceSourceKind.GITHUB_API
-            and _source_valid(check.source, context)
-            and check.source.observed_at <= check.completed_at < check.source.valid_until
-            and check.completed_at <= context.evaluated_at
+            and _source_valid(check.source, context, evidence, check.completed_at)
         ]
         if not matching:
             reasons.add(f"missing_check:{required.name}")
@@ -304,7 +324,7 @@ def _coverage_reasons(
             _diff_key(item) == key
             and item.reviewer in required_reviewers
             and item.coverage is CoverageStatus.REVIEWED
-            and _source_valid(item.coverage_source, context)
+            and _source_valid(item.coverage_source, context, evidence)
             for item in evidence.review_file_coverage
         )
         if required_reviewers and not covered:
@@ -314,16 +334,54 @@ def _coverage_reasons(
 
 def _prior_reviewers(
     context: GateEvaluationContext,
-    evidence: GateSnapshot,
-) -> frozenset[Reviewer]:
+    config: RoutingConfig,
+) -> tuple[frozenset[Reviewer], set[str]]:
     if context.preliminary_plan.purpose.value != "correction":
-        return frozenset()
-    return frozenset(
-        review.reviewer
-        for review in evidence.reviews
-        if review.commit_sha != context.current_pr_state.head_sha
-        and review.state in {ReviewState.COMMENTED, ReviewState.APPROVED}
+        return frozenset(), set()
+    prior = context.prior_gate_evidence
+    if prior is None:
+        return (
+            frozenset({Reviewer.COPILOT, Reviewer.QA, Reviewer.SEC}),
+            {"correction_prior_gate_unavailable"},
+        )
+    result = prior.prior_gate_result
+    receipt = prior.publication_receipt
+    state = context.current_pr_state
+    valid = (
+        prior.repository == state.repository
+        and prior.pull_request_number == state.pull_request_number
+        and prior.current_head_sha == state.head_sha
+        and prior.source_app_slug == config.publisher.expected_app_slug
+        and receipt.publisher_app_slug == config.publisher.expected_app_slug
+        and prior.source_reference == receipt.publication_id
+        and result.repository == state.repository
+        and result.pull_request_number == state.pull_request_number
+        and result.head_sha != state.head_sha
+        and result.conclusion == "success"
+        and result.purpose.value != "checkpoint"
+        and bool(result.required_reviewers)
+        and result.required_reviewers == result.validated_reviewers
+        and not result.reasons
+        and result.unresolved_thread_count == 0
+        and receipt.repository == result.repository
+        and receipt.pull_request_number == result.pull_request_number
+        and receipt.head_sha == result.head_sha
+        and receipt.check_name == result.check_name
+        and receipt.gate_result_digest == result.gate_result_digest
+        and receipt.idempotency_key == result.idempotency_key
+        and result.observed_at
+        <= receipt.head_revalidated_at
+        <= receipt.published_at
+        <= prior.observed_at
+        <= context.evaluated_at
+        < prior.valid_until
     )
+    if not valid:
+        return (
+            frozenset({Reviewer.COPILOT, Reviewer.QA, Reviewer.SEC}),
+            {"correction_prior_gate_invalid"},
+        )
+    return result.required_reviewers, set()
 
 
 def validate_exact_head(
@@ -362,10 +420,8 @@ def validate_exact_head(
         plan.purpose,
         now,
     )
-    prior_reviewers = _prior_reviewers(context, evidence)
-    if plan.purpose.value == "correction" and not prior_reviewers:
-        reasons.add("correction_prior_review_missing")
-        prior_reviewers = frozenset({Reviewer.QA, Reviewer.SEC})
+    prior_reviewers, prior_reasons = _prior_reviewers(context, trusted_config)
+    reasons.update(prior_reasons)
     request = ReviewRequest(
         repository=state.repository,
         base_sha=state.api_base_sha,
@@ -401,6 +457,7 @@ def validate_exact_head(
         conclusion=conclusion,
         repository=state.repository,
         pull_request_number=state.pull_request_number,
+        purpose=plan.purpose,
         base_ref=state.base_ref,
         base_sha=state.api_base_sha,
         head_sha=state.head_sha,

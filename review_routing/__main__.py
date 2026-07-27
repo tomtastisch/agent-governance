@@ -239,6 +239,7 @@ def _parse_review(value: object, label: str) -> ReviewRecord:
         value,
         {
             "reviewer",
+            "event_id",
             "actor_login",
             "app_slug",
             "state",
@@ -252,6 +253,7 @@ def _parse_review(value: object, label: str) -> ReviewRecord:
     try:
         return ReviewRecord(
             reviewer=Reviewer(value["reviewer"]),
+            event_id=value["event_id"],  # type: ignore[arg-type]
             actor_login=value["actor_login"],  # type: ignore[arg-type]
             app_slug=value["app_slug"],  # type: ignore[arg-type]
             state=ReviewState(value["state"]),
@@ -901,6 +903,7 @@ def _gate_result_payload(result: GateResult) -> dict[str, object]:
         "conclusion": result.conclusion,
         "repository": result.repository,
         "pull_request_number": result.pull_request_number,
+        "purpose": result.purpose.value,
         "base_ref": result.base_ref,
         "base_sha": result.base_sha,
         "head_sha": result.head_sha,
@@ -912,6 +915,8 @@ def _gate_result_payload(result: GateResult) -> dict[str, object]:
         "runtime_trust": result.runtime_trust.value,
         "diff_digest": result.diff_digest,
         "evidence_digest": result.evidence_digest,
+        "gate_result_digest": result.gate_result_digest,
+        "idempotency_key": result.idempotency_key,
         "required_reviewers": sorted(value.value for value in result.required_reviewers),
         "validated_reviewers": sorted(value.value for value in result.validated_reviewers),
         "unresolved_thread_count": result.unresolved_thread_count,
@@ -1034,6 +1039,16 @@ def _run_validate(
         fresh_probe=fresh_probe,
         reviewer_availability=availability,
         evaluated_at=evaluated_at,
+        prior_gate_evidence=(
+            dependencies.prior_gate_evidence.load_immediate(
+                state.repository,
+                state.pull_request_number,
+                state.head_sha,
+            )
+            if plan.purpose is ReviewPurpose.CORRECTION
+            and dependencies.prior_gate_evidence is not None
+            else None
+        ),
     )
     result = registry.resolve(EvidenceValidatorPort).validate(
         context,

@@ -41,6 +41,8 @@ from review_routing.contracts import (
     OperatorEvidenceTrustPort,
     PolicyDocument,
     PolicySourcePort,
+    PriorGateEvidence,
+    PriorGateEvidencePort,
     ProbePort,
     ProbeReport,
     ProbeRequest,
@@ -243,6 +245,21 @@ class FakeReviewerAvailability(ReviewerAvailabilityPort):
                 for reviewer, status in self.statuses.items()
             )
         )
+
+
+class FakePriorGateEvidence(PriorGateEvidencePort):
+    def __init__(self, evidence: PriorGateEvidence | None):
+        self.evidence = evidence
+        self.calls: list[tuple[str, int, str]] = []
+
+    def load_immediate(
+        self,
+        repository: str,
+        pull_request_number: int,
+        current_head_sha: str,
+    ) -> PriorGateEvidence | None:
+        self.calls.append((repository, pull_request_number, current_head_sha))
+        return self.evidence
 
 
 def principal(review_mode: str = "manual") -> BillingPrincipal:
@@ -678,6 +695,7 @@ class CliDependencyContractTest(unittest.TestCase):
             "diff_source",
             "clock",
             "reviewer_availability",
+            "prior_gate_evidence",
         )
 
         for field_name in fields:
@@ -1141,17 +1159,18 @@ class ValidateCliTest(unittest.TestCase):
                 "source_app_slug": "agent-governance-review-gate",
                 "head_sha": HEAD_SHA,
                 "conclusion": "success",
-                "completed_at": "2026-07-27T09:00:00Z",
+                "completed_at": "2026-07-27T08:58:30Z",
                 "source": github_source,
             }],
             "review_requests": [],
             "reviews": [{
                 "reviewer": "qa",
+                "event_id": "qa_review_1",
                 "actor_login": "qa-agent",
                 "app_slug": "codex-qa-agent",
                 "state": "APPROVED",
                 "commit_sha": HEAD_SHA,
-                "submitted_at": "2026-07-27T09:00:00Z",
+                "submitted_at": "2026-07-27T08:58:30Z",
                 "findings_count": 0,
                 "source": source,
             }],
@@ -1188,6 +1207,65 @@ class ValidateCliTest(unittest.TestCase):
             "--review-mode", "manual", "--requester", "tom",
             "--repo-path", str(ROOT), "--json",
         ]
+
+    @staticmethod
+    def _prior_evidence(route_payload: dict[str, object]) -> PriorGateEvidence:
+        from review_routing.contracts import (
+            GateResult,
+            PublicationReceipt,
+            PullRequestStateSource,
+            Reviewer,
+            ReviewPurpose,
+            RuntimeTrust,
+        )
+
+        result = GateResult(
+            check_name="agent-governance/review-gate",
+            conclusion="success",
+            repository=REPOSITORY,
+            pull_request_number=5,
+            purpose=ReviewPurpose.FINAL_EXACT_HEAD,
+            base_ref="main",
+            base_sha=BASE_SHA,
+            head_sha="d" * 40,
+            pr_state_source=PullRequestStateSource.GITHUB_API,
+            policy_source_ref=BASE_SHA,
+            policy_source_path="core/review-routing.toml",
+            policy_digest=route_payload["policy_digest"],  # type: ignore[arg-type]
+            runtime_digest=route_payload["runtime_digest"],  # type: ignore[arg-type]
+            runtime_trust=RuntimeTrust.INSTALLED,
+            diff_digest=route_payload["diff_digest"],  # type: ignore[arg-type]
+            evidence_digest="sha256:" + "e" * 64,
+            required_reviewers=frozenset({Reviewer.QA}),
+            validated_reviewers=frozenset({Reviewer.QA}),
+            unresolved_thread_count=0,
+            reasons=(),
+            observed_at=NOW - timedelta(minutes=10),
+        )
+        receipt = PublicationReceipt(
+            repository=REPOSITORY,
+            pull_request_number=5,
+            head_sha=result.head_sha,
+            check_name=result.check_name,
+            publisher_app_slug="agent-governance-review-gate",
+            publication_id="prior_check_1",
+            gate_result_digest=result.gate_result_digest,
+            idempotency_key=result.idempotency_key,
+            head_revalidated_at=NOW - timedelta(minutes=9),
+            published_at=NOW - timedelta(minutes=9) + timedelta(seconds=10),
+        )
+        return PriorGateEvidence(
+            schema_version=1,
+            repository=REPOSITORY,
+            pull_request_number=5,
+            current_head_sha=HEAD_SHA,
+            prior_gate_result=result,
+            publication_receipt=receipt,
+            source_app_slug="agent-governance-review-gate",
+            source_reference=receipt.publication_id,
+            observed_at=NOW - timedelta(minutes=8),
+            valid_until=NOW + timedelta(minutes=5),
+        )
 
     def test_validate_returns_success_only_for_complete_fresh_exact_head_evidence(self):
         with tempfile.TemporaryDirectory() as directory_value:
@@ -1264,6 +1342,52 @@ class ValidateCliTest(unittest.TestCase):
 
         self.assertEqual(code, 31)
         self.assertEqual(payload["error"], "invalid_input")
+
+    def test_correction_is_unavailable_without_prior_port_and_uses_only_injected_port(self):
+        from dataclasses import replace
+
+        with tempfile.TemporaryDirectory() as directory_value:
+            directory = Path(directory_value)
+            deps, route_file, evidence_file = self._route_and_evidence(directory)
+            route_payload = json.loads(route_file.read_text(encoding="utf-8"))
+            route_payload["purpose"] = "correction"
+            route_file.write_text(json.dumps(route_payload), encoding="utf-8")
+
+            code, payload, _, _ = invoke(
+                self._arguments(route_file, evidence_file),
+                deps,
+            )
+            self.assertEqual(code, 32)
+            self.assertIn("correction_prior_gate_unavailable", payload["reasons"])
+
+            prior_port = FakePriorGateEvidence(self._prior_evidence(route_payload))
+            injected = replace(deps, prior_gate_evidence=prior_port)
+            code, payload, _, _ = invoke(
+                self._arguments(route_file, evidence_file),
+                injected,
+            )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["conclusion"], "success")
+        self.assertEqual(prior_port.calls, [(REPOSITORY, 5, HEAD_SHA)])
+
+    def test_cli_exposes_no_prior_gate_file_or_trust_override(self):
+        for option in (
+            "--prior-gate-file",
+            "--prior-gate-trust",
+            "--prior-publication-id",
+        ):
+            with tempfile.TemporaryDirectory() as directory_value:
+                deps, route_file, evidence_file = self._route_and_evidence(
+                    Path(directory_value)
+                )
+                code, payload, _, stderr = invoke(
+                    [*self._arguments(route_file, evidence_file), option, "forged.json"],
+                    deps,
+                )
+            self.assertEqual(code, 31)
+            self.assertEqual(payload["error"], "invalid_input")
+            self.assertEqual(stderr, "")
 
 
 if __name__ == "__main__":

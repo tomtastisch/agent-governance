@@ -648,7 +648,8 @@ git commit -m "feat(governance): expose review routing CLI"
 **Interfaces:**
 - Produces contract records `ReviewRecord`, `ThreadRecord`, `CheckRecord`, `FileCoverage`,
   `GateSnapshot`, `PreliminaryRoutePlan`, `GateEvaluationContext`, `GateResult` and
-  `PublicationReceipt`.
+  `PublicationReceipt`. `ReviewRecord`/Request tragen eine über beide Collections eindeutige
+  `event_id`; pro Reviewer/Exact Head gewinnt nur das eindeutig neueste Ereignis.
 - `PreliminaryRoutePlan` dekodiert das vollständige Task-5-Schema. Nur Repository, PR, Purpose,
   Base-Ref, Base-/Head-/Merge-Base-SHAs, PR-State-Quelle, Risiko/Security sowie
   Policy-/Runtime-/Diff-Provenienz und -Digests sind Vergleichseingaben. Seine Usability,
@@ -658,7 +659,9 @@ git commit -m "feat(governance): expose review routing CLI"
   Repository, PR, Exact Head und Beobachtungszeit gebunden. Fehlende oder nicht belastbare
   Quellen ergeben `coverage=unverified` beziehungsweise `copilot_review_mode=unknown`, nie einen
   implizit positiven Wert. `GateSnapshot.valid_until` erzwingt gemeinsam mit `observed_at`
-  `observed_at <= evaluated_at < valid_until`.
+  `observed_at <= evaluated_at < valid_until`. Für Review, Request und Check gilt zusätzlich
+  `event_at <= source.observed_at <= snapshot.observed_at <= evaluated_at <
+  source.valid_until` sowie `evaluated_at < snapshot.valid_until`.
 - Produces:
   `GateEvaluationContext(
       preliminary_plan: PreliminaryRoutePlan,
@@ -666,8 +669,17 @@ git commit -m "feat(governance): expose review routing CLI"
       probe_request: ProbeRequest,
       fresh_probe: ProbeReport,
       reviewer_availability: ReviewerAvailabilitySnapshot,
+      prior_gate_evidence: PriorGateEvidence | None,
       evaluated_at: datetime,
   )`.
+- Produces `PriorGateEvidence`, dessen vollständiger Prior-`GateResult`, Receipt,
+  Source-App/Reference und Gültigkeitsfenster ausschließlich über
+  `PriorGateEvidencePort.load_immediate(repository, pull_request_number, current_head_sha)`
+  programmatisch injiziert werden. Reviewzeilen, Dateien, CLI-Flags und Umgebungsvariablen sind
+  keine Prior-Gate-Autorität.
+- `GateResult` carries `purpose`, the full canonical `gate_result_digest` and an
+  `idempotency_key` bound at least to repository/PR/head/check/digest.
+  `PublicationReceipt` also binds `gate_result_digest`.
 - Adds `EvidenceValidatorPort.validate(
       context: GateEvaluationContext,
       evidence: GateSnapshot,
@@ -694,6 +706,7 @@ git commit -m "feat(governance): expose review routing CLI"
       probe: ProbePort,
       pull_request_state: PullRequestStatePort,
       reviewer_availability: ReviewerAvailabilityPort,
+      prior_gate_evidence: PriorGateEvidencePort,
       config: ConfigPort,
       policy_source: PolicySourcePort,
       diff_source: DiffSourcePort,
@@ -750,6 +763,17 @@ Pflicht-Negativtests belegen zusätzlich:
 - ein `probe_request_digest` ohne die rekonstruierte `probe_request` genügt nie;
 - fremde, fehlende oder stale `coverage_source`/`review_mode_source` kann weder
   `coverage_complete=true` noch `copilot_review_mode=full` belegen.
+- Review-/Request-Ereignisse besitzen eindeutige `event_id`; Copilot, QA und SEC werten nur das
+  eindeutig neueste Ereignis aus. Neuere `ERROR`/`PENDING`/`CHANGES_REQUESTED`/`DISMISSED`
+  entwerten ein älteres Positiv; ein Gleichstand unterschiedlicher Latest Events bleibt rot und
+  die Eingabereihenfolge ändert weder Ergebnis noch Digest.
+- Correction verwendet keine alten/fremden/stale/findinghaltigen Reviewzeilen als Prior-Gate.
+  Fehlender Prior-Port/`None` ergibt `correction_prior_gate_unavailable`; fremde
+  Repository-/PR-/Current-Head-/Publisher-/Publication-/Digest-/Idempotenz-/Zeitbindung, Prior
+  Failure/Checkpoint, leere oder abweichende Reviewer, Reasons oder Threads werden abgelehnt.
+  Nur ein vollständig gebundener synthetischer Fake-Port ist positiv.
+- Der `gate_result_digest` reagiert auf Purpose, Reviewer, Reason, Policy, Runtime, Diff und
+  Evidence. CLI und Runtime besitzen weder Prior-Datei-/Trustflags noch Prior-/Publisher-Factory.
 
 - [ ] **Step 2: Run and confirm RED**
 
@@ -789,9 +813,30 @@ by the final route's reviewer set. The result includes repo, PR, base/head, trus
 policy source/path/digests, diff digest, evidence digest, reviewer sets and observation time.
 Define a
 `GatePublisherPort.publish(result: GateResult) -> PublicationReceipt` in contracts but provide no
-writer in this read-only PR. The receipt and port contract define the deterministic idempotency key
-over repository/PR/head/runtime/policy/evidence digests, the dedicated publisher app identity and
-mandatory read-only head revalidation immediately before a future write.
+writer in this read-only PR. The canonical `GateResult.gate_result_digest` binds check name,
+conclusion, repository/PR/purpose, base ref/base/head/PR-state source, policy/runtime/diff/evidence
+digests, sorted required/validated reviewers, thread count, reasons and observation time. Its
+idempotency key binds at least repository/PR/head/check/result digest. The receipt binds that exact
+result digest, the dedicated publisher app identity and mandatory read-only head revalidation
+immediately before a future write.
+
+For `correction`, accept the prior reviewer set only from `context.prior_gate_evidence`. Require
+exact repository/PR/current-head, publisher/publication, result/receipt digest and idempotency
+bindings, prior success with non-checkpoint purpose, non-empty `required == validated`, no reasons
+or threads, and:
+
+```text
+prior_result.observed_at
+<= receipt.head_revalidated_at
+<= receipt.published_at
+<= prior_evidence.observed_at
+<= current_evaluated_at
+< prior_evidence.valid_until
+```
+
+The production-positive path remains disabled until Issue #3 provides an authoritative publisher
+ledger with immediate latest/ancestry selection. General Findings-Correction remains unresolved
+because a previously failed gate cannot satisfy the required prior-conclusion-success rule.
 
 Wire the `validate` CLI command. It reloads PR state through `PullRequestStatePort`, executes the
 fresh bound probe and programmatic Reviewer-Availability flow above, then loads policy from the
