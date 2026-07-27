@@ -32,6 +32,7 @@ from review_routing.contracts import (
     GateResult,
     GateSnapshot,
     PreliminaryRoutePlan,
+    PolicyDocument,
     PolicySourcePort,
     ProbePort,
     ProbeReport,
@@ -61,6 +62,7 @@ from review_routing.registry import RuntimeRegistry
 
 
 POLICY_PATH = PurePosixPath("core/review-routing.toml")
+INTERACTION_POLICY_PATH = Path("core/interaction.toml")
 MAX_INPUT_BYTES = 1024 * 1024
 T = TypeVar("T")
 
@@ -129,6 +131,14 @@ def _parser() -> JsonArgumentParser:
     validate.add_argument("--capability-reference")
     validate.add_argument("--repo-path", required=True)
     validate.add_argument("--json", action="store_true", required=True)
+
+    output_policy = commands.add_parser(
+        "output-policy",
+        add_help=False,
+        allow_abbrev=False,
+    )
+    output_policy.add_argument("--config", default=str(INTERACTION_POLICY_PATH))
+    output_policy.add_argument("--json", action="store_true", required=True)
     return parser
 
 
@@ -1063,6 +1073,29 @@ def _run_validate(
     return 0 if result.conclusion == "success" else 32
 
 
+def _run_output_policy(
+    arguments: argparse.Namespace,
+    dependencies: CliDependencies,
+    registry: RuntimeRegistry,
+    stdout: TextIO,
+) -> int:
+    content = _read_bytes(arguments.config).decode("utf-8", errors="strict")
+    document = PolicyDocument(
+        content=content,
+        trust=DocumentTrust.DEVELOPMENT,
+        source=arguments.config,
+    )
+    config = _resolve(dependencies.config, registry, ConfigPort).parse_interaction(document)
+    _write_json(
+        stdout,
+        {
+            "schema_version": 1,
+            "intermediate_status": config.intermediate_status,
+        },
+    )
+    return 0
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
@@ -1081,6 +1114,8 @@ def main(
             return _run_route(arguments, injected, registry, output)
         if arguments.command == "validate":
             return _run_validate(arguments, injected, registry, output)
+        if arguments.command == "output-policy":
+            return _run_output_policy(arguments, injected, registry, output)
         raise CliInputError("unknown command")
     except Exception:
         return _invalid(output)

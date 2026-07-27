@@ -464,6 +464,78 @@ def invoke(
     return exit_code, json.loads(lines[0]), stdout.getvalue(), stderr.getvalue()
 
 
+class ReviewRoutingCliTest(unittest.TestCase):
+    """Der Ausgabepolicy-Befehl bleibt eine stille, fail-closed Lesegrenze."""
+
+    def test_output_policy(self):
+        """Fängt fehlende, ungültige und unsichere Interaktionskonfigurationen ab."""
+        valid_true = "schema_version = 1\n\n[output]\nintermediate_status = true\n"
+        malformed = "schema_version = 1\n\n[output]\nintermediate_status = \"false\"\n"
+        invalid = {"schema_version": 1, "error": "invalid_input"}
+
+        exit_code, payload, stdout, stderr = invoke(
+            ["output-policy", "--json"],
+            CliDependencies(),
+        )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            payload,
+            {"schema_version": 1, "intermediate_status": False},
+        )
+        self.assertEqual(
+            stdout,
+            '{"intermediate_status":false,"schema_version":1}\n',
+        )
+        self.assertEqual(stderr, "")
+
+        with tempfile.TemporaryDirectory() as directory:
+            config_path = Path(directory) / "interaction.toml"
+            config_path.write_text(valid_true, encoding="utf-8")
+            exit_code, payload, stdout, stderr = invoke(
+                ["output-policy", "--config", str(config_path), "--json"],
+                CliDependencies(),
+            )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(
+                payload,
+                {"schema_version": 1, "intermediate_status": True},
+            )
+            self.assertEqual(
+                stdout,
+                '{"intermediate_status":true,"schema_version":1}\n',
+            )
+            self.assertEqual(stderr, "")
+
+            cases = (
+                ("missing", config_path.parent / "missing.toml"),
+                ("malformed", config_path),
+                ("invalid_utf8", config_path),
+                ("too_large", config_path),
+            )
+            for name, path in cases:
+                with self.subTest(name=name):
+                    if name == "malformed":
+                        path.write_text(malformed, encoding="utf-8")
+                    elif name == "invalid_utf8":
+                        path.write_bytes(b"\xff")
+                    elif name == "too_large":
+                        path.write_bytes(b"x" * (1024 * 1024 + 1))
+                    exit_code, payload, stdout, stderr = invoke(
+                        ["output-policy", "--config", str(path), "--json"],
+                        CliDependencies(),
+                    )
+
+                    self.assertEqual(exit_code, 31)
+                    self.assertEqual(payload, invalid)
+                    self.assertEqual(
+                        stdout,
+                        '{"error":"invalid_input","schema_version":1}\n',
+                    )
+                    self.assertEqual(stderr, "")
+
+
 class ProbeCliTest(unittest.TestCase):
     """Probe gibt technische Zustände stabil und ohne Nebenkanal aus."""
 
