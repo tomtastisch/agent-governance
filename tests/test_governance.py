@@ -283,7 +283,6 @@ class ReleaseConsistency(unittest.TestCase):
 
     VERSION_REL = "VERSION"
     CHANGELOG_REL = "CHANGELOG.md"
-    LINK_REL = "https://github.com/tomtastisch/agent-governance/releases/tag"
 
     # SemVer 2.0.0: MAJOR.MINOR.PATCH[-prerelease][+build]
     SEMVER_RE = re.compile(
