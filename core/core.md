@@ -89,10 +89,13 @@ kein Ja-Sager.
 5. Checkpoint: je verifizierter Teilaufgabe atomar committen (§15); ist ein Cluster vollständig
    (alle Teilaufgaben verifiziert und einzeln auditiert, §3.7), das Cluster in den Haupt-PR-Branch
    liefern (Sub-PR oder Checkpoint-Push, §15; Dauerfreigabe §7), den ausgelösten CI-Lauf prüfen
-   (§13) und nach dessen Grün den gelieferten Exact Head durch einen unabhängigen QA-Agenten (§6)
-   prüfen lassen; den Schritt im Vorgang als erledigt vermerken (§15).
+   (§13) und nach dessen Grün die Checkpoint-Route für den gelieferten Exact Head nach
+   `core/review-routing.toml` bestimmen. Nur die dort und in §16 geforderten unabhängigen
+   Rollenagenten (§6) auslösen; ein kostenpflichtiger Copilot-Dispatch benötigt zusätzlich eine
+   explizite Einzelfreigabe (§7, §17). Den Schritt erst nach vollständiger Evidenz der bestimmten
+   Route im Vorgang als erledigt vermerken (§15).
    Der Stand muss jederzeit, auch nach Abbruch, recoverbar und am PR kontrollierbar sein. Diese
-   laufende Cluster-QA ersetzt nicht das Merge-Gate (§16).
+   Checkpoint-Evidenz ersetzt nicht das Merge-Gate (§16).
 6. Rückwirkung: weicht die Umsetzung vom Plan ab, alle Folgeaufgaben neu bewerten; Hypothesen mit
    Evidenz bestätigen, verwerfen oder ersetzen.
 7. Eskalation: nach zwei erfolglosen Korrekturrunden in Folge die Arbeitsintensität eine Stufe
@@ -140,7 +143,7 @@ Dauerfreigaben (stehende Ausnahmen von der Einzelfreigabepflicht in §17; abschl
 2. Commit und Push auf eigene, nach dem Branch-Schema (§15) benannte Arbeits-Branches.
 3. Anlage und Aktualisierung des einen Draft-Haupt-PR auf dem eigenen Arbeits-Branch (§15).
 4. Auslösen unabhängiger Rollenagenten (§6) auf den eigenen Stand — read-only, ohne Schreib-,
-   Push- oder Merge-Wirkung (z. B. laufende Cluster-QA nach §5.5).
+   Push- oder Merge-Wirkung (z. B. policygeforderte QA oder SEC nach §5.5 und §16).
 5. Abfrage von CI-Status und -Logs des eigenen Push (§13).
 6. Installation von Werkzeugen, die in `tools/tools.md` als Standard-Setup (erforderlich) gelistet
    sind, über den dort dokumentierten Weg (§19). Optional empfohlene Werkzeuge brauchen die
@@ -288,37 +291,54 @@ gesichert/wahrscheinlich/unklar (§2, §4) gilt trotzdem.
   den Haupt-PR-Branch) je fertiggestelltem Schritt (§5.5).
 
 ## 16. Review- & Merge-Gate (fail-closed)
-Dieses Gate regelt den Merge des Haupt-PRs nach main. Zwischen-Sub-PRs in den Haupt-PR-Branch
-unterliegen der laufenden Cluster-QA (§5.5), nicht diesem Gate; main-Tauglichkeit wird einmal am
-Haupt-PR erzwungen, nicht je Schritt.
+`core/review-routing.toml` ist die einzige normative Quelle für Routingmatrix, Risikoschwellen,
+Pfadmarker und erwartete Pflichtchecks; die Architekturentscheidung steht in
+`docs/decisions/0003-review-routing.md`. Dieses Gate regelt die unabhängige Reviewevidenz für
+Checkpoints, das finale Exact-Head-Review und Korrekturrunden sowie den Merge des Haupt-PRs nach
+main. Konkrete Matrixzellen werden in Prosa, Rollen und Adaptern nicht wiederholt.
+
 1. Review erst nach grüner CI, immer gebunden an den Exact-Head-Commit des PR. Ein Review eines
    älteren Heads ist keine Merge-Evidenz.
-2. Primärer Reviewer ist `[BINDING:review.primary]`. Ist er nicht verfügbar, wird der Zustand
-   fail-closed als `unavailable/unknown` dokumentiert. `quota_exhausted` nur bei expliziter
-   Provider- oder Operator-Evidenz; API-Schweigen oder ein fehlendes Review ist kein Quotennachweis.
-3. Kann der primäre Reviewer kein Exact-Head-Review liefern, ist ein unabhängiger QA-Agent (§6)
-   verpflichtend und der einzige zulässige Alternativpfad; er ersetzt den primären Reviewer
-   vollständig. Prüfumfang strikt änderungsbezogen: ausschließlich der Diff des PR plus das, was
-   zur Bewertung zwingend geprüft werden muss — direkte Aufrufer/Nutzer, berührte Verträge,
-   zugehörige Tests und Doku. Kein Voll-Audit des Repos; änderungsfremde Funde werden als Issue
-   erfasst (§18), nicht als Review-Finding. Folge-Reviews prüfen nur den neuen Korrekturdiff.
-   Die laufende, checkpointgebundene Cluster-QA (§5.5) ist von diesem Merge-Gate getrennt: sie prüft
-   frühzeitig je Push, ersetzt aber weder den primären Reviewer noch die finale Exact-Head-Freigabe.
-4. Jedes Finding wird als eigener ungelöster PR-Review-Thread angelegt. Findings nur im Chat oder
+2. Der read-only Probe ermittelt die Copilot-Verwendbarkeit evidenzgebunden; unbekannt oder nicht
+   belegbar ist nicht verwendbar. `quota_exhausted` gilt nur bei expliziter, verifizierter
+   Operator-Evidenz; API-Schweigen oder ein fehlendes Review ist kein Quotennachweis.
+3. Eine einzige Prosa-Invariante überlagert die maschinelle Matrix: Bei
+   `copilot_usable = false` wird Copilot nicht ausgelöst und QA ist verpflichtend; bei nutzbarem
+   Copilot kann `high` QA additiv verlangen; `critical` oder
+   `security_relevant = true` verlangt SEC. Unvollständige Dateiabdeckung oder ein degradierter
+   beziehungsweise unbekannter Reviewmodus verlangt QA. Fehlt ein erforderlicher sauberer QA-
+   oder SEC-Kontext, ist die Route ein Blocker und wird nie verkleinert. Die vollständige konkrete
+   Zuordnung bleibt ausschließlich in `core/review-routing.toml`.
+4. Der primäre Reviewer ist `[BINDING:review.primary]`; die vom Werkzeug berechnete Route bestimmt,
+   ob er allein, zusammen mit QA/SEC oder wegen Unverwendbarkeit gar nicht eingesetzt wird.
+   QA prüft strikt änderungsbezogen: den Diff plus zwingend erforderliche direkte Aufrufer/Nutzer,
+   berührte Verträge, Tests und Dokumentation. SEC arbeitet nach seinem abgegrenzten Auditauftrag.
+   Änderungsfremde Funde werden als Vorgang nach §18 erfasst, nicht in den Reviewumfang gezogen.
+5. Probe, Route und Validierung sind read-only und lösen keinen Reviewer aus. Jeder
+   kostenpflichtige Copilot-Dispatch ist eine nach außen wirkende Aktion und braucht eine
+   explizite Einzelfreigabe (§7, §17) für genau Repository, Pull Request und Head. Bei
+   `copilot_usable = false` ist ein Versuch oder Retry unzulässig.
+6. Jedes Finding wird als eigener ungelöster PR-Review-Thread angelegt. Findings nur im Chat oder
    in einer Zusammenfassung erfüllen das Gate nicht.
-5. Aktive Kommentar-Prüfpflicht: bei Arbeitsbeginn an einem PR, nach jedem Push und unmittelbar
+7. Aktive Kommentar-Prüfpflicht: bei Arbeitsbeginn an einem PR, nach jedem Push und unmittelbar
    vor dem Merge werden alle Review-Kommentare und -Threads neu abgefragt — nicht auf
-   Benachrichtigung gewartet. Jeder neue Kommentar wird nach Punkt 6 bearbeitet, bevor andere
+   Benachrichtigung gewartet. Jeder neue Kommentar wird nach Punkt 8 bearbeitet, bevor andere
    Arbeit fortgesetzt wird; keiner bleibt unbeantwortet.
-6. Der Executor prüft jeden Thread technisch, behebt bestätigte Findings einzeln und testgetrieben,
+8. Der Executor prüft jeden Thread technisch, behebt bestätigte Findings einzeln und testgetrieben,
    antwortet im Thread mit Commit-, Test- und CI-Nachweis und löst erst danach auf
    (`reply` → `resolve`). Begründeter Widerspruch wird ebenso im Thread dokumentiert.
    Ein Thread wird nie ohne Antwort aufgelöst, nie pauschal, nie gesammelt.
-7. Nach jeder Korrekturrunde folgt ein neuer Exact-Head-Review, bis der unabhängige Reviewer die
-   Merge-Freigabe explizit erteilt.
-8. Merge nur wenn: Exact-Head-Freigabe vorliegt UND alle Pflicht-Checks grün sind UND null
+9. Jede Korrekturrunde klassifiziert Diff, Risiko, Copilot-Verwendbarkeit und Reviewerbedarf am
+   neuen Head erneut. Nur ein autoritativ publiziertes unmittelbar vorausgehendes erfolgreiches
+   Gate darf eine Reviewer-Untergrenze liefern; ohne das in Policy und ADR definierte
+   Publisher-Ledger bleibt dieser produktive Positivpfad fail-closed. Ein Review des alten Heads
+   wird nie übernommen.
+10. Merge nur wenn: der Validator für den aktuellen Exact Head vollständig positive Evidenz aller
+   policygeforderten Reviewer ausweist UND alle policygeforderten Pflichtchecks für denselben Head
+   grün sind UND null
    ungelöste Review-Threads existieren — Thread-Anzahl und neue Kommentare unmittelbar vor dem
-   Merge erneut auslesen. Lokal grün ist niemals Merge-Evidenz.
+   Merge erneut auslesen. Lokal grün, eine vorläufige Route oder ein nicht publiziertes lokales
+   Gate-Ergebnis sind niemals Merge-Evidenz. Die Mergeentscheidung bleibt beim Nutzer.
 
 ## 17. Sicherheit & Instruktionsgrenze
 Diese Regeln gelten harness-unabhängig — auch wenn ein Harness sie bereits nativ erzwingt
@@ -383,7 +403,8 @@ Schweigend, aber vollständig: IST-Zustand verifiziert (§3.6)? Jede Behauptung 
 geschlossen oder als offen gekennzeichnet (§4)? Kein Stub, kein unbelegtes Grün (§3.1–3.2)? Jede
 Teilaufgabe auditiert, DoD erfüllt (§3.7, §14)? Testumfang eingehalten (§11)? Doku/CHANGELOG/
 Version synchron (§12)? Haupt-PR als Draft bei Start angelegt, jeder Schritt in den Haupt-PR-Branch
-geliefert und per QA geprüft, Vorgang aktuell (§5.5, §15)? CI-Lauf des letzten Push geprüft (§13)?
-Neue Review-Kommentare abgefragt (§16.5)? SSOT mitgezogen (§9)? Secrets und personenbezogene Daten
+geliefert und gemäß der Route geprüft, Vorgang aktuell (§5.5, §15)? CI-Lauf des letzten Push
+geprüft (§13)? Neue Review-Kommentare abgefragt (§16.7)? SSOT mitgezogen (§9)? Secrets und
+personenbezogene Daten
 raus (§17, §18)? Annahmen offen benannt (§2)? `ERGEBNIS`-Block da, wo §8 ihn fordert?
 Fällt ein Punkt durch: nicht abgeben — nacharbeiten oder als `teilweise`/`blockiert` melden.

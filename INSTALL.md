@@ -71,7 +71,56 @@ eine einzelne go/no-go-Freigabe ein, bevor du etwas installierst; halte die Ents
 (prefs) fest. Was du nicht selbst installieren kannst, liste mit dem jeweiligen Installationsweg aus
 tools.md als Handlungsanweisung für den Nutzer auf.
 
-SCHRITT 5 — Verifikation (fail-closed)
+SCHRITT 5 — Review-Routing installieren und Vertrag prüfen
+Das read-only Werkzeug wird direkt aus ROOT ausgeführt. Seine einzige Routing-SSOT ist
+ROOT/core/review-routing.toml; die Architekturentscheidung steht in
+ROOT/docs/decisions/0003-review-routing.md. Führe zuerst die vollständige lokale Suite aus:
+
+python3 -m unittest discover -s tests -v
+
+Dokumentiere anschließend diese geschlossenen Aufrufformen für den Nutzer; ersetze OWNER/REPO,
+NUMBER, USER und die absoluten Pfade nur durch belegte Werte, nie durch Vermutungen:
+
+python3 -m review_routing probe \
+  --repo OWNER/REPO \
+  --review-mode manual \
+  --requester USER \
+  --json
+
+python3 -m review_routing probe \
+  --repo OWNER/REPO \
+  --review-mode automatic \
+  --pull-request NUMBER \
+  --json
+
+python3 -m review_routing route \
+  --repo OWNER/REPO \
+  --pull-request NUMBER \
+  --review-mode manual \
+  --requester USER \
+  --purpose final_exact_head \
+  --repo-path /absolute/path/to/checkout \
+  --json
+
+python3 -m review_routing validate \
+  --route-file ROUTE.json \
+  --evidence-file EVIDENCE.json \
+  --repo OWNER/REPO \
+  --pull-request NUMBER \
+  --review-mode automatic \
+  --repo-path /absolute/path/to/checkout \
+  --json
+
+`probe`, `route` und `validate` sind read-only und lösen keinen GitHub-Copilot-Review aus.
+Ein kostenpflichtiger Dispatch benötigt immer eine explizite Einzelfreigabe. Keine Billing-,
+Budget-, Trust- oder Digest-Flags ergänzen: diese Schnittstellen existieren absichtlich nicht.
+Die `route`-Ausgabe ist der preliminary Vorplan aus Task 5; erst der Task-6-Validator verarbeitet
+Exact-Head-Evidenz. Rechte- und Kontextgrenzen, `Plan: read`, der einmalige
+`trusted_base_policy_missing`-Bootstrap von PR #5, der Live-Positivtest sowie die externe
+Publisher-/Required-Check-Grenze aus Issue #3 stehen autoritativ in ROOT/README.md im Abschnitt
+„Deterministisches Review-Routing".
+
+SCHRITT 6 — Verifikation (fail-closed)
 a) Lies jede geschriebene Zieldatei zurück und prüfe: alle referenzierten Pfade (Imports bzw.
    Leseanweisungen) zeigen auf existierende Dateien unter ROOT.
 b) Prüfe, dass ~/… -Referenzen und ROOT konsistent sind (keine Mischung aus altem Default und
@@ -79,6 +128,8 @@ b) Prüfe, dass ~/… -Referenzen und ROOT konsistent sind (keine Mischung aus a
 c) Bestätige durch Lesen von ROOT/core/core.md §6, dass die Rollen AK/ST/QA/SEC mit den in
    Schritt 3 abgelegten Wrappern/Mechanismen übereinstimmen (nur Claude: 4 Dateien unter
    ~/.claude/agents/).
+d) Bestätige, dass Kern, Harness-Adapter sowie QA-/SEC-Wrapper
+   ROOT/core/review-routing.toml referenzieren und keine zweite Routingmatrix enthalten.
 Schlägt ein Punkt fehl: beheben oder als blockiert melden — nicht als fertig.
 
 ABSCHLUSS — melde exakt in diesem Format:

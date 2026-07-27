@@ -78,6 +78,10 @@ TOOLS = read("tools/tools.md")
 BREW = read("tools/Brewfile")
 BREW_OPT = read("tools/Brewfile.optional")
 TPL_CLAUDE = read("templates/CLAUDE.md")
+QA_ROLE = read("core/roles/qa.md")
+SEC_ROLE = read("core/roles/sec.md")
+TPL_QA = read("templates/claude-agents/qa-agent.md")
+TPL_SEC = read("templates/claude-agents/sec-agent.md")
 
 ROLES = ("ak", "st", "qa", "sec")
 
@@ -224,6 +228,121 @@ class Templates(unittest.TestCase):
                                 "profile/profile.example.md fehlt")
             else:
                 self.assertTrue(exists(imp), f"Import {imp} in templates/CLAUDE.md zeigt ins Leere")
+
+
+class ReviewRoutingDocumentation(unittest.TestCase):
+    """Routingprosa referenziert die SSOT, statt deren Matrix zu duplizieren."""
+
+    POLICY = "core/review-routing.toml"
+    ADR = "docs/decisions/0003-review-routing.md"
+    ARTIFACTS = {
+        "core/core.md": CORE,
+        "core/roles/qa.md": QA_ROLE,
+        "core/roles/sec.md": SEC_ROLE,
+        "adapters/claude.md": CLAUDE,
+        "adapters/codex.md": CODEX,
+        "templates/claude-agents/qa-agent.md": TPL_QA,
+        "templates/claude-agents/sec-agent.md": TPL_SEC,
+        "README.md": README,
+        "INSTALL.md": read("INSTALL.md"),
+        "tools/tools.md": TOOLS,
+    }
+
+    def test_every_routing_artifact_references_the_policy_ssot(self):
+        for rel, text in self.ARTIFACTS.items():
+            self.assertIn(self.POLICY, text, f"{rel} verweist nicht auf die Routing-SSOT")
+
+    def test_governance_prose_does_not_duplicate_route_cells(self):
+        forbidden_route_literals = ("`copilot_qa`", "`copilot_qa_sec`", "`qa_sec`")
+        matrix_row = re.compile(
+            r"(?m)^\|\s*`?(?:low|medium|high|critical)`?\s*\|.*"
+            r"(?:local_checks|copilot_qa|copilot_qa_sec|qa_sec)"
+        )
+        for rel, text in self.ARTIFACTS.items():
+            for literal in forbidden_route_literals:
+                self.assertNotIn(literal, text, f"{rel} dupliziert die maschinelle Routingmatrix")
+            self.assertNotRegex(text, matrix_row, f"{rel} enthält eine zweite Routingtabelle")
+
+    def test_core_has_one_policy_invariant_and_no_unconditional_cluster_qa(self):
+        checkpoint = get_section(CORE, "## 5. Arbeitsweise (iterativ)")
+        gate = get_section(CORE, "## 16. Review- & Merge-Gate (fail-closed)")
+        for token in (
+            "copilot_usable = false",
+            "QA",
+            "`high`",
+            "critical",
+            "security_relevant",
+            "SEC",
+            "Korrekturrunde",
+            "neuen Head",
+            "explizite Einzelfreigabe",
+        ):
+            self.assertIn(token, gate, f"Kern §16 fehlt Routing-Invariante '{token}'")
+        self.assertIn(self.POLICY, checkpoint)
+        self.assertIn(self.POLICY, gate)
+        stale = (
+            "nach dessen Grün den gelieferten Exact Head durch einen unabhängigen QA-Agenten",
+            "laufende Cluster-QA",
+            "laufenden Cluster-QA",
+            "laufend je fertiggestelltem Cluster-Push",
+            "Ausgelöst laufend je Cluster-Push",
+            "QA-Alternativpfad und die laufende Cluster-QA",
+        )
+        for phrase in stale:
+            for rel, text in self.ARTIFACTS.items():
+                self.assertNotIn(phrase, text, f"{rel} verlangt noch pauschale Cluster-QA")
+
+    def test_cli_documentation_matches_the_closed_interface(self):
+        installation = self.ARTIFACTS["INSTALL.md"]
+        for document_name, document in (
+            ("README.md", README),
+            ("INSTALL.md", installation),
+            ("tools/tools.md", TOOLS),
+        ):
+            for command in (
+                "python3 -m review_routing probe",
+                "python3 -m review_routing route",
+                "python3 -m review_routing validate",
+            ):
+                self.assertIn(command, document, f"{document_name} fehlt '{command}'")
+            for option in (
+                "--repo",
+                "--pull-request",
+                "--review-mode",
+                "--requester",
+                "--purpose",
+                "--repo-path",
+                "--route-file",
+                "--evidence-file",
+                "--json",
+            ):
+                self.assertIn(option, document, f"{document_name} fehlt CLI-Option '{option}'")
+            self.assertIn("manual", document)
+            self.assertIn("automatic", document)
+            self.assertNotRegex(
+                document,
+                r"--(?:billing|budget|trust|runtime-digest|expected-digest)\b",
+                f"{document_name} dokumentiert ein nicht existentes Trust-/Billing-Flag",
+            )
+
+    def test_operational_boundaries_are_explicit(self):
+        for token in (
+            "Plan: read",
+            "trusted_base_policy_missing",
+            "Task 5",
+            "Task 6",
+            "preliminary",
+            "Issue #3",
+            "explizite Einzelfreigabe",
+            "GitHub-Copilot",
+            "Live-Positivtest",
+            self.ADR,
+        ):
+            self.assertIn(token, README, f"README fehlt Betriebsgrenze '{token}'")
+        for adapter_name, adapter in (("Claude", CLAUDE), ("Codex", CODEX)):
+            for command in ("python3 -m review_routing route", "python3 -m review_routing validate"):
+                self.assertIn(command, adapter, f"{adapter_name}-Adapter fehlt '{command}'")
+            self.assertIn("explizite Einzelfreigabe", adapter)
 
 
 class TaskSixDesignContract(unittest.TestCase):
