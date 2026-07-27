@@ -15,6 +15,7 @@ from review_routing.contracts import (
     CapabilityEvidence,
     CapabilityEvidenceSource,
     DiagnosticStatus,
+    DocumentTrust,
     PolicyDocument,
     ProbeSignals,
     ReviewPurpose,
@@ -371,7 +372,7 @@ class ContractValidationTest(unittest.TestCase):
         decision = route_review(request(), TomlConfig().parse_routing(
             PolicyDocument(
                 content=(ROOT / "core/review-routing.toml").read_text(encoding="utf-8"),
-                trust="development",
+                trust=DocumentTrust.DEVELOPMENT,
                 source="core/review-routing.toml",
             )
         ))
@@ -395,7 +396,7 @@ class ContractValidationTest(unittest.TestCase):
         decision = route_review(review_request, TomlConfig().parse_routing(
             PolicyDocument(
                 content=(ROOT / "core/review-routing.toml").read_text(encoding="utf-8"),
-                trust="development",
+                trust=DocumentTrust.DEVELOPMENT,
                 source="core/review-routing.toml",
             )
         ))
@@ -418,7 +419,7 @@ class RoutePolicyTest(unittest.TestCase):
         cls.config = TomlConfig().parse_routing(
             PolicyDocument(
                 content=(ROOT / "core/review-routing.toml").read_text(encoding="utf-8"),
-                trust="development",
+                trust=DocumentTrust.DEVELOPMENT,
                 source="core/review-routing.toml",
             )
         )

@@ -24,6 +24,39 @@ ROOT = Path(__file__).resolve().parents[1]
 class InteractionContractTest(unittest.TestCase):
     """Die Ausgabepolitik verwendet geschlossene, unveränderliche Verträge."""
 
+    def test_policy_document_requires_decoded_text_typed_trust_and_nonempty_source(self):
+        document = contracts.PolicyDocument(
+            content="schema_version = 1",
+            trust=contracts.DocumentTrust.DEVELOPMENT,
+            source="interaction-test",
+        )
+
+        self.assertEqual(document.content, "schema_version = 1")
+        self.assertIs(document.trust, contracts.DocumentTrust.DEVELOPMENT)
+        self.assertEqual(document.source, "interaction-test")
+
+        invalid_documents = (
+            {
+                "content": b"schema_version = 1",
+                "trust": contracts.DocumentTrust.DEVELOPMENT,
+                "source": "interaction-test",
+            },
+            {
+                "content": "schema_version = 1",
+                "trust": "development",
+                "source": "interaction-test",
+            },
+            {
+                "content": "schema_version = 1",
+                "trust": contracts.DocumentTrust.DEVELOPMENT,
+                "source": "",
+            },
+        )
+        for arguments in invalid_documents:
+            with self.subTest(arguments=arguments):
+                with self.assertRaises(ValueError):
+                    contracts.PolicyDocument(**arguments)
+
     def test_interaction_config_is_immutable_and_requires_an_exact_boolean(self):
         interaction_config = contract("InteractionConfig")
 

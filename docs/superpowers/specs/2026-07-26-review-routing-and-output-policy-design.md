@@ -1042,6 +1042,15 @@ tests/
 - `core/review-routing.toml`: einzige Quelle für Matrix, Schwellen und Risikomarker.
 - `core/interaction.toml`: einzige Quelle für den Zwischenstatus-Schalter.
 
+`PolicyDocument` ist der gemeinsame semantische Konfigurationsvertrag und enthält ausschließlich
+bereits dekodierten Text vom exakten Typ `str`, einen typisierten `DocumentTrust` und eine nicht
+leere Quellenkennung. Rohbytes bleiben an der jeweiligen Datei-/Adaptergrenze. Diese Grenze liest
+begrenzt und dekodiert strict UTF-8; ungültiges UTF-8 wird typisiert und sanitisiert abgelehnt,
+ohne Rohbytes, Decoderdetails oder Ersetzungszeichen weiterzugeben. `ConfigurationError`
+bezeichnet davon getrennt erst syntaktisch oder semantisch ungültiges TOML. Der
+`output-policy`-CLI-Adapter bildet `UnicodeDecodeError` und Größenüberschreitung auf
+`invalid_input` mit Exit 31 ab.
+
 `RiskClassifierPort` und `RoutingPolicyPort` liegen wie alle anderen Ports in `contracts.py`.
 `evidence.py` importiert weder `risk.py` noch `policy.py`, sondern erhält beide Implementierungen
 injiziert. Damit bleibt die erneute Gate-Klassifikation real, ohne die Importblindheit der

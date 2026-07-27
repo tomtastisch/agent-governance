@@ -20,6 +20,14 @@ geschlossene Tabelle `output` und einen Wert vom exakten Typ Boolean. Fehlende o
 Schlüssel, andere Typen, nicht unterstützte Schema-Versionen und fehlerhaftes TOML werden als
 `ConfigurationError` abgelehnt.
 
+`PolicyDocument` trägt ausschließlich bereits dekodierten Text vom exakten Typ `str`, einen
+`DocumentTrust` und eine nicht leere Quellenkennung. Rohbytes und UTF-8-Dekodierung bleiben an
+der jeweiligen Datei-/Adaptergrenze. Diese Grenze muss begrenzt lesen und strict UTF-8
+dekodieren. Ungültiges UTF-8 wird dort typisiert und sanitisiert abgelehnt; es ist kein
+`ConfigurationError`, denn dieser bezeichnet erst syntaktisch oder semantisch ungültiges TOML.
+Fehlerhafte Bytes dürfen weder durch Ersetzungszeichen toleriert noch in Fehlermeldungen
+übernommen werden.
+
 Der gemeinsame Vertragsrand definiert eine geschlossene `MessageKind`-Menge. Nur
 `VOLUNTARY_INTERMEDIATE` folgt dem konfigurierten Schalter. `QUESTION`, `BLOCKER`, `APPROVAL`,
 `SECURITY_WARNING`, `ERROR`, `MATERIAL_FINDING` und `FINAL_RESULT` werden unabhängig vom
@@ -35,6 +43,8 @@ Konsumenten die Implementierung namentlich.
 - Der Parser und die Policy sind deterministisch und ohne Harness- oder Netzwerkabhängigkeit
   testbar.
 - Ungültige Konfiguration kann nicht durch Python-Truthiness versehentlich als aktiviert gelten.
+- Der semantische Parser erhält niemals unvalidierte Bytes; Datei- und CLI-Adapter verantworten
+  Größenlimit, strict UTF-8 und sanitisiertes I/O-Fehlerverhalten.
 - Verpflichtende Sicherheits-, Entscheidungs- und Auditkommunikation bleibt technisch von
   freiwilligen Zwischenständen getrennt.
 - Die tatsächliche Unterdrückung in Claude, Codex oder einem anderen Harness bleibt bis zu dessen

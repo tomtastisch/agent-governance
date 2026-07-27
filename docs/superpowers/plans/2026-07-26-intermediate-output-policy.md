@@ -54,10 +54,9 @@ the non-suppressible safety and audit invariants exactly once.
 
 ```python
 document = PolicyDocument(
-    content=Path("core/interaction.toml").read_bytes(),
-    source_ref="worktree",
-    source_path="core/interaction.toml",
+    content=Path("core/interaction.toml").read_text(encoding="utf-8"),
     trust=DocumentTrust.DEVELOPMENT,
+    source="core/interaction.toml",
 )
 config = config_port.parse_interaction(document)
 self.assertIs(config.intermediate_status, False)
@@ -66,6 +65,11 @@ self.assertIs(config.intermediate_status, False)
 Also cover `true`, missing table/key, string/integer/null-like values, extra unknown keys and
 unsupported schema versions. Unknown/malformed documents must raise `ConfigurationError`; callers
 treat that fail-closed. Missing-file behavior is exercised at the CLI boundary in Task 2.
+`PolicyDocument` enthält semantisch ausschließlich bereits dekodierten Text vom exakten Typ
+`str`, einen typisierten `DocumentTrust` und eine nicht leere Quelle. `ConfigurationError`
+bezeichnet syntaktisch oder semantisch ungültiges TOML. Ungültiges UTF-8 entsteht dagegen vor
+diesem Vertrag und wird an der jeweiligen I/O-Grenze typisiert sowie ohne Rohdaten sanitisiert
+abgelehnt.
 
 - [ ] **Step 2: Run and confirm RED**
 
@@ -125,9 +129,11 @@ git commit -m "feat(governance): configure intermediate status output"
 
 - [ ] **Step 1: Write failing command tests**
 
-Cover default false, explicit true in a temporary config, missing file, malformed config and no
-stdout progress prose. Missing/malformed input returns exit `31` with sanitized JSON and the
-decision remains fail-closed for voluntary output.
+Cover default false, explicit true in a temporary config, missing file, malformed config,
+ungültiges UTF-8, eine Datei oberhalb des festgelegten Byte-Limits und no stdout progress prose.
+Missing/malformed input returns exit `31` with sanitized JSON and the decision remains
+fail-closed for voluntary output. Ein `UnicodeDecodeError` wird an dieser Grenze als
+`invalid_input` klassifiziert; weder Rohbytes noch Decoderdetails gelangen in die Ausgabe.
 
 - [ ] **Step 2: Run and confirm RED**
 
@@ -139,7 +145,11 @@ python3 -m unittest \
 - [ ] **Step 3: Implement the minimal subcommand**
 
 The command only reads the TOML and serializes its validated value. It must not mutate harness
-configuration or home-directory files.
+configuration or home-directory files. Die I/O-Grenze liest höchstens das festgelegte
+Konfigurationslimit plus ein Prüfbyte, lehnt größere Dateien ab und dekodiert ausschließlich mit
+strict UTF-8. Sie erzeugt erst nach erfolgreicher Dekodierung ein `PolicyDocument`. Ein
+`UnicodeDecodeError` oder eine zu große Datei liefert sanitisiertes JSON mit
+`error = "invalid_input"` und Exit `31`; Ersetzungszeichen sind unzulässig.
 
 - [ ] **Step 4: Run and confirm GREEN**
 

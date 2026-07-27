@@ -360,6 +360,14 @@ class PolicyDocument:
     trust: DocumentTrust
     source: str
 
+    def __post_init__(self) -> None:
+        if type(self.content) is not str:
+            raise ValueError("content must be decoded text")
+        if not isinstance(self.trust, DocumentTrust):
+            raise ValueError("trust must be a DocumentTrust")
+        if not isinstance(self.source, str) or not self.source:
+            raise ValueError("source must be a non-empty string")
+
 
 @dataclass(frozen=True)
 class PathMarker:
