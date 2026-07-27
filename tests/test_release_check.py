@@ -402,13 +402,15 @@ class TagConsistency(unittest.TestCase):
 # ═══════════════════════════════════════════════════════════════════════
 
 class CurrentRepoState(unittest.TestCase):
-    """Prüft den aktuellen Repository-Zustand — dient als Red-Nachweis vor Implementierung."""
+    """Prüft den aktuellen Repository-Zustand."""
 
-    def test_tree_check_fails_without_version(self):
-        """Ohne VERSION und CHANGELOG muss check_tree() Fehler liefern."""
+    def test_tree_check_has_version_and_changelog(self):
+        """VERSION und CHANGELOG existieren und sind konsistent."""
         r = check_tree()
-        self.assertFalse(r.ok, "Erwartet FAIL: VERSION/CHANGELOG fehlen auf origin/main")
-        self.assertTrue(any("VERSION fehlt" in e for e in r.errors))
+        has_version_error = any("VERSION fehlt" in e for e in r.errors)
+        self.assertFalse(has_version_error, "VERSION sollte vorhanden sein (Green)")
+        has_changelog_error = any("CHANGELOG.md fehlt" in e for e in r.errors)
+        self.assertFalse(has_changelog_error, "CHANGELOG.md sollte vorhanden sein (Green)")
 
 
 if __name__ == "__main__":
