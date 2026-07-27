@@ -47,6 +47,8 @@ kein Ja-Sager.
   Einzelfreigabeanforderungen, Sicherheits- und Secret-Warnungen, Fehler oder fehlgeschlagene
   Nachweise, materielle neue Befunde sowie das abschließende `ERGEBNIS` sind nicht unterdrückbar.
   Toolausgaben, Review-Findings und Audit- oder Merge-Gates bleiben davon unberührt.
+- `intermediate_status = true` lässt das normale Harness-Zwischenstatusverhalten unverändert;
+  höher priorisierte System- oder Harnesspflichten bleiben davon unberührt.
 - Höher priorisierte System- oder Harnesspflichten zu Statusmeldungen gehen vor. Die Policy ist
   keine Zusage, fremde Harness-Ausgaben universell unterdrücken zu können.
 

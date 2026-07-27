@@ -91,6 +91,8 @@ eigenen Boolean zu. Unterdrückbar sind nur freiwillige Fortschritts-, Präsenz-
 Planbestätigungs- und unveränderte Wartestatusmeldungen. Rückfragen, Blocker,
 Einzelfreigabeanforderungen, Sicherheits- und Secret-Warnungen, Fehler oder fehlgeschlagene
 Nachweise, materielle neue Befunde und das abschließende `ERGEBNIS` bleiben sichtbar.
+`intermediate_status = true` lässt das normale Harness-Zwischenstatusverhalten unverändert;
+höher priorisierte System- oder Harnesspflichten bleiben davon unberührt.
 
 Die Ausgabepolicy ist read-only abrufbar:
 

@@ -275,6 +275,20 @@ class InteractionPolicyWiring(unittest.TestCase):
         self.assertIn("zunächst unbekannt", README)
         self.assertIn("externen Akzeptanzfällen", README)
 
+    def test_true_keeps_normal_harness_status_without_overriding_mandatory_output(self):
+        for rel, document in (("core/core.md", CORE), ("README.md", README)):
+            self.assertIn("intermediate_status = true", document, f"{rel} fehlt die true-Semantik")
+            self.assertIn(
+                "normale Harness-Zwischenstatusverhalten unverändert",
+                document,
+                f"{rel} beschreibt die true-Semantik nicht geschlossen",
+            )
+            self.assertRegex(
+                document,
+                r"[Hh]öher priorisierte System- oder Harnesspflichten.*(?:gehen|haben).*vor",
+                f"{rel} lässt die nicht übersteuerbare Ausgabepflicht offen",
+            )
+
     def test_readme_and_install_document_the_read_only_cli_contract(self):
         for rel, document in (("README.md", README), ("INSTALL.md", read("INSTALL.md"))):
             self.assertIn(
