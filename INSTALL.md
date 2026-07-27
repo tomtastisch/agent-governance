@@ -71,9 +71,9 @@ eine einzelne go/no-go-Freigabe ein, bevor du etwas installierst; halte die Ents
 (prefs) fest. Was du nicht selbst installieren kannst, liste mit dem jeweiligen Installationsweg aus
 tools.md als Handlungsanweisung für den Nutzer auf.
 
-SCHRITT 5 — Review-Routing installieren und Vertrag prüfen
-Das read-only Werkzeug wird direkt aus ROOT ausgeführt. Seine einzige Routing-SSOT ist
-ROOT/core/review-routing.toml; die Architekturentscheidung steht in
+SCHRITT 5 — Read-only-Verträge prüfen
+Die Routing-SSOT ist ROOT/core/review-routing.toml; die Ausgabepolicy-Default-SSOT ist
+ROOT/core/interaction.toml. Die Architekturentscheidung steht in
 ROOT/docs/decisions/0003-review-routing.md. Führe zuerst die vollständige lokale Suite aus:
 
 python3 -m unittest discover -s tests -v
@@ -111,8 +111,15 @@ python3 -m review_routing validate \
   --repo-path /absolute/path/to/checkout \
   --json
 
-`probe`, `route` und `validate` sind read-only und lösen keinen GitHub-Copilot-Review aus.
-Ein kostenpflichtiger Dispatch benötigt immer eine explizite Einzelfreigabe. Keine Billing-,
+python3 -m review_routing output-policy --json
+
+`probe`, `route`, `validate` und `output-policy` sind read-only und lösen keinen
+GitHub-Copilot-Review aus. `output-policy` liest ausschließlich die validierte
+ROOT/core/interaction.toml und gibt bei Erfolg das geschlossene Schema mit `schema_version` und
+`intermediate_status` aus. Fehlende, zu große, UTF-8-ungültige oder semantisch ungültige Eingaben
+liefern ausschließlich sanitisiertes JSON mit `error = "invalid_input"` und Exit 31; Rohdaten und
+Decoderdetails bleiben verborgen. Ein kostenpflichtiger Dispatch benötigt immer eine explizite
+Einzelfreigabe. Keine Billing-,
 Budget-, Trust- oder Digest-Flags ergänzen: diese Schnittstellen existieren absichtlich nicht.
 Die `route`-Ausgabe ist der preliminary Vorplan aus Task 5; erst der Task-6-Validator verarbeitet
 Exact-Head-Evidenz. Rechte- und Kontextgrenzen, `Plan: read`, der einmalige
@@ -122,7 +129,8 @@ Publisher-/Required-Check-Grenze aus Issue #3 stehen autoritativ in ROOT/README.
 
 SCHRITT 6 — Verifikation (fail-closed)
 a) Lies jede geschriebene Zieldatei zurück und prüfe: alle referenzierten Pfade (Imports bzw.
-   Leseanweisungen) zeigen auf existierende Dateien unter ROOT.
+   Leseanweisungen, einschließlich ROOT/core/interaction.toml) zeigen auf existierende Dateien
+   unter ROOT.
 b) Prüfe, dass ~/… -Referenzen und ROOT konsistent sind (keine Mischung aus altem Default und
    neuem ROOT).
 c) Bestätige durch Lesen von ROOT/core/core.md §6, dass die Rollen AK/ST/QA/SEC mit den in
@@ -130,6 +138,9 @@ c) Bestätige durch Lesen von ROOT/core/core.md §6, dass die Rollen AK/ST/QA/SE
    ~/.claude/agents/).
 d) Bestätige, dass Kern, Harness-Adapter sowie QA-/SEC-Wrapper
    ROOT/core/review-routing.toml referenzieren und keine zweite Routingmatrix enthalten.
+e) Bestätige, dass die Claude- und Codex-Einstiegsdateien ROOT/core/interaction.toml vor der
+   ersten freiwilligen Zwischenmeldung laden beziehungsweise lesen und keinen zweiten Default
+   zuweisen.
 Schlägt ein Punkt fehl: beheben oder als blockiert melden — nicht als fertig.
 
 ABSCHLUSS — melde exakt in diesem Format:

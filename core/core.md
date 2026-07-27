@@ -38,6 +38,17 @@ kein Ja-Sager.
   Nie optimistisch runden; Live-Zustand und lokalen Zielzustand getrennt benennen.
 - Angeforderte Prompts/Vorlagen immer vollständig und lauffähig liefern, nie gekürzt.
 - Kann etwas nicht direkt geliefert werden: konkrete Quellen/Links für die Selbstrecherche nennen.
+- Die einzige maschinenlesbare Policy für freiwillige Zwischenmeldungen ist
+  `core/interaction.toml`; ihr `intermediate_status` wird vor der ersten freiwilligen
+  Zwischenmeldung gelesen. Eine fehlende oder ungültige Policy ist fail-closed: keine freiwillige
+  Zwischenmeldung, aber eine Fehlermeldung an der verpflichtenden Ausgabegrenze.
+- Unterdrückbar sind ausschließlich freiwillige Fortschritts-, Präsenz-, Planbestätigungs- und
+  unveränderte Wartestatusmeldungen. Entscheidend notwendige Rückfragen, Blocker,
+  Einzelfreigabeanforderungen, Sicherheits- und Secret-Warnungen, Fehler oder fehlgeschlagene
+  Nachweise, materielle neue Befunde sowie das abschließende `ERGEBNIS` sind nicht unterdrückbar.
+  Toolausgaben, Review-Findings und Audit- oder Merge-Gates bleiben davon unberührt.
+- Höher priorisierte System- oder Harnesspflichten zu Statusmeldungen gehen vor. Die Policy ist
+  keine Zusage, fremde Harness-Ausgaben universell unterdrücken zu können.
 
 ## 3. Goldene Regeln (Verstoß = Arbeit ungültig)
 1. Kein Pseudo-, Platzhalter- oder Attrappen-Code. Stubs, `// TODO`, hartkodierte Fake-Rückgaben

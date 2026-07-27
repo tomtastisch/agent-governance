@@ -27,6 +27,9 @@ unverändert und sind bei Unklarheit nach Kern auszulegen:
 
 ## Harness-Hinweise
 
+- Ausgabepolicy: Claude importiert `core/interaction.toml` über die Einstiegsdatei und liest sie
+  vor jeder freiwilligen Zwischenmeldung. Die Umsetzung ist promptbasiert/best-effort; native
+  oder systemische Statuspflichten haben Vorrang und bleiben sichtbar.
 - Rollen-Routing: Executor spawnt Rollenagenten über das Agent-Tool mit dem passenden
   `subagent_type` (`ak-agent`, `st-agent`, `qa-agent`, `sec-agent`). Ist das Agent-Tool nicht
   verfügbar, greift Kern §6 (Blocker) — keine Rollensimulation im Executor-Kontext.

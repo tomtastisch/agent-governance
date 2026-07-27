@@ -78,6 +78,8 @@ TOOLS = read("tools/tools.md")
 BREW = read("tools/Brewfile")
 BREW_OPT = read("tools/Brewfile.optional")
 TPL_CLAUDE = read("templates/CLAUDE.md")
+TPL_CODEX = read("templates/AGENTS.md")
+TPL_README = read("templates/README.md")
 QA_ROLE = read("core/roles/qa.md")
 SEC_ROLE = read("core/roles/sec.md")
 TPL_QA = read("templates/claude-agents/qa-agent.md")
@@ -230,6 +232,63 @@ class Templates(unittest.TestCase):
                 self.assertTrue(exists(imp), f"Import {imp} in templates/CLAUDE.md zeigt ins Leere")
 
 
+class InteractionPolicyWiring(unittest.TestCase):
+    """Ausgabepolicy: eine TOML-SSOT, ehrliche Harness-Grenzen und geschlossene Doku."""
+
+    POLICY = "core/interaction.toml"
+    ENTRY_ARTIFACTS = {
+        "adapters/claude.md": CLAUDE,
+        "adapters/codex.md": CODEX,
+        "templates/CLAUDE.md": TPL_CLAUDE,
+        "templates/AGENTS.md": TPL_CODEX,
+    }
+
+    def test_entry_wiring_loads_the_single_policy_before_voluntary_status(self):
+        self.assertIn("@~/agent-governance/core/interaction.toml", TPL_CLAUDE)
+        self.assertIn("~/agent-governance/core/interaction.toml", TPL_CODEX)
+        self.assertIn(self.POLICY, TPL_README)
+        self.assertIn("intermediate_status", CORE)
+        self.assertTrue(exists(self.POLICY), "Die zentrale Ausgabepolicy fehlt")
+
+    def test_checked_in_policy_has_the_fail_closed_default(self):
+        if tomllib is None:
+            self.skipTest("tomllib ist erst ab Python 3.11 verfügbar")
+        policy = load_toml(self.POLICY)
+        self.assertIs(policy["output"]["intermediate_status"], False)
+
+    def test_adapters_and_templates_do_not_assign_a_second_default(self):
+        assignment = re.compile(
+            r"(?im)^\\s*intermediate_status\\s*=\\s*(?:true|false)\\s*$"
+        )
+        for rel, text in self.ENTRY_ARTIFACTS.items():
+            self.assertNotRegex(text, assignment, f"{rel} dupliziert den TOML-Default")
+
+    def test_capability_table_keeps_prompt_based_harnesses_best_effort(self):
+        for harness in ("Claude Code", "Codex", "MCP-Orchestrator", "anderer Harness"):
+            self.assertIn(f"| {harness} |", README, f"Fähigkeitstabelle fehlt für {harness}")
+        self.assertEqual(
+            README.count("promptbasiert/best-effort"),
+            2,
+            "Nur Claude Code und Codex dürfen vor externen Abnahmefällen best-effort heißen",
+        )
+        self.assertIn("abhängig vom Zielharness", README)
+        self.assertIn("zunächst unbekannt", README)
+        self.assertIn("externen Akzeptanzfällen", README)
+
+    def test_readme_and_install_document_the_read_only_cli_contract(self):
+        for rel, document in (("README.md", README), ("INSTALL.md", read("INSTALL.md"))):
+            self.assertIn(
+                "python3 -m review_routing output-policy --json",
+                document,
+                f"{rel} dokumentiert den vierten read-only Befehl nicht",
+            )
+            self.assertIn(self.POLICY, document, f"{rel} referenziert die Default-SSOT nicht")
+            self.assertIn("schema_version", document, f"{rel} nennt das Erfolgsschema nicht")
+            self.assertIn("intermediate_status", document, f"{rel} nennt das Erfolgsschema nicht")
+            self.assertIn("Exit 31", document, f"{rel} dokumentiert den Fehler-Exit nicht")
+            self.assertIn("sanitisiert", document, f"{rel} dokumentiert den sanitisierten Fehlervertrag nicht")
+
+
 class ReviewRoutingDocumentation(unittest.TestCase):
     """Routingprosa referenziert die SSOT, statt deren Matrix zu duplizieren."""
 
@@ -323,6 +382,13 @@ class ReviewRoutingDocumentation(unittest.TestCase):
                 document,
                 r"--(?:billing|budget|trust|runtime-digest|expected-digest)\b",
                 f"{document_name} dokumentiert ein nicht existentes Trust-/Billing-Flag",
+            )
+
+        for document_name, document in (("README.md", README), ("INSTALL.md", installation)):
+            self.assertIn(
+                "python3 -m review_routing output-policy --json",
+                document,
+                f"{document_name} fehlt der vierte geschlossene CLI-Befehl",
             )
 
     def test_operational_boundaries_are_explicit(self):

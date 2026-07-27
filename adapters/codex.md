@@ -27,6 +27,9 @@ Orthographie) erzwingt Codex nicht nativ und sind vollumfänglich selbst einzuha
 
 - Da Codex keine Import-Syntax kennt, ist das Lesen von Kern, Adapter und Profil die verbindliche
   erste Aktion jeder Session (angewiesen in `~/.codex/AGENTS.md`). Nicht lesbar = Blocker (Kern §7).
+- Ausgabepolicy: Die Einstiegsdatei verlangt zusätzlich das Lesen von `core/interaction.toml`
+  vor jeder freiwilligen Zwischenmeldung. Die Umsetzung ist promptbasiert/best-effort; native
+  App- oder System-Statuspflichten haben Vorrang und bleiben sichtbar.
 - Review-Routing: Vor einem Reviewer-Dispatch wird die read-only Planung mit
   `python3 -m review_routing route` ausgeführt; das finale Evidenzgate wird mit
   `python3 -m review_routing validate` geprüft. Matrix und Risikomarker werden nicht im Adapter

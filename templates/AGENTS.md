@@ -7,8 +7,9 @@ Governance-Root: `~/agent-governance` — Struktur und Übernahme: `~/agent-gove
 Verbindliche erste Aktion jeder Session und jedes `codex exec`-Laufs, vor jeder Analyse,
 Antwort oder Änderung — vollständig lesen:
 1. `~/agent-governance/core/core.md` (Kernregelwerk)
-2. `~/agent-governance/adapters/codex.md` (Bindings dieses Harness)
-3. `~/agent-governance/profile/profile.md` (Profil)
+2. `~/agent-governance/core/interaction.toml` (Ausgabepolicy vor jeder freiwilligen Zwischenmeldung)
+3. `~/agent-governance/adapters/codex.md` (Bindings dieses Harness)
+4. `~/agent-governance/profile/profile.md` (Profil)
 
 Rollenagenten (AK/ST/QA/SEC) lesen zusätzlich ihre Rollenerweiterung unter
 `~/agent-governance/core/roles/`.

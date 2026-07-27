@@ -12,6 +12,7 @@ agent-governance/
 │   ├── core.md          # Kernregelwerk — harness-agnostisch, keine Pfade, keine Personendaten
 │   ├── branch-tags.toml # Branch-/PR-Tags (SSOT): tag/name/description je Änderungstyp
 │   ├── review-routing.toml # Reviewmatrix, Risikoschwellen und Pflichtchecks (SSOT)
+│   ├── interaction.toml # Ausgabepolicy (SSOT): freiwillige Zwischenmeldungen
 │   └── roles/           # Rollenerweiterungen (nur im jeweiligen Rollenagenten laden)
 │       ├── ak.md        # Architektur & Kontext (read-only Analyse, Drift-Audits)
 │       ├── st.md        # Scope-Triage neuer Befunde (Issue-Dokumentation)
@@ -81,6 +82,37 @@ verifiziert fail-closed. Manuell:
      Einstiegsdatei im Home des Harness anlegen; der Kern bleibt unverändert.
 5. Erweitern statt ändern: neue Rollen als Datei unter `core/roles/` plus Zeile in Kern §6;
    neue Harnesse als Adapter. Der Kern ändert sich nur, wenn sich eine Regel selbst ändert.
+
+## Zentrale Ausgabepolicy
+
+`core/interaction.toml` ist die alleinige Default-SSOT für freiwillige Zwischenmeldungen. Sie
+wird vor der ersten freiwilligen Zwischenmeldung gelesen; Adapter und Vorlagen weisen keinen
+eigenen Boolean zu. Unterdrückbar sind nur freiwillige Fortschritts-, Präsenz-,
+Planbestätigungs- und unveränderte Wartestatusmeldungen. Rückfragen, Blocker,
+Einzelfreigabeanforderungen, Sicherheits- und Secret-Warnungen, Fehler oder fehlgeschlagene
+Nachweise, materielle neue Befunde und das abschließende `ERGEBNIS` bleiben sichtbar.
+
+Die Ausgabepolicy ist read-only abrufbar:
+
+```bash
+python3 -m review_routing output-policy --json
+```
+
+Bei Erfolg enthält die einzige JSON-Ausgabe das geschlossene Schema mit `schema_version` und
+`intermediate_status`. Fehlende, zu große, UTF-8-ungültige oder semantisch ungültige Eingaben
+liefern nur sanitisiertes JSON mit `error = "invalid_input"` und Exit 31; weder Rohbytes noch
+Decoderdetails erscheinen in der Ausgabe.
+
+| Harness | Ladepfad | Durchsetzung | Ehrliche Zusage |
+|---|---|---|---|
+| Claude Code | `@`-Import der TOML plus Adapterregel | promptbasiert/best-effort | freiwillige Meldungen unterdrücken; native/systemische Ausgaben bleiben möglich |
+| Codex | verpflichtende erste Leseaktion plus Adapterregel | promptbasiert/best-effort | freiwillige Meldungen unterdrücken; App-/System-Updates bleiben möglich |
+| MCP-Orchestrator | explizite Übergabe des validierten Werts an den gestarteten Agenten | abhängig vom Zielharness | Fähigkeit muss gemeldet werden; unbekannt ist nicht „greift“ |
+| anderer Harness | neuer Adapter nach Port-Vertrag | zunächst unbekannt | bis zum positiven Harness-Test nur advisory |
+
+Schema, Parser, fail-closed Verhalten und Einstiegsladung sind mechanisch testbar. Die
+tatsächliche Unterdrückung in fremden Harnessen ist erst nach externen Akzeptanzfällen belegt;
+höher priorisierte System- oder Harnesspflichten gehen immer vor.
 
 ## Deterministisches Review-Routing
 

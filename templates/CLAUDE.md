@@ -6,5 +6,6 @@ Verdrahtungsstelle Claude Code — Regelwerk, Bindings und Profil werden importi
 `~/agent-governance/README.md`.
 
 @~/agent-governance/core/core.md
+@~/agent-governance/core/interaction.toml
 @~/agent-governance/adapters/claude.md
 @~/agent-governance/profile/profile.md
