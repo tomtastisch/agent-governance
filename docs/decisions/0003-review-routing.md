@@ -124,6 +124,21 @@ prior_result.observed_at
 < prior_evidence.valid_until
 ```
 
+Die historische Menge ist nur eine Untergrenze und darf das aktuelle Risiko nicht ersetzen. Für
+jede Korrekturrunde gilt:
+
+```text
+adjusted_prior_floor UNION current_final_exact_head_matrix_floor
+```
+
+Die aktuelle Untergrenze wird aus der `final_exact_head`-Matrix für das neu klassifizierte Risiko
+und die aktuelle Copilot-Verwendbarkeit bestimmt. Historischer Copilot wird bei Unverwendbarkeit
+durch QA ersetzt; historische QA-/SEC-Anteile bleiben erhalten. Anschließend erweitern
+Security-, Coverage-/Mode- und SEC→QA-Regeln die Vereinigungsmenge. Fehlende QA-/SEC-
+Verfügbarkeit erzeugt `blocker`, ohne die erforderliche Menge zu verkleinern. Damit kann ein
+früheres `{copilot}` insbesondere keinen aktuellen High-/Critical-Diff auf Copilot allein
+herabstufen.
+
 Bis Issue #3 ein autoritatives Publisher-Ledger einschließlich unmittelbarer
 Latest-/Ancestry-Auswahl bereitstellt, bleibt die produktive positive Korrektur deaktiviert; nur
 ein synthetischer, injizierter Fake-Port belegt den Vertragspositivfall. Die allgemeine

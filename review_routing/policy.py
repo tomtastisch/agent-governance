@@ -55,6 +55,10 @@ def _matrix_reviewers(request: ReviewRequest, config: RoutingConfig) -> frozense
         if not request.copilot_usable:
             reviewers.discard(Reviewer.COPILOT)
             reviewers.add(Reviewer.QA)
+        current_floor_route = config.routes[
+            ReviewPurpose.FINAL_EXACT_HEAD.value
+        ][request.copilot_usable][request.assessment.level.value]
+        reviewers.update(_reviewers_for_route(current_floor_route))
         return frozenset(reviewers)
     route = config.routes[request.purpose.value][request.copilot_usable][request.assessment.level.value]
     return _reviewers_for_route(route)

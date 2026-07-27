@@ -377,9 +377,26 @@ Idempotenz- und Zeitbindung, ein erfolgreiches Prior-Gate mit Purpose ungleich `
 eine nichtleere identische Required-/Validated-Reviewer-Menge sowie null Reasons und null
 ungelöste Threads.
 
+Das autoritative Prior-Gate ist eine zusätzliche Untergrenze, kein Ersatz für das aktuelle
+Risiko. Die finale Reviewer-Menge beginnt deshalb zwingend mit:
+
+```text
+adjusted_prior_floor UNION current_final_exact_head_matrix_floor
+```
+
+`adjusted_prior_floor` erhält historische QA-/SEC-Anteile. Ist Copilot aktuell nicht nutzbar,
+wird der historische Copilot-Anteil entfernt und durch QA ersetzt.
+`current_final_exact_head_matrix_floor` stammt unabhängig vom Purpose `correction` aus der
+aktuellen `final_exact_head`-Matrix für die neu klassifizierte Risikostufe und die aktuelle
+Copilot-Verwendbarkeit. Erst auf die Vereinigung werden Security-, Coverage-/Mode- und
+SEC→QA-Überlagerungen angewendet. Fehlende QA-/SEC-Verfügbarkeit setzt die Route auf `blocker`,
+entfernt jedoch keinen Reviewer aus der vollständigen Sollmenge.
+
 - War Copilot erforderlich und ist weiter nutzbar, bleibt Copilot erforderlich.
 - Ist Copilot nun nicht nutzbar, ersetzt QA den Copilot-Anteil.
 - Bereits risikobedingt erforderliche QA-/SEC-Anteile bleiben erhalten.
+- Eine gestiegene aktuelle Risikostufe ergänzt die heute erforderlichen Reviewer auch dann, wenn
+  das frühere Gate nur Copilot verlangt hatte.
 - Kein Copilot-Retry bei `copilot_usable = false`.
 - Ein Review des alten Heads wird nie übernommen.
 
@@ -593,6 +610,9 @@ EvidenceValidatorPort.validate(
 `ReviewRequest` ausschließlich aus neu klassifiziertem Risiko, `fresh_probe.copilot_usable`,
 abgeleitetem `coverage_complete`, abgeleitetem `copilot_review_mode` und aktueller
 Reviewer-Verfügbarkeit und ruft die Policy erneut auf.
+Für `correction` vereinigt die Policy dabei die aus dem gebundenen Prior-Gate angepasste
+Reviewer-Untergrenze mit der aktuellen `final_exact_head`-Matrixuntergrenze; keine historische
+Menge darf das neu klassifizierte Risiko absenken.
 
 Die Namen und erwarteten Quellen aller Pflichtchecks stammen ausschließlich aus der geladenen
 Basispolicy `core/review-routing.toml` am vollständigen `base_sha`. Für ein gate-fähiges Ergebnis
@@ -1204,7 +1224,9 @@ Mindestens:
 23. Final-Matrix für alle vier Risiken und beide Verwendbarkeitswerte.
 24. Security-Relevanz erzwingt SEC unabhängig von Diff-Größe/Risikoklasse.
 25. Ausgeschlossene, unverified oder degradierte Copilot-Abdeckung erzwingt QA.
-26. Korrekturrunde behält erforderliche Reviewer und ersetzt unbrauchbaren Copilot durch QA.
+26. Korrekturrunde verwendet
+    `adjusted_prior_floor UNION current_final_exact_head_matrix_floor`, behält historische
+    QA-/SEC-Anteile und ersetzt unbrauchbaren historischen Copilot durch QA.
 27. Kein Copilot-Retry bei `false`.
 28. Fehlender verpflichtender QA-/SEC-Kontext → `blocker`.
 29. QA-Kosten können verpflichtende Reviewer nicht entfernen.
@@ -1251,6 +1273,9 @@ Mindestens:
     beide Verifier und einen positiven, vollständig gefakten Registry-Level-Probe.
 56. `ProbeReport` leitet Capability-Status aus der Verification ab und lehnt
     `dataclasses.replace`-Mismatchfälle für Status, Trust, Evidenz, Präsenz und Verwendbarkeit ab.
+57. Gültiges Prior-Gate `{copilot}` plus aktueller 900-Zeilen-Diff bleibt ohne aktuelle QA-/SEC-
+    Evidenz rot; Security-, Coverage-/Mode-, SEC→QA- und Availability-Overlays können die
+    vereinigte Reviewer-Untergrenze nur erweitern beziehungsweise blockieren, nie verkleinern.
 
 ## 13. Umsetzungsschnitt
 

@@ -300,6 +300,7 @@ class TaskSixDesignContract(unittest.TestCase):
             "evaluated_at < snapshot.valid_until",
             "Issue #3",
             "Findings-Correction",
+            "adjusted_prior_floor UNION current_final_exact_head_matrix_floor",
         )
         for document_name, document in (
             ("Design-Spec", self.spec),

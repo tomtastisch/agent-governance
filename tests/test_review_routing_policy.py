@@ -512,6 +512,164 @@ class RoutePolicyTest(unittest.TestCase):
         self.assertEqual(decision.head_sha, SHA_B)
         self.assertEqual(decision.required_reviewers, frozenset({Reviewer.QA, Reviewer.SEC}))
 
+    def test_correction_unions_adjusted_prior_and_current_final_matrix_floors(self):
+        cases = (
+            (
+                "prior_copilot_current_high_usable",
+                frozenset({Reviewer.COPILOT}),
+                RiskLevel.HIGH,
+                True,
+                frozenset({Reviewer.COPILOT, Reviewer.QA}),
+            ),
+            (
+                "prior_copilot_current_critical_usable",
+                frozenset({Reviewer.COPILOT}),
+                RiskLevel.CRITICAL,
+                True,
+                frozenset({Reviewer.COPILOT, Reviewer.QA, Reviewer.SEC}),
+            ),
+            (
+                "prior_copilot_current_high_unusable",
+                frozenset({Reviewer.COPILOT}),
+                RiskLevel.HIGH,
+                False,
+                frozenset({Reviewer.QA}),
+            ),
+            (
+                "prior_copilot_current_critical_unusable",
+                frozenset({Reviewer.COPILOT}),
+                RiskLevel.CRITICAL,
+                False,
+                frozenset({Reviewer.QA, Reviewer.SEC}),
+            ),
+            (
+                "prior_all_current_low_usable",
+                frozenset({Reviewer.COPILOT, Reviewer.QA, Reviewer.SEC}),
+                RiskLevel.LOW,
+                True,
+                frozenset({Reviewer.COPILOT, Reviewer.QA, Reviewer.SEC}),
+            ),
+            (
+                "prior_all_current_low_unusable",
+                frozenset({Reviewer.COPILOT, Reviewer.QA, Reviewer.SEC}),
+                RiskLevel.LOW,
+                False,
+                frozenset({Reviewer.QA, Reviewer.SEC}),
+            ),
+            (
+                "prior_copilot_qa_current_low_usable",
+                frozenset({Reviewer.COPILOT, Reviewer.QA}),
+                RiskLevel.LOW,
+                True,
+                frozenset({Reviewer.COPILOT, Reviewer.QA}),
+            ),
+            (
+                "prior_copilot_qa_current_low_unusable",
+                frozenset({Reviewer.COPILOT, Reviewer.QA}),
+                RiskLevel.LOW,
+                False,
+                frozenset({Reviewer.QA}),
+            ),
+            (
+                "prior_qa_current_low_usable",
+                frozenset({Reviewer.QA}),
+                RiskLevel.LOW,
+                True,
+                frozenset({Reviewer.COPILOT, Reviewer.QA}),
+            ),
+            (
+                "prior_qa_current_low_unusable",
+                frozenset({Reviewer.QA}),
+                RiskLevel.LOW,
+                False,
+                frozenset({Reviewer.QA}),
+            ),
+        )
+        for name, prior, risk, usable, expected in cases:
+            with self.subTest(name=name):
+                decision = route_review(
+                    request(
+                        purpose=ReviewPurpose.CORRECTION,
+                        prior_reviewers=prior,
+                        risk=risk,
+                        copilot_usable=usable,
+                    ),
+                    self.config,
+                )
+                self.assertEqual(decision.required_reviewers, expected)
+
+    def test_correction_applies_security_coverage_mode_and_sec_implies_qa_overlays(self):
+        cases = (
+            (
+                "security",
+                frozenset({Reviewer.COPILOT}),
+                {"security_relevant": True},
+                frozenset({Reviewer.COPILOT, Reviewer.QA, Reviewer.SEC}),
+            ),
+            (
+                "coverage_false",
+                frozenset({Reviewer.COPILOT}),
+                {"coverage_complete": False},
+                frozenset({Reviewer.COPILOT, Reviewer.QA}),
+            ),
+            (
+                "coverage_unknown",
+                frozenset({Reviewer.COPILOT}),
+                {"coverage_complete": None},
+                frozenset({Reviewer.COPILOT, Reviewer.QA}),
+            ),
+            (
+                "mode_degraded",
+                frozenset({Reviewer.COPILOT}),
+                {"copilot_review_mode": "degraded"},
+                frozenset({Reviewer.COPILOT, Reviewer.QA}),
+            ),
+            (
+                "mode_unknown",
+                frozenset({Reviewer.COPILOT}),
+                {"copilot_review_mode": "unknown"},
+                frozenset({Reviewer.COPILOT, Reviewer.QA}),
+            ),
+            (
+                "historical_sec_implies_qa",
+                frozenset({Reviewer.SEC}),
+                {},
+                frozenset({Reviewer.COPILOT, Reviewer.QA, Reviewer.SEC}),
+            ),
+        )
+        for name, prior, changes, expected in cases:
+            with self.subTest(name=name):
+                decision = route_review(
+                    request(
+                        purpose=ReviewPurpose.CORRECTION,
+                        prior_reviewers=prior,
+                        **changes,
+                    ),
+                    self.config,
+                )
+                self.assertEqual(decision.required_reviewers, expected)
+
+    def test_correction_availability_blocker_preserves_the_complete_required_set(self):
+        for unavailable in (
+            {"qa_available": False},
+            {"sec_available": False},
+        ):
+            with self.subTest(unavailable=unavailable):
+                decision = route_review(
+                    request(
+                        purpose=ReviewPurpose.CORRECTION,
+                        prior_reviewers=frozenset({Reviewer.COPILOT}),
+                        risk=RiskLevel.CRITICAL,
+                        **unavailable,
+                    ),
+                    self.config,
+                )
+                self.assertEqual(decision.route, ReviewRoute.BLOCKER)
+                self.assertEqual(
+                    decision.required_reviewers,
+                    frozenset({Reviewer.COPILOT, Reviewer.QA, Reviewer.SEC}),
+                )
+
     def test_correction_requires_previous_reviewer_evidence(self):
         with self.assertRaises(ValueError):
             route_review(request(purpose=ReviewPurpose.CORRECTION), self.config)

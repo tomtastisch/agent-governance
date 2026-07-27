@@ -834,6 +834,20 @@ prior_result.observed_at
 < prior_evidence.valid_until
 ```
 
+Compute the correction reviewer floor as:
+
+```text
+adjusted_prior_floor UNION current_final_exact_head_matrix_floor
+```
+
+The current floor always comes from the `final_exact_head` matrix for the freshly classified
+current risk and current Copilot usability. When Copilot is unusable, replace historical Copilot
+with QA; preserve historical QA/SEC, then apply security, coverage/mode and SEC→QA overlays.
+Missing required QA/SEC availability makes the route `blocker` without removing reviewers from
+the full required set. Tests cover the complete required prior/current/usable matrix and the
+Task-6 end-to-end case where prior `{copilot}` plus a current 900-line critical diff cannot pass
+without current QA and SEC evidence.
+
 The production-positive path remains disabled until Issue #3 provides an authoritative publisher
 ledger with immediate latest/ancestry selection. General Findings-Correction remains unresolved
 because a previously failed gate cannot satisfy the required prior-conclusion-success rule.

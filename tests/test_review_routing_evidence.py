@@ -1693,6 +1693,56 @@ class ExactHeadGateTest(unittest.TestCase):
         self.assertNotIn("correction_prior_gate_unavailable", result.reasons)
         self.assertNotIn("correction_prior_gate_invalid", result.reasons)
 
+    def test_correction_prior_copilot_cannot_lower_current_critical_matrix_floor(self):
+        from dataclasses import replace
+        from review_routing.contracts import (
+            DiffFile,
+            Reviewer,
+            ReviewPurpose,
+            RiskClassifierPort,
+        )
+
+        critical_diff = replace(
+            self.diff,
+            files=(
+                DiffFile(
+                    path=self.diff.files[0].path,
+                    status=self.diff.files[0].status,
+                    additions=900,
+                    deletions=0,
+                    binary=False,
+                ),
+            ),
+        )
+        assessment = self.registry.resolve(RiskClassifierPort).assess(
+            critical_diff,
+            self.config,
+        )
+        prior = self.prior_gate_evidence()
+        context = self.correction_context(prior)
+        context = replace(
+            context,
+            preliminary_plan=self.plan(
+                purpose=ReviewPurpose.CORRECTION,
+                risk=assessment,
+                diff_digest=critical_diff.diff_digest,
+            ),
+        )
+
+        result = self.validate(
+            context=context,
+            snapshot=self.snapshot(),
+            diff=critical_diff,
+        )
+
+        self.assertEqual(result.conclusion, "failure")
+        self.assertEqual(
+            result.required_reviewers,
+            frozenset({Reviewer.COPILOT, Reviewer.QA, Reviewer.SEC}),
+        )
+        self.assertIn("missing_reviewer:qa", result.reasons)
+        self.assertIn("missing_reviewer:sec", result.reasons)
+
     def test_correction_rejects_foreign_digest_publisher_and_time_bound_prior_gate(self):
         from dataclasses import replace
         from review_routing.contracts import ReviewPurpose
