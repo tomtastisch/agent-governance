@@ -26,12 +26,15 @@ agent-governance/
 │   └── profile.example.md
 ├── tools/
 │   ├── tools.md         # Werkzeug-Katalog (SSOT): Beschreibung, Governance-Nutzen, Install-Weg
+│   ├── release_check.py # Release-Metadaten-Validierung (tree/tag/release)
 │   └── Brewfile         # deterministische CLI-Installation (brew bundle)
 ├── templates/           # kopierfertige Verdrahtungsdateien für die Harness-Homes
 │   ├── README.md        # Zuordnungstabelle Vorlage → Zielort + Root-Pfad-Regeln
 │   ├── CLAUDE.md        # → ~/.claude/CLAUDE.md
 │   ├── AGENTS.md        # → ~/.codex/AGENTS.md
 │   └── claude-agents/   # → ~/.claude/agents/ (Subagent-Wrapper AK/ST/QA/SEC)
+├── VERSION              # autoritative SemVer-Quelle (SSOT)
+├── CHANGELOG.md         # Änderungshistorie (Keep a Changelog)
 ├── tests/               # Konsistenz-/Drift-Tests + advisory Link-Check (Kern §9/§11/§13)
 ├── docs/decisions/      # Entscheidungssätze (ADR): Begründung struktureller Änderungen
 ├── .github/workflows/   # CI-Pipeline (ci.yml)
@@ -128,8 +131,10 @@ ohne Fremdabhängigkeiten) fällt aus, sobald eine Quelle gegen eine andere drif
   älteren Interpretern überspringt sich nur dieser Block, CI pinnt 3.11 und erzwingt ihn).
 
 `tests/check_links.py` prüft zusätzlich die Erreichbarkeit der Katalog-Links — netzabhängig und
-daher advisory (§13). Die Pipeline (`.github/workflows/ci.yml`) trennt beides klar: blockierende
-Konsistenz-Tests, advisory Link-Check. Lokal: `python3 -m unittest discover -s tests`.
+daher advisory (§13). `tools/release_check.py` validiert die Release-Metadaten (VERSION,
+CHANGELOG, Tags, GitHub-Releases) — lokal via `tree`- und `tag`-Modus, in CI als
+blockierender Job. Die Pipeline (`.github/workflows/ci.yml`) trennt: blockierende
+Konsistenz- und Release-Tests, advisory Link-Check. Lokal: `python3 -m unittest discover -s tests`.
 
 ## Prinzipien der Struktur selbst
 

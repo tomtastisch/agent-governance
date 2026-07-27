@@ -50,5 +50,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keine.
 
 **Breaking changes:** none
-
-[0.1.0]: https://github.com/tomtastisch/agent-governance/releases/tag/v0.1.0
