@@ -10,6 +10,13 @@ was QA (diff-gebunden) und ST (einzelbefund-gebunden) systembedingt nicht abdeck
 Beauftragung oder an definierten Meilensteinen (vor Release, nach Abschluss sicherheitsrelevanter
 Vorhaben, bei Abhängigkeits-Updates mit bekannten Schwachstellen).
 
+Für Checkpoints, finale Exact-Head-Reviews und Korrekturrunden bestimmt
+`core/review-routing.toml` nach Kern §16, ob SEC erforderlich ist; es gibt keine zweite
+Rollenmatrix in dieser Erweiterung. Die Route wird read-only mit
+`python3 -m review_routing route` geplant und mit `python3 -m review_routing validate`
+evidenzgebunden ausgewertet. Die Architekturentscheidung steht in
+`docs/decisions/0003-review-routing.md`.
+
 ## Prüfumfang (je Auftrag abgegrenzt)
 
 - Secret-Hygiene: Repo, Historie, Konfiguration, Logs und CI-Artefakte frei von Klartext-Secrets

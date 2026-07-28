@@ -1,0 +1,17 @@
+{
+  "timePeriod": {
+    "year": 2026,
+    "month": 7
+  },
+  "user": "synthetic-user",
+  "usageItems": [
+    {
+      "product": "Copilot AI Credits",
+      "sku": "AI Credit",
+      "model": "synthetic-model",
+      "unitType": "ai-credits",
+      "grossQuantity": 37,
+      "netQuantity": 12
+    }
+  ]
+}

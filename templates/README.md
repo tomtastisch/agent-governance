@@ -33,3 +33,12 @@ Hintergrund: Claude-`@`-Imports erlauben keine Variablen — der Root-Pfad muss 
 Einstiegsdateien stehen. Deshalb gilt die Konvention: Der Root-Pfad steht ausschließlich in den
 oben gelisteten Verdrahtungs-/Adapter-Dateien; `core/` bleibt pfadfrei. Der Install-Prompt
 (`../INSTALL.md`) übernimmt die Substitution automatisch.
+
+## Readback der Ausgabepolicy
+
+Vor dem Abschluss liest der installierende Agent die Ziel-Einstiegsdatei zurück und bestätigt,
+dass sie `core/interaction.toml` vor der ersten freiwilligen Zwischenmeldung lädt beziehungsweise
+als verpflichtende erste Leseaktion nennt. Die Datei liegt unter `GOVERNANCE_ROOT/core/` und ist
+die alleinige Default-SSOT; Adapter und Vorlagen weisen keinen eigenen Boolean zu. Die
+Harness-Fähigkeit bleibt für Claude Code und Codex bis zu ihren externen Akzeptanzfällen
+promptbasiert/best-effort; System- oder Harnesspflichten gehen vor.

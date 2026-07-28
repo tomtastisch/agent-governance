@@ -126,12 +126,57 @@ zuverlässig und nachweisbar bedienbar.
 https://github.com/github/github-mcp-server
 ```
 
+### Review-Routing CLI
+*Standard-Setup (repository-intern; harness-übergreifend).* Das stdlib-only Modul
+`review_routing` erhebt Copilot-Signale, plant die Reviewer-Route und validiert
+Exact-Head-Evidenz read-only. Die einzige Matrix- und Risikopolicy ist
+`core/review-routing.toml`; die Begründung steht in
+`docs/decisions/0003-review-routing.md`. Das Werkzeug löst selbst keinen kostenpflichtigen
+GitHub-Copilot-Review aus. Dafür bleibt eine explizite Einzelfreigabe nach Kern §16 erforderlich.
+
+Geschlossene manuelle Aufrufformen:
+
+```bash
+python3 -m review_routing probe \
+  --repo OWNER/REPO \
+  --review-mode manual \
+  --requester USER \
+  --json
+
+python3 -m review_routing route \
+  --repo OWNER/REPO \
+  --pull-request NUMBER \
+  --review-mode manual \
+  --requester USER \
+  --purpose final_exact_head \
+  --repo-path /absolute/path/to/checkout \
+  --json
+
+python3 -m review_routing validate \
+  --route-file ROUTE.json \
+  --evidence-file EVIDENCE.json \
+  --repo OWNER/REPO \
+  --pull-request NUMBER \
+  --review-mode manual \
+  --requester USER \
+  --repo-path /absolute/path/to/checkout \
+  --json
+```
+
+Für `automatic` entfällt `--requester`; `probe` erhält dann zusätzlich
+`--pull-request NUMBER`. GitHub-Rechte (`Plan: read` für persönliche Usage), Principal-/
+Organisationsgrenzen, Task-5-`preliminary` versus Task-6-Validator,
+`trusted_base_policy_missing` bei PR #5, Live-Positivtest und die Publisher-/Ruleset-Abhängigkeit
+von Issue #3 sind im README-Abschnitt „Deterministisches Review-Routing" beschrieben. Die CLI hat
+keine Billing-, Budget-, Trust- oder Digest-Schalter.
+
 ### code-review und pr-review-toolkit
 *Standard-Setup (Claude Code).* Zwei zusammengehörige Plugins für strukturiertes Diff-Review:
 Findings mit Datei/Zeile, Schweregrad und Reproduktion sowie PR-Review-Threads. Sie unterstützen den
-QA-Alternativpfad und die laufende Cluster-QA (§5.5, §16.3), bei denen jedes Finding als eigener
-ungelöster Review-Thread verlangt wird (§16.4). Nutzen für die Governance: liefert die Form von
-Review-Evidenz, die das Merge-Gate akzeptiert — nicht bloß Chat-Zusammenfassungen.
+policygeforderten QA-Pfad (§5.5, §16), bei dem jedes Finding als eigener ungelöster
+Review-Thread verlangt wird (§16.6). Nutzen für die Governance: liefert die Form von
+Review-Evidenz, die das Merge-Gate akzeptiert — nicht bloß Chat-Zusammenfassungen; die
+Einsatzentscheidung bleibt bei `core/review-routing.toml`.
 
 ```
 /plugin install code-review@claude-plugins-official

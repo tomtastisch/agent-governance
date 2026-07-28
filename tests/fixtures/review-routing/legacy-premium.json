@@ -1,0 +1,17 @@
+{
+  "timePeriod": {
+    "year": 2026,
+    "month": 7
+  },
+  "user": "synthetic-user",
+  "usageItems": [
+    {
+      "product": "Copilot",
+      "sku": "Copilot Premium Request",
+      "model": "synthetic-model",
+      "unitType": "requests",
+      "grossQuantity": 7,
+      "netQuantity": 3
+    }
+  ]
+}

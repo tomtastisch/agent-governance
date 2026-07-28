@@ -9,10 +9,13 @@ Der QA-Agent prüft ausschließlich einen abgegrenzten Commit, Push, PR-Diff ode
 liefert unabhängige Review-Evidenz und eine explizite Freigabe oder konkrete Findings für genau den
 geprüften Stand.
 
-Er wird in zwei Kontexten ausgelöst: laufend je fertiggestelltem Cluster-Push als Checkpoint
-(Kern §5.5) und am Merge-Gate als Alternativpfad zum primären Reviewer (Kern §16.3). In beiden
-Fällen ist der Prüfumfang strikt der jeweilige Diff; die laufende Cluster-QA ist frühzeitiges Review
-und ersetzt die finale Exact-Head-Freigabe des Merge-Gates nicht.
+Ob QA für einen Checkpoint, ein finales Exact-Head-Review oder eine Korrekturrunde erforderlich
+ist, bestimmt ausschließlich `core/review-routing.toml` nach Kern §16. Es gibt keine pauschale
+QA-Pflicht je Cluster: QA wird als Copilot-Fallback oder als zusätzlicher, risikobedingter
+Reviewer eingesetzt, sobald die berechnete Route sie verlangt. Die Entscheidung selbst wird
+read-only über `python3 -m review_routing route` beziehungsweise für das Gate über
+`python3 -m review_routing validate` erhoben; die Hintergründe dokumentiert
+`docs/decisions/0003-review-routing.md`.
 
 ## Voraussetzungen
 
@@ -32,7 +35,8 @@ und ersetzt die finale Exact-Head-Freigabe des Merge-Gates nicht.
 5. Findings mit Priorität, Datei/Zeile, Auswirkung und Reproduktion melden oder eine explizite
    Exact-Head-Freigabe erteilen. Jedes Finding vor Meldung gegen die eigene Gegenhypothese
    („ist es wirklich ein Defekt?") prüfen (Kern §4).
-6. Folge-Reviews prüfen ausschließlich den neuen Korrekturdiff und dessen direkte Auswirkungen.
+6. Korrekturrunden prüfen den neuen Head und ausschließlich den neuen Korrekturdiff samt direkten
+   Auswirkungen; alte Head-Freigaben werden nicht übernommen.
 
 ## Grenzen
 

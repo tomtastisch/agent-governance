@@ -11,7 +11,7 @@ zu lesen).
 | `harness.name` | Codex (Desktop-App, CLI, `codex exec`) |
 | `governance.root` | `~/agent-governance` |
 | `roles.mechanism` | Separate Codex-Session bzw. `codex exec`-Lauf mit frischem, chatfreiem Kontext je Rolle; Orchestrierung wahlweise über den codex-orchestrator-MCP. Jeder Rollenagent lädt Kern + Rollenerweiterung + Profil selbst. |
-| `review.primary` | GitHub Copilot Code Review am PR; Alternativpfad: QA-Agent nach Kern §16.3. |
+| `review.primary` | GitHub Copilot Code Review am PR; seine Verwendbarkeit und die ergänzenden beziehungsweise ersetzenden QA-/SEC-Rollen bestimmt ausschließlich `core/review-routing.toml` nach Kern §16. |
 | `effort.mapping` | Codex-Effort `low → medium → high → xhigh`. Analyse/Doku low, Implementierung medium, Architektur/Review/CI-Fix high, kritisches Sparring xhigh. Read-only-Modus für alles, was nicht schreiben muss. |
 | `net.policy` | Netzwerkzugriff in isolierten Läufen standardmäßig aus; je Aufgabe dokumentiert freigeben. Immer freigegeben: CI-Status/-Logs des eigenen Push via `gh` (Kern §13). |
 | `machine.notes` | git-Signing auf diesem Mac: `commit.gpgsign=true` + SSH-Key mit Passphrase. Nicht-interaktiv schlägt `git commit` ohne entsperrten `ssh-agent` fehl → Key vorher laden; `--no-gpg-sign` nur mit expliziter Freigabe. `gum` für Terminal-Progress. |
@@ -27,5 +27,15 @@ Orthographie) erzwingt Codex nicht nativ und sind vollumfänglich selbst einzuha
 
 - Da Codex keine Import-Syntax kennt, ist das Lesen von Kern, Adapter und Profil die verbindliche
   erste Aktion jeder Session (angewiesen in `~/.codex/AGENTS.md`). Nicht lesbar = Blocker (Kern §7).
+- Ausgabepolicy: Die Einstiegsdatei verlangt zusätzlich das Lesen von `core/interaction.toml`
+  vor jeder freiwilligen Zwischenmeldung. Die Umsetzung ist promptbasiert/best-effort; native
+  App- oder System-Statuspflichten haben Vorrang und bleiben sichtbar.
+- Review-Routing: Vor einem Reviewer-Dispatch wird die read-only Planung mit
+  `python3 -m review_routing route` ausgeführt; das finale Evidenzgate wird mit
+  `python3 -m review_routing validate` geprüft. Matrix und Risikomarker werden nicht im Adapter
+  wiederholt; ihre SSOT ist `core/review-routing.toml`, die Entscheidung ist in
+  `docs/decisions/0003-review-routing.md` begründet. Ein kostenpflichtiger Copilot-Dispatch
+  benötigt eine explizite Einzelfreigabe. Meldet die Route Copilot als nicht verwendbar, wird
+  ausschließlich der geforderte QA-/SEC-Rollenlauf gestartet und kein Copilot-Retry versucht.
 - Tokenhaushalt: Rollenerweiterungen werden nur im jeweiligen Rollenlauf gelesen, nie im
   Executor-Kontext.
