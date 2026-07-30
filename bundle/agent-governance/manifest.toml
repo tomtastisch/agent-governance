@@ -1,0 +1,102 @@
+schema_version = 1
+bootstrap = "../GOVERNANCE.md"
+local_rules = "local/user-rules.md"
+
+[routing]
+known_triggers = [
+  "analysis",
+  "research",
+  "planning",
+  "architecture",
+  "implementation",
+  "refactoring",
+  "debugging",
+  "testing",
+  "documentation",
+  "installation",
+  "migration",
+  "release",
+  "external_effect",
+  "security_sensitive_change",
+  "security_review",
+  "quality_review",
+  "triage",
+  "role_architecture",
+  "role_triage",
+  "role_quality_assurance",
+  "role_security_review",
+]
+unknown = "block"
+ambiguous = "block"
+
+[modules.invariants]
+path = "modules/invariants.md"
+triggers = ["external_effect", "security_sensitive_change", "installation", "migration"]
+dependencies = []
+
+[modules.evidence]
+path = "modules/evidence.md"
+triggers = [
+  "analysis",
+  "research",
+  "planning",
+  "architecture",
+  "debugging",
+  "testing",
+  "documentation",
+  "installation",
+  "migration",
+  "release",
+  "security_review",
+  "quality_review",
+  "triage",
+]
+dependencies = []
+
+[modules.workflow]
+path = "modules/workflow.md"
+triggers = ["planning", "implementation", "refactoring", "debugging", "migration", "triage"]
+dependencies = ["evidence"]
+
+[modules.architecture]
+path = "modules/architecture.md"
+triggers = ["architecture", "refactoring"]
+dependencies = ["evidence"]
+
+[modules.delivery]
+path = "modules/delivery.md"
+triggers = [
+  "implementation",
+  "testing",
+  "documentation",
+  "installation",
+  "migration",
+  "release",
+  "quality_review",
+]
+dependencies = ["evidence"]
+
+[modules.security]
+path = "modules/security.md"
+triggers = ["security_sensitive_change", "security_review"]
+dependencies = ["evidence"]
+
+[roles.architecture]
+path = "roles/architecture.md"
+triggers = ["role_architecture"]
+modules = ["evidence", "architecture"]
+
+[roles.triage]
+path = "roles/triage.md"
+triggers = ["role_triage"]
+modules = ["evidence", "workflow"]
+
+[roles.quality_assurance]
+path = "roles/quality-assurance.md"
+triggers = ["role_quality_assurance"]
+modules = ["evidence", "delivery"]
+
+[roles.security_review]
+path = "roles/security-review.md"
+triggers = ["role_security_review"]
+modules = ["evidence", "security"]
