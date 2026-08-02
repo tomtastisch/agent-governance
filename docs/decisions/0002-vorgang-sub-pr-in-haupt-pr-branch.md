@@ -1,5 +1,8 @@
 # ADR 0002 — Schritt-Lieferung als Sub-PR in den Haupt-PR-Branch, verallgemeinerter Vorgang
 
+> **Historische Evidenz - nicht normativ.** Diese Datei dokumentiert eine frühere Entscheidung,
+> wird vom aktuellen Governance-Bundle nicht geladen und erteilt keine Handlungsanweisung.
+
 Status: akzeptiert · Datum: 2026-07-25
 
 ## Kontext

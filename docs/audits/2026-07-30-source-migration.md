@@ -1,5 +1,10 @@
 # Migrationsmatrix der Altquellen
 
+> **Historische Evidenz - nicht normativ.** Diese Matrix beschreibt den analysierten Stand und
+> seine damalige Zielplanung. Sie wird von keinem aktuellen Governance-Einstiegspunkt geladen.
+> Die operative Control-Plane-, Provider- und Werkzeugbereinigung ist nach heutiger Clustergrenze
+> Cluster 4; entsprechende Tabellenzeilen sind kein Cluster-3-Ausführungsauftrag.
+
 - Analysierter Repository-Stand:
   `42efb7a6318fe756834f8b6c5a18114e83d09e53`
 - Architekturentscheidung:

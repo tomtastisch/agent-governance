@@ -1,5 +1,8 @@
 # ADR 0001 — Branch-/PR-Tag nach Änderungstyp statt Agenten-Präfix
 
+> **Historische Evidenz - nicht normativ.** Diese Datei dokumentiert eine frühere Entscheidung,
+> wird vom aktuellen Governance-Bundle nicht geladen und erteilt keine Handlungsanweisung.
+
 Status: akzeptiert · Datum: 2026-07-25
 
 ## Kontext

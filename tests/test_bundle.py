@@ -123,7 +123,7 @@ class ManifestContract(unittest.TestCase):
 
     def test_manifest_has_only_static_index_sections(self):
         self.assertEqual(set(self.data), {
-            "schema_version", "bootstrap", "local_rules", "routing", "modules", "roles"
+            "schema_version", "local_rules", "routing", "modules", "roles"
         })
         lowered = MANIFEST.read_text(encoding="utf-8").lower()
         for term in FORBIDDEN_MANIFEST_TERMS:
@@ -149,7 +149,6 @@ class ManifestContract(unittest.TestCase):
     def test_paths_are_relative_and_resolve(self):
         manifest_root = MANIFEST.parent
         required_paths = [
-            self.data["bootstrap"],
             *(entry["path"] for entry in self.data["modules"].values()),
             *(entry["path"] for entry in self.data["roles"].values()),
         ]

@@ -9,11 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Keine.
+- Strukturelle Cluster-3-Regressionstests für Bootstrap-Eindeutigkeit, Legacy-Pfade,
+  Referenzzyklen, historische Dokumentgrenzen und den erhaltenen Cluster-4-Bestand.
 
 ### Changed
 
-- Keine.
+- Root-Dokumentation und Release-Prüfung beschreiben ausschließlich den kanonischen Bundle-Stand.
+- Der operative Projekt- und Werkzeugbestand ist explizit als nicht normative Cluster-4-Fläche
+  abgegrenzt.
+- Das Manifest enthält keine Rückreferenz mehr auf den bereits geladenen Bootstrap.
 
 ### Fixed
 
@@ -21,9 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- Keine.
+- Alte Harness-Adapter, Bootstrap-Templates, Rollenwrapper, Core-/Rollenquellen, Branch-Tags und
+  die Profilvorlage als konkurrierende Governance-Autorität.
+- **BREAKING:** Bestehende Installationen mit Verweisen auf diese Legacy-Quellen dürfen erst nach
+  der noch ausstehenden Cluster-4-Migration aktualisiert werden.
 
-**Breaking changes:** none
+**Breaking changes:** present
 
 ## [0.1.0] — 2026-07-27
 

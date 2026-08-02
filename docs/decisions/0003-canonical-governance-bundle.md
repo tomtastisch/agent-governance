@@ -1,5 +1,9 @@
 # ADR 0003 — Kanonisches, harness-neutrales Governance-Bundle
 
+> **Historische Evidenz - nicht normativ.** Diese Architekturbegründung wird vom aktuellen
+> Governance-Bundle nicht geladen. Aussagen zu Installer, Migration, Runtime, Providern und Tools
+> beschreiben Entscheidungen oder Zukunftsarbeit und sind keine ausführbare Anleitung.
+
 - Status: angenommen
 - Datum: 2026-07-30
 

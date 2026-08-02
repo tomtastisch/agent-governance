@@ -1,18 +1,20 @@
-# Werkzeug-Katalog (Kern §19)
+# Operativer Werkzeugbestand
 
-Einzige autoritative Quelle (SSOT) für empfohlene Konnektoren, MCP-Server, Plugins und Skills.
+> Cluster-4-Bestand - keine Governance-Quelle. Diese Datei wird vom kanonischen Bundle nicht
+> geladen. Installations-, Provider- und Toolentscheidungen bleiben bis Cluster 4 offen.
+
+Erhaltener Katalog für empfohlene Konnektoren, MCP-Server, Plugins und Skills.
 Diese Datei ersetzt das frühere `tools.toml` — sie ist zugleich Maschinen-Referenz für den
 Installations-Agenten (er liest Markdown nativ) und lesbarer Katalog für Menschen. Die
 deterministische CLI-Installation bleibt im `Brewfile`; dieser Katalog beschreibt das Warum, den
 Nutzen für die Governance und den Installationsweg je Werkzeug.
 
-Zwei Freigabe-Ebenen (Kern §7, §19):
+Der für Cluster 4 erhaltene Bestand unterscheidet zwei Freigabe-Ebenen:
 - Als „Standard-Setup" markierte Werkzeuge sind für das Regelwerk erforderlich und dürfen
-  anlassbezogen ohne Rückfrage nachinstalliert werden (Dauerfreigabe Kern §7).
+  nach der noch ausstehenden Cluster-4-Prüfung anlassbezogen installiert werden.
 - Als „Optional empfohlen" markierte Werkzeuge sind nützlich, aber nicht erforderlich. Vor ihrer
   Installation holt der Agent eine ausdrückliche Freigabe ein — einmalig bei der Ersteinrichtung
-  des Harness, nicht je Session (Kern §19). Die Entscheidung wird im Profil (`[PROFILE:prefs]`)
-  vermerkt und nicht erneut erfragt.
+  des Harness, nicht je Session. Der Speicherort dieser Entscheidung ist noch nicht konsolidiert.
 
 ## Warum Werkzeuge — und warum diese
 
@@ -162,7 +164,7 @@ brew bundle --file=tools/Brewfile
 ```
 
 Optional empfohlen: `gum` (Terminal-Progress) und `shellcheck` (Shell-Linting, stützt §11). Sie
-stehen bewusst in einem separaten Brewfile und werden erst nach Freigabe (Kern §19) installiert,
+stehen bewusst in einem separaten Brewfile und werden erst nach ausdrücklicher Freigabe installiert,
 damit der Standard-Pfad keine freigabepflichtigen Werkzeuge mitzieht:
 
 ```
@@ -176,5 +178,5 @@ brew bundle --file=tools/Brewfile.optional
   <https://code.claude.com/docs/en/discover-plugins>.
 - MCP-Server je Harness konfigurieren: Claude Code über die MCP-Konfiguration, Codex über
   `~/.codex/config.toml` unter `[mcp_servers]`.
-- Erstinstallation optionaler Werkzeuge nur nach ausdrücklicher Freigabe (Kern §19); die Antwort
-  wird im Profil vermerkt und nicht wiederholt erfragt.
+- Erstinstallation optionaler Werkzeuge nur nach ausdrücklicher Freigabe; die dauerhafte Ablage
+  dieser Entscheidung bleibt Cluster 4 vorbehalten.

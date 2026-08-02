@@ -14,7 +14,7 @@ id = "agent-governance"
 name = "Agent Governance"
 contract_version = "1"
 tool_profile = "governance-core-v1"
-description = "Normative capability and workflow contract for Agent Governance."
+description = "Legacy operational Cluster 4 contract; not a governance source."
 
 [tooling]
 resolution = "server"

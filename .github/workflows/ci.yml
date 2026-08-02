@@ -1,7 +1,7 @@
 name: CI
 
-# Konsistenz-Pipeline des Regelwerks (Kern §13). Da dies ein Prosa-/Governance-Repository ist,
-# realisiert die Pipeline die zutreffenden Stages als reale, greifende Checks (Kern §9, §11):
+# Konsistenz-Pipeline des Bundles. Da dies ein Prosa-/Governance-Repository ist,
+# realisiert die Pipeline die zutreffenden Stages als reale, greifende Checks:
 # Konsistenz-/Drift-Tests (blockierend), Release-Metadaten (blockierend) und
 # Link-Erreichbarkeit (advisory, netzabhängig).
 

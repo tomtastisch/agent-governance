@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Advisory: prüft die Erreichbarkeit der im Katalog `tools/tools.md` verlinkten Quellen.
 
-Netzabhängig und damit bewusst nicht-blockierend (Kern §13: Advisory-Checks sind als solche
-gekennzeichnet). Der offline, blockierende Teil der Drift-Sicherung liegt in test_governance.py;
+Netzabhängig und damit bewusst nicht-blockierend. Der offline, blockierende Teil der
+Bestandsprüfung liegt in test_governance.py;
 dieser Lauf meldet zusätzlich tote Links, damit tools.md nicht unbemerkt veraltet.
 
     python3 tests/check_links.py
