@@ -47,6 +47,49 @@ def normative_files() -> list[Path]:
             *sorted((GOVERNANCE_ROOT / "roles").glob("*.md"))]
 
 
+def resolve_module_closure(modules: dict, roots: list[str]) -> tuple[str, ...]:
+    """Löst eine Modulmenge deterministisch und bei Graphfehlern fail-closed auf."""
+    visiting: list[str] = []
+    visited: set[str] = set()
+    closure: list[str] = []
+
+    def visit(name: str) -> None:
+        if name not in modules:
+            raise ValueError(f"unbekanntes Modul: {name}")
+        if name in visiting:
+            cycle = " -> ".join([*visiting[visiting.index(name):], name])
+            raise ValueError(f"zirkuläre Modulabhängigkeit: {cycle}")
+        if name in visited:
+            return
+        visiting.append(name)
+        for dependency in modules[name]["dependencies"]:
+            visit(dependency)
+        visiting.pop()
+        visited.add(name)
+        closure.append(name)
+
+    for root in roots:
+        visit(root)
+    return tuple(closure)
+
+
+def rule_ids(path: Path) -> set[str]:
+    return set(RULE_ID_RE.findall(path.read_text(encoding="utf-8")))
+
+
+def rule_references(path: Path) -> set[str]:
+    text = path.read_text(encoding="utf-8")
+    return set(RULE_TOKEN_RE.findall(text)) - set(RULE_ID_RE.findall(text))
+
+
+def rule_definitions() -> dict[str, list[Path]]:
+    definitions: dict[str, list[Path]] = {}
+    for path in normative_files():
+        for rule_id in RULE_ID_RE.findall(path.read_text(encoding="utf-8")):
+            definitions.setdefault(rule_id, []).append(path.resolve())
+    return definitions
+
+
 class BundleLayout(unittest.TestCase):
     def test_only_governance_is_a_bootstrap_source(self):
         self.assertTrue(BOOTSTRAP.is_file())
@@ -130,23 +173,28 @@ class ManifestContract(unittest.TestCase):
             self.assertTrue(entry["triggers"], name)
             self.assertNotIn("all", entry["triggers"], name)
             self.assertTrue(set(entry["dependencies"]) <= set(modules), name)
-
-        visiting: set[str] = set()
-        visited: set[str] = set()
-
-        def visit(name: str) -> None:
-            if name in visiting:
-                self.fail(f"zirkuläre Modulabhängigkeit bei {name}")
-            if name in visited:
-                return
-            visiting.add(name)
-            for dependency in modules[name]["dependencies"]:
-                visit(dependency)
-            visiting.remove(name)
-            visited.add(name)
-
         for module in modules:
-            visit(module)
+            resolve_module_closure(modules, [module])
+
+    def test_module_closure_rejects_unknown_modules(self):
+        modules = {"evidence": {"dependencies": ["missing"]}}
+        with self.assertRaisesRegex(ValueError, "unbekanntes Modul: missing"):
+            resolve_module_closure(modules, ["evidence"])
+
+    def test_module_closure_rejects_cycles(self):
+        modules = {
+            "evidence": {"dependencies": ["delivery"]},
+            "delivery": {"dependencies": ["evidence"]},
+        }
+        with self.assertRaisesRegex(ValueError, "evidence -> delivery -> evidence"):
+            resolve_module_closure(modules, ["evidence"])
+
+    def test_module_paths_have_unique_ownership(self):
+        owners: dict[Path, str] = {}
+        for name, entry in self.data["modules"].items():
+            path = (MANIFEST.parent / entry["path"]).resolve()
+            self.assertNotIn(path, owners, f"{path}: {owners.get(path)} und {name}")
+            owners[path] = name
 
     def test_roles_reference_known_modules(self):
         modules = set(self.data["modules"])
@@ -154,6 +202,51 @@ class ManifestContract(unittest.TestCase):
             self.assertEqual(set(entry), {"path", "triggers", "modules"}, name)
             self.assertTrue(entry["triggers"], name)
             self.assertTrue(set(entry["modules"]) <= modules, name)
+
+    def test_rule_references_are_in_effective_module_closure(self):
+        modules = self.data["modules"]
+        module_paths = {
+            name: (MANIFEST.parent / entry["path"]).resolve()
+            for name, entry in modules.items()
+        }
+        definitions = rule_definitions()
+
+        def assert_references_loaded(source: Path, closure: tuple[str, ...]) -> None:
+            effective_paths = {BOOTSTRAP.resolve(), *(module_paths[name] for name in closure)}
+            for rule_id in rule_references(source):
+                locations = definitions.get(rule_id, [])
+                self.assertEqual(len(locations), 1,
+                                 f"{source}: {rule_id} hat {len(locations)} Definitionen")
+                self.assertIn(locations[0], effective_paths,
+                              f"{source}: {rule_id} ist nicht im Modulabschluss geladen")
+
+        for name, path in module_paths.items():
+            assert_references_loaded(path, resolve_module_closure(modules, [name]))
+        for role_name, entry in self.data["roles"].items():
+            path = (MANIFEST.parent / entry["path"]).resolve()
+            assert_references_loaded(
+                path, resolve_module_closure(modules, entry["modules"])
+            )
+
+    def test_independent_roles_load_required_review_rules(self):
+        required_rules = {
+            "architecture": {"INV-003", "DEL-003"},
+            "triage": {"INV-003"},
+            "quality_assurance": {"DEL-003"},
+            "security_review": {"INV-003", "DEL-003"},
+        }
+        modules = self.data["modules"]
+        module_paths = {
+            name: (MANIFEST.parent / entry["path"]).resolve()
+            for name, entry in modules.items()
+        }
+        for role_name, expected in required_rules.items():
+            closure = resolve_module_closure(
+                modules, self.data["roles"][role_name]["modules"]
+            )
+            effective = set().union(*(rule_ids(module_paths[name]) for name in closure))
+            self.assertEqual(expected - effective, set(),
+                             f"{role_name}: nicht geladen: {sorted(expected - effective)}")
 
     def test_no_trigger_loads_every_module(self):
         modules = self.data["modules"]

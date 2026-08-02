@@ -79,17 +79,17 @@ dependencies = ["evidence"]
 [modules.security]
 path = "modules/security.md"
 triggers = ["security_sensitive_change", "security_review"]
-dependencies = ["evidence"]
+dependencies = ["evidence", "delivery"]
 
 [roles.architecture]
 path = "roles/architecture.md"
 triggers = ["role_architecture"]
-modules = ["evidence", "architecture"]
+modules = ["evidence", "architecture", "invariants", "delivery"]
 
 [roles.triage]
 path = "roles/triage.md"
 triggers = ["role_triage"]
-modules = ["evidence", "workflow"]
+modules = ["evidence", "workflow", "invariants"]
 
 [roles.quality_assurance]
 path = "roles/quality-assurance.md"
@@ -99,4 +99,4 @@ modules = ["evidence", "delivery"]
 [roles.security_review]
 path = "roles/security-review.md"
 triggers = ["role_security_review"]
-modules = ["evidence", "security"]
+modules = ["evidence", "security", "invariants"]
