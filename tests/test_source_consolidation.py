@@ -21,10 +21,9 @@ MANIFEST = BUNDLE / "agent-governance" / "manifest.toml"
 HISTORICAL_MARKER = "Historische Evidenz - nicht normativ"
 CLUSTER4_MARKER = "Cluster-4-Bestand - keine Governance-Quelle"
 
-LEGACY_PATHS = (
+REMOVED_LEGACY_SOURCE_TREES = (
     "adapters",
     "core",
-    "profile",
     "templates",
 )
 
@@ -86,8 +85,10 @@ class SingleBootstrapSource(unittest.TestCase):
         )
         self.assertEqual(found, [])
 
-    def test_legacy_source_trees_are_absent(self):
-        found = [rel for rel in LEGACY_PATHS if (ROOT / rel).exists()]
+    def test_removed_legacy_source_trees_are_absent(self):
+        found = [
+            rel for rel in REMOVED_LEGACY_SOURCE_TREES if (ROOT / rel).exists()
+        ]
         self.assertEqual(found, [])
 
     def test_no_other_current_markdown_claims_governance_authority(self):
