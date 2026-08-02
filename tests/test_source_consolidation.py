@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
+import subprocess
 import unittest
 
 try:
@@ -208,6 +209,47 @@ class Cluster4BoundaryContract(unittest.TestCase):
         self.assertTrue(data["tooling"]["fail_closed"])
         self.assertFalse(data["tooling"]["allow_client_local_fallbacks"])
         self.assertFalse(data["tooling"]["allow_unregistered_providers"])
+
+
+class PrivateProfileMigrationGuardContract(unittest.TestCase):
+    @staticmethod
+    def check_ignore(path: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["git", "check-ignore", "--no-index", "-v", "--", path],
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+    def test_private_profile_path_is_ignored_by_exact_repository_rule(self):
+        result = self.check_ignore("profile/profile.md")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rule, ignored_path = result.stdout.rstrip("\n").split("\t", 1)
+        source, _line, pattern = rule.rsplit(":", 2)
+        self.assertEqual(source, ".gitignore")
+        self.assertEqual(pattern, "profile/profile.md")
+        self.assertEqual(ignored_path, "profile/profile.md")
+
+    def test_legacy_profile_example_remains_absent_and_visible(self):
+        result = self.check_ignore("profile/profile.example.md")
+
+        self.assertFalse((ROOT / "profile" / "profile.example.md").exists())
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(result.stdout, "")
+
+    def test_installation_status_documents_cluster_boundaries_and_guard_lifetime(self):
+        install = read(ROOT / "INSTALL.md")
+
+        self.assertRegex(install, r"(?m)^- Cluster 4: .*Control-Plane.*Tool-Allowlist")
+        self.assertRegex(install, r"(?m)^- Cluster 5: .*Installer")
+        self.assertRegex(install, r"(?m)^- Cluster 6: .*Nutzerregelmigration")
+        self.assertRegex(
+            install,
+            r"profile/profile\.md[^.]*bis[^.]*Cluster 6|"
+            r"(?:bis|vor)[^.]*Cluster 6[^.]*profile/profile\.md",
+        )
 
 
 if __name__ == "__main__":
