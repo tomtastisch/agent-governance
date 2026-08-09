@@ -159,11 +159,11 @@ class BundleLayout(unittest.TestCase):
         self.assertIn("Einstiegspunktpfad", root_contract)
         self.assertRegex(
             root_contract,
-            r"(?is)nur wenn der Harness.+Einstiegspunktpfad bereitstellt",
+            r"(?is)nur wenn der Harness.+Einstiegspunktpfad.+bereitstellt",
         )
         self.assertRegex(
             root_contract,
-            r"(?is)Arbeitsverzeichnis.+(?:kein|niemals).+Root-Kandidat",
+            r"(?is)Arbeitsverzeichnis.+(?:kein|niemals|weder).+Root-Kandidat",
         )
         self.assertRegex(
             root_contract,
@@ -172,6 +172,44 @@ class BundleLayout(unittest.TestCase):
         self.assertRegex(
             root_contract,
             r"(?is)(?:widerspr.+Roots|mehrere.+gültige.+Roots).+GOV-004",
+        )
+
+    def test_resolved_bundle_root_is_preserved_for_every_bundle_read(self):
+        bootstrap = BOOTSTRAP.read_text(encoding="utf-8")
+        root_contract = bootstrap.split("## Root-Auflösung", 1)[1].split(
+            "\n## ", 1
+        )[0]
+
+        self.assertRegex(
+            root_contract,
+            r"(?is)Arbeitsverzeichnis.+weder.+Kandidat.+geprüft",
+        )
+        self.assertRegex(
+            root_contract,
+            r"(?is)aufgelöste Root.+absolut.+beibehalten",
+        )
+        self.assertRegex(
+            root_contract,
+            r"(?is)Dateizugriff.+Root.+explizites Präfix",
+        )
+        self.assertRegex(
+            root_contract,
+            r"(?is)relative Bundle-Zugriffe.+unzulässig",
+        )
+
+    def test_project_agents_is_not_mistaken_for_governance_entrypoint(self):
+        bootstrap = BOOTSTRAP.read_text(encoding="utf-8")
+        root_contract = bootstrap.split("## Root-Auflösung", 1)[1].split(
+            "\n## ", 1
+        )[0]
+
+        self.assertRegex(
+            root_contract,
+            r"(?is)Einstiegspunktpfad.+Quelle.+byte-identischen Bootstrap",
+        )
+        self.assertRegex(
+            root_contract,
+            r"(?is)projektlokale.+AGENTS\.md.+kein.+Root-Kandidat",
         )
 
 

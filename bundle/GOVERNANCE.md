@@ -11,16 +11,20 @@ anders heißen, sein Inhalt muss jedoch byte-identisch mit dieser Datei sein.
 Der Bundle-Root wird ausschließlich aus begrenzten, ausdrücklich verfügbaren Kandidaten
 aufgelöst: `AGENT_GOVERNANCE_ROOT`, falls gesetzt, für Codex `CODEX_HOME`, falls gesetzt, und
 das Verzeichnis des geladenen Einstiegspunkts, aber nur wenn der Harness den tatsächlichen
-Einstiegspunktpfad bereitstellt. Das aktuelle Arbeitsverzeichnis ist kein Root-Kandidat; eine
-Dateisystemsuche findet nicht statt.
+Einstiegspunktpfad eindeutig als Quelle dieses byte-identischen Bootstrap-Inhalts bereitstellt.
+Eine zusätzliche projektlokale `AGENTS.md` ist kein Governance-Einstiegspunkt und kein
+Root-Kandidat. Das aktuelle Arbeitsverzeichnis wird weder als Root-Kandidat geprüft noch als
+implizite Basis für Bundle-Pfade verwendet; eine Dateisystemsuche findet nicht statt.
 
 Jeder Kandidat wird durch die dort erwartete lesbare reguläre Datei
 [`agent-governance/manifest.toml`](agent-governance/manifest.toml) validiert. Mehrfach auf
 denselben Ort zeigende Kandidaten werden als ein Root behandelt. Fehlt ein gesetzter Kandidat,
 ist sein Manifest ungültig oder ergeben sich widersprüchliche Roots, wird die Root-Auflösung
 nach GOV-004 angehalten. Genau ein widerspruchsfrei validierter Root wird verwendet. Modul-,
-Rollen- und lokale Pfade werden ausschließlich relativ zu diesem Root aufgelöst; Inhalte und
-Pfade bleiben unverändert.
+Rollen- und lokale Pfade werden ausschließlich relativ zu diesem Root aufgelöst. Der
+aufgelöste Root wird als absoluter Pfad beibehalten. Jeder weitere Bundle-Dateizugriff verwendet
+diesen Root als explizites Präfix; relative Bundle-Zugriffe sind unzulässig. Inhalte und Pfade
+bleiben unverändert.
 
 ## Minimale Invarianten
 
