@@ -6,7 +6,10 @@ from __future__ import annotations
 import os
 from pathlib import Path, PurePosixPath
 import re
+import tempfile
+import unicodedata
 import unittest
+from unittest import mock
 
 try:
     import tomllib
@@ -88,6 +91,16 @@ def rule_definitions() -> dict[str, list[Path]]:
         for rule_id in RULE_ID_RE.findall(path.read_text(encoding="utf-8")):
             definitions.setdefault(rule_id, []).append(path.resolve())
     return definitions
+
+
+def markdown_anchors(text: str) -> set[str]:
+    anchors: set[str] = set()
+    for heading in re.findall(r"(?m)^#{1,6}\s+(.+?)\s*$", text):
+        normalized = unicodedata.normalize("NFKD", heading)
+        ascii_heading = normalized.encode("ascii", "ignore").decode("ascii").lower()
+        without_punctuation = re.sub(r"[^a-z0-9_\-\s]", "", ascii_heading)
+        anchors.add(re.sub(r"\s", "-", without_punctuation).strip("-"))
+    return anchors
 
 
 class BundleLayout(unittest.TestCase):
@@ -255,8 +268,33 @@ class ManifestContract(unittest.TestCase):
             }
             self.assertNotEqual(selected, set(modules), trigger)
 
+    def test_refactoring_route_includes_delivery_gates(self):
+        modules = self.data["modules"]
+        selected = [
+            name for name, entry in modules.items()
+            if "refactoring" in entry["triggers"]
+        ]
+        closure = resolve_module_closure(modules, selected)
+        self.assertIn("delivery", closure)
+
 
 class NormativeSourceContract(unittest.TestCase):
+    def test_markdown_link_check_rejects_unknown_fragment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source.md"
+            target = root / "target.md"
+            source.write_text("[Ziel](target.md#fehlt)\n", encoding="utf-8")
+            target.write_text("# Vorhanden\n", encoding="utf-8")
+
+            case = NormativeSourceContract("test_markdown_file_links_resolve")
+            result = unittest.TestResult()
+            with mock.patch(f"{__name__}.normative_files", return_value=[source]):
+                case.run(result)
+
+            self.assertEqual(result.errors, [])
+            self.assertEqual(len(result.failures), 1)
+
     def test_rule_ids_are_unique(self):
         definitions: dict[str, Path] = {}
         for path in normative_files():
@@ -292,10 +330,14 @@ class NormativeSourceContract(unittest.TestCase):
     def test_markdown_file_links_resolve(self):
         for path in normative_files():
             for _label, target in MARKDOWN_LINK_RE.findall(path.read_text(encoding="utf-8")):
-                if re.match(r"^(?:https?://|mailto:|#)", target):
+                if re.match(r"^(?:https?://|mailto:)", target):
                     continue
-                resolved = (path.parent / target.split("#", 1)[0]).resolve()
+                raw_path, separator, fragment = target.partition("#")
+                resolved = path.resolve() if not raw_path else (path.parent / raw_path).resolve()
                 self.assertTrue(resolved.is_file(), f"{path}: {target}")
+                if separator:
+                    anchors = markdown_anchors(resolved.read_text(encoding="utf-8"))
+                    self.assertIn(fragment, anchors, f"{path}: {target}")
 
     def test_no_exact_normalized_paragraph_duplicates(self):
         seen: dict[str, Path] = {}

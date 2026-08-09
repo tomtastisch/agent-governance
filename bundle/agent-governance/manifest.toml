@@ -62,6 +62,7 @@ dependencies = ["evidence"]
 path = "modules/delivery.md"
 triggers = [
   "implementation",
+  "refactoring",
   "testing",
   "documentation",
   "release",
