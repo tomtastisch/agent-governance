@@ -26,6 +26,7 @@ known_triggers = [
   "agent_dependencies",
   "context_handoff",
   "status_reporting",
+  "long_task",
 ]
 unknown = "block"
 ambiguous = "block"
@@ -98,6 +99,11 @@ triggers = [
   "status_reporting",
 ]
 dependencies = ["delivery"]
+
+[modules.context]
+path = "modules/context.md"
+triggers = ["long_task", "context_handoff"]
+dependencies = ["templates"]
 
 [roles.architecture]
 path = "roles/architecture.md"

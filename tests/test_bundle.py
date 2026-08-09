@@ -453,6 +453,35 @@ class TemplateContract(unittest.TestCase):
         self.assertEqual(owners, {self.path})
 
 
+class ContextContinuityContract(unittest.TestCase):
+    def setUp(self):
+        self.path = GOVERNANCE_ROOT / "modules" / "context.md"
+        self.text = self.path.read_text(encoding="utf-8")
+
+    def test_manifest_routes_context_only_for_long_work(self):
+        module = load_manifest()["modules"]["context"]
+        self.assertEqual(
+            set(module["triggers"]), {"long_task", "context_handoff"}
+        )
+        self.assertEqual(module["dependencies"], ["templates"])
+
+    def test_long_task_continuity_contract_is_complete(self):
+        required = (
+            "kanonische Source of Truth", "Sitzungsledger", "Checkpoint",
+            "Kontext neu laden", "Verzweigung", "veraltete Entscheidung",
+            "Tool- und Wissensquellen", "widersprüchlich", "betroffenen Schritt",
+        )
+        for term in required:
+            self.assertIn(term, self.text)
+        self.assertIn("[Kontextübergabe]", self.text)
+
+    def test_chat_and_sensitive_transients_are_not_context_ssot(self):
+        self.assertRegex(self.text, r"(?is)vollständige.+Chat.+keine.+Source of Truth")
+        for term in ("Secrets", "Rohchats"):
+            self.assertIn(term, self.text)
+        self.assertRegex(self.text, r"temporäre\s+Debugdaten")
+
+
 class NormativeSourceContract(unittest.TestCase):
     def test_markdown_link_check_rejects_unknown_fragment(self):
         with tempfile.TemporaryDirectory() as directory:
