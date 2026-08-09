@@ -305,7 +305,7 @@ class ManifestContract(unittest.TestCase):
         self.assertEqual(
             set(module["triggers"]), {"tool_selection", "agent_dependencies"}
         )
-        self.assertEqual(module["dependencies"], ["delivery"])
+        self.assertEqual(module["dependencies"], ["security"])
 
 
 class ToolRoutingContract(unittest.TestCase):
@@ -381,6 +381,20 @@ class ReviewContract(unittest.TestCase):
     def test_tool_catalog_delegates_review_semantics_to_delivery_ssot(self):
         self.assertIn("[DEL-008]", self.tools)
         self.assertIn("[DEL-009]", self.tools)
+
+    def test_security_tool_trigger_delegates_to_security_ssot(self):
+        entry = self.tools.split("#### Security-Diff-Prüfung", 1)[1].split(
+            "#### Microsoft APM", 1
+        )[0]
+        trigger = re.search(r"(?m)^\*\*Trigger:\*\* (.+)$", entry)
+        self.assertIsNotNone(trigger)
+        self.assertIn("[SEC-001]", trigger.group(1))
+        for duplicated_term in (
+            "Authentisierung", "Autorisierung", "Secrets", "Berechtigungen",
+            "Trust Boundaries", "Prompt-Injection", "Review-Freigaberegeln",
+            "Tool-Berechtigungen",
+        ):
+            self.assertNotIn(duplicated_term, trigger.group(1))
 
 
 class NormativeSourceContract(unittest.TestCase):

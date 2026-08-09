@@ -101,7 +101,7 @@ fachlichen Auslöser; „nützlich“ erlaubt einen evidenzsteigernden Einsatz o
 
 **Name:** Read-only Security-Diff-Scanner oder unabhängige SEC-Rolle.
 **Zweck:** Sicherheitsrelevante Datenflüsse, Berechtigungen und Trust Boundaries im Exact-Head-Diff prüfen.
-**Trigger:** Änderung an Security-Regeln, Authentisierung, Autorisierung, Secrets, Berechtigungen, Trust Boundaries, externer Schreibwirkung oder fail-closed Freigaben.
+**Trigger:** Ein Security-Gate nach [SEC-001](security.md#sec-001--risikobasiertes-security-gate).
 **Erforderlich:** Nur bei einem solchen Security-Trigger oder ausdrücklichem Auftrag.
 **Nützlich:** Für die Kalibrierung plausibler Findings vor einer SEC-Entscheidung.
 **Evidenzgewinn:** Risikobezogene Source-to-Sink- oder Regelpfade, Findingstatus und geprüfter SHA.
