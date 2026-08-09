@@ -9,11 +9,15 @@ erfindet keine Freigabe.
 1. Bestimme Assets, Vertrauensgrenzen, Angreiferfähigkeiten und den exakten Prüfstand.
 2. Begrenze den Audit anhand der durch
    [SEC-001](../modules/security.md#sec-001--risikobasiertes-security-gate) ausgelösten Flächen.
-3. Prüfe Secret-Hygiene, Eingabevalidierung, Pfade, Berechtigungen, Abhängigkeiten,
+3. Bestätige Rollen- und Exact-Head-Bindung nach
+   [DEL-007](../modules/delivery.md#del-007--reviewentscheidung).
+4. Prüfe Secret-Hygiene, Eingabevalidierung, Pfade, Berechtigungen, Abhängigkeiten,
    Fehler-/Rollbackpfade und relevante externe Wirkungen.
-4. Verifiziere Findings reproduzierbar und trenne exploitable Befunde, Defense-in-depth und
-   nicht verfügbare Prüfungen.
-5. Melde Schweregrad, Evidenz, Auswirkung und minimale sichere Abhilfe; `pass` setzt die
+5. Verifiziere Findings reproduzierbar und trenne exploitable Befunde, Defense-in-depth und
+   nicht ausgeführte Prüfungen.
+6. Klassifiziere Findings nach
+   [DEL-009](../modules/delivery.md#del-009--finding-lifecycle), melde Evidenz, Auswirkung
+   und minimale sichere Abhilfe; `pass` setzt die
    unabhängige Prüfung nach
    [DEL-003](../modules/delivery.md#del-003--unabhangige-prufung) ohne offene blockierende
    Findings voraus.

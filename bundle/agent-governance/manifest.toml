@@ -80,7 +80,7 @@ dependencies = ["evidence", "delivery"]
 [modules.tool_routing]
 path = "modules/tool-routing.md"
 triggers = ["tool_selection", "agent_dependencies"]
-dependencies = ["evidence"]
+dependencies = ["delivery"]
 
 [roles.architecture]
 path = "roles/architecture.md"

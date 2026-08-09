@@ -88,13 +88,13 @@ fachlichen Auslöser; „nützlich“ erlaubt einen evidenzsteigernden Einsatz o
 #### Unabhängiger Reviewprovider
 
 **Name:** GitHub Copilot Code Review oder ein frischer unabhängiger read-only Reviewer.
-**Zweck:** QA-Evidenz unabhängig vom implementierenden Kontext für einen exakt bezeichneten Stand erzeugen.
+**Zweck:** Die nach [DEL-007](delivery.md#del-007--reviewentscheidung) bestimmte Rolle unabhängig vom implementierenden Kontext für einen exakt bezeichneten Stand prüfen.
 **Trigger:** Erforderliches unabhängiges QA-Gate.
-**Erforderlich:** Wenn Risiko, Auftrag oder Liefervertrag unabhängige Prüfung verlangt.
+**Erforderlich:** Wenn Risiko, Auftrag oder Liefervertrag unabhängige Prüfung verlangt; die Providerwahl folgt [DEL-008](delivery.md#del-008--provider-routing).
 **Nützlich:** Für zusätzliche Diffanalyse vor einer Abschlussentscheidung.
-**Evidenzgewinn:** Revieweridentität, Reviewreferenz, Exact-Head-SHA, Zeitpunkt und klassifizierbare Findings.
+**Evidenzgewinn:** Revieweridentität, Reviewreferenz, Exact-Head-SHA, Zeitpunkt und nach [DEL-009](delivery.md#del-009--finding-lifecycle) klassifizierte Findings.
 **Read-/Write-Grenze:** Review ist read-only; Finding-Kommentare und Threadpflege bleiben auditierbare PR-Metadaten, Änderungen am Lieferstand erfolgen separat.
-**Fallback:** Liefert der bevorzugte Provider kein eindeutig zuordenbares Review, übernimmt ein frischer unabhängiger read-only Reviewer dieselbe Rolle.
+**Fallback:** Der Provider-Fallback folgt ausschließlich [DEL-008](delivery.md#del-008--provider-routing).
 **Keine Folgerung:** Ein Reviewprovider ist nicht die Reviewerrolle selbst und sein Kommentar ist keine erfundene Plattformfreigabe.
 
 #### Security-Diff-Prüfung

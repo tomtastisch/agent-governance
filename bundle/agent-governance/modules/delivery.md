@@ -44,6 +44,32 @@ implementierten Stand. Verhaltens-, Kompatibilitäts- und Migrationsänderungen 
 für das Repository festgelegten Versionierung erfasst; Zukunftspläne erscheinen nicht als
 bereits verfügbare Funktion.
 
+### DEL-007 — Reviewentscheidung
+
+Vor einem unabhängigen Gate werden Prüfzweck, Exact Head, Risikoklasse und erforderliche
+Rolle bestimmt. QA prüft Lieferqualität, SEC sicherheitsrelevante Auswirkungen und ARCH
+Architekturgrenzen; Rolle und technischer Provider bleiben getrennt. Eine Selbstprüfung ist
+kein unabhängiges Rollenurteil, und ein Providerkommentar wird nicht als Plattformfreigabe
+umgedeutet.
+
+### DEL-008 — Provider-Routing
+
+Bei einem GitHub-Repository ist GitHub Copilot der bevorzugte QA-Provider, wenn der reale
+PR-Reviewpfad einen Review mit Revieweridentität und Exact-Head-SHA liefert. Ein frischer
+unabhängiger read-only Reviewer ist der QA-Fallback, sobald der Providerzustand `no` oder
+`unknown` lautet; Quoten-, Billing- oder Restbudgetzahlen werden nicht erfunden und ein
+bestätigtes Negativergebnis wird nicht mit Retry-Spam verfolgt. Eine SEC-Rolle bleibt bei
+ihrem Risikotrigger zusätzlich erforderlich und prüft denselben Exact Head.
+
+### DEL-009 — Finding-Lifecycle
+
+Jedes Finding wird als `blocking-valid`, `nonblocking-valid`, `invalid` oder
+`not-applicable` klassifiziert. `blocking-valid` wird vor Fortsetzung korrigiert;
+`nonblocking-valid` wird korrigiert oder mit technischer Begründung dokumentiert. Die beiden
+anderen Klassen benötigen eine kurze überprüfbare Begründung. Nach jeder inhaltlichen
+Korrektur werden betroffene Tests und Rollenprüfungen auf dem neuen Exact Head erneut
+ausgeführt; offene valide Blocking-Findings verbieten eine Abschlussaussage.
+
 ## Definition of Done
 
 Der Liefergegenstand erfüllt seine Akzeptanzkriterien, relevante Tests und statische Prüfungen

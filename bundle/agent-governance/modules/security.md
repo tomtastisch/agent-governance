@@ -2,11 +2,13 @@
 
 ### SEC-001 — Risikobasiertes Security-Gate
 
-Änderungen an Vertrauensgrenzen, Authentifizierung, Autorisierung, Secrets,
-Dateisystemschreibvorgängen, Parsern, externen Eingaben, Abhängigkeiten oder
-Veröffentlichungswegen erhalten eine abgegrenzte Security-Prüfung. Sicherheitskritische
-Änderungen benötigen die unabhängige Prüfung nach
-[DEL-003](delivery.md#del-003--unabhangige-prufung).
+Security-Trigger sind Änderungen an Security-Regeln, Authentifizierung, Autorisierung,
+Secrets, Berechtigungen, Trust Boundaries, Prompt-Injection-Grenzen, externe Schreibwirkungen,
+Review-Freigaberegeln, Tool-Berechtigungen oder Fail-closed-Regeln. Sie erhalten eine
+abgegrenzte Security-Prüfung. Rein redaktionelle Änderungen ohne Wirkung auf diese Grenzen
+erhalten kein formales Security-Gate. Sicherheitskritische Änderungen benötigen die
+unabhängige Prüfung nach [DEL-003](delivery.md#del-003--unabhangige-prufung) und die
+Reviewentscheidung nach [DEL-007](delivery.md#del-007--reviewentscheidung).
 
 ### SEC-002 — Abhängigkeiten und Herkunft
 

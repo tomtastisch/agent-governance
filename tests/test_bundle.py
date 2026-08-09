@@ -305,7 +305,7 @@ class ManifestContract(unittest.TestCase):
         self.assertEqual(
             set(module["triggers"]), {"tool_selection", "agent_dependencies"}
         )
-        self.assertEqual(module["dependencies"], ["evidence"])
+        self.assertEqual(module["dependencies"], ["delivery"])
 
 
 class ToolRoutingContract(unittest.TestCase):
@@ -337,6 +337,50 @@ class ToolRoutingContract(unittest.TestCase):
             r"(?i)\b(?:Installation|installiert|deinstalliert|Verfügbarkeit|"
             r"nicht verfügbar|lokal verfügbar|vorhanden\w*)\b",
         )
+
+
+class ReviewContract(unittest.TestCase):
+    def setUp(self):
+        self.delivery = (GOVERNANCE_ROOT / "modules" / "delivery.md").read_text(
+            encoding="utf-8"
+        )
+        self.security = (GOVERNANCE_ROOT / "modules" / "security.md").read_text(
+            encoding="utf-8"
+        )
+        self.tools = (GOVERNANCE_ROOT / "modules" / "tool-routing.md").read_text(
+            encoding="utf-8"
+        )
+
+    def test_roles_and_review_providers_are_separate(self):
+        for token in ("Rolle", "Provider", "GitHub Copilot", "Exact Head"):
+            self.assertIn(token, self.delivery)
+        self.assertNotIn("QA == Copilot", self.delivery)
+        self.assertRegex(self.delivery, r"frischer\s+unabhängiger read-only")
+        self.assertIn("`no`", self.delivery)
+        self.assertIn("`unknown`", self.delivery)
+        self.assertRegex(self.delivery, r"(?i)Retry-Spam")
+
+    def test_finding_lifecycle_is_closed(self):
+        for classification in (
+            "blocking-valid", "nonblocking-valid", "invalid", "not-applicable"
+        ):
+            self.assertIn(f"`{classification}`", self.delivery)
+        self.assertRegex(self.delivery, r"(?is)Korrektur.+erneut")
+
+    def test_security_gate_has_explicit_risk_triggers(self):
+        required = (
+            "Security-Regeln", "Authentifizierung", "Autorisierung", "Secrets",
+            "Berechtigungen", "Trust Boundaries", "Prompt-Injection",
+            "externe Schreibwirkungen", "Review-Freigaberegeln",
+            "Tool-Berechtigungen", "Fail-closed",
+        )
+        for term in required:
+            self.assertIn(term, self.security)
+        self.assertRegex(self.security, r"(?is)rein redaktionell.+kein.+Security-Gate")
+
+    def test_tool_catalog_delegates_review_semantics_to_delivery_ssot(self):
+        self.assertIn("[DEL-008]", self.tools)
+        self.assertIn("[DEL-009]", self.tools)
 
 
 class NormativeSourceContract(unittest.TestCase):
