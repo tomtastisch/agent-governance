@@ -2,8 +2,9 @@
 
 > **Version:** [`0.1.0`](VERSION) &mdash; [Changelog](CHANGELOG.md)
 
-Dieses Repository liefert ein kompaktes, harness- und providerneutrales Governance-Bundle.
-Die installierbaren Inhalte liegen ausschließlich unter `bundle/`:
+Dieses Repository liefert ein kompaktes, harness- und providerneutrales Governance-Regelwerk.
+Sein Vertrag ist auf Regeln, Rollen, Templates, Source-of-Truth-Verträge, Tool-Routing und
+Verifikation begrenzt. Die kanonischen Inhalte liegen ausschließlich unter `bundle/`:
 
 ```text
 bundle/
@@ -16,10 +17,12 @@ bundle/
         └── user-rules.example.md
 ```
 
-`bundle/GOVERNANCE.md` enthält die kanonischen Bootstrap-Bytes. Das Manifest ist ein statischer,
-fail-closed Index relativer Modul- und Rollenpfade. Lokale Nutzerregeln sind optional, bleiben
-unversioniert und liegen später neben dem Beispiel unter
-`bundle/agent-governance/local/user-rules.md`.
+`bundle/GOVERNANCE.md` ist der einzige kanonische Einstieg. Von dort führt die Einstiegskette
+ausschließlich zum statischen, fail-closed Manifest-Index und triggergerecht weiter zu den dort
+deklarierten Modulen und Rollen. Jede Regel und jedes strikte Template besitzt genau eine
+normative Quelle im Bundle; README, Betriebsgrenzendokumentation und historische Evidenz
+beschreiben diesen Vertrag nur. Der optionale lokale Regelpfad ist im Manifest deklariert und
+bleibt unversioniert.
 
 Harness-spezifische Bootstrap-Templates, Adapter, Rollenwrapper sowie die alten Core- und
 Profilquellen gehören nicht mehr zum aktuellen Repositoryzustand. Repository-Dateien außerhalb
@@ -44,8 +47,8 @@ python3 tools/release_check.py tree
 ```
 
 Die Tests prüfen insbesondere Bootstrap-Budget, Manifeststruktur, geschlossene Modul- und
-Rollenauflösung, Regel-ID-Eindeutigkeit, relative Links, Quellkonsolidierung und die operative
-Scope-Grenze.
+Rollenauflösung, Regel- und Template-SSOTs, relative Links, Quellkonsolidierung, Tool-Routing,
+Review-/Kontextverträge und die operative Scope-Grenze.
 
 ## Historische Evidenz
 

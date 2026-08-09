@@ -39,7 +39,7 @@ oder Workflowfehler bleibt ein fachlicher Fehler.
 
 ### DEL-006 — Dokumentation und Version
 
-README, Installationsanleitung, Changelog und Versionsmetadaten beschreiben ausschließlich den
+README, Betriebsgrenzendokumentation, Changelog und Versionsmetadaten beschreiben ausschließlich den
 implementierten Stand. Verhaltens-, Kompatibilitäts- und Migrationsänderungen werden in der
 für das Repository festgelegten Versionierung erfasst; Zukunftspläne erscheinen nicht als
 bereits verfügbare Funktion.

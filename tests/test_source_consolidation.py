@@ -100,6 +100,17 @@ class SingleBootstrapSource(unittest.TestCase):
     def test_competing_operational_project_contract_is_absent(self):
         self.assertFalse((ROOT / "project.toml").exists())
 
+    def test_bootstrap_describes_bundle_state_without_installation_context(self):
+        self.assertNotRegex(read(BOOTSTRAP), r"(?i)\binstall\w*")
+
+    def test_readme_names_the_complete_governance_scope(self):
+        readme = read(ROOT / "README.md")
+        for responsibility in (
+            "Regeln", "Rollen", "Templates", "Source-of-Truth-Verträge",
+            "Tool-Routing", "Verifikation",
+        ):
+            self.assertIn(responsibility, readme)
+
 
 class LegacyReferenceContract(unittest.TestCase):
     def test_no_current_entrypoint_references_removed_sources(self):

@@ -16,7 +16,7 @@ Aufgaben externer Consumer und außerhalb dieses Repositoryvertrags.
 
 ### ARC-003 — Portable Schnittstellen
 
-Bundle-interne Schnittstellen verwenden relative, installationsstabile Pfade und explizite
+Bundle-interne Schnittstellen verwenden relative, portable Pfade und explizite
 Schemen. Externe Formate und APIs werden an schmalen Grenzen validiert. Implementierungsdetails
 eines Harnesses, Betriebssystems oder Providers dürfen keine normative Regel verändern.
 
