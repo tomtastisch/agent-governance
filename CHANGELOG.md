@@ -9,26 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Strukturelle Cluster-3-Regressionstests für Bootstrap-Eindeutigkeit, Legacy-Pfade,
-  Referenzzyklen, historische Dokumentgrenzen und den erhaltenen Cluster-4-Bestand.
+- Triggerbasiertes Tool-Routing mit Microsoft APM als Standard für deklarative Agent-Skill- und
+  Agent-Paket-Evidenz.
+- Exact-Head-Verträge für unabhängige QA- und risikobasierte Security-Prüfungen.
+- Zentrale strikte Templates für driftanfällige Delivery-, Review- und Kontextübergaben.
+- Sitzungsledger- und Checkpoint-Regeln für nachvollziehbare lange Aufgaben.
+- Regressionstests für Scope, SSOT, Manifest, Tool-Routing, Review, Templates, Kontext und
+  hostunabhängige Git-Fixtures.
 
 ### Changed
 
-- Root-Dokumentation und Release-Prüfung beschreiben ausschließlich den kanonischen Bundle-Stand.
-- Der operative Projekt- und Werkzeugbestand ist explizit als nicht normative Cluster-4-Fläche
-  abgegrenzt.
-- Das Manifest enthält keine Rückreferenz mehr auf den bereits geladenen Bootstrap.
+- Governance ist auf Regeln, Rollen, Templates, Source-of-Truth-Verträge, Tool-Routing und
+  Verifikation begrenzt.
+- Die kanonische Einstiegskette führt ausschließlich vom Bootstrap über das statische Manifest
+  zu triggergerecht geladenen Modulen und Rollen.
+- Reviewerrollen und Reviewprovider sind getrennt; GitHub Copilot ist ein bevorzugter
+  QA-Provider mit unabhängigem Fallback.
+- APM- und andere Toolregeln beschreiben fachliche Trigger und Evidenzgrenzen, jedoch weder
+  Installations- noch Verfügbarkeitszustände.
 
 ### Fixed
 
-- Keine.
+- Git-Test-Fixtures verwenden deterministisch `main`, repository-lokale Identität und geprüfte
+  Rückgabecodes ohne globale Git-Konfiguration.
 
 ### Removed
 
 - Alte Harness-Adapter, Bootstrap-Templates, Rollenwrapper, Core-/Rollenquellen, Branch-Tags und
   die Profilvorlage als konkurrierende Governance-Autorität.
-- **BREAKING:** Bestehende Installationen mit Verweisen auf diese Legacy-Quellen dürfen erst nach
-  der noch ausstehenden Cluster-4-Migration aktualisiert werden.
+- **BREAKING:** Operative Projekt-, Werkzeug-, Provider- und Runtimeverträge sowie Verweise auf
+  entfernte Legacy-Quellen gehören nicht mehr zum öffentlichen Governance-Vertrag.
 
 **Breaking changes:** present
 

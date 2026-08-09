@@ -223,10 +223,19 @@ class PrivateProfileMigrationGuardContract(unittest.TestCase):
         self.assertEqual(result.returncode, 1, result.stderr)
         self.assertEqual(result.stdout, "")
 
-    def test_installation_status_rejects_future_operational_clusters(self):
-        install = read(ROOT / "INSTALL.md")
-        self.assertNotRegex(install, r"(?i)Cluster\s+[456]")
-        self.assertNotRegex(install, r"(?i)(?:künftige|spätere).*(?:Installer|Migration)")
+    def test_current_documentation_rejects_future_operational_clusters(self):
+        changelog = read(ROOT / "CHANGELOG.md")
+        unreleased = changelog.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0]
+        current_documents = {
+            "README.md": read(ROOT / "README.md"),
+            "INSTALL.md": read(ROOT / "INSTALL.md"),
+            "CHANGELOG.md [Unreleased]": unreleased,
+        }
+        for name, text in current_documents.items():
+            self.assertNotRegex(text, r"(?i)Cluster\s+[456]", name)
+            self.assertNotRegex(
+                text, r"(?i)(?:künftige|spätere|ausstehende).*(?:Installer|Migration)", name
+            )
 
 
 if __name__ == "__main__":
