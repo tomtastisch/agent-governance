@@ -17,7 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Keine.
+- Die Bootstrap-Root-Auflösung verwendet begrenzte, manifestvalidierte Harness-Kandidaten wie
+  `CODEX_HOME` und `AGENT_GOVERNANCE_ROOT`, statt das aktuelle Arbeitsverzeichnis implizit als
+  Bundle-Root zu behandeln.
+- Der Statusvertrag verlangt ein ausdrücklich benanntes Feld für verbleibende Risiken und
+  schreibt bei leerem Restbestand `Verbleibende Risiken: keine` vor.
 
 ### Removed
 

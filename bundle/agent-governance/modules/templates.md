@@ -105,6 +105,9 @@ Status, Evidenz und verbleibende Risiken. Bei längeren Aufgaben folgt eine kumu
 Fortschrittsliste mit höchstens einem aktiven Schritt. Statuswörter bezeichnen nur den durch
 Nachweise gedeckten Scope.
 
+Die vier Teile werden ausdrücklich benannt. Wenn keine bekannten Risiken verbleiben, lautet
+das letzte Feld `Verbleibende Risiken: keine`.
+
 ### Toolfehler und Blocker
 
 Die Meldung enthält betroffenen Schritt, tatsächlichen Aufruf oder Prüfpfad, beobachtetes

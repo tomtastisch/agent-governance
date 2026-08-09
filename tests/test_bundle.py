@@ -139,6 +139,41 @@ class BundleLayout(unittest.TestCase):
         }
         self.assertEqual(local_targets, {"agent-governance/manifest.toml"})
 
+    def test_codex_home_resolves_bundle_when_entrypoint_path_is_unavailable(self):
+        cwd = PurePosixPath("/project")
+        codex_home = PurePosixPath("/home/e2e/.codex")
+        expected_manifest = codex_home / "agent-governance" / "manifest.toml"
+        wrong_manifest = cwd / "agent-governance" / "manifest.toml"
+        bootstrap = BOOTSTRAP.read_text(encoding="utf-8")
+        root_contract = bootstrap.split("## Root-Auflösung", 1)[1].split(
+            "\n## ", 1
+        )[0]
+
+        self.assertEqual(
+            expected_manifest.as_posix(),
+            "/home/e2e/.codex/agent-governance/manifest.toml",
+        )
+        self.assertNotEqual(expected_manifest, wrong_manifest)
+        self.assertIn("AGENT_GOVERNANCE_ROOT", root_contract)
+        self.assertIn("CODEX_HOME", root_contract)
+        self.assertIn("Einstiegspunktpfad", root_contract)
+        self.assertRegex(
+            root_contract,
+            r"(?is)nur wenn der Harness.+Einstiegspunktpfad bereitstellt",
+        )
+        self.assertRegex(
+            root_contract,
+            r"(?is)Arbeitsverzeichnis.+(?:kein|niemals).+Root-Kandidat",
+        )
+        self.assertRegex(
+            root_contract,
+            r"(?is)Kandidat.+agent-governance/manifest\.toml.+validiert",
+        )
+        self.assertRegex(
+            root_contract,
+            r"(?is)(?:widerspr.+Roots|mehrere.+gültige.+Roots).+GOV-004",
+        )
+
 
 class ManifestContract(unittest.TestCase):
     def setUp(self):
@@ -465,6 +500,13 @@ class TemplateContract(unittest.TestCase):
             "### Abschlussaussage",
         ):
             self.assertIn(heading, structured)
+
+    def test_status_contract_explicitly_reports_when_no_risks_remain(self):
+        status = self.text.split("### Antwort und Status", 1)[1].split(
+            "\n### ", 1
+        )[0]
+        self.assertIn("Verbleibende Risiken:", status)
+        self.assertRegex(status, r"(?is)Verbleibende Risiken:.+keine")
 
     def test_template_markers_have_one_normative_owner(self):
         owners = {

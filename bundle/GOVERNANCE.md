@@ -8,11 +8,19 @@ anders heißen, sein Inhalt muss jedoch byte-identisch mit dieser Datei sein.
 
 ## Root-Auflösung
 
-Das Verzeichnis des geladenen Einstiegspunkts ist der Bundle-Root. Der statische Index liegt
-relativ dazu unter
-[`agent-governance/manifest.toml`](agent-governance/manifest.toml). Modul-, Rollen- und lokale
-Pfade werden ausschließlich relativ zu diesem Root aufgelöst. Inhalte und Pfade bleiben
-unverändert.
+Der Bundle-Root wird ausschließlich aus begrenzten, ausdrücklich verfügbaren Kandidaten
+aufgelöst: `AGENT_GOVERNANCE_ROOT`, falls gesetzt, für Codex `CODEX_HOME`, falls gesetzt, und
+das Verzeichnis des geladenen Einstiegspunkts, aber nur wenn der Harness den tatsächlichen
+Einstiegspunktpfad bereitstellt. Das aktuelle Arbeitsverzeichnis ist kein Root-Kandidat; eine
+Dateisystemsuche findet nicht statt.
+
+Jeder Kandidat wird durch die dort erwartete lesbare reguläre Datei
+[`agent-governance/manifest.toml`](agent-governance/manifest.toml) validiert. Mehrfach auf
+denselben Ort zeigende Kandidaten werden als ein Root behandelt. Fehlt ein gesetzter Kandidat,
+ist sein Manifest ungültig oder ergeben sich widersprüchliche Roots, wird die Root-Auflösung
+nach GOV-004 angehalten. Genau ein widerspruchsfrei validierter Root wird verwendet. Modul-,
+Rollen- und lokale Pfade werden ausschließlich relativ zu diesem Root aufgelöst; Inhalte und
+Pfade bleiben unverändert.
 
 ## Minimale Invarianten
 
