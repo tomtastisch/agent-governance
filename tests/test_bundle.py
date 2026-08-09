@@ -330,7 +330,13 @@ class ToolRoutingContract(unittest.TestCase):
         self.assertIn("`apm.yml`", self.text)
         self.assertIn("`apm.lock.yaml`", self.text)
         self.assertIn("`apm audit --ci`", self.text)
-        self.assertRegex(self.text, r"(?i)APM.+nicht verfügbar")
+
+    def test_catalog_does_not_model_tool_installation_or_availability(self):
+        self.assertNotRegex(
+            self.text,
+            r"(?i)\b(?:Installation|installiert|deinstalliert|Verfügbarkeit|"
+            r"nicht verfügbar|lokal verfügbar)\b",
+        )
 
 
 class NormativeSourceContract(unittest.TestCase):
