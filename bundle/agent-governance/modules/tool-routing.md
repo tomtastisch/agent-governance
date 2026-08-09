@@ -115,7 +115,7 @@ fachlichen Auslöser; „nützlich“ erlaubt einen evidenzsteigernden Einsatz o
 **Name:** Microsoft APM – Agent Package Manager.
 **Zweck:** Deklarative Agent-Skills, Agent-Pakete und ihre Abhängigkeiten über vorhandene `apm.yml`- und `apm.lock.yaml`-Evidenz reproduzierbar beurteilen.
 **Trigger:** Skills oder Agent-Pakete werden benötigt, geprüft, zusammengestellt oder versioniert; agentische Abhängigkeiten, reproduzierbare Konfiguration, Paketquelle, Lockzustand oder Drift sind relevant.
-**Erforderlich:** Wenn der Trigger eintritt, APM lokal verfügbar ist und das Ziel bereits APM-Zustand besitzt; dann werden Manifest und Lock gelesen und passende vorhandene Checks wie `apm audit --ci` berücksichtigt.
+**Erforderlich:** Wenn der Trigger eintritt und APM lokal verfügbar ist, ist APM der bevorzugte Prüfweg; vorhandene Manifeste und Locks werden gelesen und passende read-only Checks wie `apm audit --ci` berücksichtigt. Fehlt deklarierter APM-Zustand, wird auch diese Abwesenheit belegt, ohne Dateien anzulegen.
 **Nützlich:** Für Provenienz-, Abhängigkeits-, Integritäts- und Driftbefunde in APM-verwalteten Agentpaketen.
 **Evidenzgewinn:** Deklarierte Quellen, aufgelöster Lockzustand, Auditfindings und reproduzierbare Abweichungen.
 **Read-/Write-Grenze:** Governance verwendet vorhandene APM-Evidenz und read-only Prüfpfade; sie verändert weder Paketquellen, Locks, Agentdateien noch Benutzer- oder Serverkonfiguration.

@@ -45,6 +45,15 @@ NORMATIVE_OPERATION_PATTERNS = {
     "APM-Provisionierung": re.compile(
         r"\bapm\s+(?:install|update|self-update|runtime)\b", re.I
     ),
+    "APM-Installation": re.compile(
+        r"\bAPM\s+(?:wird|muss|soll)\s+"
+        r"(?:(?:automatisch|lokal|global)\s+)?installiert\b", re.I
+    ),
+    "APM-Runtime-Verantwortung": re.compile(
+        r"\bAPM\s+(?:provisioniert|verwaltet|betreibt)\b[^.\n]*"
+        r"(?:Laufzeit|Runtime|Benutzer(?:konfiguration)?|Server(?:konfiguration)?)",
+        re.I,
+    ),
 }
 
 
@@ -58,6 +67,31 @@ def normative_files() -> list[Path]:
 
 
 class GovernanceScopeContract(unittest.TestCase):
+    def test_apm_positive_operational_responsibility_is_rejected(self):
+        forbidden_examples = {
+            "APM-Installation": "APM wird automatisch installiert.",
+            "APM-Runtime-Verantwortung": (
+                "APM provisioniert seine Laufzeit und schreibt Benutzerkonfiguration."
+            ),
+        }
+        for expected_label, text in forbidden_examples.items():
+            labels = {
+                label for label, pattern in NORMATIVE_OPERATION_PATTERNS.items()
+                if pattern.search(text)
+            }
+            self.assertIn(expected_label, labels, text)
+
+    def test_apm_negative_scope_boundary_remains_allowed(self):
+        text = (
+            "APM wird nicht installiert, aktualisiert oder provisioniert und verwaltet "
+            "weder Runtime noch Benutzer- oder Serverkonfiguration."
+        )
+        labels = {
+            label for label, pattern in NORMATIVE_OPERATION_PATTERNS.items()
+            if pattern.search(text)
+        }
+        self.assertEqual(labels, set())
+
     def test_repository_contains_no_operational_subsystem_contracts(self):
         present = [path for path in OPERATIVE_ARTIFACTS if (ROOT / path).exists()]
         self.assertEqual(present, [])
