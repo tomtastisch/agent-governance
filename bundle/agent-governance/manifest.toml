@@ -88,6 +88,9 @@ dependencies = ["security"]
 path = "modules/templates.md"
 triggers = [
   "implementation",
+  "refactoring",
+  "testing",
+  "documentation",
   "release",
   "quality_review",
   "security_review",
@@ -109,9 +112,9 @@ modules = ["evidence", "workflow", "invariants"]
 [roles.quality_assurance]
 path = "roles/quality-assurance.md"
 triggers = ["role_quality_assurance"]
-modules = ["evidence", "delivery"]
+modules = ["evidence", "delivery", "templates"]
 
 [roles.security_review]
 path = "roles/security-review.md"
 triggers = ["role_security_review"]
-modules = ["evidence", "security", "invariants"]
+modules = ["evidence", "security", "invariants", "templates"]

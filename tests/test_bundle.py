@@ -407,11 +407,15 @@ class TemplateContract(unittest.TestCase):
         self.assertEqual(
             set(module["triggers"]),
             {
-                "implementation", "release", "quality_review", "security_review",
-                "context_handoff", "status_reporting",
+                "implementation", "refactoring", "testing", "documentation",
+                "release", "quality_review", "security_review", "context_handoff",
+                "status_reporting",
             },
         )
         self.assertEqual(module["dependencies"], ["delivery"])
+        manifest = load_manifest()
+        for role in ("quality_assurance", "security_review"):
+            self.assertIn("templates", manifest["roles"][role]["modules"])
 
     def test_strict_templates_cover_drift_prone_operations(self):
         strict = self.text.split("## Strikte Vorlagen", 1)[1].split(
@@ -426,6 +430,12 @@ class TemplateContract(unittest.TestCase):
         self.assertIn("<type>(<scope>): <imperative summary>", strict)
         self.assertIn("<type>/<scope>/<short-topic>", strict)
         self.assertIn("<Exact-Head-SHA>", strict)
+        self.assertNotIn("provider-or-role", strict)
+        for field in (
+            "Review role:", "Review provider:", "Review reference:",
+            "Review Exact Head:",
+        ):
+            self.assertIn(field, strict)
 
     def test_free_form_interactions_use_structured_contracts(self):
         structured = self.text.split("## Strukturierte Verträge", 1)[1]
@@ -436,11 +446,11 @@ class TemplateContract(unittest.TestCase):
             self.assertIn(heading, structured)
 
     def test_template_markers_have_one_normative_owner(self):
-        owners = [
+        owners = {
             path for path in normative_files()
-            if "<Exact-Head-SHA>" in path.read_text(encoding="utf-8")
-        ]
-        self.assertEqual(owners, [self.path])
+            if re.search(r"<[A-Za-z][^>\n]+>", path.read_text(encoding="utf-8"))
+        }
+        self.assertEqual(owners, {self.path})
 
 
 class NormativeSourceContract(unittest.TestCase):

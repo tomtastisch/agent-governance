@@ -39,7 +39,11 @@ Remote branch HEAD: <Exact-Head-SHA>
 PR: <repository>#<number> -> <base>
 PR head: <Exact-Head-SHA>
 Checks: <command-or-check-id> = <result>
-Review: <provider-or-role>/<reference> = <result>
+Review role: <QA|SEC|ARCH>
+Review provider: <provider>
+Review reference: <review-id-or-object>
+Review Exact Head: <Exact-Head-SHA>
+Review result: <state>
 Open findings: <count and classifications>
 ```
 
@@ -52,9 +56,9 @@ Die drei SHAs müssen vor einer Exact-Head-Aussage gleich sein. Ergebnisse folge
 Ziel: <bounded outcome>
 Scope: <included / excluded>
 
-| Teilaufgabe | Commit-SHA | Tests | Reviewreferenz | Findings | Status |
-|---|---|---|---|---|---|
-| <task> | <sha> | <checks> | <provider-or-role/id on sha> | <classes> | <state> |
+| Teilaufgabe | Commit-SHA | Tests | Reviewerrolle | Provider | Reviewreferenz / Head | Findings | Status |
+|---|---|---|---|---|---|---|---|
+| <task> | <sha> | <checks> | <role> | <provider> | <id> / <sha> | <classes> | <state> |
 
 Risiken/Blocker: <none or precise remainder>
 Nicht autorisiert: <merge/tag/release or task-specific boundary>
