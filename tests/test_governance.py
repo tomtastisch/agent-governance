@@ -42,6 +42,9 @@ NORMATIVE_OPERATION_PATTERNS = {
     "atomare Aktivierung": re.compile(r"atomar\s+aktiviert", re.I),
     "Backup-Lifecycle": re.compile(r"Backups?\s+(?:werden|wird)", re.I),
     "Paketmanager-Aufruf": re.compile(r"(?:brew|pip|npm|uv)\s+(?:install|add|bundle)\b", re.I),
+    "APM-Provisionierung": re.compile(
+        r"\bapm\s+(?:install|update|self-update|runtime)\b", re.I
+    ),
 }
 
 

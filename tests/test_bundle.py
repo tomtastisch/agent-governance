@@ -300,6 +300,38 @@ class ManifestContract(unittest.TestCase):
         closure = resolve_module_closure(modules, selected)
         self.assertIn("delivery", closure)
 
+    def test_tool_routing_has_closed_trigger_scope(self):
+        module = self.data["modules"]["tool_routing"]
+        self.assertEqual(
+            set(module["triggers"]), {"tool_selection", "agent_dependencies"}
+        )
+        self.assertEqual(module["dependencies"], ["evidence"])
+
+
+class ToolRoutingContract(unittest.TestCase):
+    def setUp(self):
+        self.path = GOVERNANCE_ROOT / "modules" / "tool-routing.md"
+        self.text = self.path.read_text(encoding="utf-8")
+
+    def test_every_catalog_entry_has_the_same_governance_fields(self):
+        entries = re.split(r"(?m)^#### ", self.text)[1:]
+        self.assertGreaterEqual(len(entries), 7)
+        required = {
+            "Name", "Zweck", "Trigger", "Erforderlich", "Nützlich",
+            "Evidenzgewinn", "Read-/Write-Grenze", "Fallback",
+            "Keine Folgerung",
+        }
+        for entry in entries:
+            fields = set(re.findall(r"(?m)^\*\*([^*]+):\*\*", entry))
+            self.assertEqual(required - fields, set(), entry.splitlines()[0])
+
+    def test_apm_contract_uses_declared_state_and_read_only_audit(self):
+        self.assertIn("Microsoft APM", self.text)
+        self.assertIn("`apm.yml`", self.text)
+        self.assertIn("`apm.lock.yaml`", self.text)
+        self.assertIn("`apm audit --ci`", self.text)
+        self.assertRegex(self.text, r"(?i)APM.+nicht verfügbar")
+
 
 class NormativeSourceContract(unittest.TestCase):
     def test_markdown_link_check_rejects_unknown_fragment(self):

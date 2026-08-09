@@ -22,6 +22,8 @@ known_triggers = [
   "role_triage",
   "role_quality_assurance",
   "role_security_review",
+  "tool_selection",
+  "agent_dependencies",
 ]
 unknown = "block"
 ambiguous = "block"
@@ -74,6 +76,11 @@ dependencies = ["evidence"]
 path = "modules/security.md"
 triggers = ["security_sensitive_change", "security_review"]
 dependencies = ["evidence", "delivery"]
+
+[modules.tool_routing]
+path = "modules/tool-routing.md"
+triggers = ["tool_selection", "agent_dependencies"]
+dependencies = ["evidence"]
 
 [roles.architecture]
 path = "roles/architecture.md"
