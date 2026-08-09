@@ -129,6 +129,16 @@ class BundleLayout(unittest.TestCase):
         ignored = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
         self.assertIn("bundle/agent-governance/local/user-rules.md", ignored)
 
+    def test_bootstrap_links_only_to_manifest_entry_chain(self):
+        local_targets = {
+            target.split("#", 1)[0]
+            for _label, target in MARKDOWN_LINK_RE.findall(
+                BOOTSTRAP.read_text(encoding="utf-8")
+            )
+            if not re.match(r"^(?:https?://|mailto:|#)", target)
+        }
+        self.assertEqual(local_targets, {"agent-governance/manifest.toml"})
+
 
 class ManifestContract(unittest.TestCase):
     def setUp(self):
@@ -207,6 +217,19 @@ class ManifestContract(unittest.TestCase):
             path = (MANIFEST.parent / entry["path"]).resolve()
             self.assertNotIn(path, owners, f"{path}: {owners.get(path)} und {name}")
             owners[path] = name
+
+    def test_manifest_owns_every_module_and_role_file(self):
+        root = MANIFEST.parent
+        manifested = {
+            (root / entry["path"]).resolve()
+            for group in (self.data["modules"], self.data["roles"])
+            for entry in group.values()
+        }
+        present = {
+            *map(Path.resolve, (root / "modules").glob("*.md")),
+            *map(Path.resolve, (root / "roles").glob("*.md")),
+        }
+        self.assertEqual(manifested, present)
 
     def test_roles_reference_known_modules(self):
         modules = set(self.data["modules"])

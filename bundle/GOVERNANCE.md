@@ -77,5 +77,4 @@ veröffentlicht. Fehlt sie, bleibt das Bundle vollständig funktionsfähig.
 
 Vor einer Status- oder Abschlussaussage werden die tatsächlich ausgeführten Prüfungen, ihr
 Geltungsbereich, der geprüfte Stand und verbleibende Risiken belegt. Die detaillierten
-Evidenzregeln werden nur über passende Trigger aus
-[`agent-governance/modules/evidence.md`](agent-governance/modules/evidence.md) geladen.
+Evidenzregeln werden ausschließlich über passende Trigger des Manifests geladen.
