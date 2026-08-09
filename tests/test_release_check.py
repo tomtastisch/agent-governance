@@ -355,23 +355,31 @@ class TagConsistencyBase(unittest.TestCase):
     def tearDown(self):
         self.d.cleanup()
 
-    def _init_git(self, version="0.1.0"):
-        subprocess.run(["git", "init"], cwd=self.root, capture_output=True)
-        subprocess.run(["git", "config", "user.email", "test@test"], cwd=self.root, capture_output=True)
-        subprocess.run(["git", "config", "user.name", "Test"], cwd=self.root, capture_output=True)
-        _write(os.path.join(self.root, "VERSION"), f"{version}\n")
-        subprocess.run(["git", "add", "VERSION"], cwd=self.root, capture_output=True)
-        subprocess.run(
-            ["git", "-c", "commit.gpgsign=false", "commit", "-m", "init"],
-            cwd=self.root, capture_output=True,
+    def _git(self, *args):
+        result = subprocess.run(
+            ["git", *args],
+            cwd=self.root,
+            capture_output=True,
+            text=True,
         )
+        self.assertEqual(
+            result.returncode,
+            0,
+            f"git {' '.join(args)} fehlgeschlagen: {result.stderr.strip()}",
+        )
+        return result.stdout.strip()
 
-    @staticmethod
-    def _tag(root, name):
-        subprocess.run(
-            ["git", "-c", "tag.gpgsign=false", "tag", name],
-            cwd=root, capture_output=True,
-        )
+    def _init_git(self, version="0.1.0"):
+        self._git("init", "--initial-branch=main")
+        self._git("config", "user.email", "test@test")
+        self._git("config", "user.name", "Test")
+        _write(os.path.join(self.root, "VERSION"), f"{version}\n")
+        self._git("add", "VERSION")
+        self._git("-c", "commit.gpgsign=false", "commit", "-m", "init")
+
+    def _tag(self, root, name):
+        self.assertEqual(root, self.root)
+        self._git("-c", "tag.gpgsign=false", "tag", name)
 
 
 class TagDeterministicSelection(TagConsistencyBase):
@@ -404,27 +412,17 @@ class TagLightweightVsAnnotated(TagConsistencyBase):
 
     def test_annotated_tag_is_ok(self):
         self._init_git("0.1.0")
-        subprocess.run(
-            ["git", "-c", "tag.gpgsign=false", "tag", "-m", "release", "v0.1.0"],
-            cwd=self.root, capture_output=True,
-        )
+        self._git("-c", "tag.gpgsign=false", "tag", "-m", "release", "v0.1.0")
         r = check_tag(root=self.root, tag_ref="v0.1.0", verifier=self.mock_verifier)
         self.assertTrue(r.ok, f"Erwartet OK (annotiert), Fehler: {r.errors}")
 
     def test_annotated_tag_on_wrong_commit_is_error(self):
         self._init_git("0.1.0")
-        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.root,
-                              capture_output=True, text=True).stdout.strip()
+        head = self._git("rev-parse", "HEAD")
         _write(os.path.join(self.root, "VERSION"), "0.2.0\n")
-        subprocess.run(["git", "add", "VERSION"], cwd=self.root, capture_output=True)
-        subprocess.run(
-            ["git", "-c", "commit.gpgsign=false", "commit", "-m", "bump"],
-            cwd=self.root, capture_output=True,
-        )
-        subprocess.run(
-            ["git", "-c", "tag.gpgsign=false", "tag", "-m", "release", "v0.2.0"],
-            cwd=self.root, capture_output=True,
-        )
+        self._git("add", "VERSION")
+        self._git("-c", "commit.gpgsign=false", "commit", "-m", "bump")
+        self._git("-c", "tag.gpgsign=false", "tag", "-m", "release", "v0.2.0")
         r = check_tag(root=self.root, tag_ref="v0.2.0", expected_commit=head, verifier=self.mock_verifier)
         self.assertFalse(r.ok)
         self.assertTrue(any("zeigt auf" in e for e in r.errors))
@@ -476,34 +474,26 @@ class TargetCommitishResolver(TagConsistencyBase):
 
     def test_resolve_sha(self):
         self._init_git("0.1.0")
-        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.root,
-                              capture_output=True, text=True).stdout.strip()
+        head = self._git("rev-parse", "HEAD")
         sha, err = _resolve_target_commitish(head, self.root)
         self.assertIsNone(err)
         self.assertEqual(sha, head)
 
     def test_resolve_local_branch(self):
         self._init_git("0.1.0")
-        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.root,
-                              capture_output=True, text=True).stdout.strip()
+        head = self._git("rev-parse", "HEAD")
         sha, err = _resolve_target_commitish("main", self.root)
         self.assertIsNone(err)
         self.assertEqual(sha, head)
 
     def test_resolve_origin_remote_branch(self):
         self._init_git("0.1.0")
-        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.root,
-                              capture_output=True, text=True).stdout.strip()
+        head = self._git("rev-parse", "HEAD")
         # Simuliere detached CI-Checkout: main nur als refs/remotes/origin/main verfügbar
-        subprocess.run(
-            ["git", "update-ref", "refs/remotes/origin/main", head],
-            cwd=self.root, capture_output=True,
-        )
+        self._git("update-ref", "refs/remotes/origin/main", head)
         # Lösche den lokalen Branch, damit nur origin/main übrig bleibt
-        subprocess.run(
-            ["git", "branch", "-D", "main"],
-            cwd=self.root, capture_output=True,
-        )
+        self._git("checkout", "--detach", head)
+        self._git("branch", "-D", "main")
         sha, err = _resolve_target_commitish("main", self.root)
         self.assertIsNone(err)
         self.assertEqual(sha, head)
@@ -521,8 +511,7 @@ class ReleaseTargetCommitishTests(TagConsistencyBase):
     def test_release_sha_match_is_ok(self):
         self._init_git("0.1.0")
         self._tag(self.root, "v0.1.0")
-        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.root,
-                              capture_output=True, text=True).stdout.strip()
+        head = self._git("rev-parse", "HEAD")
         gh = FakeGhRunner(data={"tagName": "v0.1.0", "targetCommitish": head, "isDraft": False, "isPrerelease": False})
         r = check_release(root=self.root, tag_ref="v0.1.0", gh=gh)
         self.assertTrue(r.ok, f"Erwartet OK, Fehler: {r.errors}")
@@ -548,11 +537,8 @@ class ReleaseTargetCommitishTests(TagConsistencyBase):
         self._tag(self.root, "v0.1.0")
         # Zweiten Commit auf main (Tag bleibt auf erstem Commit)
         _write(os.path.join(self.root, "extra"), "x\n")
-        subprocess.run(["git", "add", "extra"], cwd=self.root, capture_output=True)
-        subprocess.run(
-            ["git", "-c", "commit.gpgsign=false", "commit", "-m", "extra"],
-            cwd=self.root, capture_output=True,
-        )
+        self._git("add", "extra")
+        self._git("-c", "commit.gpgsign=false", "commit", "-m", "extra")
         gh = FakeGhRunner(data={"tagName": "v0.1.0", "targetCommitish": "main", "isDraft": False, "isPrerelease": False})
         r = check_release(root=self.root, tag_ref="v0.1.0", gh=gh)
         self.assertFalse(r.ok)
@@ -561,14 +547,11 @@ class ReleaseTargetCommitishTests(TagConsistencyBase):
     def test_release_origin_branch_match_is_ok(self):
         self._init_git("0.1.0")
         self._tag(self.root, "v0.1.0")
-        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.root,
-                              capture_output=True, text=True).stdout.strip()
+        head = self._git("rev-parse", "HEAD")
         # Simuliere CI: nur origin/main, kein lokaler main
-        subprocess.run(
-            ["git", "update-ref", "refs/remotes/origin/main", head],
-            cwd=self.root, capture_output=True,
-        )
-        subprocess.run(["git", "branch", "-D", "main"], cwd=self.root, capture_output=True)
+        self._git("update-ref", "refs/remotes/origin/main", head)
+        self._git("checkout", "--detach", head)
+        self._git("branch", "-D", "main")
         gh = FakeGhRunner(data={"tagName": "v0.1.0", "targetCommitish": "main", "isDraft": False, "isPrerelease": False})
         r = check_release(root=self.root, tag_ref="v0.1.0", gh=gh)
         self.assertTrue(r.ok, f"Erwartet OK (origin/main), Fehler: {r.errors}")
@@ -616,12 +599,8 @@ class ReleaseTargetCommitishTests(TagConsistencyBase):
     def test_annotated_release_tag_is_ok(self):
         """Greptile-Finding #4: Annotierter Tag + Release mit korrektem SHA."""
         self._init_git("0.1.0")
-        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.root,
-                              capture_output=True, text=True).stdout.strip()
-        subprocess.run(
-            ["git", "-c", "tag.gpgsign=false", "tag", "-m", "release", "v0.1.0"],
-            cwd=self.root, capture_output=True,
-        )
+        head = self._git("rev-parse", "HEAD")
+        self._git("-c", "tag.gpgsign=false", "tag", "-m", "release", "v0.1.0")
         gh = FakeGhRunner(data={"tagName": "v0.1.0", "targetCommitish": head, "isDraft": False, "isPrerelease": False})
         r = check_release(root=self.root, tag_ref="v0.1.0", gh=gh)
         self.assertTrue(r.ok, f"Erwartet OK (annotiert + SHA-match), Fehler: {r.errors}")
