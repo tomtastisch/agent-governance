@@ -52,6 +52,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Git-Test-Fixtures verwenden deterministisch `main`, repository-lokale Identität und geprüfte
   Rückgabecodes ohne globale Git-Konfiguration.
+- Security-Trigger sind vor dem Modulrouting sichtbar, versionierte Lieferungen benötigen immer
+  unabhängige Exact-Head-QA, und Secret-Nachweise schließen inhaltsabgeleitete Metadaten aus.
 
 ### Removed
 

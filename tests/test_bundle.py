@@ -341,6 +341,7 @@ class ToolRoutingContract(unittest.TestCase):
 
 class ReviewContract(unittest.TestCase):
     def setUp(self):
+        self.bootstrap = BOOTSTRAP.read_text(encoding="utf-8")
         self.delivery = (GOVERNANCE_ROOT / "modules" / "delivery.md").read_text(
             encoding="utf-8"
         )
@@ -367,6 +368,14 @@ class ReviewContract(unittest.TestCase):
             self.assertIn(f"`{classification}`", self.delivery)
         self.assertRegex(self.delivery, r"(?is)Korrektur.+erneut")
 
+    def test_versioned_delivery_always_requires_independent_exact_head_qa(self):
+        self.assertRegex(
+            self.delivery,
+            r"(?is)jede Änderung.+versionierten.+unabhängige QA.+exakten Lieferstand",
+        )
+        for term in ("Integration", "Release", "relevanten Checks", "Reviewthreads"):
+            self.assertIn(term, self.delivery)
+
     def test_security_gate_has_explicit_risk_triggers(self):
         required = (
             "Security-Regeln", "Authentifizierung", "Autorisierung", "Secrets",
@@ -375,8 +384,20 @@ class ReviewContract(unittest.TestCase):
             "Tool-Berechtigungen", "Fail-closed",
         )
         for term in required:
-            self.assertIn(term, self.security)
+            self.assertIn(term, self.bootstrap)
+        self.assertIn("### GOV-006", self.bootstrap)
+        self.assertIn("[GOV-006]", self.security)
         self.assertRegex(self.security, r"(?is)rein redaktionell.+kein.+Security-Gate")
+
+    def test_secret_evidence_forbids_content_derived_metadata(self):
+        protected = self.bootstrap.split("### GOV-005", 1)[1].split(
+            "### GOV-006", 1
+        )[0]
+        self.assertIn("inhaltsunabhängige", protected)
+        self.assertRegex(
+            protected,
+            r"(?is)weder.+Fragmente.+Länge.+Größe.+Zeilenzahl.+Hash",
+        )
 
     def test_tool_catalog_delegates_review_semantics_to_delivery_ssot(self):
         self.assertIn("[DEL-008]", self.tools)

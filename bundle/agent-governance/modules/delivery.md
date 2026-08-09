@@ -17,9 +17,14 @@ werden.
 
 ### DEL-003 — Unabhängige Prüfung
 
-Wenn Risiko oder Auftrag eine unabhängige Prüfung verlangt, bewertet ein frischer read-only
-Kontext den exakten Lieferstand. Findings werden behoben oder als Blocker behandelt. Eine
-Selbstprüfung darf zusätzliche Evidenz liefern, ersetzt aber nicht die unabhängige Freigabe.
+Jede Änderung an einem versionierten oder anderweitig persistenten Liefergegenstand benötigt
+vor der Aussage „lieferbar“ sowie vor einer Integrations- oder Releaseentscheidung eine
+unabhängige QA durch einen frischen read-only Kontext auf dem exakten Lieferstand. Zusätzlich
+ausgelöste Rollen wie SEC oder ARCH ersetzen diese QA nicht. Die relevanten Checks müssen
+erfolgreich sein; alle Reviewkommentare und Reviewthreads werden für diesen Stand frisch gelesen,
+klassifiziert und behandelt. Kein `blocking-valid` Finding und kein unklassifizierter offener
+Thread darf verbleiben. Eine Selbstprüfung darf zusätzliche Evidenz liefern, ersetzt aber kein
+unabhängiges Rollenurteil.
 
 ### DEL-004 — Atomare Historie
 

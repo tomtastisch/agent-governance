@@ -48,15 +48,25 @@ Blocker wird mit Evidenz und dem kleinsten notwendigen nächsten Schritt gemelde
 ### GOV-005 — Geschützte Informationen
 
 Secrets und private Nutzerinhalte dürfen nicht in Repositorys, Logs, Issues, externe Dienste
-oder Abschlussberichte gelangen. Erforderliche Nachweise verwenden ausschließlich Metadaten
-wie Pfad, Größe, Zeitstempel, Zeilenanzahl und kryptografischen Hash, sofern selbst diese
-Metadaten für den autorisierten Zweck notwendig sind.
+oder Abschlussberichte gelangen. Erforderliche Nachweise verwenden ausschließlich notwendige,
+inhaltsunabhängige Metadaten wie eine abstrakte Objektkennung und den Prüfstatus. Aus Secrets
+oder privaten Inhalten selbst dürfen weder Inhalt noch Fragmente, Länge, Größe, Zeilenzahl,
+Hash oder anderer Fingerprint veröffentlicht werden.
+
+### GOV-006 — Security-Vorklassifikation
+
+Vor dem Modulrouting gilt `security_sensitive_change`, sobald eine Änderung Security-Regeln,
+Authentifizierung, Autorisierung, Secrets, Berechtigungen, Trust Boundaries,
+Prompt-Injection-Grenzen, externe Schreibwirkungen, Review-Freigaberegeln,
+Tool-Berechtigungen oder Fail-closed-Regeln berührt. Diese Vorklassifikation ist Teil des
+immer geladenen Bootstrap-Vertrags; Unklarheit über einen Treffer wird nach
+[GOV-004](#gov-004--fail-closed) aufgelöst.
 
 ## Deterministisches Modulrouting
 
 1. Lies den statischen Manifest-Index vollständig.
-2. Klassifiziere die tatsächlich angefragte Arbeit in einen oder mehrere der geschlossenen
-   `routing.known_triggers`.
+2. Wende [GOV-006](#gov-006--security-vorklassifikation) an und klassifiziere die tatsächlich
+   angefragte Arbeit in einen oder mehrere der geschlossenen `routing.known_triggers`.
 3. Lade nur Module, deren `triggers` exakt getroffen wurden, anschließend deren deklarierte
    `dependencies` in topologischer Reihenfolge. Mehrfach gewählte Module werden einmal geladen.
 4. Lade eine Rolle nur, wenn ihr eigener Rollentrigger getroffen wurde; lade dann ausschließlich
