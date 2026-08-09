@@ -24,6 +24,8 @@ known_triggers = [
   "role_security_review",
   "tool_selection",
   "agent_dependencies",
+  "context_handoff",
+  "status_reporting",
 ]
 unknown = "block"
 ambiguous = "block"
@@ -81,6 +83,18 @@ dependencies = ["evidence", "delivery"]
 path = "modules/tool-routing.md"
 triggers = ["tool_selection", "agent_dependencies"]
 dependencies = ["security"]
+
+[modules.templates]
+path = "modules/templates.md"
+triggers = [
+  "implementation",
+  "release",
+  "quality_review",
+  "security_review",
+  "context_handoff",
+  "status_reporting",
+]
+dependencies = ["delivery"]
 
 [roles.architecture]
 path = "roles/architecture.md"

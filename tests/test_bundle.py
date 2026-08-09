@@ -397,6 +397,52 @@ class ReviewContract(unittest.TestCase):
             self.assertNotIn(duplicated_term, trigger.group(1))
 
 
+class TemplateContract(unittest.TestCase):
+    def setUp(self):
+        self.path = GOVERNANCE_ROOT / "modules" / "templates.md"
+        self.text = self.path.read_text(encoding="utf-8")
+
+    def test_manifest_routes_templates_without_global_import(self):
+        module = load_manifest()["modules"]["templates"]
+        self.assertEqual(
+            set(module["triggers"]),
+            {
+                "implementation", "release", "quality_review", "security_review",
+                "context_handoff", "status_reporting",
+            },
+        )
+        self.assertEqual(module["dependencies"], ["delivery"])
+
+    def test_strict_templates_cover_drift_prone_operations(self):
+        strict = self.text.split("## Strikte Vorlagen", 1)[1].split(
+            "## Strukturierte Verträge", 1
+        )[0]
+        for heading in (
+            "### Commit", "### Branch", "### Push-/PR-Checkpoint",
+            "### PR-Beschreibung und Reviewevidenz", "### QA-/SEC-Finding",
+            "### Kontextübergabe",
+        ):
+            self.assertIn(heading, strict)
+        self.assertIn("<type>(<scope>): <imperative summary>", strict)
+        self.assertIn("<type>/<scope>/<short-topic>", strict)
+        self.assertIn("<Exact-Head-SHA>", strict)
+
+    def test_free_form_interactions_use_structured_contracts(self):
+        structured = self.text.split("## Strukturierte Verträge", 1)[1]
+        for heading in (
+            "### Antwort und Status", "### Toolfehler und Blocker",
+            "### Abschlussaussage",
+        ):
+            self.assertIn(heading, structured)
+
+    def test_template_markers_have_one_normative_owner(self):
+        owners = [
+            path for path in normative_files()
+            if "<Exact-Head-SHA>" in path.read_text(encoding="utf-8")
+        ]
+        self.assertEqual(owners, [self.path])
+
+
 class NormativeSourceContract(unittest.TestCase):
     def test_markdown_link_check_rejects_unknown_fragment(self):
         with tempfile.TemporaryDirectory() as directory:
