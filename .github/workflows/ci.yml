@@ -2,8 +2,7 @@ name: CI
 
 # Konsistenz-Pipeline des Bundles. Da dies ein Prosa-/Governance-Repository ist,
 # realisiert die Pipeline die zutreffenden Stages als reale, greifende Checks:
-# Konsistenz-/Drift-Tests (blockierend), Release-Metadaten (blockierend) und
-# Link-Erreichbarkeit (advisory, netzabhängig).
+# Konsistenz-/Drift-Tests und Release-Metadaten (jeweils blockierend).
 
 on:
   pull_request:
@@ -78,15 +77,3 @@ jobs:
         run: |
           RELEASE_TAG="${{ github.event.release.tag_name }}"
           python3 tools/release_check.py release "$RELEASE_TAG"
-
-  link-liveness:
-    name: Link-Erreichbarkeit (advisory)
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Links in tools/tools.md prüfen
-        run: python3 tests/check_links.py

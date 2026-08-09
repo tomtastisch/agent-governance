@@ -31,7 +31,7 @@ getrennten, read-only Kontext und benennen dessen exakten Prüfumfang.
 
 ### INV-004 — Reproduzierbarkeit
 
-Entscheidungen, Migrationen und Abschlussaussagen müssen aus versionierten Quellen,
+Entscheidungen und Abschlussaussagen müssen aus versionierten Quellen,
 vollständigen Parametern und aufgezeichneten Prüfergebnissen reproduzierbar sein. Freie
 Interpretation, Modellgedächtnis oder ein zufällig vorhandener lokaler Zustand ersetzen keinen
 autoritativen Nachweis.

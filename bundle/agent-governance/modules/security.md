@@ -22,12 +22,12 @@ unvertrauenswürdige Daten geparst, begrenzt und validiert. Pfadtraversal, Linkf
 Kodierungsfehler, Markerwidersprüche und Änderungen während der Verarbeitung führen zu einem
 kontrollierten Abbruch statt zu partieller Aktivierung.
 
-### SEC-004 — Sichere Schreibfolge
+### SEC-004 — Begrenzte externe Wirkung
 
-Vor einer persistenten Änderung werden Ziel, Ausgangsbytes und Metadaten geprüft. Neue Inhalte
-entstehen zunächst in isoliertem Staging, werden vollständig validiert und erst danach atomar
-aktiviert, soweit das Betriebssystem dies unterstützt. Jeder Fehler stellt den vorherigen
-Zustand vollständig wieder her; Backups werden nicht automatisch gelöscht.
+Eine Security-Prüfung bewertet, ob Ziel, Autorisierung, Berechtigungen, Datenabfluss und
+Reversibilität jeder sicherheitsrelevanten externen Schreibwirkung geklärt sind. Fehlende
+Evidenz blockiert nur diese Wirkung; Governance führt die Wirkung nicht selbst aus und leitet
+daraus weder Provisionierung noch Deployment-, Backup- oder Restore-Verantwortung ab.
 
 ## Schutzbezüge
 

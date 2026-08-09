@@ -12,8 +12,6 @@ known_triggers = [
   "debugging",
   "testing",
   "documentation",
-  "installation",
-  "migration",
   "release",
   "external_effect",
   "security_sensitive_change",
@@ -30,7 +28,7 @@ ambiguous = "block"
 
 [modules.invariants]
 path = "modules/invariants.md"
-triggers = ["external_effect", "security_sensitive_change", "installation", "migration"]
+triggers = ["external_effect", "security_sensitive_change"]
 dependencies = []
 
 [modules.evidence]
@@ -43,8 +41,6 @@ triggers = [
   "debugging",
   "testing",
   "documentation",
-  "installation",
-  "migration",
   "release",
   "security_review",
   "quality_review",
@@ -54,7 +50,7 @@ dependencies = []
 
 [modules.workflow]
 path = "modules/workflow.md"
-triggers = ["planning", "implementation", "refactoring", "debugging", "migration", "triage"]
+triggers = ["planning", "implementation", "refactoring", "debugging", "triage"]
 dependencies = ["evidence"]
 
 [modules.architecture]
@@ -68,8 +64,6 @@ triggers = [
   "implementation",
   "testing",
   "documentation",
-  "installation",
-  "migration",
   "release",
   "quality_review",
 ]

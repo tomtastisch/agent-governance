@@ -9,10 +9,10 @@ keine parallelen Laufzeitverträge.
 
 ### ARC-002 — Verantwortungsgrenzen
 
-Komponenten werden nach genau einer fachlichen Verantwortung geschnitten. Governance
-definiert Invarianten und Arbeitsverträge; Installation materialisiert das Bundle; operative
-Identität, Providerauflösung, Toolbetrieb, Deployment und Plattformsteuerung bleiben außerhalb
-dieser Grenze.
+Komponenten werden nach genau einer fachlichen Verantwortung geschnitten. Governance definiert
+Regeln, Rollen, Templates, Source-of-Truth-Verträge, Tool-Routing und Verifikation. Installation,
+Provisionierung, Runtimebetrieb, Providerauflösung, Deployment und Plattformsteuerung bleiben
+Aufgaben externer Consumer und außerhalb dieses Repositoryvertrags.
 
 ### ARC-003 — Portable Schnittstellen
 
@@ -23,9 +23,8 @@ eines Harnesses, Betriebssystems oder Providers dürfen keine normative Regel ve
 ### ARC-004 — Entscheidung vor Bestand
 
 Bestehende Implementierung ist Evidenz für den Ist-Zustand, aber keine höhere Wahrheit als
-eine ausdrücklich korrigierende Architekturentscheidung. Migration bewahrt gültige fachliche
-Regeln und Nutzerdaten; Redundanz, Widerspruch und veraltete Kopplung werden nicht allein aus
-Kompatibilitätsgründen fortgeführt.
+eine ausdrücklich korrigierende Architekturentscheidung. Redundanz, Widerspruch und veraltete
+Kopplung werden nicht allein aus Kompatibilitätsgründen als Governance fortgeführt.
 
 ## Architekturprüfung
 

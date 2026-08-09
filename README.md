@@ -25,15 +25,11 @@ Harness-spezifische Bootstrap-Templates, Adapter, Rollenwrapper sowie die alten 
 Profilquellen gehören nicht mehr zum aktuellen Repositoryzustand. Repository-Dateien außerhalb
 von `bundle/` werden vom Bundle nicht als Governance geladen.
 
-## Cluster-4-Grenze
+## Betriebsgrenze
 
-`project.toml` und `tools/` sind ein noch nicht konsolidierter operativer Bestand für Cluster 4.
-Sie sind keine Governance-Quelle und werden vom Bootstrap oder Manifest nicht geladen. Ihre
-Provider-, Runtime-, Tool- und Control-Plane-Inhalte sind mit Cluster 3 weder freigegeben noch
-bereinigt worden.
-
-Ein Installer und die Migration bestehender Nutzerdateien sind noch nicht implementiert. Der
-aktuelle Status und die daraus folgende Installationsgrenze stehen in [INSTALL.md](INSTALL.md).
+Installation, Provisionierung, Migration, Backup, Restore, Deployment, Runtimebetrieb und
+Control-Plane-Funktionen gehören nicht zum Repositoryvertrag. [INSTALL.md](INSTALL.md) beschreibt
+ausschließlich diese Grenze und enthält weder Setup-Anleitung noch Zukunftsplanung.
 
 ## Versionierung und lokale Prüfung
 
@@ -48,9 +44,8 @@ python3 tools/release_check.py tree
 ```
 
 Die Tests prüfen insbesondere Bootstrap-Budget, Manifeststruktur, geschlossene Modul- und
-Rollenauflösung, Regel-ID-Eindeutigkeit, relative Links, Quellkonsolidierung und die bewusste
-Cluster-4-Grenze. `tests/check_links.py` bleibt eine netzabhängige, advisory Prüfung des in
-Cluster 4 erhaltenen Werkzeugbestands.
+Rollenauflösung, Regel-ID-Eindeutigkeit, relative Links, Quellkonsolidierung und die operative
+Scope-Grenze.
 
 ## Historische Evidenz
 

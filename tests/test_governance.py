@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Operational Cluster 4 preservation checks.
-
-These checks deliberately do not define governance. They preserve the existing project/tool
-surface while Cluster 3 removes legacy normative sources. Functional Cluster 4 changes remain
-out of scope.
-"""
+"""Scope-Grenzen des schlanken Governance-Regelwerks."""
 
 from __future__ import annotations
 
@@ -14,73 +9,73 @@ import unittest
 
 try:
     import tomllib
-except ModuleNotFoundError:  # pragma: no cover - CI and this project require Python 3.11+
+except ModuleNotFoundError:  # pragma: no cover - CI erfordert Python 3.11+
     tomllib = None
 
 
 ROOT = Path(__file__).resolve().parents[1]
-TOOLS = (ROOT / "tools" / "tools.md").read_text(encoding="utf-8")
-BREW = (ROOT / "tools" / "Brewfile").read_text(encoding="utf-8")
-BREW_OPT = (ROOT / "tools" / "Brewfile.optional").read_text(encoding="utf-8")
+BUNDLE = ROOT / "bundle"
+MANIFEST = BUNDLE / "agent-governance" / "manifest.toml"
+
+OPERATIVE_ARTIFACTS = (
+    "project.toml",
+    "tools/tools.md",
+    "tools/Brewfile",
+    "tools/Brewfile.optional",
+    "tests/check_links.py",
+)
+
+OUT_OF_SCOPE_TRIGGERS = {
+    "installation",
+    "migration",
+    "deployment",
+    "provisioning",
+    "runtime_bootstrap",
+    "backup",
+    "restore",
+    "session_orchestration",
+}
+
+NORMATIVE_OPERATION_PATTERNS = {
+    "Installation materialisiert": re.compile(r"Installation\s+materialisiert", re.I),
+    "Migration bewahrt": re.compile(r"Migration\s+bewahrt", re.I),
+    "atomare Aktivierung": re.compile(r"atomar\s+aktiviert", re.I),
+    "Backup-Lifecycle": re.compile(r"Backups?\s+(?:werden|wird)", re.I),
+    "Paketmanager-Aufruf": re.compile(r"(?:brew|pip|npm|uv)\s+(?:install|add|bundle)\b", re.I),
+}
 
 
-def section(text: str, heading: str) -> str:
-    match = re.search(r"(?m)^" + re.escape(heading) + r"\s*$", text)
-    if not match:
-        return ""
-    start = match.end()
-    following = re.search(r"(?m)^##\s", text[start:])
-    return text[start:start + following.start()] if following else text[start:]
+def normative_files() -> list[Path]:
+    manifest = tomllib.loads(MANIFEST.read_text(encoding="utf-8"))
+    root = MANIFEST.parent
+    paths = [BUNDLE / "GOVERNANCE.md"]
+    paths.extend(root / entry["path"] for entry in manifest["modules"].values())
+    paths.extend(root / entry["path"] for entry in manifest["roles"].values())
+    return paths
 
 
-class OperationalCluster4Contract(unittest.TestCase):
-    def test_project_contract_retains_operational_sections(self):
+class GovernanceScopeContract(unittest.TestCase):
+    def test_repository_contains_no_operational_subsystem_contracts(self):
+        present = [path for path in OPERATIVE_ARTIFACTS if (ROOT / path).exists()]
+        self.assertEqual(present, [])
+
+    def test_manifest_routes_governance_work_not_operations(self):
         if tomllib is None:
             self.skipTest("tomllib requires Python 3.11+")
-        with (ROOT / "project.toml").open("rb") as handle:
-            data = tomllib.load(handle)
-        self.assertEqual(
-            set(data), {"schema_version", "project", "tooling", "activities", "roles", "session"}
-        )
-        self.assertTrue(data["tooling"]["fail_closed"])
-        self.assertFalse(data["tooling"]["allow_client_local_fallbacks"])
-        self.assertFalse(data["tooling"]["allow_unregistered_providers"])
+        data = tomllib.loads(MANIFEST.read_text(encoding="utf-8"))
+        triggers = set(data["routing"]["known_triggers"])
+        self.assertEqual(triggers & OUT_OF_SCOPE_TRIGGERS, set())
 
-    def test_brewfiles_remain_documented_and_separate(self):
-        cli = section(TOOLS, "## CLI-Grundwerkzeuge")
-        self.assertTrue(cli)
-        required_line = next((line for line in cli.splitlines() if "erforderlich" in line), "")
-        optional_line = next(
-            (line for line in cli.splitlines() if "Optional empfohlen" in line), ""
-        )
-        required_documented = set(re.findall(r"`([^`]+)`", required_line))
-        optional_documented = set(re.findall(r"`([^`]+)`", optional_line))
-        required_packages = set(re.findall(r'brew\s+"([^"]+)"', BREW))
-        optional_packages = set(re.findall(r'brew\s+"([^"]+)"', BREW_OPT))
-        self.assertTrue(required_packages)
-        self.assertFalse(required_packages & optional_packages)
-        self.assertEqual(required_packages - required_documented, set())
-        self.assertEqual(optional_packages - optional_documented, set())
-
-    def test_every_tool_entry_retains_classification_and_install_block(self):
-        blocks = re.split(r"(?m)^### ", TOOLS)[1:]
-        self.assertTrue(blocks)
-        for block in blocks:
-            title = block.splitlines()[0].strip()
-            self.assertRegex(
-                block,
-                r"(Standard-Setup|Optional empfohlen)",
-                f"tool '{title}' lacks its retained classification",
-            )
-            self.assertIn("```", block, f"tool '{title}' lacks its retained install block")
-
-    def test_catalog_links_are_well_formed(self):
-        for url in re.findall(r"https?://\S+", TOOLS):
-            url = url.rstrip(">).,")
-            self.assertRegex(url, r"^https?://[^\s]+\.[^\s]+$", f"invalid URL: {url}")
-
-    def test_legacy_tool_manifest_remains_absent(self):
-        self.assertFalse((ROOT / "tools" / "tools.toml").exists())
+    def test_normative_bundle_contains_no_operational_execution_contract(self):
+        if tomllib is None:
+            self.skipTest("tomllib requires Python 3.11+")
+        offenders = []
+        for path in normative_files():
+            text = path.read_text(encoding="utf-8")
+            for label, pattern in NORMATIVE_OPERATION_PATTERNS.items():
+                if pattern.search(text):
+                    offenders.append((path.relative_to(ROOT).as_posix(), label))
+        self.assertEqual(offenders, [])
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@
 
 ### EVD-001 — Belegpflicht
 
-Repository-, Laufzeit-, Installations- und externe Zustandsaussagen beruhen auf aktuell
+Repository-, Tool-, Laufzeit- und externe Zustandsaussagen beruhen auf aktuell
 gelesenen autoritativen Quellen. Eine Quelle belegt nur das, was tatsächlich aus ihr
 hervorgeht. Lokale Prüfung, Remote-Nachweis, Simulation und formaler Abschluss werden
 voneinander getrennt benannt.
@@ -24,6 +24,5 @@ festgehalten; widerlegte Annahmen werden verworfen statt nachträglich passend f
 
 Ein Ergebnis ist nur innerhalb des nachgewiesenen Scopes abgeschlossen. Der Bericht nennt den
 geprüften Stand, ausgeführte Befehle oder gleichwertige Nachweise, Resultate, ausgelassene
-Plattformen, offene Risiken und den nächsten notwendigen Schritt. Keine Prüfung, Migration,
-Freigabe, Veröffentlichung oder externe Wirkung wird behauptet, wenn sie nicht stattgefunden
-hat.
+Plattformen, offene Risiken und den nächsten notwendigen Schritt. Keine Prüfung, Freigabe,
+Veröffentlichung oder externe Wirkung wird behauptet, wenn sie nicht stattgefunden hat.

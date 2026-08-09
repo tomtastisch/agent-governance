@@ -19,7 +19,6 @@ BUNDLE = ROOT / "bundle"
 BOOTSTRAP = BUNDLE / "GOVERNANCE.md"
 MANIFEST = BUNDLE / "agent-governance" / "manifest.toml"
 HISTORICAL_MARKER = "Historische Evidenz - nicht normativ"
-CLUSTER4_MARKER = "Cluster-4-Bestand - keine Governance-Quelle"
 
 REMOVED_LEGACY_SOURCE_TREES = (
     "adapters",
@@ -43,7 +42,6 @@ ACTIVE_REFERENCE_FILES = (
     ROOT / "README.md",
     ROOT / "INSTALL.md",
     ROOT / ".github" / "workflows" / "ci.yml",
-    ROOT / "tools" / "tools.md",
 )
 
 RULE_DEFINITION_RE = re.compile(r"(?m)^### [A-Z][A-Z0-9-]*-\d{3} — ")
@@ -95,16 +93,12 @@ class SingleBootstrapSource(unittest.TestCase):
         claimants = []
         for path in current_non_bundle_markdown():
             text = read(path)
-            if AUTHORITY_DECLARATION_RE.search(text) and CLUSTER4_MARKER not in text:
+            if AUTHORITY_DECLARATION_RE.search(text):
                 claimants.append(path.relative_to(ROOT).as_posix())
         self.assertEqual(claimants, [])
 
-    def test_project_contract_is_explicitly_not_a_governance_source(self):
-        if tomllib is None:
-            self.skipTest("tomllib requires Python 3.11+")
-        with (ROOT / "project.toml").open("rb") as handle:
-            project = tomllib.load(handle)["project"]
-        self.assertIn("not a governance source", project["description"].lower())
+    def test_competing_operational_project_contract_is_absent(self):
+        self.assertFalse((ROOT / "project.toml").exists())
 
 
 class LegacyReferenceContract(unittest.TestCase):
@@ -190,28 +184,6 @@ class ReleaseMetadataContract(unittest.TestCase):
         self.assertRegex(unreleased, r"(?m)^- \*\*BREAKING:\*\* .+")
 
 
-class Cluster4BoundaryContract(unittest.TestCase):
-    def test_operational_cluster4_surface_is_preserved(self):
-        required = (
-            "project.toml",
-            "tools/tools.md",
-            "tools/Brewfile",
-            "tools/Brewfile.optional",
-            "tests/check_links.py",
-        )
-        self.assertEqual([rel for rel in required if not (ROOT / rel).is_file()], [])
-
-    def test_operational_project_contract_remains_fail_closed(self):
-        if tomllib is None:
-            self.skipTest("tomllib requires Python 3.11+")
-        with (ROOT / "project.toml").open("rb") as handle:
-            data = tomllib.load(handle)
-        self.assertEqual(data["tooling"]["resolution"], "server")
-        self.assertTrue(data["tooling"]["fail_closed"])
-        self.assertFalse(data["tooling"]["allow_client_local_fallbacks"])
-        self.assertFalse(data["tooling"]["allow_unregistered_providers"])
-
-
 class PrivateProfileMigrationGuardContract(unittest.TestCase):
     @staticmethod
     def check_ignore(path: str) -> subprocess.CompletedProcess[str]:
@@ -240,17 +212,10 @@ class PrivateProfileMigrationGuardContract(unittest.TestCase):
         self.assertEqual(result.returncode, 1, result.stderr)
         self.assertEqual(result.stdout, "")
 
-    def test_installation_status_documents_cluster_boundaries_and_guard_lifetime(self):
+    def test_installation_status_rejects_future_operational_clusters(self):
         install = read(ROOT / "INSTALL.md")
-
-        self.assertRegex(install, r"(?m)^- Cluster 4: .*Control-Plane.*Tool-Allowlist")
-        self.assertRegex(install, r"(?m)^- Cluster 5: .*Installer")
-        self.assertRegex(install, r"(?m)^- Cluster 6: .*Nutzerregelmigration")
-        self.assertRegex(
-            install,
-            r"profile/profile\.md[^.]*bis[^.]*Cluster 6|"
-            r"(?:bis|vor)[^.]*Cluster 6[^.]*profile/profile\.md",
-        )
+        self.assertNotRegex(install, r"(?i)Cluster\s+[456]")
+        self.assertNotRegex(install, r"(?i)(?:künftige|spätere).*(?:Installer|Migration)")
 
 
 if __name__ == "__main__":
