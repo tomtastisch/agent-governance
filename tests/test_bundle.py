@@ -335,7 +335,7 @@ class ToolRoutingContract(unittest.TestCase):
         self.assertNotRegex(
             self.text,
             r"(?i)\b(?:Installation|installiert|deinstalliert|Verfügbarkeit|"
-            r"nicht verfügbar|lokal verfügbar)\b",
+            r"nicht verfügbar|lokal verfügbar|vorhanden\w*)\b",
         )
 
 

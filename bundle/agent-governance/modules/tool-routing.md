@@ -34,7 +34,7 @@ fachlichen Auslöser; „nützlich“ erlaubt einen evidenzsteigernden Einsatz o
 **Nützlich:** Für fokussierte Reproduktionen vor der Gesamtsuite.
 **Evidenzgewinn:** Exitcodes, konkrete Findings und reproduzierbare Ergebnisprotokolle.
 **Read-/Write-Grenze:** Prüfungen dürfen nur erwartete Build-/Testartefakte erzeugen; externe Wirkung oder produktive Veröffentlichung folgt nicht daraus.
-**Fallback:** Nicht ausführbare Checks werden mit Ursache und fehlender Abdeckung gemeldet; gleichwertige vorhandene read-only Prüfungen dürfen ergänzen.
+**Fallback:** Fehlgeschlagene Checks werden mit Ursache und fehlender Abdeckung gemeldet; gleichwertige read-only Prüfpfade dürfen ergänzen.
 **Keine Folgerung:** Ein fokussierter oder lokal grüner Check belegt keine ausgelassene Gesamtsuite und keine Remote-CI.
 
 #### GitHub CLI
@@ -46,7 +46,7 @@ fachlichen Auslöser; „nützlich“ erlaubt einen evidenzsteigernden Einsatz o
 **Nützlich:** Für auditierbare Reviewanforderungen und PR-Metadatenpflege.
 **Evidenzgewinn:** Repository-, PR-, Reviewer-, Check- und Workflow-IDs mit Head-SHAs und Zeitpunkten.
 **Read-/Write-Grenze:** Read-only vor Mutation; Schreibaktionen bleiben auf den einzeln autorisierten PR-/Reviewumfang begrenzt, Account- und Billingänderungen sind getrennte externe Wirkungen.
-**Fallback:** GitHubs dokumentierte read-only API oder ein vorhandener Connector darf Leseevidenz liefern; eine erforderliche Mutation bleibt ohne autorisierten Pfad blockiert.
+**Fallback:** GitHubs dokumentierte read-only API oder ein Connector darf Leseevidenz liefern; eine erforderliche Mutation bleibt ohne autorisierten Pfad blockiert.
 **Keine Folgerung:** GitHub-Zugriff autorisiert weder Merge noch Schutzregel-, Account- oder Abrechnungsänderungen.
 
 #### GitHub-Connector
@@ -75,7 +75,7 @@ fachlichen Auslöser; „nützlich“ erlaubt einen evidenzsteigernden Einsatz o
 
 #### Strukturierter Engineering-Workflow
 
-**Name:** Vorhandene Skills oder gleichwertige Verfahren für Planung, TDD, systematisches Debugging, Review und Abschlussverifikation.
+**Name:** Skills oder gleichwertige Verfahren für Planung, TDD, systematisches Debugging, Review und Abschlussverifikation.
 **Zweck:** Wiederholbare Arbeitsdisziplin an den tatsächlich ausgelösten Risikopunkten sicherstellen.
 **Trigger:** Mehrschrittige Änderung, Verhaltensänderung, reproduzierbarer Fehler, Reviewgate oder Abschlussaussage.
 **Erforderlich:** Wenn Auftrag oder aktiver Governance-Vertrag das jeweilige Verfahren verlangt.
@@ -112,11 +112,11 @@ fachlichen Auslöser; „nützlich“ erlaubt einen evidenzsteigernden Einsatz o
 #### Microsoft APM
 
 **Name:** Microsoft APM – Agent Package Manager.
-**Zweck:** Deklarative Agent-Skills, Agent-Pakete und ihre Abhängigkeiten über vorhandene `apm.yml`- und `apm.lock.yaml`-Evidenz reproduzierbar beurteilen.
+**Zweck:** Deklarative Agent-Skills, Agent-Pakete und ihre Abhängigkeiten über `apm.yml`- und `apm.lock.yaml`-Evidenz reproduzierbar beurteilen.
 **Trigger:** Skills oder Agent-Pakete werden benötigt, geprüft, zusammengestellt oder versioniert; agentische Abhängigkeiten, reproduzierbare Konfiguration, Paketquelle, Lockzustand oder Drift sind relevant.
 **Erforderlich:** Wenn der Trigger eintritt, ist APM der bevorzugte Prüfweg; deklarierte Manifeste und Locks werden gelesen und passende read-only Checks wie `apm audit --ci` berücksichtigt. Fehlt deklarierter APM-Zustand, wird diese Abwesenheit belegt, ohne Dateien anzulegen.
 **Nützlich:** Für Provenienz-, Abhängigkeits-, Integritäts- und Driftbefunde in APM-verwalteten Agentpaketen.
 **Evidenzgewinn:** Deklarierte Quellen, aufgelöster Lockzustand, Auditfindings und reproduzierbare Abweichungen.
-**Read-/Write-Grenze:** Governance verwendet vorhandene APM-Evidenz und read-only Prüfpfade; sie verändert weder Paketquellen, Locks, Agentdateien noch Benutzer- oder Serverkonfiguration.
+**Read-/Write-Grenze:** Governance verwendet deklarierte APM-Evidenz und read-only Prüfpfade; sie verändert weder Paketquellen, Locks, Agentdateien noch Benutzer- oder Serverkonfiguration.
 **Fallback:** Scheitert der APM-Prüfweg, darf nur ein fachlich gleichwertiger read-only Nachweis das betroffene Gate erfüllen; andernfalls bleibt es offen.
 **Keine Folgerung:** Der Toolstandard begründet weder Paketverwaltung als Governance-Subsystem noch Runtime-, Deployment-, Server- oder Azure-Verantwortung.
