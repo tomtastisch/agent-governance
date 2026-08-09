@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """Deterministische Release-Metadaten-Validierung des Repositorys.
 
-Vier Modi — alle read-only:
+Drei Modi — alle read-only:
   tree     Repository-/Tree-Konsistenz (VERSION ↔ CHANGELOG ↔ README ↔ INSTALL)
   tag      Tag-Konsistenz (benötigt Git-Historie und einen Tag-Ref)
   release  GitHub-Release-Konsistenz (benötigt Netzwerk und gh CLI)
-  all      Führt tree + tag aus (für lokale Vollprüfung)
 
 Kein Modus erstellt Tags, Releases oder verändert das Repository.
 """
