@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Keine.
+
+### Changed
+
+- Keine.
+
+### Fixed
+
+- Keine.
+
+### Removed
+
+- Keine.
+
+**Breaking changes:** none
+
+## [0.2.0] — 2026-08-09
+
+### Added
+
 - Triggerbasiertes Tool-Routing mit Microsoft APM als Standard für deklarative Agent-Skill- und
   Agent-Paket-Evidenz.
 - Exact-Head-Verträge für unabhängige QA- und risikobasierte Security-Prüfungen.

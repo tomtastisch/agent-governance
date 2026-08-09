@@ -1,6 +1,6 @@
 # Agent Governance
 
-> **Version:** [`0.1.0`](VERSION) &mdash; [Changelog](CHANGELOG.md)
+> **Version:** [`0.2.0`](VERSION) &mdash; [Changelog](CHANGELOG.md)
 
 Dieses Repository liefert ein kompaktes, harness- und providerneutrales Governance-Regelwerk.
 Sein Vertrag ist auf Regeln, Rollen, Templates, Source-of-Truth-Verträge, Tool-Routing und

@@ -188,11 +188,18 @@ class HistoricalEvidenceContract(unittest.TestCase):
 
 
 class ReleaseMetadataContract(unittest.TestCase):
-    def test_source_removal_is_declared_breaking(self):
+    def test_current_version_declares_source_removal_as_breaking(self):
+        changelog = read(ROOT / "CHANGELOG.md")
+        version = read(ROOT / "VERSION").strip()
+        current = changelog.split(f"## [{version}]", 1)[1].split("\n## [", 1)[0]
+        self.assertIn("**Breaking changes:** present", current)
+        self.assertRegex(current, r"(?m)^- \*\*BREAKING:\*\* .+")
+
+    def test_unreleased_is_reset_after_version_classification(self):
         changelog = read(ROOT / "CHANGELOG.md")
         unreleased = changelog.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0]
-        self.assertIn("**Breaking changes:** present", unreleased)
-        self.assertRegex(unreleased, r"(?m)^- \*\*BREAKING:\*\* .+")
+        self.assertIn("**Breaking changes:** none", unreleased)
+        self.assertNotIn("**BREAKING:**", unreleased)
 
 
 class PrivateProfileMigrationGuardContract(unittest.TestCase):
