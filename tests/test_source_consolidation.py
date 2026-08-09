@@ -226,16 +226,21 @@ class PrivateProfileMigrationGuardContract(unittest.TestCase):
     def test_current_documentation_rejects_future_operational_clusters(self):
         changelog = read(ROOT / "CHANGELOG.md")
         unreleased = changelog.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0]
+        numbered_cluster = re.compile(r"(?i)Cluster\s+\d+")
+        future_operation = re.compile(
+            r"(?im)^(?=[^\n]*(?:Installer|Migration))"
+            r"(?=[^\n]*(?:künftig\w*|später\w*|ausstehend\w*|vorgesehen))[^\n]+$"
+        )
         current_documents = {
             "README.md": read(ROOT / "README.md"),
             "INSTALL.md": read(ROOT / "INSTALL.md"),
             "CHANGELOG.md [Unreleased]": unreleased,
         }
         for name, text in current_documents.items():
-            self.assertNotRegex(text, r"(?i)Cluster\s+[456]", name)
-            self.assertNotRegex(
-                text, r"(?i)(?:künftige|spätere|ausstehende).*(?:Installer|Migration)", name
-            )
+            self.assertNotRegex(text, numbered_cluster, name)
+            self.assertNotRegex(text, future_operation, name)
+        self.assertRegex("Cluster 7 Installer", numbered_cluster)
+        self.assertRegex("Ein Installer ist künftig vorgesehen", future_operation)
 
 
 if __name__ == "__main__":
