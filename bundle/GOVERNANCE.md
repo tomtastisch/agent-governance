@@ -12,6 +12,9 @@ Der Bundle-Root wird ausschließlich aus begrenzten, ausdrücklich verfügbaren 
 aufgelöst: `AGENT_GOVERNANCE_ROOT`, falls gesetzt, für Codex `CODEX_HOME`, falls gesetzt, und
 das Verzeichnis des geladenen Einstiegspunkts, aber nur wenn der Harness den tatsächlichen
 Einstiegspunktpfad eindeutig als Quelle dieses byte-identischen Bootstrap-Inhalts bereitstellt.
+Gesetzte Umgebungskandidaten werden vor jedem Pfadverbund geprüft und sind nur als nichtleere
+absolute Pfade zulässig. Leere Werte, `.` und andere relative Werte sind ungültig; die
+Root-Auflösung wird nach GOV-004 angehalten.
 Eine zusätzliche projektlokale `AGENTS.md` ist kein Governance-Einstiegspunkt und kein
 Root-Kandidat. Das aktuelle Arbeitsverzeichnis wird weder als Root-Kandidat geprüft noch als
 implizite Basis für Bundle-Pfade verwendet; eine Dateisystemsuche findet nicht statt.

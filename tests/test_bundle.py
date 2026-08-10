@@ -174,6 +174,21 @@ class BundleLayout(unittest.TestCase):
             r"(?is)(?:widerspr.+Roots|mehrere.+gültige.+Roots).+GOV-004",
         )
 
+    def test_environment_root_candidates_must_be_nonempty_absolute_paths(self):
+        bootstrap = BOOTSTRAP.read_text(encoding="utf-8")
+        root_contract = bootstrap.split("## Root-Auflösung", 1)[1].split(
+            "\n## ", 1
+        )[0]
+
+        self.assertRegex(
+            root_contract,
+            r"(?is)Umgebungskandidaten.+vor jedem Pfadverbund.+nichtleere\s+absolute Pfade",
+        )
+        self.assertRegex(
+            root_contract,
+            r"(?is)leere.+relative Werte.+ungültig.+GOV-004",
+        )
+
     def test_resolved_bundle_root_is_preserved_for_every_bundle_read(self):
         bootstrap = BOOTSTRAP.read_text(encoding="utf-8")
         root_contract = bootstrap.split("## Root-Auflösung", 1)[1].split(
@@ -543,8 +558,7 @@ class TemplateContract(unittest.TestCase):
         status = self.text.split("### Antwort und Status", 1)[1].split(
             "\n### ", 1
         )[0]
-        self.assertIn("Verbleibende Risiken:", status)
-        self.assertRegex(status, r"(?is)Verbleibende Risiken:.+keine")
+        self.assertIn("`Verbleibende Risiken: keine`", status)
 
     def test_template_markers_have_one_normative_owner(self):
         owners = {
