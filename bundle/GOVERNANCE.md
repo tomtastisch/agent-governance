@@ -96,9 +96,10 @@ Provider-, Verfügbarkeits- oder Delegationssteuerung.
 
 ## Lokale Nutzerregeln
 
-Falls `agent-governance/local/user-rules.md` vorhanden ist, wird die Datei nach dem Bootstrap
-und vor den auftragsspezifischen Modulen gelesen. Ihr Inhalt wird nicht geloggt oder
-veröffentlicht. Fehlt sie, bleibt das Bundle vollständig funktionsfähig.
+Der Manifestwert `local_rules` (aktuell `local/user-rules.md`) wird ausschließlich relativ zum
+beibehaltenen absoluten Manifestverzeichnis aufgelöst. Falls die so bestimmte Datei vorhanden
+ist, wird sie nach dem Bootstrap und vor den auftragsspezifischen Modulen gelesen. Ihr Inhalt
+wird nicht geloggt oder veröffentlicht. Fehlt sie, bleibt das Bundle vollständig funktionsfähig.
 
 ## Abschluss und Evidenz
 

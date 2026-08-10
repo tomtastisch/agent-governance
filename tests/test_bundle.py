@@ -240,6 +240,20 @@ class BundleLayout(unittest.TestCase):
             r"(?is)Manifestverzeichnis.+absolut.+beibehalten",
         )
 
+    def test_local_rules_are_opened_from_the_manifest_directory(self):
+        bootstrap = BOOTSTRAP.read_text(encoding="utf-8")
+        local_contract = bootstrap.split("## Lokale Nutzerregeln", 1)[1].split(
+            "\n## ", 1
+        )[0]
+
+        self.assertIn("`local_rules`", local_contract)
+        self.assertIn("`local/user-rules.md`", local_contract)
+        self.assertRegex(
+            local_contract,
+            r"(?is)local_rules.+Manifestverzeichnis.+aufgelöst",
+        )
+        self.assertNotIn("`agent-governance/local/user-rules.md`", local_contract)
+
     def test_project_agents_is_not_mistaken_for_governance_entrypoint(self):
         bootstrap = BOOTSTRAP.read_text(encoding="utf-8")
         root_contract = bootstrap.split("## Root-Auflösung", 1)[1].split(
@@ -286,21 +300,28 @@ class ManifestContract(unittest.TestCase):
         self.assertEqual(set(known), referenced)
 
     def test_paths_are_relative_and_resolve(self):
-        manifest_root = MANIFEST.parent
+        manifest_root = MANIFEST.parent.resolve()
         required_paths = [
             *(entry["path"] for entry in self.data["modules"].values()),
             *(entry["path"] for entry in self.data["roles"].values()),
         ]
-        for raw in required_paths:
+        all_paths = [*required_paths, self.data["local_rules"]]
+        for raw in all_paths:
             pure = PurePosixPath(raw)
             self.assertFalse(pure.is_absolute(), raw)
             self.assertNotIn("~", pure.parts, raw)
             resolved = (manifest_root / Path(*pure.parts)).resolve()
+            self.assertEqual(
+                os.path.commonpath((resolved, manifest_root)),
+                str(manifest_root),
+                raw,
+            )
+
+        for raw in required_paths:
+            pure = PurePosixPath(raw)
+            resolved = (manifest_root / Path(*pure.parts)).resolve()
             self.assertTrue(resolved.is_file(), raw)
-            self.assertTrue(os.path.commonpath((resolved, BUNDLE.resolve())) == str(BUNDLE.resolve()),
-                            raw)
         local = PurePosixPath(self.data["local_rules"])
-        self.assertFalse(local.is_absolute())
         example = (manifest_root / local.parent / f"{local.stem}.example{local.suffix}").resolve()
         self.assertTrue(example.is_file())
 
