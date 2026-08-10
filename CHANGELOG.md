@@ -20,8 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Die Bootstrap-Root-Auflösung verwendet begrenzte, manifestvalidierte Harness-Kandidaten wie
   `CODEX_HOME` und `AGENT_GOVERNANCE_ROOT`, akzeptiert gesetzte Umgebungskandidaten nur als
   nichtleere absolute Pfade und behandelt das aktuelle Arbeitsverzeichnis nicht implizit als
-  Bundle-Root; Folgezugriffe behalten den absoluten Root bei und verwechseln zusätzliche
-  projektlokale `AGENTS.md` nicht mit dem Governance-Einstiegspunkt.
+  Bundle-Root; Folgezugriffe behalten den absoluten Root und das daraus abgeleitete
+  Manifestverzeichnis bei und verwechseln zusätzliche projektlokale `AGENTS.md` nicht mit dem
+  Governance-Einstiegspunkt.
 - Der Statusvertrag verlangt ein ausdrücklich benanntes Feld für verbleibende Risiken und
   schreibt bei leerem Restbestand `Verbleibende Risiken: keine` vor.
 

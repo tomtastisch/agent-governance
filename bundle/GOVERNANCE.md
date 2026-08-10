@@ -23,11 +23,13 @@ Jeder Kandidat wird durch die dort erwartete lesbare reguläre Datei
 [`agent-governance/manifest.toml`](agent-governance/manifest.toml) validiert. Mehrfach auf
 denselben Ort zeigende Kandidaten werden als ein Root behandelt. Fehlt ein gesetzter Kandidat,
 ist sein Manifest ungültig oder ergeben sich widersprüchliche Roots, wird die Root-Auflösung
-nach GOV-004 angehalten. Genau ein widerspruchsfrei validierter Root wird verwendet. Modul-,
-Rollen- und lokale Pfade werden ausschließlich relativ zu diesem Root aufgelöst. Der
-aufgelöste Root wird als absoluter Pfad beibehalten. Jeder weitere Bundle-Dateizugriff verwendet
-diesen Root als explizites Präfix; relative Bundle-Zugriffe sind unzulässig. Inhalte und Pfade
-bleiben unverändert.
+nach GOV-004 angehalten. Genau ein widerspruchsfrei validierter Root wird verwendet. Das
+Manifestverzeichnis liegt relativ zum Bundle-Root unter `agent-governance`. Modul-, Rollen- und
+lokale Pfade aus dem Manifest werden ausschließlich relativ zu diesem Manifestverzeichnis
+aufgelöst. Der aufgelöste Root und das daraus abgeleitete Manifestverzeichnis werden als absolute
+Pfade beibehalten. Jeder weitere Bundle-Dateizugriff verwendet den jeweils zutreffenden Root oder
+das Manifestverzeichnis als explizites Präfix; relative Bundle-Zugriffe sind unzulässig. Inhalte
+und Pfade bleiben unverändert.
 
 ## Minimale Invarianten
 

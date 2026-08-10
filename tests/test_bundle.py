@@ -212,6 +212,34 @@ class BundleLayout(unittest.TestCase):
             r"(?is)relative Bundle-Zugriffe.+unzulässig",
         )
 
+    def test_manifest_paths_use_the_absolute_manifest_directory(self):
+        bundle_root = PurePosixPath("/home/e2e/.codex")
+        manifest_directory = bundle_root / "agent-governance"
+        expected_module = manifest_directory / "modules" / "evidence.md"
+        wrong_module = bundle_root / "modules" / "evidence.md"
+        bootstrap = BOOTSTRAP.read_text(encoding="utf-8")
+        root_contract = bootstrap.split("## Root-Auflösung", 1)[1].split(
+            "\n## ", 1
+        )[0]
+
+        self.assertEqual(
+            expected_module.as_posix(),
+            "/home/e2e/.codex/agent-governance/modules/evidence.md",
+        )
+        self.assertNotEqual(expected_module, wrong_module)
+        self.assertRegex(
+            root_contract,
+            r"(?is)Manifestverzeichnis.+Bundle-Root.+agent-governance",
+        )
+        self.assertRegex(
+            root_contract,
+            r"(?is)Modul-.+Rollen-.+lokale Pfade.+Manifestverzeichnis",
+        )
+        self.assertRegex(
+            root_contract,
+            r"(?is)Manifestverzeichnis.+absolut.+beibehalten",
+        )
+
     def test_project_agents_is_not_mistaken_for_governance_entrypoint(self):
         bootstrap = BOOTSTRAP.read_text(encoding="utf-8")
         root_contract = bootstrap.split("## Root-Auflösung", 1)[1].split(
