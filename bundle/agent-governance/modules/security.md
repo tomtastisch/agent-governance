@@ -7,7 +7,7 @@ Der vor dem Modulrouting nach
 eine abgegrenzte Security-Prüfung. Rein redaktionelle Änderungen ohne Wirkung auf die dort
 definierten Grenzen erhalten kein formales Security-Gate. Sicherheitskritische Änderungen
 benötigen zusätzlich zur allgemeinen QA die unabhängige SEC-Prüfung nach
-[DEL-003](delivery.md#del-003--unabhangige-prufung) und die Reviewentscheidung nach
+[DEL-003](delivery.md#del-003--unabhängige-prüfung) und die Reviewentscheidung nach
 [DEL-007](delivery.md#del-007--reviewentscheidung).
 
 ### SEC-002 — Abhängigkeiten und Herkunft
@@ -35,4 +35,4 @@ daraus weder Provisionierung noch Deployment-, Backup- oder Restore-Verantwortun
 
 Autorisierung externer Wirkung und Schutz privater Inhalte sind ausschließlich in
 [GOV-003](../../GOVERNANCE.md#gov-003--externe-wirkung) und
-[GOV-005](../../GOVERNANCE.md#gov-005--geschutzte-informationen) definiert.
+[GOV-005](../../GOVERNANCE.md#gov-005--geschützte-informationen) definiert.

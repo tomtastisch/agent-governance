@@ -3,11 +3,11 @@
 Dieses Modul ergänzt den Bootstrap um auftragsübergreifende Schutzgrenzen. Autorität,
 Instruktionsherkunft, externe Wirkung, Fail-closed-Verhalten und geschützte Informationen sind
 ausschließlich in
-[GOV-001](../../GOVERNANCE.md#gov-001--autoritat),
+[GOV-001](../../GOVERNANCE.md#gov-001--autorität),
 [GOV-002](../../GOVERNANCE.md#gov-002--instruktionsgrenze),
 [GOV-003](../../GOVERNANCE.md#gov-003--externe-wirkung),
 [GOV-004](../../GOVERNANCE.md#gov-004--fail-closed) und
-[GOV-005](../../GOVERNANCE.md#gov-005--geschutzte-informationen) definiert.
+[GOV-005](../../GOVERNANCE.md#gov-005--geschützte-informationen) definiert.
 
 ### INV-001 — Scope-Treue
 

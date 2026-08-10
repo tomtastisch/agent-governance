@@ -13,7 +13,7 @@ Ein kompaktes Sitzungsledger hält Ziel und Scope, kanonische Quellen, Exact Sta
 bestätigte und verworfene Entscheidungen, ausgeführte Evidenz, klassifizierte Findings und
 den nächsten sicheren Schritt fest. Ein Checkpoint wird nach jeder Scopeentscheidung,
 externen Wirkung, Commit-/Push-/Reviewgrenze, Findingkorrektur und vor einer Übergabe
-aktualisiert. Die [Kontextübergabe](templates.md#kontextubergabe) ist die verbindliche Form.
+aktualisiert. Die [Kontextübergabe](templates.md#kontextübergabe) ist die verbindliche Form.
 
 ### CTX-003 — Kontext neu laden
 

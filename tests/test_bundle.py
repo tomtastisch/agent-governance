@@ -96,9 +96,15 @@ def rule_definitions() -> dict[str, list[Path]]:
 def markdown_anchors(text: str) -> set[str]:
     anchors: set[str] = set()
     for heading in re.findall(r"(?m)^#{1,6}\s+(.+?)\s*$", text):
-        normalized = unicodedata.normalize("NFKD", heading)
-        ascii_heading = normalized.encode("ascii", "ignore").decode("ascii").lower()
-        without_punctuation = re.sub(r"[^a-z0-9_\-\s]", "", ascii_heading)
+        normalized = unicodedata.normalize("NFC", heading).lower()
+        without_punctuation = "".join(
+            character
+            for character in normalized
+            if character == "-"
+            or character.isspace()
+            or unicodedata.category(character)[0] in {"L", "M", "N"}
+            or unicodedata.category(character) == "Pc"
+        )
         anchors.add(re.sub(r"\s", "-", without_punctuation).strip("-"))
     return anchors
 
@@ -647,6 +653,12 @@ class ContextContinuityContract(unittest.TestCase):
 
 
 class NormativeSourceContract(unittest.TestCase):
+    def test_markdown_anchors_preserve_unicode_letters(self):
+        anchors = markdown_anchors("### Kontextübergabe\n")
+
+        self.assertEqual(anchors, {"kontextübergabe"})
+        self.assertNotIn("kontextubergabe", anchors)
+
     def test_markdown_link_check_rejects_unknown_fragment(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -19,7 +19,7 @@ erfindet keine Freigabe.
    [DEL-009](../modules/delivery.md#del-009--finding-lifecycle), melde Evidenz, Auswirkung
    und minimale sichere Abhilfe; `pass` setzt die
    unabhängige Prüfung nach
-   [DEL-003](../modules/delivery.md#del-003--unabhangige-prufung) ohne offene blockierende
+   [DEL-003](../modules/delivery.md#del-003--unabhängige-prüfung) ohne offene blockierende
    Findings voraus.
 
 Eine Korrektur erfolgt durch einen getrennten Executor-Kontext und wird danach erneut geprüft.

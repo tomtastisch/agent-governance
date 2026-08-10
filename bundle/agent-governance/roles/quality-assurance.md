@@ -19,7 +19,7 @@ Freigabe.
    [DEL-009](../modules/delivery.md#del-009--finding-lifecycle) und melde Ort,
    Reproduktion, Auswirkung und überprüfbare Abhilfe.
 6. Erteile `pass` nur, wenn die unabhängige Prüfung nach
-   [DEL-003](../modules/delivery.md#del-003--unabhangige-prufung) keine offenen blockierenden
+   [DEL-003](../modules/delivery.md#del-003--unabhängige-prüfung) keine offenen blockierenden
    Findings enthält und der Abschlussnachweis
    [EVD-004](../modules/evidence.md#evd-004--abschlussnachweis) erfüllt ist.
 
