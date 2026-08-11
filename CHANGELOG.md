@@ -17,13 +17,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Keine.
+- Die Bootstrap-Root-Auflösung verwendet begrenzte, manifestvalidierte Harness-Kandidaten wie
+  `CODEX_HOME` und `AGENT_GOVERNANCE_ROOT`, akzeptiert gesetzte Umgebungskandidaten nur als
+  nichtleere absolute Pfade und behandelt das aktuelle Arbeitsverzeichnis nicht implizit als
+  Bundle-Root; Folgezugriffe behalten den absoluten Root und das daraus abgeleitete
+  Manifestverzeichnis bei und verwechseln zusätzliche projektlokale `AGENTS.md` nicht mit dem
+  Governance-Einstiegspunkt.
+- Der Statusvertrag verlangt ein ausdrücklich benanntes Feld für verbleibende Risiken und
+  schreibt bei leerem Restbestand `Verbleibende Risiken: keine` vor.
 
 ### Removed
 
 - Keine.
 
 **Breaking changes:** none
+
+## [0.2.0] — 2026-08-09
+
+### Added
+
+- Triggerbasiertes Tool-Routing mit Microsoft APM als Standard für deklarative Agent-Skill- und
+  Agent-Paket-Evidenz.
+- Exact-Head-Verträge für unabhängige QA- und risikobasierte Security-Prüfungen.
+- Zentrale strikte Templates für driftanfällige Delivery-, Review- und Kontextübergaben.
+- Sitzungsledger- und Checkpoint-Regeln für nachvollziehbare lange Aufgaben.
+- Regressionstests für Scope, SSOT, Manifest, Tool-Routing, Review, Templates, Kontext und
+  hostunabhängige Git-Fixtures.
+
+### Changed
+
+- Governance ist auf Regeln, Rollen, Templates, Source-of-Truth-Verträge, Tool-Routing und
+  Verifikation begrenzt.
+- Die kanonische Einstiegskette führt ausschließlich vom Bootstrap über das statische Manifest
+  zu triggergerecht geladenen Modulen und Rollen.
+- Reviewerrollen und Reviewprovider sind getrennt; GitHub Copilot ist ein bevorzugter
+  QA-Provider mit unabhängigem Fallback.
+- APM- und andere Toolregeln beschreiben fachliche Trigger und Evidenzgrenzen, jedoch weder
+  Installations- noch Verfügbarkeitszustände.
+
+### Fixed
+
+- Git-Test-Fixtures verwenden deterministisch `main`, repository-lokale Identität und geprüfte
+  Rückgabecodes ohne globale Git-Konfiguration.
+- Security-Trigger sind vor dem Modulrouting sichtbar, versionierte Lieferungen benötigen immer
+  unabhängige Exact-Head-QA, und Secret-Nachweise schließen inhaltsabgeleitete Metadaten aus.
+
+### Removed
+
+- Alte Harness-Adapter, Bootstrap-Templates, Rollenwrapper, Core-/Rollenquellen, Branch-Tags und
+  die Profilvorlage als konkurrierende Governance-Autorität.
+- **BREAKING:** Operative Projekt-, Werkzeug-, Provider- und Runtimeverträge sowie Verweise auf
+  entfernte Legacy-Quellen gehören nicht mehr zum öffentlichen Governance-Vertrag.
+
+**Breaking changes:** present
 
 ## [0.1.0] — 2026-07-27
 

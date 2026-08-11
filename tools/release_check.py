@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Deterministische Release-Metadaten-Validierung (Kern §12, §15, §16, §17).
+"""Deterministische Release-Metadaten-Validierung des Repositorys.
 
-Vier Modi — alle read-only:
+Drei Modi — alle read-only:
   tree     Repository-/Tree-Konsistenz (VERSION ↔ CHANGELOG ↔ README ↔ INSTALL)
   tag      Tag-Konsistenz (benötigt Git-Historie und einen Tag-Ref)
   release  GitHub-Release-Konsistenz (benötigt Netzwerk und gh CLI)
-  all      Führt tree + tag aus (für lokale Vollprüfung)
 
 Kein Modus erstellt Tags, Releases oder verändert das Repository.
 """
@@ -177,7 +176,7 @@ def check_tree(root=None):
 
     # ── VERSION ──
     if not _exists("VERSION", root):
-        r.add_error("VERSION fehlt — autoritative SemVer-Quelle erforderlich (Kern §12)")
+        r.add_error("VERSION fehlt — autoritative SemVer-Quelle erforderlich")
         return r
 
     version_raw = _read("VERSION", root)
@@ -195,7 +194,7 @@ def check_tree(root=None):
 
     # ── CHANGELOG ──
     if not _exists("CHANGELOG.md", root):
-        r.add_error("CHANGELOG.md fehlt (Kern §12 verlangt aktuellen CHANGELOG)")
+        r.add_error("CHANGELOG.md fehlt — aktueller CHANGELOG erforderlich")
     else:
         _check_changelog_sections(root, version, r)
 
