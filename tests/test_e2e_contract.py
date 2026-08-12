@@ -24,7 +24,7 @@ class CleanImageContract(unittest.TestCase):
         dockerfile = read("Dockerfile")
         self.assertRegex(dockerfile, r"(?m)^FROM debian:bookworm-slim$")
         self.assertIn("@openai/codex@0.147.0", dockerfile)
-        for package in ("ca-certificates", "git", "python3", "nodejs", "npm"):
+        for package in ("bubblewrap", "ca-certificates", "git", "python3", "nodejs", "npm"):
             self.assertIn(package, dockerfile)
         self.assertNotRegex(dockerfile, r"(?im)^\s*(?:COPY|ADD)\s+")
         for forbidden in ("auth.json", "AGENTS.md", "bundle/", "integrations/"):
@@ -61,6 +61,12 @@ class CleanImageContract(unittest.TestCase):
             r'(?m)^e2e_tmp=\$\(mktemp -d "\$shared_tmp_root/agent-governance-e2e\.XXXXXX"\)$',
         )
         self.assertRegex(runner, r"(?m)^e2e_tmp=\$\(CDPATH= cd -- \"\$e2e_tmp\" && pwd -P\)$")
+
+    def test_real_codex_containers_enable_bubblewrap_without_privileged_mode(self):
+        runner = read("run_clean_linux.sh")
+        self.assertEqual(runner.count("--security-opt seccomp=unconfined"), 2)
+        self.assertNotIn("--privileged", runner)
+        self.assertNotIn("--cap-add", runner)
 
 
 class SecretIsolationContract(unittest.TestCase):

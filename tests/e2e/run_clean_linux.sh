@@ -86,7 +86,11 @@ docker_cli build \
   --tag "$image" \
   "$release_dir/tests/e2e"
 
+# Docker's built-in seccomp profile blocks the user-namespace syscall used by
+# Codex's bubblewrap sandbox. The isolated containers remain non-privileged and
+# receive no added capabilities; Codex still runs its workspace-write sandbox.
 docker_cli run --name "$baseline" \
+  --security-opt seccomp=unconfined \
   --mount "type=bind,source=$release_dir,target=/release,readonly" \
   --mount "type=bind,source=$auth_dir,target=/auth-source,readonly" \
   --mount "type=bind,source=$output_dir,target=/output" \
@@ -95,6 +99,7 @@ docker_cli run --name "$baseline" \
   bash /release/tests/e2e/container_entrypoint.sh baseline
 
 docker_cli run --name "$governed" \
+  --security-opt seccomp=unconfined \
   --mount "type=bind,source=$release_dir,target=/release,readonly" \
   --mount "type=bind,source=$auth_dir,target=/auth-source,readonly" \
   --mount "type=bind,source=$output_dir,target=/output" \
