@@ -112,6 +112,44 @@ class NeutralHarnessRouting(NeutralRuntimeCase):
         self.assertFalse(result.continued)
         self.assertFalse(self.provider_calls.exists())
 
+    def test_envelope_with_additional_approval_field_fails_before_provider(self):
+        envelope = self.envelope(
+            approval_context={
+                "valid": False,
+                "private_extra": "synthetic-data-that-must-not-reach-provider",
+            }
+        )
+
+        result = self.harness.new_session(
+            task="overbroad nested action envelope",
+            triggers=("external_effect",),
+            action_envelope=envelope,
+        )
+
+        self.assertEqual(result.decision, "error")
+        self.assertFalse(result.provider_reached)
+        self.assertFalse(result.continued)
+        self.assertFalse(self.provider_calls.exists())
+
+    def test_envelope_with_additional_risk_field_fails_before_provider(self):
+        envelope = self.envelope(
+            risk_context={
+                "requires_approval": False,
+                "private_extra": "synthetic-data-that-must-not-reach-provider",
+            }
+        )
+
+        result = self.harness.new_session(
+            task="overbroad nested action envelope",
+            triggers=("external_effect",),
+            action_envelope=envelope,
+        )
+
+        self.assertEqual(result.decision, "error")
+        self.assertFalse(result.provider_reached)
+        self.assertFalse(result.continued)
+        self.assertFalse(self.provider_calls.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

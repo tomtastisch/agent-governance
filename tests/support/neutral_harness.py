@@ -254,6 +254,30 @@ class NeutralHarness:
             return "deny", False
         if semantic != "allow":
             return "error", False
+        approval_context = envelope.get("approval_context")
+        risk_context = envelope.get("risk_context")
+        if (
+            not isinstance(risk_context, Mapping)
+            or set(risk_context) != {"requires_approval"}
+            or not isinstance(risk_context.get("requires_approval"), bool)
+        ):
+            return "error", False
+        if not isinstance(approval_context, Mapping):
+            return "error", False
+        approval_valid = approval_context.get("valid")
+        if approval_valid is False:
+            if set(approval_context) != {"valid"}:
+                return "error", False
+        elif approval_valid is True:
+            approval_id = approval_context.get("approval_id")
+            if (
+                set(approval_context) != {"valid", "approval_id"}
+                or not isinstance(approval_id, str)
+                or not 1 <= len(approval_id) <= 256
+            ):
+                return "error", False
+        else:
+            return "error", False
         process_environment = {
             "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
             "LANG": "C.UTF-8",
