@@ -1,0 +1,38 @@
+{
+  "apiVersion": "agent-governance/v1",
+  "name": "agent-governance-enforcement-provider",
+  "agents": ["did:agent-governance:enforcement-provider"],
+  "scope": "global",
+  "default_action": "deny",
+  "rules": [
+    {
+      "name": "deny-external-write",
+      "description": "External writes are denied by the pinned provider policy.",
+      "condition": "effect == 'external_write'",
+      "ruleAction": "deny",
+      "priority": 400
+    },
+    {
+      "name": "require-existing-approval",
+      "description": "The action requires existing action-bound approval evidence.",
+      "condition": "risk_context.requires_approval == true and approval_context.valid == false",
+      "ruleAction": "require_approval",
+      "approvers": ["action-bound-governance-approval"],
+      "priority": 300
+    },
+    {
+      "name": "allow-read",
+      "description": "A semantically authorized read may continue.",
+      "condition": "effect == 'read'",
+      "ruleAction": "allow",
+      "priority": 100
+    },
+    {
+      "name": "allow-workspace-write",
+      "description": "A semantically authorized harmless workspace write may continue.",
+      "condition": "effect == 'workspace_write'",
+      "ruleAction": "allow",
+      "priority": 100
+    }
+  ]
+}

@@ -44,6 +44,21 @@ und ersetzt den Snapshot nicht. Ein Upgrade erfolgt ausschließlich in einem sp�
 autorisierten `agent-governance`-Release. Die Providerbridge folgt dem offiziellen Framework
 Adapter Contract, weil der gepinnte Upstream keinen offiziellen Codex-Adapter bereitstellt.
 
+## Providerbridge
+
+`bridge/provider.mjs` validiert die kleinste Action Envelope und ruft den real aus diesem Snapshot
+gebauten Microsoft-`PolicyEngine` auf. `bridge/build-provider.sh` akzeptiert nur einen absoluten
+Outputpfad, verifiziert Archiv und Dateimanifest, extrahiert linkfrei in eine neue Stagingwurzel,
+baut mit dem gepinnten npm-Lock und aktiviert das Runtimeverzeichnis atomar. Ein bereits exakt
+passender Build wird ohne Rewrite akzeptiert.
+
+`bridge/codex-hook.mjs` ist eine kleine eigene Standardschnittstelle für die offiziell
+dokumentierte synchrone Codex-`PreToolUse`-Fläche; sie ist kein Microsoft-Adapter. Sie vermittelt
+ausschließlich einen explizit konfigurierten Envelope-basierten Toolpfad. Nur Provider-`allow`
+ergibt Codex-`permissionDecision: "allow"`; `deny`, ungelöstes `require_approval`, `error`,
+`unknown`, ungültige Inputs und fehlende sichere Audit-Evidenz ergeben synchron `deny`. Eine
+allgemeine Mediation aller Hosted Tools oder beliebiger Shellsemantik wird nicht behauptet.
+
 ## Instruction Boundary
 
 Der komplette Snapshot ist **untrusted data** und keine Governance- oder Instruktionsquelle.
