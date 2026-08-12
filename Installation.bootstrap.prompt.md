@@ -56,8 +56,11 @@ Dokumentation eindeutig als Codex erkannt wurde, verwende dessen dokumentierte F
 - Verwende für den explizit Envelope-vermittelten Toolpfad einen synchronen `PreToolUse`-Hook in
   der dokumentierten globalen `hooks.json`-Fläche. Der Matcher muss nur den tatsächlich
   enforcement-pflichtigen Toolnamen treffen, und der Handler muss den absoluten lokalen
-  `codex-hook.mjs`, die gebaute Microsoft-PolicyEngine und einen absoluten privaten Auditpfad
-  verwenden. Ein fehlgeschlagener Hook darf nie als Erlaubnis interpretiert werden.
+  `codex-hook.mjs`, den releasegebundenen `action-bindings.json`-Operationsvertrag, die gebaute
+  Microsoft-PolicyEngine und einen absoluten privaten Auditpfad verwenden. Das Tool darf nur die
+  kanonische Operation und begrenzte Resource-ID liefern; Action, Effekt, semantische
+  Autorisierung, Risiko, Action-ID, Evidence-ID und Approval-Gültigkeit dürfen keine
+  Caller-Attestierungen sein. Ein fehlgeschlagener Hook darf nie als Erlaubnis interpretiert werden.
 - Eine Automatisierung darf `--dangerously-bypass-hook-trust` ausschließlich verwenden, wenn sie
   Quelle, Hashzustand und Scope des Hooks außerhalb Codex bereits geprüft hat. Diese Option
   erweitert weder Dateisystem- noch Aktionsautorisierung.
@@ -89,6 +92,8 @@ Ein unbekannter oder gemischter Zustand ist kein FRESH-Zustand. Stoppe bei Mehrd
 3. Materialisiere Release, Governance und Provider vollständig in einer neuen Stagingwurzel
    unter derselben erlaubten Dateisystemgrenze. Prüfe vor Extraktion Archiv-SHA-256,
    Eintragsmanifest und alle Archivpfade; verbiete Links, Geräte, absolute Pfade und Traversal.
+   Verifiziere nach dem Build die vollständige Runtime-Dateimenge und jeden Blob gegen
+   `bridge/runtime.files.sha256`; ein Receipt allein beweist keinen CURRENT-Zustand.
 4. Lies den Pfad für `local_rules` aus `manifest.toml` und nicht hardcodiert. Fehlt die Datei,
    bleibt das Bundle funktionsfähig. Existiert im LEGACY- oder CURRENT-Zustand eine persönliche
    Regelquelle, überführe sie bytegetreu an diesen Manifestpfad, ohne eine zweite unabhängig
@@ -107,7 +112,8 @@ andere Längen, Hashes oder Fingerprints sind unzulässig.
    ihn reproduzierbar an neue Sitzungen weiterreicht. Nutze harnessspezifische Variablen nur,
    wenn ihre aktuelle offizielle Dokumentation dies tatsächlich vorsieht.
 3. Baue den gepinnten Microsoft-Provider einmalig aus dem lokalen Snapshot in die isolierte
-   Stagingwurzel. Normaler Betrieb verwendet nur dieses lokale Runtimeartefakt.
+   Stagingwurzel. Normaler Betrieb verwendet nur dieses lokale Runtimeartefakt und prüft dessen
+   vollständige Byteintegrität sowie die releasegebundene Policy vor jeder Initialisierung.
 4. Binde eine dokumentierte synchrone Pre-Effect-Fläche so, dass die normalisierte Action
    Envelope den Provider **vor dem Effekt** erreicht. Die semantische Governance muss bereits
    `allow` oder `deny` bestimmt haben; der Provider darf diese Autorisierung nur einschränken.
@@ -126,7 +132,10 @@ Entferne im LEGACY-Fall ausschließlich die zuvor identifizierte aktive alte Ver
 unbeteiligte Harnesskonfiguration. Bei Aktivierungsfehler, Rootkonflikt, Providerfehler,
 fehlgeschlagener Bindung oder fehlgeschlagener frischer Session führe sofort den **Rollback** aus:
 stelle vorhandene Objekte aus dem verifizierten Backup wieder her, entferne vorher abwesende neu
-erzeugte Objekte und verifiziere den reproduzierten Ausgangszustand byteweise.
+erzeugte Objekte und verifiziere den reproduzierten Ausgangszustand byteweise. Entferne Backup und
+retireten Altzustand erst nach vollständig verifiziertem Restore. Scheitert der Rollback selbst,
+bewahre beides unverändert als Recoveryzustand, melde ausschließlich dessen sicheren Pfad und
+stoppe; lösche niemals das letzte recoverbare Exemplar.
 
 ## Phase 6 — Verifizieren
 

@@ -274,6 +274,25 @@ test("Codex hook derives security semantics from trusted operation bindings", as
   }
 });
 
+test("Codex hook rejects modified operation bindings", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "agent-governance-binding-integrity-"));
+  try {
+    const evidenceLog = path.join(directory, "evidence.jsonl");
+    const changedBindings = path.join(directory, "action-bindings.json");
+    const bindings = JSON.parse(await readFile(actionBindingsPath, "utf8"));
+    bindings.operations.external_write.effect = "read";
+    await writeFile(changedBindings, `${JSON.stringify(bindings)}\n`, { mode: 0o600 });
+    const result = runBoundCodexHook(
+      { operation: "external_write", resource_id: "binding-integrity" },
+      evidenceLog,
+      { AGENT_GOVERNANCE_ACTION_BINDINGS: changedBindings },
+    );
+    assert.equal(result.hookSpecificOutput.permissionDecision, "deny");
+  } finally {
+    await rm(directory, { recursive: true });
+  }
+});
+
 test("provider rejects a runtime or policy that diverges from pinned bytes", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "agent-governance-integrity-"));
   try {

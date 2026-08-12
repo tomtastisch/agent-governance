@@ -181,9 +181,12 @@ gebaut; normaler Betrieb lädt nichts von GitHub, Microsoft, npm oder einem `lat
 
 Für den gepinnten Upstream existiert kein offizieller Codex-Adapter. Die kleine eigene Bridge basiert
 auf dem offiziellen Framework Adapter Contract und normalisiert Action Envelope und Entscheidung.
-Der Codex-Hook vermittelt ausschließlich einen explizit konfigurierten Envelope-basierten
-Toolpfad; eine vollständige Interception beliebiger Shell- oder Hosted-Tool-Semantik wird nicht
-behauptet.
+Der Codex-Hook vermittelt ausschließlich einen explizit konfigurierten Toolpfad. Das Tool liefert
+nur eine kanonische Operation und eine begrenzte Resource-ID; Action, Effekt, semantische
+Autorisierung, Risiko, Action-ID und Evidence-ID leitet der Hook aus einem hashgebundenen
+Operationsvertrag beziehungsweise aus der Harness-Tool-ID ab. Caller-Attestierungen dieser
+Sicherheitsfelder und ungeprüfte Approval-IDs werden nicht akzeptiert. Eine vollständige
+Interception beliebiger Shell- oder Hosted-Tool-Semantik wird nicht behauptet.
 
 ## Verifikation und Tests
 
@@ -204,7 +207,12 @@ Exact-Head-QA, separate SEC, blockierende GitHub Actions und Post-Release-Tests 
 Unterstützung wird nur für tatsächlich verifizierte Flächen behauptet. Der synthetische neutrale
 Harness ist deterministisch geprüft. Clean-Linux-E2E verifiziert den Bootstrap, frische Runtime-
 Sessions, synthetische `local_rules` und reale Providerblockaden mit **Codex CLI 0.147.0**. Andere
-Codex-Versionen sind dadurch nicht automatisch abgedeckt.
+Codex-Versionen sind dadurch nicht automatisch abgedeckt. Der Containerbuild bindet Basisimage,
+Debian-Snapshot, direkte Paketversionen und den npm-Lock; der Runner akzeptiert nur einen exakten
+signaturgeprüften Commit. `CURRENT` und `LEGACY` werden als ausdrücklich benannte synthetische
+Containerfixtures geprüft. Eine zweite Session startet den tatsächlich materialisierten
+Microsoft-Provider mit deaktiviertem Netzwerk und prüft Governance, Manifest, `local_rules`,
+Routing, `allow`, `deny`, `require_approval` und lokales Audit erneut.
 
 ## Versionierung
 
@@ -227,13 +235,19 @@ Private Regeln und Authdaten gelangen nicht in Repository, Image, Logs oder Repo
 echte Container-E2E wird ausschließlich ephemer zur Laufzeit, mit Verzeichnisrechten `0700` und
 Dateirechten `0600`, bereitgestellt und danach entfernt. Providerfehler, fehlende synchrone
 Interception, Approval-Lücken sowie unsichere Pfade blockieren fail-closed.
+Providerbuild und Laufzeit akzeptieren einen vorhandenen Runtimebaum nur bei exaktem Vollmanifest;
+Policy- und Modulbytes werden über sichere Handles gegen releasegebundene Digests geprüft.
+Scheitert ein Rollback selbst, bleiben das verifizierte Recovery-Backup und ein recoverbarer
+Altzustand erhalten, statt sie im Fehlerpfad zu löschen.
 
 ## Bekannte Einschränkungen
 
 - Microsoft Agent Governance Toolkit und seine Frameworkschnittstellen befinden sich im Status
   Public Preview.
 - Es gibt keinen offiziellen Codex-Adapter. Die eigene Bridge deckt nur den ausdrücklich
-  Envelope-vermittelten Pre-Effect-Toolpfad ab.
+  operationsgebundenen Pre-Effect-Toolpfad ab. Neue reale Toolwirkungen benötigen eine eigene
+  vertrauenswürdige Abbildung von Operation und Ressource; der Aufrufer darf diese Semantik nicht
+  selbst attestieren.
 - Die Clean-Linux-Probes verwenden `danger-full-access` ausschließlich innerhalb eines bereits
   isolierten, nichtprivilegierten Testcontainers, weil eine verschachtelte Bubblewrap-Sandbox in
   diesem Containerkontext nicht verfügbar ist. Der äußere Container behält Standard-Seccomp,
@@ -244,5 +258,8 @@ Interception, Approval-Lücken sowie unsichere Pfade blockieren fail-closed.
   konkrete Produktintegration.
 - Installation benötigt einmalig die im Release festgestellten lokalen Build-Runtimes. Nach
   erfolgreichem Bootstrap arbeitet Governance und Providerinitialisierung offline.
+- Enforcementdateien benötigen eine Harness-/Betriebsgrenze, die unautorisierte Änderungen an
+  Hook, Operationsvertrag, Policy und Provider-Runtime verhindert. Erkennt die Integritätsprüfung
+  eine Abweichung, wird fail-closed blockiert; sie ersetzt keine Host-Dateiberechtigungen.
 - Dieses Repository enthält keine Control Plane, keinen automatischen Updater und kein
   Credential Management.

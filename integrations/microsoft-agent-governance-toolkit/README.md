@@ -49,17 +49,23 @@ Adapter Contract, weil der gepinnte Upstream keinen offiziellen Codex-Adapter be
 `bridge/provider.mjs` validiert die kleinste Action Envelope und ruft den real aus diesem Snapshot
 gebauten Microsoft-`PolicyEngine` auf. `bridge/build-provider.sh` akzeptiert nur einen absoluten
 Outputpfad, verifiziert Archiv und Dateimanifest, extrahiert linkfrei in eine neue Stagingwurzel,
-baut mit dem gepinnten npm-Lock und aktiviert das Runtimeverzeichnis atomar. Ein bereits exakt
-passender Build wird ohne Rewrite akzeptiert.
+baut mit dem gepinnten npm-Lock und materialisiert nur die tatsächlich benötigte PolicyEngine-
+Closure. `bridge/runtime.files.sha256` bindet jeden Runtime-Blob; ein vorhandener Build wird nur
+nach vollständiger Byte- und Dateimengenprüfung ohne Rewrite akzeptiert. Provider und Policy
+werden zur Ausführung über sichere Handles gelesen und gegen releasegebundene Digests geprüft.
 
 `bridge/codex-hook.mjs` ist eine kleine eigene Standardschnittstelle für die offiziell
 dokumentierte synchrone Codex-`PreToolUse`-Fläche; sie ist kein Microsoft-Adapter. Sie vermittelt
-ausschließlich einen explizit konfigurierten Envelope-basierten Toolpfad. Nur Provider-`allow`
+ausschließlich einen explizit konfigurierten operationsgebundenen Toolpfad. Der Toolcaller darf
+nur Operation und begrenzte Resource-ID liefern. `bridge/action-bindings.json` ist hashgebunden;
+der Hook leitet daraus Action, Effekt, Governance-Autorisierung und Risiko sowie aus der Harness-
+Tool-ID die Korrelationskennungen ab. Eine bloß vom Caller behauptete Approval-ID ist keine gültige
+Approval-Evidenz. Nur Provider-`allow`
 ergibt Codex-`permissionDecision: "allow"`; `deny`, ungelöstes `require_approval`, `error`,
 `unknown`, ungültige Inputs und fehlende sichere Audit-Evidenz ergeben synchron `deny`. Eine
 allgemeine Mediation aller Hosted Tools oder beliebiger Shellsemantik wird nicht behauptet.
-Die vom Aufrufer gesetzte Action-ID und die erst von Codex erzeugte Tool-Use-ID werden als getrennte
-Korrelationsfelder gemeinsam auditiert; der Aufrufer muss keine zukünftige interne ID erraten.
+Action-ID, Evidence-ID und Codex-Tool-Use-ID sind an dieselbe vom Harness erzeugte opake Kennung
+gebunden und werden ohne Toolinput oder Resource im privaten Audit korreliert.
 
 ## Instruction Boundary
 

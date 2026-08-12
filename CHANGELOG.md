@@ -41,11 +41,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Release `v4.1.0`, exakter Commit, byte-identisches Releasearchiv, neu berechneter SHA-256,
   vollständiges Dateimanifest, MIT-Lizenz, NOTICE und Trademark-Hinweis.
 - Kleine Bridge zum realen Microsoft-PolicyEngine und Codex-PreToolUse-Hook für einen explizit
-  Envelope-vermittelten Toolpfad.
+  operationsgebundenen Toolpfad mit vertrauenswürdig abgeleiteter Action Envelope.
 - Produktneutraler synthetischer Harness für Routing, Rollen, `local_rules`, Offlinebetrieb,
   lokalen Audit und alle Providerentscheidungen ohne produktspezifische Pfadvorgabe.
 - Clean-Linux-E2E mit Codex CLI 0.147.0, echter frischer Runtime, real blockierten
-  Providerentscheidungen, Hostile-Matrix sowie Secret- und Auth-Isolation.
+  Providerentscheidungen, materialisiertem Offline-Provider, zustandsspezifischen Fixtures,
+  immutable Buildinputs, Exact-Commit-Prüfung, Hostile-Matrix sowie Secret- und Auth-Isolation.
 - Sicherheits- und Regressionstests für Archivextraktion, Instruction Boundary,
   Pfad-/Symlink-Traversal, Rootkonflikte, Backup/Rollback und private Evidenzgrenzen.
 
@@ -61,6 +62,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Bundle-Root.
 
 ### Fixed
+
+- Caller-kontrollierte Effect-, Autorisierungs-, Risiko-, Approval- und Evidence-Attestierungen
+  werden nicht mehr als technische Enforcement-Eingabe vertraut; Hook und synthetisches Effekttool
+  binden dieselbe kanonische Operation unabhängig an die tatsächliche Wirkung.
+- Bereits materialisierte Provider-Runtimes, Policy und Operationsvertrag werden vor Verwendung
+  vollständig und releasegebunden auf Byteintegrität geprüft.
+- Ein interner Rollbackfehler bewahrt das verifizierte Recovery-Backup und einen recoverbaren
+  Altzustand; eine umgeleitete interne Backupwurzel wird vor privaten Kopien blockiert.
+- Clean-Linux-Statuszeilen unterscheiden realen Codex-Fresh-Lauf, Current-/Legacy-Fixtures und
+  materialisierten Offline-Provider und behaupten keine nicht ausgeführten Zustände mehr.
 
 - Folgezugriffe behalten den absoluten Governance-Root und das daraus abgeleitete
   Manifestverzeichnis bei; eine zusätzliche projektlokale `AGENTS.md` wird nicht mit dem

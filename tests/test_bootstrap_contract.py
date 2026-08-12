@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import asdict
+import hashlib
 import importlib.util
 import json
 import os
@@ -36,9 +37,24 @@ def load_reference():
 
 def synthetic_provider_builder(_integration: Path, output: Path) -> Path:
     module = output / "microsoft-sdk" / "dist" / "policy.js"
+    manifest = output / "runtime.files.sha256"
+    receipt = output / "build.receipt"
+    if output.exists():
+        if not module.is_file() or not manifest.is_file() or not receipt.is_file():
+            raise RuntimeError("synthetic provider integrity failure")
+        expected = manifest.read_text(encoding="ascii").strip().split("  ", maxsplit=1)
+        if len(expected) != 2 or expected[1] != "microsoft-sdk/dist/policy.js":
+            raise RuntimeError("synthetic provider integrity failure")
+        if hashlib.sha256(module.read_bytes()).hexdigest() != expected[0]:
+            raise RuntimeError("synthetic provider integrity failure")
+        return module
     module.parent.mkdir(parents=True)
     module.write_text("// synthetic provider fixture\n", encoding="utf-8")
-    (output / "build.receipt").write_text("synthetic_provider=PASS\n", encoding="utf-8")
+    receipt.write_text("synthetic_provider=PASS\n", encoding="utf-8")
+    manifest.write_text(
+        f"{hashlib.sha256(module.read_bytes()).hexdigest()}  microsoft-sdk/dist/policy.js\n",
+        encoding="ascii",
+    )
     return module
 
 
@@ -272,6 +288,14 @@ class CurrentInstall(BootstrapTestCase):
         self.assertEqual(
             repaired_config["agent_governance"]["root"], str(self.install / "bundle")
         )
+
+    def test_tampered_provider_runtime_is_not_accepted_as_current(self):
+        self.run_transaction()
+        policy = self.install / "runtime" / "microsoft-provider" / "microsoft-sdk" / "dist" / "policy.js"
+        policy.write_text("// changed synthetic provider\n", encoding="utf-8")
+
+        with self.assertRaises(self.reference.BootstrapError):
+            self.run_transaction()
 
 
 class LegacyInstall(BootstrapTestCase):

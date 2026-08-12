@@ -1,11 +1,13 @@
 import { constants as fsConstants } from "node:fs";
 import { open } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import path from "node:path";
 
 import { evaluateEnvelope } from "./provider.mjs";
 
 const MAX_INPUT_BYTES = 1024 * 1024;
 const MAX_BINDINGS_BYTES = 64 * 1024;
+const ACTION_BINDINGS_SHA256 = "c1dd902c14edfa8bf44c263503594e25c816696f653e430f4169e08a3f108dbd";
 const OPAQUE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
 const RESOURCE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const BINDING_KEYS = new Set([
@@ -91,6 +93,9 @@ async function actionEnvelopeFromHook(input, enforcedToolName, bindingsPath) {
     bindingsPayload = await bindingsHandle.readFile("utf8");
   } finally {
     await bindingsHandle.close();
+  }
+  if (createHash("sha256").update(bindingsPayload).digest("hex") !== ACTION_BINDINGS_SHA256) {
+    throw new Error("action_bindings_integrity");
   }
   const bindings = JSON.parse(bindingsPayload);
   if (!isPlainObject(bindings)

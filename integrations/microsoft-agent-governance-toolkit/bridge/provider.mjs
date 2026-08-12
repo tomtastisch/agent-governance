@@ -9,6 +9,7 @@ import vm from "node:vm";
 const PROVIDER_NAME = "microsoft-agent-governance-toolkit";
 const AGENT_DID = "did:agent-governance:enforcement-provider";
 const DEFAULT_POLICY_SHA256 = "2809bcda1f47390d6c9e47ac10a9cdc6a7f8014a0a95e71434aa6335652740eb";
+const DEFAULT_RUNTIME_MANIFEST_SHA256 = "be2a0921e8083657ab5ae0c18ac1de7a0d06d8d299c350aa07155ffb86dab2b3";
 const RUNTIME_FILES = new Set([
   "build.receipt",
   "microsoft-sdk/dist/policy.js",
@@ -147,7 +148,11 @@ function parseRuntimeManifest(content) {
   return expected;
 }
 
-async function loadVerifiedPolicyEngine(policyModulePath, expectedManifestPath) {
+async function loadVerifiedPolicyEngine(
+  policyModulePath,
+  expectedManifestPath,
+  expectedManifestSha256,
+) {
   const manifestHandle = await open(
     expectedManifestPath,
     fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0),
@@ -161,6 +166,9 @@ async function loadVerifiedPolicyEngine(policyModulePath, expectedManifestPath) 
     manifestContent = await manifestHandle.readFile();
   } finally {
     await manifestHandle.close();
+  }
+  if (createHash("sha256").update(manifestContent).digest("hex") !== expectedManifestSha256) {
+    throw new Error("runtime-manifest-integrity");
   }
   const expected = parseRuntimeManifest(manifestContent);
   const runtimeRoot = path.resolve(path.dirname(policyModulePath), "..", "..");
@@ -291,10 +299,13 @@ export async function evaluateEnvelope(envelope, options = {}) {
       ?? fileURLToPath(new URL("./policy.json", import.meta.url));
     const expectedRuntimeManifestPath = options.expectedRuntimeManifestPath
       ?? fileURLToPath(new URL("./runtime.files.sha256", import.meta.url));
+    const expectedRuntimeManifestSha256 = options.expectedRuntimeManifestSha256
+      ?? DEFAULT_RUNTIME_MANIFEST_SHA256;
     const expectedPolicySha256 = options.expectedPolicySha256 ?? DEFAULT_POLICY_SHA256;
     const PolicyEngine = await loadVerifiedPolicyEngine(
       policyModulePath,
       expectedRuntimeManifestPath,
+      expectedRuntimeManifestSha256,
     );
     const policyContent = await readHandleBoundFile(
       policyPath,

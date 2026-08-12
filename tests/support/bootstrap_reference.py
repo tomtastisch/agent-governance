@@ -260,9 +260,19 @@ class BootstrapTransaction:
                 set(),
             ):
                 return False
-            return (self.install / "runtime" / "microsoft-provider" / "build.receipt").is_file()
-        except OSError:
+            return self._provider_runtime_is_current()
+        except (OSError, RuntimeError):
             return False
+
+    def _provider_runtime_is_current(self) -> bool:
+        runtime = self.install / "runtime" / "microsoft-provider"
+        if not (runtime / "build.receipt").is_file():
+            return False
+        entry = self.request.provider_builder(
+            self.install / "integrations" / "microsoft-agent-governance-toolkit",
+            runtime,
+        )
+        return Path(entry).is_file() and (runtime / "runtime.files.sha256").is_file()
 
     def _bindings_current(self) -> bool:
         try:
@@ -275,7 +285,7 @@ class BootstrapTransaction:
             return (
                 binding.get("root") == str(self.install / "bundle")
                 and binding.get("entrypoint") == str(self.install / "bundle" / "GOVERNANCE.md")
-                and (self.install / "runtime" / "microsoft-provider" / "build.receipt").is_file()
+                and self._provider_runtime_is_current()
                 and self.evidence.is_file()
             )
         except (OSError, json.JSONDecodeError, TypeError):
@@ -537,7 +547,7 @@ class BootstrapTransaction:
             and self.global_instruction.read_bytes()
             == (self.install / "bundle" / "GOVERNANCE.md").read_bytes(),
             "manifest": (self.install / "bundle" / "agent-governance" / "manifest.toml").is_file(),
-            "provider": (self.install / "runtime" / "microsoft-provider" / "build.receipt").is_file(),
+            "provider": self._provider_runtime_is_current(),
             "configuration": False,
             "evidence": self.evidence.is_file(),
         }
