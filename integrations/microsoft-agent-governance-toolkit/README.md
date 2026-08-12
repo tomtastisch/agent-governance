@@ -58,6 +58,8 @@ ausschließlich einen explizit konfigurierten Envelope-basierten Toolpfad. Nur P
 ergibt Codex-`permissionDecision: "allow"`; `deny`, ungelöstes `require_approval`, `error`,
 `unknown`, ungültige Inputs und fehlende sichere Audit-Evidenz ergeben synchron `deny`. Eine
 allgemeine Mediation aller Hosted Tools oder beliebiger Shellsemantik wird nicht behauptet.
+Die vom Aufrufer gesetzte Action-ID und die erst von Codex erzeugte Tool-Use-ID werden als getrennte
+Korrelationsfelder gemeinsam auditiert; der Aufrufer muss keine zukünftige interne ID erraten.
 
 ## Instruction Boundary
 

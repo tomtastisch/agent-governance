@@ -47,9 +47,6 @@ function actionEnvelopeFromHook(input, enforcedToolName) {
     throw new Error("invalid_hook_input");
   }
   const envelope = input.tool_input.action_envelope;
-  if (envelope.action_id !== input.tool_use_id) {
-    throw new Error("action_binding_mismatch");
-  }
   return envelope;
 }
 
