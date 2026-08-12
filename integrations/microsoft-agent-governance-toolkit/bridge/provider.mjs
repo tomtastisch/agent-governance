@@ -16,12 +16,11 @@ const REQUIRED_KEYS = new Set([
   "evidence_id",
 ]);
 const STRING_LIMITS = {
-  action_id: 256,
   action: 512,
   resource: 4096,
   effect: 256,
-  evidence_id: 256,
 };
+const OPAQUE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
 
 function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -41,6 +40,9 @@ function validateEnvelope(envelope) {
     if (typeof value !== "string" || value.length < 1 || value.length > limit) {
       return false;
     }
+  }
+  if (!OPAQUE_ID.test(envelope.action_id) || !OPAQUE_ID.test(envelope.evidence_id)) {
+    return false;
   }
   if (!["allow", "deny"].includes(envelope.semantic_authorization)) {
     return false;
@@ -74,7 +76,7 @@ function validateEnvelope(envelope) {
   return true;
 }
 
-function evidence(envelope, decision, providerReached, details = {}) {
+function evidence(envelope, decision, providerReached, details = {}, includeIds = true) {
   const result = {
     decision,
     provider: PROVIDER_NAME,
@@ -82,10 +84,10 @@ function evidence(envelope, decision, providerReached, details = {}) {
     evaluated_before_effect: true,
     ...details,
   };
-  if (typeof envelope?.action_id === "string") {
+  if (includeIds && typeof envelope?.action_id === "string") {
     result.action_id = envelope.action_id;
   }
-  if (typeof envelope?.evidence_id === "string") {
+  if (includeIds && typeof envelope?.evidence_id === "string") {
     result.evidence_id = envelope.evidence_id;
   }
   return result;
@@ -110,10 +112,38 @@ function normalizeProviderDecision(action) {
 
 export async function evaluateEnvelope(envelope, options = {}) {
   if (!validateEnvelope(envelope)) {
-    return evidence(envelope, "error", false, { error_code: "invalid_envelope" });
+    return evidence(
+      envelope,
+      "error",
+      false,
+      { error_code: "invalid_envelope" },
+      false,
+    );
   }
   if (envelope.semantic_authorization !== "allow") {
     return evidence(envelope, "deny", false, { matched_rule: "governance-deny" });
+  }
+
+  let effectiveEnvelope = envelope;
+  if (envelope.approval_context.valid) {
+    let verified = false;
+    try {
+      if (typeof options.approvalVerifier === "function") {
+        verified = await options.approvalVerifier({
+          action_id: envelope.action_id,
+          evidence_id: envelope.evidence_id,
+          approval_id: envelope.approval_context.approval_id,
+        }) === true;
+      }
+    } catch {
+      return evidence(envelope, "error", false, { error_code: "approval_verification" });
+    }
+    if (!verified) {
+      effectiveEnvelope = {
+        ...envelope,
+        approval_context: { valid: false },
+      };
+    }
   }
 
   let providerReached = false;
@@ -137,7 +167,7 @@ export async function evaluateEnvelope(envelope, options = {}) {
     const engine = new imported.PolicyEngine();
     providerReached = true;
     engine.loadJson(policyContent);
-    const providerResult = engine.evaluatePolicy(AGENT_DID, envelope);
+    const providerResult = engine.evaluatePolicy(AGENT_DID, effectiveEnvelope);
     const decision = normalizeProviderDecision(providerResult?.action);
     const details = {};
     if (typeof providerResult?.matchedRule === "string") {

@@ -1,10 +1,19 @@
 import { constants as fsConstants } from "node:fs";
-import { open } from "node:fs/promises";
+import { lstat, open, readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { evaluateEnvelope } from "./provider.mjs";
 
 const MAX_INPUT_BYTES = 1024 * 1024;
+const MAX_BINDINGS_BYTES = 64 * 1024;
+const OPAQUE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
+const RESOURCE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+const BINDING_KEYS = new Set([
+  "action",
+  "effect",
+  "semantic_authorization",
+  "requires_approval",
+]);
 
 function hookOutput(permissionDecision, decision) {
   const output = {
@@ -24,6 +33,11 @@ function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+function hasExactKeys(value, expected) {
+  const keys = Object.keys(value);
+  return keys.length === expected.size && keys.every((key) => expected.has(key));
+}
+
 async function readHookInput() {
   process.stdin.setEncoding("utf8");
   let payload = "";
@@ -36,18 +50,73 @@ async function readHookInput() {
   return JSON.parse(payload);
 }
 
-function actionEnvelopeFromHook(input, enforcedToolName) {
+async function actionEnvelopeFromHook(input, enforcedToolName, bindingsPath) {
   if (!isPlainObject(input)
       || input.hook_event_name !== "PreToolUse"
       || typeof input.tool_use_id !== "string"
+      || !OPAQUE_ID.test(input.tool_use_id)
       || input.tool_name !== enforcedToolName
       || !isPlainObject(input.tool_input)
       || Object.keys(input.tool_input).length !== 1
-      || !isPlainObject(input.tool_input.action_envelope)) {
+      || !isPlainObject(input.tool_input.action_request)
+      || !hasExactKeys(
+        input.tool_input.action_request,
+        new Set(["operation", "resource_id"]),
+      )) {
     throw new Error("invalid_hook_input");
   }
-  const envelope = input.tool_input.action_envelope;
-  return envelope;
+  const request = input.tool_input.action_request;
+  if (typeof request.operation !== "string"
+      || !OPAQUE_ID.test(request.operation)
+      || typeof request.resource_id !== "string"
+      || !RESOURCE_ID.test(request.resource_id)) {
+    throw new Error("invalid_action_request");
+  }
+  if (typeof bindingsPath !== "string" || !path.isAbsolute(bindingsPath)) {
+    throw new Error("action_bindings_path");
+  }
+  const bindingsStat = await lstat(bindingsPath);
+  if (!bindingsStat.isFile() || bindingsStat.isSymbolicLink() || (bindingsStat.mode & 0o022) !== 0) {
+    throw new Error("action_bindings_file");
+  }
+  if (bindingsStat.size > MAX_BINDINGS_BYTES) {
+    throw new Error("action_bindings_size");
+  }
+  const bindings = JSON.parse(await readFile(bindingsPath, "utf8"));
+  if (!isPlainObject(bindings)
+      || !hasExactKeys(
+        bindings,
+        new Set(["version", "tool_name", "resource_scheme", "operations"]),
+      )
+      || bindings.version !== 1
+      || bindings.tool_name !== enforcedToolName
+      || bindings.resource_scheme !== "synthetic"
+      || !isPlainObject(bindings.operations)) {
+    throw new Error("action_bindings_contract");
+  }
+  const binding = bindings.operations[request.operation];
+  if (!isPlainObject(binding)
+      || !hasExactKeys(binding, BINDING_KEYS)
+      || typeof binding.action !== "string"
+      || binding.action.length < 1
+      || binding.action.length > 512
+      || typeof binding.effect !== "string"
+      || binding.effect.length < 1
+      || binding.effect.length > 256
+      || !["allow", "deny"].includes(binding.semantic_authorization)
+      || typeof binding.requires_approval !== "boolean") {
+    throw new Error("action_binding");
+  }
+  return {
+    action_id: `action:${input.tool_use_id}`,
+    action: binding.action,
+    resource: `${bindings.resource_scheme}://${request.resource_id}`,
+    effect: binding.effect,
+    semantic_authorization: binding.semantic_authorization,
+    approval_context: { valid: false },
+    risk_context: { requires_approval: binding.requires_approval },
+    evidence_id: `evidence:${input.tool_use_id}`,
+  };
 }
 
 async function appendEvidence(logPath, input, providerResult) {
@@ -89,7 +158,11 @@ async function main() {
       throw new Error("enforced_tool_name");
     }
     const input = await readHookInput();
-    const envelope = actionEnvelopeFromHook(input, enforcedToolName);
+    const envelope = await actionEnvelopeFromHook(
+      input,
+      enforcedToolName,
+      process.env.AGENT_GOVERNANCE_ACTION_BINDINGS,
+    );
     const providerResult = await evaluateEnvelope(envelope);
     decision = providerResult.decision;
     await appendEvidence(

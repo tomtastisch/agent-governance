@@ -19,11 +19,16 @@ function fail(id, code, message) {
   })}\n`);
 }
 
-function targetFromEnvelope(envelope) {
-  if (envelope === null || typeof envelope !== "object" || Array.isArray(envelope)) {
-    throw new Error("invalid envelope");
+const OPERATIONS = new Set(["read", "workspace_write", "external_write", "approval_write"]);
+
+function targetFromRequest(request) {
+  if (request === null || typeof request !== "object" || Array.isArray(request)
+      || Object.keys(request).length !== 2
+      || !OPERATIONS.has(request.operation)
+      || typeof request.resource_id !== "string") {
+    throw new Error("invalid action request");
   }
-  const match = /^synthetic:\/\/([A-Za-z0-9._-]+)$/.exec(envelope.resource);
+  const match = /^([A-Za-z0-9][A-Za-z0-9._-]{0,127})$/.exec(request.resource_id);
   if (!match) {
     throw new Error("resource is outside synthetic namespace");
   }
@@ -59,32 +64,20 @@ async function handle(message) {
         inputSchema: {
           type: "object",
           properties: {
-            action_envelope: {
+            action_request: {
               type: "object",
               properties: {
-                action_id: { type: "string" },
-                action: { type: "string" },
-                resource: { type: "string" },
-                effect: { type: "string" },
-                semantic_authorization: { type: "string", enum: ["allow", "deny"] },
-                approval_context: { type: "object" },
-                risk_context: { type: "object" },
-                evidence_id: { type: "string" },
+                operation: {
+                  type: "string",
+                  enum: ["read", "workspace_write", "external_write", "approval_write"],
+                },
+                resource_id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" },
               },
-              required: [
-                "action_id",
-                "action",
-                "resource",
-                "effect",
-                "semantic_authorization",
-                "approval_context",
-                "risk_context",
-                "evidence_id",
-              ],
+              required: ["operation", "resource_id"],
               additionalProperties: false,
             },
           },
-          required: ["action_envelope"],
+          required: ["action_request"],
           additionalProperties: false,
         },
       }],
@@ -97,13 +90,15 @@ async function handle(message) {
       return;
     }
     try {
-      const envelope = params.arguments?.action_envelope;
-      const target = targetFromEnvelope(envelope);
+      const request = params.arguments?.action_request;
+      const target = targetFromRequest(request);
       await mkdir(effectRoot, { recursive: true, mode: 0o700 });
-      await writeFile(target, "synthetic effect after hook allow\n", { flag: "wx", mode: 0o600 });
+      if (request.operation !== "read") {
+        await writeFile(target, "synthetic effect after hook allow\n", { flag: "wx", mode: 0o600 });
+      }
       respond(id, {
-        content: [{ type: "text", text: "SYNTHETIC_EFFECT_EXECUTED" }],
-        structuredContent: { executed: true, action_id: envelope.action_id },
+        content: [{ type: "text", text: "SYNTHETIC_OPERATION_COMPLETED" }],
+        structuredContent: { executed: request.operation !== "read", operation: request.operation },
       });
     } catch (error) {
       fail(id, -32602, error instanceof Error ? error.message : "invalid effect");

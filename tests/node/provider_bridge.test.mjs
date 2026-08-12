@@ -312,22 +312,25 @@ test("Codex PreToolUse emits allow only for provider allow and audits safely", a
   const directory = await mkdtemp(path.join(os.tmpdir(), "agent-governance-hook-"));
   try {
     const evidenceLog = path.join(directory, "evidence.jsonl");
-    const allowed = runCodexHook(envelope(), evidenceLog);
-    const denied = runCodexHook(
-      envelope({ action: "network.publish", effect: "external_write" }),
+    const allowed = runBoundCodexHook(
+      { operation: "workspace_write", resource_id: "allow-effect" },
       evidenceLog,
     );
-    const approval = runCodexHook(
-      envelope({
-        action: "workspace.change",
-        effect: "workspace_write",
-        risk_context: { requires_approval: true },
-      }),
+    const denied = runBoundCodexHook(
+      { operation: "external_write", resource_id: "deny-effect" },
       evidenceLog,
     );
-    const providerError = runCodexHook(envelope(), evidenceLog, {
+    const approval = runBoundCodexHook(
+      { operation: "approval_write", resource_id: "approval-effect" },
+      evidenceLog,
+    );
+    const providerError = runBoundCodexHook(
+      { operation: "workspace_write", resource_id: "error-effect" },
+      evidenceLog,
+      {
       AGENT_GOVERNANCE_MSAGT_POLICY_MODULE: path.join(directory, "missing-policy-module.js"),
-    });
+      },
+    );
 
     assert.equal(allowed.hookSpecificOutput.permissionDecision, "allow");
     for (const blocked of [denied, approval, providerError]) {
@@ -343,7 +346,6 @@ test("Codex PreToolUse emits allow only for provider allow and audits safely", a
       evidence.map((entry) => entry.decision),
       ["allow", "deny", "require_approval", "error"],
     );
-    assert.equal(evidence[0].action_id, "action-synthetic-001");
     assert.notEqual(evidence[0].action_id, evidence[0].tool_use_id);
     for (const entry of evidence) {
       assert.equal("tool_input" in entry, false);

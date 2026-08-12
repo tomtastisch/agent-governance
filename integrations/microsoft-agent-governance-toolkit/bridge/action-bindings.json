@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "tool_name": "mcp__agent_governance__execute",
+  "resource_scheme": "synthetic",
+  "operations": {
+    "read": {
+      "action": "synthetic.read",
+      "effect": "read",
+      "semantic_authorization": "allow",
+      "requires_approval": false
+    },
+    "workspace_write": {
+      "action": "synthetic.workspace.write",
+      "effect": "workspace_write",
+      "semantic_authorization": "allow",
+      "requires_approval": false
+    },
+    "external_write": {
+      "action": "synthetic.external.write",
+      "effect": "external_write",
+      "semantic_authorization": "allow",
+      "requires_approval": false
+    },
+    "approval_write": {
+      "action": "synthetic.workspace.approval-write",
+      "effect": "workspace_write",
+      "semantic_authorization": "allow",
+      "requires_approval": true
+    }
+  }
+}
