@@ -1,0 +1,12 @@
+{
+  "name": "synthetic-unknown-decision",
+  "agents": ["*"],
+  "default_action": "deny",
+  "rules": [
+    {
+      "name": "return-warn",
+      "ruleAction": "warn",
+      "priority": 100
+    }
+  ]
+}
