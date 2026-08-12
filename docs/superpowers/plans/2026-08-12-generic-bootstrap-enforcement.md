@@ -167,10 +167,12 @@ Expected: `FAIL` wegen fehlender Integration.
 
 - [ ] **Step 3: Materialisiere das validierte vollständige Releasearchiv mechanisch**
 
-Run: `tar -xzf /private/tmp/agent-governance-msagt.xTIWAO/upstream-1.tar.gz --strip-components=1 -C integrations/microsoft-agent-governance-toolkit/upstream`
+Run: `cp /private/tmp/agent-governance-msagt.xTIWAO/upstream-1.tar.gz integrations/microsoft-agent-governance-toolkit/upstream/agent-governance-toolkit-v4.1.0.tar.gz`
 
-Expected: 4.633 reguläre Snapshotdateien, keine `.git`-Metadaten und keine Archiveinträge mit
-absoluten Pfaden, `..`, Devices oder Links.
+Expected: ein byte-identisches offizielles Archiv mit 4.633 regulären Snapshotdateien, keine
+`.git`-Metadaten und keine Archiveinträge mit absoluten Pfaden, `..`, Devices oder Links. Direkte
+Extraktion im Repository wird vermieden, weil die Upstream-`.gitattributes` offizielle CRLF-Blobs
+beim Git-Staging normalisieren würde.
 
 - [ ] **Step 4: Erfasse den Materialisierungszeitpunkt und schreibe den unveränderlichen Lock**
 
@@ -190,7 +192,7 @@ license = "MIT"
 upstream_status = "Public Preview"
 tag_signature_status = "lightweight-tag"
 commit_signature_status = "verified"
-materialization_strategy = "complete-release-snapshot"
+materialization_strategy = "complete-official-release-archive"
 ```
 
 - [ ] **Step 5: Prüfe Snapshot und Repositorylimits**
@@ -247,7 +249,8 @@ unbekannte Werte erzeugen eine Codex-`permissionDecision: "deny"`-Antwort.
 
 Run: `integrations/microsoft-agent-governance-toolkit/bridge/build-provider.sh`
 
-Expected: `npm ci` und `npm run build` erfolgreich; danach funktioniert `provider.mjs` ohne
+Expected: Das verifizierte Archiv wird in eine temporäre Stagingwurzel extrahiert, dort sind
+`npm ci` und `npm run build` erfolgreich; danach funktioniert `provider.mjs` ohne
 Netzwerkzugriff.
 
 - [ ] **Step 5: Beweise reale Effektreihenfolge**

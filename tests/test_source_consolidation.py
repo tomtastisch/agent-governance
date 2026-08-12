@@ -3,9 +3,10 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import Path, PurePath
 import re
 import subprocess
+import tarfile
 import unittest
 
 try:
@@ -18,6 +19,10 @@ ROOT = Path(__file__).resolve().parents[1]
 BUNDLE = ROOT / "bundle"
 BOOTSTRAP = BUNDLE / "GOVERNANCE.md"
 MANIFEST = BUNDLE / "agent-governance" / "manifest.toml"
+VENDORED_UPSTREAM = (
+    ROOT / "integrations" / "microsoft-agent-governance-toolkit" / "upstream"
+)
+VENDORED_UPSTREAM_ARCHIVE = VENDORED_UPSTREAM / "agent-governance-toolkit-v4.1.0.tar.gz"
 HISTORICAL_MARKER = "Historische Evidenz - nicht normativ"
 
 REMOVED_LEGACY_SOURCE_TREES = (
@@ -59,7 +64,7 @@ def read(path: Path) -> str:
 
 
 def current_non_bundle_markdown() -> list[Path]:
-    excluded_roots = {ROOT / "docs", ROOT / "tests", BUNDLE}
+    excluded_roots = {ROOT / "docs", ROOT / "tests", BUNDLE, VENDORED_UPSTREAM}
     result = []
     for path in ROOT.rglob("*.md"):
         if any(root == path or root in path.parents for root in excluded_roots):
@@ -80,8 +85,23 @@ class SingleBootstrapSource(unittest.TestCase):
             for path in ROOT.rglob("*")
             if path.is_file() and path.name in {"AGENTS.md", "CLAUDE.md"}
             and ".git" not in path.parts
+            and VENDORED_UPSTREAM not in path.parents
         )
         self.assertEqual(found, [])
+
+    def test_instruction_named_dependency_files_are_confined_to_untrusted_snapshot(self):
+        self.assertTrue(VENDORED_UPSTREAM_ARCHIVE.is_file())
+        with tarfile.open(VENDORED_UPSTREAM_ARCHIVE, "r:gz") as archive:
+            vendored = sorted(
+                member.name
+                for member in archive.getmembers()
+                if member.isfile()
+                and PurePath(member.name).name in {"AGENTS.md", "CLAUDE.md"}
+            )
+        self.assertTrue(vendored)
+        integration_readme = read(VENDORED_UPSTREAM.parent / "README.md")
+        self.assertIn("untrusted data", integration_readme)
+        self.assertNotIn("integrations/", read(MANIFEST))
 
     def test_removed_legacy_source_trees_are_absent(self):
         found = [

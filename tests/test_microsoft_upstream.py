@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path, PurePosixPath
+import tarfile
 import unittest
 
 try:
@@ -16,7 +17,8 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.11 ist Repositoryvert
 ROOT = Path(__file__).resolve().parents[1]
 INTEGRATION = ROOT / "integrations" / "microsoft-agent-governance-toolkit"
 LOCK = INTEGRATION / "upstream.lock.toml"
-SNAPSHOT = INTEGRATION / "upstream"
+SNAPSHOT_ROOT = INTEGRATION / "upstream"
+SNAPSHOT_ARCHIVE = SNAPSHOT_ROOT / "agent-governance-toolkit-v4.1.0.tar.gz"
 SNAPSHOT_MANIFEST = INTEGRATION / "snapshot.files.sha256"
 MANIFEST = ROOT / "bundle" / "agent-governance" / "manifest.toml"
 
@@ -71,7 +73,7 @@ class MicrosoftUpstreamLockContract(unittest.TestCase):
                 "tag_signature_status": "lightweight-tag",
                 "commit_signature_status": "verified-valid",
                 "archive_signature_status": "not-provided",
-                "materialization_strategy": "complete-release-snapshot",
+                "materialization_strategy": "complete-official-release-archive",
             },
         )
         self.assertRegex(lock["resolved_at"], r"^2026-08-12T\d{2}:\d{2}:\d{2}Z$")
@@ -86,13 +88,35 @@ class MicrosoftUpstreamLockContract(unittest.TestCase):
 
 
 class MicrosoftSnapshotContract(unittest.TestCase):
-    def test_complete_snapshot_is_materialized_without_git_metadata(self):
-        self.assertTrue(SNAPSHOT.is_dir())
-        files = sorted(path for path in SNAPSHOT.rglob("*") if path.is_file())
-        self.assertEqual(len(files), 4633)
-        self.assertFalse(any(path.is_symlink() for path in SNAPSHOT.rglob("*")))
-        self.assertFalse(any(".git" == part for path in files for part in path.parts))
-        self.assertFalse(any(path.stat().st_size >= 100 * 1024 * 1024 for path in files))
+    def test_complete_official_snapshot_archive_is_materialized_safely(self):
+        self.assertTrue(SNAPSHOT_ARCHIVE.is_file())
+        self.assertEqual(
+            sha256(SNAPSHOT_ARCHIVE),
+            "f087836d4e6cbad246c728c76454dd573a701f35d7560cbf869c250b3862d473",
+        )
+        self.assertEqual(
+            sorted(path.name for path in SNAPSHOT_ROOT.iterdir()),
+            ["agent-governance-toolkit-v4.1.0.tar.gz"],
+        )
+        with tarfile.open(SNAPSHOT_ARCHIVE, "r:gz") as archive:
+            members = archive.getmembers()
+        regular = [member for member in members if member.isfile()]
+        self.assertEqual(len(members), 5786)
+        self.assertEqual(len(regular), 4633)
+        self.assertFalse(any(member.issym() or member.islnk() or member.isdev() for member in members))
+        self.assertFalse(
+            any(
+                PurePosixPath(member.name).is_absolute()
+                or ".." in PurePosixPath(member.name).parts
+                for member in members
+            )
+        )
+        self.assertFalse(any(".git" == part for member in regular for part in PurePosixPath(member.name).parts))
+        self.assertFalse(any(member.size >= 100 * 1024 * 1024 for member in regular))
+        names = {
+            "/".join(PurePosixPath(member.name).parts[1:])
+            for member in regular
+        }
         for required in (
             "README.md",
             "LICENSE",
@@ -104,10 +128,11 @@ class MicrosoftSnapshotContract(unittest.TestCase):
             "docs/specs/FRAMEWORK-ADAPTER-CONTRACT-1.0.md",
             "agent-governance-typescript/package-lock.json",
         ):
-            self.assertTrue((SNAPSHOT / required).is_file(), required)
+            self.assertIn(required, names)
 
     def test_snapshot_manifest_covers_every_regular_file(self):
         self.assertTrue(SNAPSHOT_MANIFEST.is_file())
+        self.assertTrue(SNAPSHOT_ARCHIVE.is_file())
         entries: dict[str, str] = {}
         for line in SNAPSHOT_MANIFEST.read_text(encoding="utf-8").splitlines():
             digest, separator, raw_path = line.partition("  ")
@@ -119,16 +144,30 @@ class MicrosoftSnapshotContract(unittest.TestCase):
             self.assertNotIn(raw_path, entries)
             entries[raw_path] = digest
 
-        present = {
-            path.relative_to(INTEGRATION).as_posix(): path
-            for path in SNAPSHOT.rglob("*")
-            if path.is_file()
-        }
-        self.assertEqual(set(entries), set(present))
-        for raw_path, path in present.items():
-            self.assertEqual(sha256(path), entries[raw_path], raw_path)
+        observed: dict[str, str] = {}
+        with tarfile.open(SNAPSHOT_ARCHIVE, "r:gz") as archive:
+            for member in archive.getmembers():
+                if not member.isfile():
+                    continue
+                relative = "/".join(PurePosixPath(member.name).parts[1:])
+                extracted = archive.extractfile(member)
+                self.assertIsNotNone(extracted)
+                observed[f"upstream/{relative}"] = hashlib.sha256(extracted.read()).hexdigest()
+        self.assertEqual(entries, observed)
 
     def test_license_notice_and_trademark_copies_are_exact(self):
+        self.assertTrue(SNAPSHOT_ARCHIVE.is_file())
+        with tarfile.open(SNAPSHOT_ARCHIVE, "r:gz") as archive:
+            members = {
+                "/".join(PurePosixPath(member.name).parts[1:]): member
+                for member in archive.getmembers()
+                if member.isfile()
+            }
+            upstream_bytes = {}
+            for upstream_name in ("LICENSE", "NOTICE", "TRADEMARKS.md"):
+                extracted = archive.extractfile(members[upstream_name])
+                self.assertIsNotNone(extracted)
+                upstream_bytes[upstream_name] = extracted.read()
         for local_name, upstream_name in (
             ("LICENSE.upstream", "LICENSE"),
             ("NOTICE.upstream", "NOTICE"),
@@ -136,18 +175,19 @@ class MicrosoftSnapshotContract(unittest.TestCase):
         ):
             self.assertEqual(
                 read_integration_bytes(local_name),
-                read_integration_bytes(f"upstream/{upstream_name}"),
+                upstream_bytes[upstream_name],
                 local_name,
             )
 
     def test_snapshot_contains_no_generated_dependency_tree(self):
-        self.assertTrue(SNAPSHOT.is_dir())
+        self.assertTrue(SNAPSHOT_ARCHIVE.is_file())
         forbidden_parts = {".git", "node_modules", "__pycache__", ".pytest_cache"}
-        offenders = [
-            path.relative_to(SNAPSHOT).as_posix()
-            for path in SNAPSHOT.rglob("*")
-            if forbidden_parts.intersection(path.relative_to(SNAPSHOT).parts)
-        ]
+        with tarfile.open(SNAPSHOT_ARCHIVE, "r:gz") as archive:
+            offenders = [
+                member.name
+                for member in archive.getmembers()
+                if forbidden_parts.intersection(PurePosixPath(member.name).parts)
+            ]
         self.assertEqual(offenders, [])
 
 

@@ -38,6 +38,18 @@ CHANGELOG_LINK_RE = re.compile(r"^\[(\d+\.\d+\.\d[^\]]*)\]:\s*(https?://\S+)", r
 STATUS_OK = 0
 STATUS_FAIL = 1
 
+VENDORED_UPSTREAM_REL = os.path.join(
+    "integrations", "microsoft-agent-governance-toolkit", "upstream"
+)
+VENDORED_UPSTREAM_SENTINELS = (
+    os.path.join(
+        "integrations", "microsoft-agent-governance-toolkit", "upstream.lock.toml"
+    ),
+    os.path.join(
+        "integrations", "microsoft-agent-governance-toolkit", "snapshot.files.sha256"
+    ),
+)
+
 
 class CheckResult:
     """Sammelt Fehler und Warnungen; ok=True wenn keine Fehler."""
@@ -215,8 +227,16 @@ def check_tree(root=None):
 
 def _check_no_competing_source(root, r):
     authority = {"VERSION", "CHANGELOG.md"}
+    vendored_root = os.path.abspath(os.path.join(root, VENDORED_UPSTREAM_REL))
+    vendored_materialized = all(_exists(path, root) for path in VENDORED_UPSTREAM_SENTINELS)
     for base, dirs, files in os.walk(root):
         dirs[:] = [d for d in dirs if d not in {".git", "tests", ".github"}]
+        if vendored_materialized:
+            dirs[:] = [
+                directory
+                for directory in dirs
+                if os.path.abspath(os.path.join(base, directory)) != vendored_root
+            ]
         for name in files:
             rel = os.path.relpath(os.path.join(base, name), root)
             if rel in authority:

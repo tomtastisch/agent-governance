@@ -115,6 +115,12 @@ class TreeVersionForm(unittest.TestCase):
 # ═══════════════════════════════════════════════════════════════════════
 
 class TreeCompetingSource(unittest.TestCase):
+    def _write_minimum_tree(self, root):
+        _write(os.path.join(root, "VERSION"), "0.1.0\n")
+        _write(os.path.join(root, "CHANGELOG.md"), _CHANGELOG_MIN)
+        _write(os.path.join(root, "README.md"), _README_MIN)
+        _write(os.path.join(root, "INSTALL.md"), _INSTALL_MIN)
+
     def test_toml_version_is_competing(self):
         with tempfile.TemporaryDirectory() as d:
             _write(os.path.join(d, "VERSION"), "0.1.0\n")
@@ -138,6 +144,54 @@ class TreeCompetingSource(unittest.TestCase):
             r = check_tree(root=d)
             self.assertFalse(r.ok)
             self.assertTrue(any("parallele Versionsdatei" in e for e in r.errors))
+
+    def test_pinned_vendor_snapshot_versions_are_dependency_data(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._write_minimum_tree(d)
+            integration = os.path.join(
+                d, "integrations", "microsoft-agent-governance-toolkit"
+            )
+            _write(os.path.join(integration, "upstream.lock.toml"), 'resolved_tag = "v4.1.0"\n')
+            _write(os.path.join(integration, "snapshot.files.sha256"), "synthetic fixture\n")
+            _write(os.path.join(integration, "upstream", "package.json"), '{"version": "4.1.0"}')
+
+            r = check_tree(root=d)
+
+            self.assertTrue(r.ok, f"Erwartet OK, Fehler: {r.errors}")
+
+    def test_unpinned_vendor_lookalike_version_remains_competing(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._write_minimum_tree(d)
+            _write(
+                os.path.join(
+                    d,
+                    "integrations",
+                    "microsoft-agent-governance-toolkit",
+                    "upstream",
+                    "package.json",
+                ),
+                '{"version": "4.1.0"}',
+            )
+
+            r = check_tree(root=d)
+
+            self.assertFalse(r.ok)
+            self.assertTrue(any("konkurrierende version-Deklaration" in e for e in r.errors))
+
+    def test_integration_bridge_version_remains_competing(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._write_minimum_tree(d)
+            integration = os.path.join(
+                d, "integrations", "microsoft-agent-governance-toolkit"
+            )
+            _write(os.path.join(integration, "upstream.lock.toml"), 'resolved_tag = "v4.1.0"\n')
+            _write(os.path.join(integration, "snapshot.files.sha256"), "synthetic fixture\n")
+            _write(os.path.join(integration, "bridge", "package.json"), '{"version": "0.1.0"}')
+
+            r = check_tree(root=d)
+
+            self.assertFalse(r.ok)
+            self.assertTrue(any("konkurrierende version-Deklaration" in e for e in r.errors))
 
 
 # ═══════════════════════════════════════════════════════════════════════

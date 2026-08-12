@@ -43,9 +43,10 @@ Envelopes ergeben `error`. Governance-`deny` oder `unknown` wird vor einer Provi
 blockiert. Die Bridge normalisiert Microsoft-Entscheidungen auf `allow`, `deny`,
 `require_approval`, `error` oder `unknown`; ausschließlich `allow` darf fortsetzen.
 
-Die providerneutrale Node-Bridge lädt die im Snapshot enthaltene Microsoft-`PolicyEngine`-Quelle
-aus einem lokal gebauten `dist/`. Der Installationslauf baut sie deterministisch aus dem
-vendorten Snapshot und dessen Lockfile; normaler Betrieb benötigt danach kein Netzwerk. Ein
+Die providerneutrale Node-Bridge lädt die im Snapshotarchiv enthaltene Microsoft-`PolicyEngine`-
+Quelle aus einem lokal gebauten `dist/`. Der Installationslauf verifiziert und extrahiert das
+Archiv in eine isolierte Stagingwurzel und baut sie deterministisch aus dessen Lockfile; normaler
+Betrieb benötigt danach kein Netzwerk. Ein
 kleiner Codex-Adapter bildet das offizielle `PreToolUse`-JSON auf die Envelope ab und gibt bei
 jeder nicht erlaubenden Entscheidung die offiziell dokumentierte Deny-Form zurück.
 
@@ -57,8 +58,10 @@ GitHub als gültig signiert verifizierten Commit. Zwei Downloads des offiziellen
 ergaben denselben SHA-256
 `f087836d4e6cbad246c728c76454dd573a701f35d7560cbf869c250b3862d473`.
 
-Der vollständige Snapshot umfasst rund 60 MB und besitzt keine Datei nahe dem GitHub-Limit;
-deshalb wird keine Closure willkürlich gekürzt. `.git`, Credentials und lokale Caches fehlen im
+Der vollständige Snapshot umfasst rund 60 MB entpackt und besitzt keine Datei nahe dem
+GitHub-Limit; deshalb wird keine Closure willkürlich gekürzt. Das byte-identische offizielle
+Archiv wird binär versioniert, weil seine eigene `.gitattributes` einzelne offizielle CRLF-Blobs
+bei direktem Git-Staging normalisieren würde. `.git`, Credentials und lokale Caches fehlen im
 Releasearchiv. MIT-Lizenz, NOTICE und Trademarktext werden unverändert übernommen. Der Upstream
 bezeichnet sich als **Public Preview**. Das im Tag enthaltene Root-`VERSION` nennt abweichend
 `3.7.0`; gemäß freigegebener Priorität bleiben GitHub Release, Tag und Commit für den Pin
@@ -75,8 +78,9 @@ Der Prompt verlangt eine fail-closed Transaktion:
 3. `FRESH`, `CURRENT` oder `LEGACY` anhand belegter aktiver Verdrahtung klassifizieren.
 4. Alle betroffenen Dateien außerhalb aktiver Instruktionsnamen sichern und das Backup lesbar
    verifizieren, ohne private Inhalte oder Fingerprints zu melden.
-5. Bundle und Integration aus derselben unveränderlichen Releasequelle stagen, Pin und Archivhash
-   prüfen, Provider lokal bauen und erst danach atomar aktivieren.
+5. Bundle und Integration aus derselben unveränderlichen Releasequelle stagen, Pin, Archivhash und
+   Eintragssicherheit prüfen, das Archiv isoliert extrahieren, den Provider lokal bauen und erst
+   danach atomar aktivieren.
 6. Bestehende private Regeln genau einmal in den aus dem Manifest gelesenen `local_rules`-Pfad
    überführen; bei nicht eindeutig verlustfreier Zuordnung abbrechen.
 7. Globalen Einstieg byte-identisch binden, `AGENT_GOVERNANCE_ROOT` absolut konfigurieren und den
