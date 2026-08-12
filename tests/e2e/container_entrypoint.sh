@@ -32,6 +32,7 @@ chmod 700 "$codex_state" "$synthetic_home"
 cp /auth-source/auth.json "$codex_state/auth.json"
 chmod 600 "$codex_state/auth.json"
 chown -R e2e:e2e "$codex_state" "$synthetic_home" "$workspace" "$run_root/effects" "$run_root/install" /output
+chown e2e:e2e "$run_root"
 git config --global init.defaultBranch master
 
 if [[ $mode == baseline ]]; then

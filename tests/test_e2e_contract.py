@@ -107,6 +107,7 @@ class CleanImageContract(unittest.TestCase):
             entrypoint,
             r'(?m)^chown -R e2e:e2e .*"\$run_root/effects" "\$run_root/install"',
         )
+        self.assertIn('chown e2e:e2e "$run_root"', entrypoint)
 
 
 class SecretIsolationContract(unittest.TestCase):
