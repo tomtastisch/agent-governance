@@ -24,8 +24,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
       - name: Regelwerk-Konsistenz prüfen
-        run: python3 -m unittest discover -s tests -v
+        run: |
+          python3 -m unittest discover -s tests -v
+          git diff --check
+      - name: Neutralen Harness und Offlinepfad prüfen
+        run: tests/e2e/run_neutral_harness.sh
 
   release-metadata:
     name: Release-Metadaten (blockierend)
@@ -38,7 +45,9 @@ jobs:
         with:
           python-version: "3.11"
       - name: Tree-Konsistenz (VERSION, CHANGELOG, README, INSTALL)
-        run: python3 tools/release_check.py tree
+        run: |
+          python3 tools/release_check.py tree
+          git diff --check
 
   release-tag-check:
     name: Tag-Konsistenz (nur bei v*-Tags)

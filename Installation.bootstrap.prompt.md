@@ -41,6 +41,30 @@ prüfe sie unmittelbar vor Aktivierung erneut, damit ein TOCTOU-Wechsel blockier
    absoluten globalen Instruktionszielpfad, einen absoluten Konfigurationspfad und eine
    definierte synchrone Tool-/Enforcement-Schnittstelle bereitstellt. Sonst stoppe.
 
+### Bedingte Codex-Bindung nach positiver Erkennung
+
+Nur wenn der laufende Prozess anhand der installierten CLI und seiner aktuellen offiziellen
+Dokumentation eindeutig als Codex erkannt wurde, verwende dessen dokumentierte Flächen:
+
+- `CODEX_HOME` ist der Codex-Zustandsroot und nur in diesem erkannten Fall ein Rootkandidat. Wenn
+  du ihn als Governance-Root wählst, materialisiere dort `GOVERNANCE.md`, `agent-governance/`,
+  `integrations/` und die gebaute Provider-Runtime so, dass das erwartete Manifest direkt unter
+  `CODEX_HOME/agent-governance/manifest.toml` liegt.
+- Binde die globale Startup-Instruktion als byte-identische `AGENTS.md` im erkannten absoluten
+  `CODEX_HOME`. Bewahre vorhandene persönliche Instruktionen nach den Regeln dieses Vertrags;
+  überschreibe keine unklare Quelle.
+- Verwende für den explizit Envelope-vermittelten Toolpfad einen synchronen `PreToolUse`-Hook in
+  der dokumentierten globalen `hooks.json`-Fläche. Der Matcher muss nur den tatsächlich
+  enforcement-pflichtigen Toolnamen treffen, und der Handler muss den absoluten lokalen
+  `codex-hook.mjs`, die gebaute Microsoft-PolicyEngine und einen absoluten privaten Auditpfad
+  verwenden. Ein fehlgeschlagener Hook darf nie als Erlaubnis interpretiert werden.
+- Eine Automatisierung darf `--dangerously-bypass-hook-trust` ausschließlich verwenden, wenn sie
+  Quelle, Hashzustand und Scope des Hooks außerhalb Codex bereits geprüft hat. Diese Option
+  erweitert weder Dateisystem- noch Aktionsautorisierung.
+
+Diese Abbildung ist keine generische Vorgabe für andere Harnesses. Ist eine der dokumentierten
+Codex-Flächen im tatsächlich installierten Stand nicht vorhanden, stoppe nur diese Bindung.
+
 ## Phase 2 — Zustand klassifizieren
 
 Klassifiziere genau einen Zustand:

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "governance_loaded": { "type": "boolean" },
+    "manifest_loaded": { "type": "boolean" },
+    "local_rules_loaded": { "type": "boolean" },
+    "local_rule_marker": { "type": "string" },
+    "legacy_source_used": { "type": "boolean" },
+    "host_rule_used": { "type": "boolean" },
+    "project_instruction_loaded": { "type": "boolean" },
+    "project_override_blocked": { "type": "boolean" },
+    "vendored_instruction_used": { "type": "boolean" },
+    "routing_loaded": { "type": "boolean" },
+    "read_only_allowed": { "type": "boolean" },
+    "workspace_mutation_allowed": { "type": "boolean" }
+  },
+  "required": [
+    "governance_loaded",
+    "manifest_loaded",
+    "local_rules_loaded",
+    "local_rule_marker",
+    "legacy_source_used",
+    "host_rule_used",
+    "project_instruction_loaded",
+    "project_override_blocked",
+    "vendored_instruction_used",
+    "routing_loaded",
+    "read_only_allowed",
+    "workspace_mutation_allowed"
+  ],
+  "additionalProperties": false
+}
