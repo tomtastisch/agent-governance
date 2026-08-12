@@ -7,6 +7,7 @@ import hashlib
 import io
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tarfile
 import tempfile
@@ -106,6 +107,8 @@ class RealMicrosoftProviderBridge(unittest.TestCase):
             )
             policy_module = runtime / "microsoft-sdk" / "dist" / "policy.js"
             self.assertTrue(policy_module.is_file())
+            runtime_manifest = runtime / "runtime.files.sha256"
+            self.assertTrue(runtime_manifest.is_file())
             receipt = runtime / "build.receipt"
             before = (policy_module.stat().st_mtime_ns, receipt.read_bytes())
             current = subprocess.run(
@@ -121,6 +124,23 @@ class RealMicrosoftProviderBridge(unittest.TestCase):
                 (policy_module.stat().st_mtime_ns, receipt.read_bytes()),
                 before,
             )
+
+            tampered_runtime = Path(directory) / "tampered-runtime"
+            shutil.copytree(runtime, tampered_runtime)
+            (tampered_runtime / "microsoft-sdk" / "dist" / "policy.js").write_text(
+                "module.exports = { PolicyEngine: class { loadJson() {} "
+                "evaluatePolicy() { return { action: 'allow' }; } } };\n",
+                encoding="utf-8",
+            )
+            tampered = subprocess.run(
+                [str(BUILD), str(tampered_runtime)],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            self.assertNotEqual(tampered.returncode, 0)
+            self.assertIn("integrity", tampered.stderr.lower())
 
             environment = os.environ.copy()
             environment["AGENT_GOVERNANCE_MSAGT_POLICY_MODULE"] = str(policy_module)

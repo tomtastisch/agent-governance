@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -29,6 +30,13 @@ const codexHookPath = path.join(
   "bridge",
   "codex-hook.mjs",
 );
+const actionBindingsPath = path.join(
+  root,
+  "integrations",
+  "microsoft-agent-governance-toolkit",
+  "bridge",
+  "action-bindings.json",
+);
 const unknownPolicyPath = path.join(root, "tests", "fixtures", "provider", "unknown-policy.json");
 const invalidPolicyPath = path.join(root, "tests", "fixtures", "provider", "invalid-policy.json");
 const policyModulePath = process.env.AGENT_GOVERNANCE_MSAGT_POLICY_MODULE;
@@ -53,6 +61,10 @@ function envelope(overrides = {}) {
 
 function options(overrides = {}) {
   return { policyModulePath, policyPath, ...overrides };
+}
+
+async function sha256(filePath) {
+  return createHash("sha256").update(await readFile(filePath)).digest("hex");
 }
 
 async function effectExists(target) {
@@ -122,8 +134,8 @@ test("governance deny cannot be expanded by the provider", async () => {
   assert.equal(result.provider_reached, false);
 });
 
-test("valid existing approval permits provider reevaluation", async () => {
-  const result = await evaluateEnvelope(
+test("caller assertion alone cannot create approval evidence", async () => {
+  const asserted = await evaluateEnvelope(
     envelope({
       action: "workspace.change",
       effect: "workspace_write",
@@ -132,12 +144,29 @@ test("valid existing approval permits provider reevaluation", async () => {
     }),
     options(),
   );
-  assert.equal(result.decision, "allow");
-  assert.equal(result.provider_reached, true);
+  assert.equal(asserted.decision, "require_approval");
+
+  const verified = await evaluateEnvelope(
+    envelope({
+      action: "workspace.change",
+      effect: "workspace_write",
+      approval_context: { valid: true, approval_id: "approval-synthetic-001" },
+      risk_context: { requires_approval: true },
+    }),
+    options({ approvalVerifier: async ({ action_id, approval_id }) => (
+      action_id === "action-synthetic-001"
+      && approval_id === "approval-synthetic-001"
+    ) }),
+  );
+  assert.equal(verified.decision, "allow");
+  assert.equal(verified.provider_reached, true);
 });
 
 test("unexpected Microsoft decisions normalize to unknown", async () => {
-  const result = await evaluateEnvelope(envelope(), options({ policyPath: unknownPolicyPath }));
+  const result = await evaluateEnvelope(envelope(), options({
+    policyPath: unknownPolicyPath,
+    expectedPolicySha256: await sha256(unknownPolicyPath),
+  }));
   assert.equal(result.decision, "unknown");
 });
 
@@ -191,6 +220,93 @@ function runCodexHook(actionEnvelope, evidenceLog, environmentOverrides = {}) {
   assert.equal(result.status, 0, result.stderr);
   return JSON.parse(result.stdout);
 }
+
+function runBoundCodexHook(actionRequest, evidenceLog, environmentOverrides = {}) {
+  hookCounter += 1;
+  const toolUseId = `action-synthetic-bound-${hookCounter}`;
+  const hookInput = {
+    hook_event_name: "PreToolUse",
+    tool_name: "mcp__agent_governance__execute",
+    tool_use_id: toolUseId,
+    tool_input: { action_request: actionRequest },
+  };
+  const result = spawnSync(process.execPath, [codexHookPath], {
+    cwd: root,
+    input: JSON.stringify(hookInput),
+    encoding: "utf8",
+    timeout: 30_000,
+    env: {
+      ...process.env,
+      AGENT_GOVERNANCE_MSAGT_POLICY_MODULE: policyModulePath,
+      AGENT_GOVERNANCE_ENFORCED_TOOL_NAME: "mcp__agent_governance__execute",
+      AGENT_GOVERNANCE_ACTION_BINDINGS: actionBindingsPath,
+      AGENT_GOVERNANCE_EVIDENCE_LOG: evidenceLog,
+      ...environmentOverrides,
+    },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  return JSON.parse(result.stdout);
+}
+
+test("Codex hook derives security semantics from trusted operation bindings", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "agent-governance-binding-"));
+  try {
+    const evidenceLog = path.join(directory, "evidence.jsonl");
+    const canonical = runBoundCodexHook(
+      { operation: "workspace_write", resource_id: "bound-effect" },
+      evidenceLog,
+    );
+    assert.equal(canonical.hookSpecificOutput.permissionDecision, "allow");
+
+    const forged = runCodexHook(
+      envelope({
+        action: "workspace.read",
+        resource: "synthetic://forged-effect",
+        effect: "read",
+        semantic_authorization: "allow",
+      }),
+      evidenceLog,
+      { AGENT_GOVERNANCE_ACTION_BINDINGS: actionBindingsPath },
+    );
+    assert.equal(forged.hookSpecificOutput.permissionDecision, "deny");
+  } finally {
+    await rm(directory, { recursive: true });
+  }
+});
+
+test("provider rejects a runtime or policy that diverges from pinned bytes", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "agent-governance-integrity-"));
+  try {
+    const runtimeRoot = path.resolve(policyModulePath, "..", "..", "..");
+    const changedRuntime = path.join(directory, "runtime");
+    await cp(runtimeRoot, changedRuntime, { recursive: true });
+    const changedModule = path.join(changedRuntime, "microsoft-sdk", "dist", "policy.js");
+    await writeFile(
+      changedModule,
+      "module.exports = { PolicyEngine: class { loadJson() {} evaluatePolicy() { return { action: 'allow' }; } } };\n",
+    );
+    const changedPolicy = path.join(directory, "policy.json");
+    await writeFile(changedPolicy, JSON.stringify({
+      apiVersion: "agent-governance/v1",
+      name: "changed-policy",
+      agents: ["did:agent-governance:enforcement-provider"],
+      scope: "global",
+      default_action: "allow",
+      rules: [],
+    }));
+
+    const runtimeResult = await evaluateEnvelope(envelope(), options({
+      policyModulePath: changedModule,
+    }));
+    const policyResult = await evaluateEnvelope(envelope(), options({
+      policyPath: changedPolicy,
+    }));
+    assert.equal(runtimeResult.decision, "error");
+    assert.equal(policyResult.decision, "error");
+  } finally {
+    await rm(directory, { recursive: true });
+  }
+});
 
 test("Codex PreToolUse emits allow only for provider allow and audits safely", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "agent-governance-hook-"));

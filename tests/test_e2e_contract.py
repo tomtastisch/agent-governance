@@ -22,11 +22,17 @@ def read(name: str) -> str:
 class CleanImageContract(unittest.TestCase):
     def test_base_image_is_linux_pinned_codex_and_contains_no_release_or_auth(self):
         dockerfile = read("Dockerfile")
-        self.assertRegex(dockerfile, r"(?m)^FROM debian:bookworm-slim$")
-        self.assertIn("@openai/codex@0.147.0", dockerfile)
+        self.assertRegex(
+            dockerfile,
+            r"(?m)^FROM debian:bookworm-slim@sha256:[0-9a-f]{64}$",
+        )
+        self.assertIn("snapshot.debian.org/archive/debian/20260803T000000Z", dockerfile)
+        self.assertRegex(dockerfile, r"(?m)^\s+bubblewrap=0\.8\.0-2\+deb12u1")
+        self.assertIn("npm ci", dockerfile)
+        self.assertIn("package-lock.json", dockerfile)
         for package in ("bubblewrap", "ca-certificates", "git", "python3", "nodejs", "npm"):
             self.assertIn(package, dockerfile)
-        self.assertNotRegex(dockerfile, r"(?im)^\s*(?:COPY|ADD)\s+")
+        self.assertRegex(dockerfile, r"(?m)^COPY package\.json package-lock\.json \.\/$")
         for forbidden in ("auth.json", "AGENTS.md", "bundle/", "integrations/"):
             self.assertNotIn(forbidden, dockerfile)
 
@@ -44,8 +50,12 @@ class CleanImageContract(unittest.TestCase):
             "TZ=UTC",
             "init.defaultBranch=master",
             "HOME With Spaces",
+            "fixture_current=PASS",
+            "fixture_legacy=PASS",
         ):
             self.assertIn(term, runner)
+        self.assertNotRegex(runner, r"(?m)^\s*'CURRENT=PASS'")
+        self.assertNotRegex(runner, r"(?m)^\s*'LEGACY=PASS'")
         self.assertIn("--verify-secrets", runner)
         self.assertIn("--hostile-matrix", runner)
 
@@ -68,6 +78,26 @@ class CleanImageContract(unittest.TestCase):
         self.assertNotIn("apparmor=unconfined", runner)
         self.assertNotIn("--privileged", runner)
         self.assertNotIn("--cap-add", runner)
+
+    def test_runner_requires_exact_signed_source_before_auth_mount(self):
+        runner = read("run_clean_linux.sh")
+        self.assertRegex(runner, r"source_ref.+\^\[0-9a-f\].+40")
+        self.assertIn("git -C \"$repository_root\" verify-commit \"$source_sha\"", runner)
+        self.assertNotIn("source_ref=HEAD", runner)
+
+    def test_offline_path_reuses_materialized_provider_state_without_network(self):
+        runner = read("run_clean_linux.sh")
+        entrypoint = read("container_entrypoint.sh")
+        offline_probe = read("run_materialized_offline.sh")
+        self.assertIn("governed_state", runner)
+        self.assertRegex(
+            runner,
+            r"(?s)--network none.+governed_state.+container_entrypoint\.sh offline",
+        )
+        self.assertIn("run_materialized_offline.sh", entrypoint)
+        self.assertIn("microsoft-provider", offline_probe)
+        self.assertIn("provider.mjs", offline_probe)
+        self.assertIn("offline_materialized_provider=PASS", offline_probe)
 
 
 class SecretIsolationContract(unittest.TestCase):
@@ -127,7 +157,10 @@ class RealCodexContract(unittest.TestCase):
         server = read("synthetic_effect_mcp.mjs")
         self.assertIn("tools/list", server)
         self.assertIn("tools/call", server)
-        self.assertIn("action_envelope", server)
+        self.assertIn("action_request", server)
+        self.assertIn("operation", server)
+        self.assertIn("resource_id", server)
+        self.assertNotIn("semantic_authorization", server)
         self.assertIn("SYNTHETIC_EFFECT_ROOT", server)
         self.assertIn("writeFile", server)
         self.assertNotRegex(server, r"https?://")

@@ -329,6 +329,34 @@ class Rollback(LegacyInstall):
 
         self.assertEqual(tree_bytes(self.allowed), before)
 
+    def test_restore_failure_preserves_verified_backup_and_recoverable_prior_install(self):
+        self.prepare_legacy()
+        private_source = self.install / "profile" / "personal-rules.md"
+        transaction = self.reference.BootstrapTransaction(
+            self.request(
+                legacy_private_rules_path=private_source,
+                verification_hook=lambda _request: False,
+            )
+        )
+        original_copy = transaction._copy_item
+
+        def fail_one_restore(source: Path, target: Path) -> None:
+            if transaction._backup is not None and source.parent == transaction._backup \
+                    and target == self.global_instruction:
+                raise OSError("synthetic restore failure")
+            original_copy(source, target)
+
+        with mock.patch.object(transaction, "_copy_item", side_effect=fail_one_restore):
+            with self.assertRaises(self.reference.BootstrapError):
+                transaction.run()
+
+        self.assertIsNotNone(transaction._backup)
+        self.assertTrue(transaction._backup.is_dir())
+        self.assertTrue(
+            self.install.is_dir() or (transaction._backup / "0").is_dir(),
+            "prior installation must remain recoverable",
+        )
+
 
 class PathSafety(BootstrapTestCase):
     def test_relative_and_dot_roots_fail_closed(self):
@@ -360,6 +388,17 @@ class PathSafety(BootstrapTestCase):
                 request = self.request(config_path=config_path)
                 with self.assertRaises(self.reference.BootstrapError):
                     self.reference.BootstrapTransaction(request).run()
+
+    def test_symlinked_internal_backup_root_fails_without_copying_outside(self):
+        outside = self.base / "outside-backups"
+        outside.mkdir()
+        (self.allowed / ".agent-governance-backups").symlink_to(
+            outside, target_is_directory=True
+        )
+
+        with self.assertRaises(self.reference.BootstrapError):
+            self.run_transaction()
+
         self.assertEqual(list(outside.iterdir()), [])
 
 
