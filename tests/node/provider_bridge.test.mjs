@@ -171,7 +171,6 @@ function runCodexHook(actionEnvelope, evidenceLog, environmentOverrides = {}) {
     tool_input: {
       action_envelope: {
         ...actionEnvelope,
-        action_id: toolUseId,
         evidence_id: `evidence-synthetic-hook-${hookCounter}`,
       },
     },
@@ -228,6 +227,8 @@ test("Codex PreToolUse emits allow only for provider allow and audits safely", a
       evidence.map((entry) => entry.decision),
       ["allow", "deny", "require_approval", "error"],
     );
+    assert.equal(evidence[0].action_id, "action-synthetic-001");
+    assert.notEqual(evidence[0].action_id, evidence[0].tool_use_id);
     for (const entry of evidence) {
       assert.equal("tool_input" in entry, false);
       assert.equal("resource" in entry, false);
