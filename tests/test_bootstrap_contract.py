@@ -153,7 +153,7 @@ class BootstrapTestCase(unittest.TestCase):
     def setUp(self):
         self.reference = load_reference()
         self.temporary = tempfile.TemporaryDirectory(prefix="agent governance bootstrap ")
-        self.base = Path(self.temporary.name)
+        self.base = Path(self.temporary.name).resolve(strict=True)
         self.allowed = self.base / "Allowed Root With Spaces"
         self.allowed.mkdir()
         self.harness = self.allowed / "neutral-harness"
@@ -204,7 +204,9 @@ class FreshInstall(BootstrapTestCase):
         self.assertEqual(config["preserve"], "yes")
         self.assertEqual(config["agent_governance"]["root"], str(self.install / "bundle"))
         self.assertEqual(result.harness_type, "synthetic-neutral")
-        self.assertNotIn("private", json.dumps(asdict(result), sort_keys=True).lower())
+        safe_result = json.dumps(asdict(result), sort_keys=True).lower()
+        for forbidden in ("personal-rules", "rule_hash", "rule_size", "synthetic_rule_active"):
+            self.assertNotIn(forbidden, safe_result)
 
 
 class CurrentInstall(BootstrapTestCase):
@@ -230,6 +232,45 @@ class CurrentInstall(BootstrapTestCase):
                 if path.is_file()
             },
             before_mtimes,
+        )
+
+    def test_missing_binding_is_repaired_without_rewriting_install_or_local_rules(self):
+        self.run_transaction()
+        local_rules = self.install / "bundle" / "agent-governance" / "local" / "user-rules.md"
+        local_rules.write_bytes(b"SYNTHETIC CURRENT RULE\n")
+        install_before = tree_bytes(self.install)
+        install_mtimes = {
+            path.relative_to(self.install).as_posix(): path.stat().st_mtime_ns
+            for path in self.install.rglob("*")
+            if path.is_file()
+        }
+        self.global_instruction.unlink()
+        config = json.loads(self.config.read_text(encoding="utf-8"))
+        config.pop("agent_governance")
+        self.config.write_text(json.dumps(config) + "\n", encoding="utf-8")
+
+        result = self.run_transaction()
+
+        self.assertEqual(result.state, "CURRENT")
+        self.assertGreater(result.mutation_count, 0)
+        self.assertEqual(tree_bytes(self.install), install_before)
+        self.assertEqual(
+            {
+                path.relative_to(self.install).as_posix(): path.stat().st_mtime_ns
+                for path in self.install.rglob("*")
+                if path.is_file()
+            },
+            install_mtimes,
+        )
+        self.assertEqual(local_rules.read_bytes(), b"SYNTHETIC CURRENT RULE\n")
+        self.assertEqual(
+            self.global_instruction.read_bytes(),
+            (self.install / "bundle" / "GOVERNANCE.md").read_bytes(),
+        )
+        repaired_config = json.loads(self.config.read_text(encoding="utf-8"))
+        self.assertEqual(repaired_config["preserve"], "yes")
+        self.assertEqual(
+            repaired_config["agent_governance"]["root"], str(self.install / "bundle")
         )
 
 
@@ -274,6 +315,17 @@ class Rollback(LegacyInstall):
                 legacy_private_rules_path=private_source,
                 verification_hook=lambda _request: False,
             )
+
+        self.assertEqual(tree_bytes(self.allowed), before)
+
+    def test_provider_build_failure_restores_fresh_state(self):
+        before = tree_bytes(self.allowed)
+
+        def fail_provider(_integration: Path, _output: Path) -> Path:
+            raise RuntimeError("synthetic provider failure")
+
+        with self.assertRaises(self.reference.BootstrapError):
+            self.run_transaction(provider_builder=fail_provider)
 
         self.assertEqual(tree_bytes(self.allowed), before)
 
