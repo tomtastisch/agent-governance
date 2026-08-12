@@ -46,7 +46,13 @@ resource_suffix=${source_sha:0:12}-$$
 image=agent-governance-e2e:$resource_suffix
 baseline=agent-governance-e2e-baseline-$resource_suffix
 governed=agent-governance-e2e-governed-$resource_suffix
-e2e_tmp=$(mktemp -d "${TMPDIR:-/tmp}/agent-governance-e2e.XXXXXX")
+shared_tmp_root=${AGENT_GOVERNANCE_E2E_TMP_ROOT:-$(dirname -- "$repository_root")}
+if [[ $shared_tmp_root != /* || ! -d $shared_tmp_root || -L $shared_tmp_root ]]; then
+  echo "run_clean_linux: E2E temporary root must be an absolute existing non-symlink directory" >&2
+  exit 1
+fi
+shared_tmp_root=$(CDPATH= cd -- "$shared_tmp_root" && pwd -P)
+e2e_tmp=$(mktemp -d "$shared_tmp_root/agent-governance-e2e.XXXXXX")
 e2e_tmp=$(CDPATH= cd -- "$e2e_tmp" && pwd -P)
 release_dir=$e2e_tmp/release
 auth_dir=$e2e_tmp/auth

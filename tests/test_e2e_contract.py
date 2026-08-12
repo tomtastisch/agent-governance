@@ -49,8 +49,17 @@ class CleanImageContract(unittest.TestCase):
         self.assertIn("--verify-secrets", runner)
         self.assertIn("--hostile-matrix", runner)
 
-    def test_runner_canonicalizes_temporary_bind_root(self):
+    def test_runner_uses_runtime_shared_temporary_bind_root(self):
         runner = read("run_clean_linux.sh")
+        self.assertIn(
+            'shared_tmp_root=${AGENT_GOVERNANCE_E2E_TMP_ROOT:-$(dirname -- "$repository_root")}',
+            runner,
+        )
+        self.assertNotIn('${TMPDIR:-/tmp}', runner)
+        self.assertRegex(
+            runner,
+            r'(?m)^e2e_tmp=\$\(mktemp -d "\$shared_tmp_root/agent-governance-e2e\.XXXXXX"\)$',
+        )
         self.assertRegex(runner, r"(?m)^e2e_tmp=\$\(CDPATH= cd -- \"\$e2e_tmp\" && pwd -P\)$")
 
 
