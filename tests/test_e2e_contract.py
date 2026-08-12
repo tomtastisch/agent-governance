@@ -97,6 +97,18 @@ class CleanImageContract(unittest.TestCase):
         self.assertIn("provider.mjs", offline_probe)
         self.assertIn("offline_materialized_provider=PASS", offline_probe)
 
+    def test_offline_routing_probe_references_only_materialized_bundle_files(self):
+        offline_probe = read("run_materialized_offline.sh")
+        referenced_bundle_files = re.findall(
+            r'"((?:modules|roles)/[^"\n]+\.md)"',
+            offline_probe,
+        )
+        self.assertTrue(referenced_bundle_files)
+        manifest_dir = ROOT / "bundle" / "agent-governance"
+        for relative in referenced_bundle_files:
+            with self.subTest(relative=relative):
+                self.assertTrue((manifest_dir / relative).is_file(), relative)
+
     def test_persistent_governed_volume_is_initialized_for_unprivileged_runtime(self):
         entrypoint = read("container_entrypoint.sh")
         self.assertRegex(

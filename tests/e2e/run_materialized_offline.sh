@@ -32,7 +32,7 @@ assert "SYNTHETIC_LOCAL_RULE_ACTIVE" in local.read_text(encoding="utf-8")
 for relative in (
     "modules/invariants.md",
     "modules/enforcement.md",
-    "modules/analysis.md",
+    "modules/evidence.md",
     "roles/quality-assurance.md",
 ):
     assert (manifest_dir / relative).is_file(), relative
