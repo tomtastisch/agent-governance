@@ -247,7 +247,7 @@ class NeutralHarness:
         return tuple(module_paths), tuple(role_paths), read_paths
 
     def _evaluate(self, envelope: Mapping[str, object]) -> tuple[str, bool]:
-        if not isinstance(envelope, Mapping) or not self._REQUIRED_ENVELOPE.issubset(envelope):
+        if not isinstance(envelope, Mapping) or set(envelope) != self._REQUIRED_ENVELOPE:
             return "error", False
         semantic = envelope.get("semantic_authorization")
         if semantic == "deny":

@@ -57,23 +57,29 @@ class NeutralHarnessRouting(NeutralRuntimeCase):
 
     def test_enforcement_is_fail_closed_and_only_allow_continues(self):
         cases = (
-            (self.envelope(), "allow", True),
-            (self.envelope(effect="external_write"), "deny", False),
+            (self.envelope(), "allow", True, None),
+            (self.envelope(effect="external_write"), "deny", False, None),
             (
                 self.envelope(risk_context={"requires_approval": True}),
                 "require_approval",
                 False,
+                None,
             ),
-            (self.envelope(provider_failure_probe=True), "error", False),
-            (self.envelope(unknown_probe=True), "unknown", False),
+            (self.envelope(), "error", False, "error"),
+            (self.envelope(), "unknown", False, "unknown"),
         )
-        for envelope, decision, continued in cases:
+        for envelope, decision, continued, provider_mode in cases:
             with self.subTest(decision=decision):
-                result = self.harness.new_session(
-                    task="enforced action",
-                    triggers=("external_effect",),
-                    action_envelope=envelope,
-                )
+                with mock.patch.dict(
+                    self.harness.provider_environment,
+                    {"SYNTHETIC_PROVIDER_MODE": provider_mode} if provider_mode else {},
+                    clear=False,
+                ):
+                    result = self.harness.new_session(
+                        task="enforced action",
+                        triggers=("external_effect",),
+                        action_envelope=envelope,
+                    )
                 self.assertEqual(result.decision, decision)
                 self.assertEqual(result.continued, continued)
         call_lines = self.provider_calls.read_text(encoding="utf-8").splitlines()
@@ -87,6 +93,21 @@ class NeutralHarnessRouting(NeutralRuntimeCase):
         )
 
         self.assertEqual(result.decision, "deny")
+        self.assertFalse(result.provider_reached)
+        self.assertFalse(result.continued)
+        self.assertFalse(self.provider_calls.exists())
+
+    def test_envelope_with_additional_fields_fails_before_provider(self):
+        envelope = self.envelope()
+        envelope["secret_extra"] = "synthetic-data-that-must-not-reach-provider"
+
+        result = self.harness.new_session(
+            task="overbroad action envelope",
+            triggers=("external_effect",),
+            action_envelope=envelope,
+        )
+
+        self.assertEqual(result.decision, "error")
         self.assertFalse(result.provider_reached)
         self.assertFalse(result.continued)
         self.assertFalse(self.provider_calls.exists())

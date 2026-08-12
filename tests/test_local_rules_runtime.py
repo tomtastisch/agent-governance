@@ -51,9 +51,9 @@ import sys
 payload = json.load(sys.stdin)
 with open(os.environ["SYNTHETIC_PROVIDER_CALLS"], "a", encoding="utf-8") as handle:
     handle.write(json.dumps({"action_id": payload["action_id"]}) + "\\n")
-if payload.get("provider_failure_probe"):
+if os.environ.get("SYNTHETIC_PROVIDER_MODE") == "error":
     raise SystemExit(9)
-if payload.get("unknown_probe"):
+if os.environ.get("SYNTHETIC_PROVIDER_MODE") == "unknown":
     decision = "surprise"
 elif payload["risk_context"].get("requires_approval") and not payload["approval_context"].get("valid"):
     decision = "require_approval"

@@ -95,7 +95,9 @@ class BootstrapTransaction:
             stage_install, staged_global, staged_config, staged_evidence = self._prepare_stage(
                 state, version
             )
-            local_rules_preserved = state == "LEGACY"
+            local_rules_preserved = (
+                state == "LEGACY" and self.request.legacy_private_rules_path is not None
+            )
             self._recheck_parent_identities()
             self._activate(stage_install, staged_global, staged_config, staged_evidence)
             mutation_count = 4
@@ -234,15 +236,30 @@ class BootstrapTransaction:
             raise BootstrapError("Widersprüchliche gültige Rootkandidaten")
 
     def _classify_state(self) -> str:
-        if not self.install.exists():
+        active_legacy_wiring = self._has_active_legacy_wiring()
+        if not self.install.exists() and not active_legacy_wiring:
             return "FRESH"
         manifest = self.install / "bundle" / "agent-governance" / "manifest.toml"
-        legacy = any((self.install / name).exists() for name in ("core", "adapters", "profile"))
+        legacy = active_legacy_wiring or any(
+            (self.install / name).exists() for name in ("core", "adapters", "profile")
+        )
         if legacy:
             return "LEGACY"
         if manifest.is_file() and self._installation_is_current():
             return "CURRENT" if self._bindings_current() else "CURRENT_REPAIR"
         raise BootstrapError("Installationszustand ist unbekannt oder unvollständig")
+
+    def _has_active_legacy_wiring(self) -> bool:
+        if not self.config.exists():
+            return False
+        try:
+            config = json.loads(self.config.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            raise BootstrapError("Harnesskonfiguration ist kein gültiges JSON") from error
+        if not isinstance(config, dict):
+            raise BootstrapError("Harnesskonfiguration muss ein Objekt sein")
+        legacy_import = config.get("legacy_import")
+        return isinstance(legacy_import, str) and bool(legacy_import.strip())
 
     def _installation_is_current(self) -> bool:
         try:
@@ -282,12 +299,21 @@ class BootstrapTransaction:
                 return False
             config = json.loads(self.config.read_text(encoding="utf-8"))
             binding = config.get("agent_governance", {})
-            return (
-                binding.get("root") == str(self.install / "bundle")
-                and binding.get("entrypoint") == str(self.install / "bundle" / "GOVERNANCE.md")
-                and self._provider_runtime_is_current()
-                and self.evidence.is_file()
-            )
+            expected_binding = {
+                "root": str(self.install / "bundle"),
+                "entrypoint": str(self.install / "bundle" / "GOVERNANCE.md"),
+                "enforcement_provider": "microsoft-agent-governance-toolkit",
+                "provider_entrypoint": str(
+                    self.install
+                    / "integrations"
+                    / "microsoft-agent-governance-toolkit"
+                    / "bridge"
+                    / "provider.mjs"
+                ),
+                "provider_runtime": str(self.install / "runtime" / "microsoft-provider"),
+                "evidence_log": str(self.evidence),
+            }
+            return binding == expected_binding and self._provider_runtime_is_current() and self.evidence.is_file()
         except (OSError, json.JSONDecodeError, TypeError):
             return False
 
@@ -425,19 +451,20 @@ class BootstrapTransaction:
         local_rules_preserved = False
         if state == "LEGACY":
             source = self.request.legacy_private_rules_path
-            if source is None or not Path(source).is_file() or Path(source).is_symlink():
-                raise BootstrapError("Legacy-Regelquelle ist nicht eindeutig")
-            source = Path(source)
-            try:
-                source.relative_to(self.install)
-            except ValueError as error:
-                raise BootstrapError("Legacy-Regelquelle liegt außerhalb der Altinstallation") from error
-            local_target = self._manifest_local_rules_target(stage_install)
-            local_target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, local_target)
-            if not filecmp.cmp(source, local_target, shallow=False):
-                raise BootstrapError("Lokale Regeln konnten nicht bytegleich erhalten werden")
-            local_rules_preserved = True
+            if source is not None:
+                if not Path(source).is_file() or Path(source).is_symlink():
+                    raise BootstrapError("Legacy-Regelquelle ist nicht eindeutig")
+                source = Path(source)
+                try:
+                    source.relative_to(self.install)
+                except ValueError as error:
+                    raise BootstrapError("Legacy-Regelquelle liegt außerhalb der Altinstallation") from error
+                local_target = self._manifest_local_rules_target(stage_install)
+                local_target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, local_target)
+                if not filecmp.cmp(source, local_target, shallow=False):
+                    raise BootstrapError("Lokale Regeln konnten nicht bytegleich erhalten werden")
+                local_rules_preserved = True
 
         provider_output = stage_install / "runtime" / "microsoft-provider"
         provider_output.parent.mkdir()
@@ -456,7 +483,11 @@ class BootstrapTransaction:
         staged_evidence = self._stage / "evidence.jsonl"
         staged_evidence.write_bytes(self._desired_evidence_bytes(stage_install, version))
         os.chmod(staged_evidence, 0o600)
-        if state == "LEGACY" and not local_rules_preserved:
+        if (
+            state == "LEGACY"
+            and self.request.legacy_private_rules_path is not None
+            and not local_rules_preserved
+        ):
             raise BootstrapError("Legacy-Regeln wurden nicht erhalten")
         return stage_install, staged_global, staged_config, staged_evidence
 
@@ -553,10 +584,8 @@ class BootstrapTransaction:
         }
         try:
             config = json.loads(self.config.read_text(encoding="utf-8"))
-            checks["configuration"] = (
-                config["agent_governance"]["root"] == str(self.install / "bundle")
-                and "legacy_import" not in config
-            )
+            expected = json.loads(self._desired_config_bytes().decode("utf-8"))
+            checks["configuration"] = config == expected and "legacy_import" not in config
         except (OSError, KeyError, TypeError, json.JSONDecodeError):
             checks["configuration"] = False
         if local_rules_preserved:

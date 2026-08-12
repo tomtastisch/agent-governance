@@ -224,6 +224,18 @@ class FreshInstall(BootstrapTestCase):
         for forbidden in ("personal-rules", "rule_hash", "rule_size", "synthetic_rule_active"):
             self.assertNotIn(forbidden, safe_result)
 
+    def test_fresh_materializes_a_missing_harness_config_file(self):
+        self.config.unlink()
+
+        result = self.run_transaction()
+
+        self.assertEqual(result.state, "FRESH")
+        self.assertTrue(self.config.is_file())
+        self.assertEqual(
+            json.loads(self.config.read_text(encoding="utf-8"))["agent_governance"]["root"],
+            str(self.install / "bundle"),
+        )
+
 
 class CurrentInstall(BootstrapTestCase):
     def test_second_run_is_byte_and_metadata_idempotent(self):
@@ -297,6 +309,43 @@ class CurrentInstall(BootstrapTestCase):
         with self.assertRaises(self.reference.BootstrapError):
             self.run_transaction()
 
+    def test_mismatched_enforcement_bindings_are_repaired(self):
+        self.run_transaction()
+        config = json.loads(self.config.read_text(encoding="utf-8"))
+        binding = config["agent_governance"]
+        binding.update(
+            {
+                "enforcement_provider": "unexpected-provider",
+                "provider_entrypoint": str(self.allowed / "unexpected-provider.mjs"),
+                "provider_runtime": str(self.allowed / "unexpected-runtime"),
+                "evidence_log": str(self.allowed / "unexpected-evidence.jsonl"),
+            }
+        )
+        self.config.write_text(json.dumps(config) + "\n", encoding="utf-8")
+
+        result = self.run_transaction()
+
+        self.assertEqual(result.state, "CURRENT")
+        self.assertGreater(result.mutation_count, 0)
+        repaired = json.loads(self.config.read_text(encoding="utf-8"))["agent_governance"]
+        self.assertEqual(
+            repaired,
+            {
+                "root": str(self.install / "bundle"),
+                "entrypoint": str(self.install / "bundle" / "GOVERNANCE.md"),
+                "enforcement_provider": "microsoft-agent-governance-toolkit",
+                "provider_entrypoint": str(
+                    self.install
+                    / "integrations"
+                    / "microsoft-agent-governance-toolkit"
+                    / "bridge"
+                    / "provider.mjs"
+                ),
+                "provider_runtime": str(self.install / "runtime" / "microsoft-provider"),
+                "evidence_log": str(self.evidence),
+            },
+        )
+
 
 class LegacyInstall(BootstrapTestCase):
     def prepare_legacy(self):
@@ -326,6 +375,27 @@ class LegacyInstall(BootstrapTestCase):
         self.assertEqual(config["preserve"], "legacy-value")
         self.assertNotIn("legacy_import", config)
         self.assertTrue(result.backup_verified)
+
+    def test_active_legacy_import_with_missing_target_is_not_classified_as_fresh(self):
+        self.config.write_text(
+            json.dumps(
+                {
+                    "preserve": "legacy-value",
+                    "legacy_import": str(self.install / "missing-legacy-target.md"),
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        result = self.run_transaction()
+
+        self.assertEqual(result.state, "LEGACY")
+        self.assertFalse(result.local_rules_preserved)
+        self.assertNotIn(
+            "legacy_import",
+            json.loads(self.config.read_text(encoding="utf-8")),
+        )
 
 
 class Rollback(LegacyInstall):
