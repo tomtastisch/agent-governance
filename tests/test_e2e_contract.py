@@ -97,6 +97,17 @@ class CleanImageContract(unittest.TestCase):
         self.assertIn("provider.mjs", offline_probe)
         self.assertIn("offline_materialized_provider=PASS", offline_probe)
 
+    def test_persistent_governed_volume_is_initialized_for_unprivileged_runtime(self):
+        entrypoint = read("container_entrypoint.sh")
+        self.assertRegex(
+            entrypoint,
+            r'(?m)^mkdir -p .*"\$run_root/effects" "\$run_root/install"',
+        )
+        self.assertRegex(
+            entrypoint,
+            r'(?m)^chown -R e2e:e2e .*"\$run_root/effects" "\$run_root/install"',
+        )
+
 
 class SecretIsolationContract(unittest.TestCase):
     def test_auth_is_runtime_only_strict_mode_and_cleaned(self):

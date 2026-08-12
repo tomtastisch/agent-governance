@@ -5,6 +5,7 @@ mode=${1:?mode is required}
 codex_state=/run/e2e/codex-home
 synthetic_home='/run/e2e/HOME With Spaces'
 workspace=/run/e2e/workspace
+run_root=/run/e2e
 
 export LC_ALL=C
 export TZ=UTC
@@ -26,11 +27,11 @@ cleanup_auth() {
 }
 trap cleanup_auth EXIT
 
-mkdir -p "$codex_state" "$synthetic_home" "$workspace" /output
+mkdir -p "$codex_state" "$synthetic_home" "$workspace" "$run_root/effects" "$run_root/install" /output
 chmod 700 "$codex_state" "$synthetic_home"
 cp /auth-source/auth.json "$codex_state/auth.json"
 chmod 600 "$codex_state/auth.json"
-chown -R e2e:e2e "$codex_state" "$synthetic_home" "$workspace" /output
+chown -R e2e:e2e "$codex_state" "$synthetic_home" "$workspace" "$run_root/effects" "$run_root/install" /output
 git config --global init.defaultBranch master
 
 if [[ $mode == baseline ]]; then
