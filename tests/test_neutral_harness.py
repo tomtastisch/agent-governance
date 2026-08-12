@@ -65,6 +65,7 @@ class NeutralHarnessRouting(NeutralRuntimeCase):
                 False,
             ),
             (self.envelope(provider_failure_probe=True), "error", False),
+            (self.envelope(unknown_probe=True), "unknown", False),
         )
         for envelope, decision, continued in cases:
             with self.subTest(decision=decision):
@@ -76,7 +77,7 @@ class NeutralHarnessRouting(NeutralRuntimeCase):
                 self.assertEqual(result.decision, decision)
                 self.assertEqual(result.continued, continued)
         call_lines = self.provider_calls.read_text(encoding="utf-8").splitlines()
-        self.assertEqual(len(call_lines), 4)
+        self.assertEqual(len(call_lines), 5)
 
     def test_governance_deny_never_reaches_provider(self):
         result = self.harness.new_session(

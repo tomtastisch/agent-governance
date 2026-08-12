@@ -53,7 +53,9 @@ with open(os.environ["SYNTHETIC_PROVIDER_CALLS"], "a", encoding="utf-8") as hand
     handle.write(json.dumps({"action_id": payload["action_id"]}) + "\\n")
 if payload.get("provider_failure_probe"):
     raise SystemExit(9)
-if payload["risk_context"].get("requires_approval") and not payload["approval_context"].get("valid"):
+if payload.get("unknown_probe"):
+    decision = "surprise"
+elif payload["risk_context"].get("requires_approval") and not payload["approval_context"].get("valid"):
     decision = "require_approval"
 elif payload["effect"] == "external_write":
     decision = "deny"
