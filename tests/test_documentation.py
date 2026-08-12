@@ -60,6 +60,9 @@ class EmployeeReadmeContract(unittest.TestCase):
             "Enforcement-Provider",
             "keine Governance-Quelle",
             "kein offizieller Codex-Adapter",
+            "Codex CLI 0.147.0",
+            "danger-full-access",
+            "Standard-Seccomp",
         ):
             self.assertIn(term, README)
         self.assertNotRegex(README, r"(?i)Microsoft-(?:certified|approved)")

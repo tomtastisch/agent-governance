@@ -202,8 +202,9 @@ Offlinebetrieb. Der Releaseprozess ergänzt Clean-Linux-Codex-E2E, Secret-Isolat
 Exact-Head-QA, separate SEC, blockierende GitHub Actions und Post-Release-Tests vom Tag.
 
 Unterstützung wird nur für tatsächlich verifizierte Flächen behauptet. Der synthetische neutrale
-Harness ist deterministisch geprüft. Der konkrete Codex-Stand wird erst nach dem verpflichtenden
-Clean-Linux-E2E im GitHub Release als verifiziert ausgewiesen.
+Harness ist deterministisch geprüft. Clean-Linux-E2E verifiziert den Bootstrap, frische Runtime-
+Sessions, synthetische `local_rules` und reale Providerblockaden mit **Codex CLI 0.147.0**. Andere
+Codex-Versionen sind dadurch nicht automatisch abgedeckt.
 
 ## Versionierung
 
@@ -233,6 +234,11 @@ Interception, Approval-Lücken sowie unsichere Pfade blockieren fail-closed.
   Public Preview.
 - Es gibt keinen offiziellen Codex-Adapter. Die eigene Bridge deckt nur den ausdrücklich
   Envelope-vermittelten Pre-Effect-Toolpfad ab.
+- Die Clean-Linux-Probes verwenden `danger-full-access` ausschließlich innerhalb eines bereits
+  isolierten, nichtprivilegierten Testcontainers, weil eine verschachtelte Bubblewrap-Sandbox in
+  diesem Containerkontext nicht verfügbar ist. Der äußere Container behält Standard-Seccomp,
+  AppArmor und null zusätzliche Capabilities; der Test belegt nicht die verschachtelte Codex-
+  Sandbox selbst.
 - Andere reale Harnesses als die im jeweiligen Release ausdrücklich verifizierten werden nicht
   als unterstützt behauptet; der neutrale Harness beweist Portabilität des Vertrags, nicht eine
   konkrete Produktintegration.

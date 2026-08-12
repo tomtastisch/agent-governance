@@ -44,6 +44,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Envelope-vermittelten Toolpfad.
 - Produktneutraler synthetischer Harness für Routing, Rollen, `local_rules`, Offlinebetrieb,
   lokalen Audit und alle Providerentscheidungen ohne produktspezifische Pfadvorgabe.
+- Clean-Linux-E2E mit Codex CLI 0.147.0, echter frischer Runtime, real blockierten
+  Providerentscheidungen, Hostile-Matrix sowie Secret- und Auth-Isolation.
 - Sicherheits- und Regressionstests für Archivextraktion, Instruction Boundary,
   Pfad-/Symlink-Traversal, Rootkonflikte, Backup/Rollback und private Evidenzgrenzen.
 
