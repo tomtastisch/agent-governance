@@ -49,6 +49,10 @@ class CleanImageContract(unittest.TestCase):
         self.assertIn("--verify-secrets", runner)
         self.assertIn("--hostile-matrix", runner)
 
+    def test_runner_canonicalizes_temporary_bind_root(self):
+        runner = read("run_clean_linux.sh")
+        self.assertRegex(runner, r"(?m)^e2e_tmp=\$\(CDPATH= cd -- \"\$e2e_tmp\" && pwd -P\)$")
+
 
 class SecretIsolationContract(unittest.TestCase):
     def test_auth_is_runtime_only_strict_mode_and_cleaned(self):
