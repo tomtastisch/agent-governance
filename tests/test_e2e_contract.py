@@ -62,9 +62,10 @@ class CleanImageContract(unittest.TestCase):
         )
         self.assertRegex(runner, r"(?m)^e2e_tmp=\$\(CDPATH= cd -- \"\$e2e_tmp\" && pwd -P\)$")
 
-    def test_real_codex_containers_enable_bubblewrap_without_privileged_mode(self):
+    def test_real_codex_containers_keep_outer_runtime_security_boundaries(self):
         runner = read("run_clean_linux.sh")
-        self.assertEqual(runner.count("--security-opt seccomp=unconfined"), 2)
+        self.assertNotIn("seccomp=unconfined", runner)
+        self.assertNotIn("apparmor=unconfined", runner)
         self.assertNotIn("--privileged", runner)
         self.assertNotIn("--cap-add", runner)
 
@@ -92,7 +93,8 @@ class RealCodexContract(unittest.TestCase):
         probe = read("run_codex_local_rules.sh")
         self.assertIn("codex exec", probe)
         self.assertIn("--ephemeral", probe)
-        self.assertIn("--sandbox workspace-write", probe)
+        self.assertIn("--sandbox danger-full-access", probe)
+        self.assertNotIn("--sandbox workspace-write", probe)
         self.assertIn("--dangerously-bypass-hook-trust", probe)
         self.assertIn("synthetic-local-rules.md", probe)
         self.assertIn("SYNTHETIC_LOCAL_RULE_ACTIVE", probe)

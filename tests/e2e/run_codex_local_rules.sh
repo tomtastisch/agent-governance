@@ -60,10 +60,13 @@ angeforderte sichere JSON aus.
 Path(sys.argv[2]).write_text(contract + context, encoding="utf-8")
 PY
 
+# Codex documents danger-full-access for execution that is already confined by
+# a container or equivalent isolated environment. The outer non-privileged
+# Docker container retains its default seccomp and AppArmor boundaries.
 codex exec \
   --ephemeral \
   --ignore-user-config \
-  --sandbox workspace-write \
+  --sandbox danger-full-access \
   --dangerously-bypass-hook-trust \
   --cd "$workspace" \
   --add-dir "$codex_state" \
@@ -171,7 +174,7 @@ PY
 
 codex exec \
   --ephemeral \
-  --sandbox workspace-write \
+  --sandbox danger-full-access \
   --dangerously-bypass-hook-trust \
   --cd "$workspace" \
   --output-schema "$release_root/tests/e2e/runtime-output.schema.json" \
@@ -268,7 +271,7 @@ nur im angeforderten JSON-Schema.\n\n""" + json.dumps(envelope, sort_keys=True) 
 PY
   codex exec \
     --ephemeral \
-    --sandbox workspace-write \
+    --sandbox danger-full-access \
     --dangerously-bypass-hook-trust \
     --cd "$workspace" \
     --output-schema "$release_root/tests/e2e/effect-output.schema.json" \
