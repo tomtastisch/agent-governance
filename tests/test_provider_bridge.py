@@ -18,6 +18,8 @@ ROOT = Path(__file__).resolve().parents[1]
 BRIDGE = ROOT / "integrations" / "microsoft-agent-governance-toolkit" / "bridge"
 BUILD = BRIDGE / "build-provider.sh"
 EXTRACT = BRIDGE / "extract-snapshot.py"
+VERIFY_RUNTIME = BRIDGE / "verify-runtime.py"
+RUNTIME_MANIFEST = BRIDGE / "runtime.files.sha256"
 PROVIDER = BRIDGE / "provider.mjs"
 CODEX_HOOK = BRIDGE / "codex-hook.mjs"
 POLICY = BRIDGE / "policy.json"
@@ -43,6 +45,60 @@ class ProviderBridgeContract(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("absolute", result.stderr.lower())
+
+    def test_build_rejects_group_or_world_writable_current_runtime(self):
+        with tempfile.TemporaryDirectory(prefix="agent-governance-provider-mode-") as directory:
+            runtime = Path(directory) / "runtime"
+            build = subprocess.run(
+                [str(BUILD), str(runtime)],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
+            self.assertEqual(build.returncode, 0, build.stderr)
+
+            runtime_files = (
+                "runtime.files.sha256",
+                "build.receipt",
+                "microsoft-sdk/dist/policy.js",
+                "microsoft-sdk/dist/protocol-facets.js",
+                "microsoft-sdk/dist/types.js",
+            )
+            for index, relative in enumerate(runtime_files):
+                with self.subTest(relative=relative):
+                    tampered_runtime = Path(directory) / f"tampered-runtime-{index}"
+                    shutil.copytree(runtime, tampered_runtime)
+                    (tampered_runtime / relative).chmod(0o666)
+                    current = subprocess.run(
+                        [str(BUILD), str(tampered_runtime)],
+                        cwd=ROOT,
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                    )
+
+                    self.assertNotEqual(current.returncode, 0)
+                    self.assertIn("integrity", current.stderr.lower())
+
+    def test_runtime_verifier_rejects_fifo_without_blocking(self):
+        with tempfile.TemporaryDirectory(prefix="agent-governance-provider-fifo-") as directory:
+            runtime = Path(directory).resolve(strict=True) / "runtime"
+            runtime.mkdir()
+            os.mkfifo(runtime / "runtime.files.sha256", mode=0o600)
+
+            try:
+                result = subprocess.run(
+                    ["python3", str(VERIFY_RUNTIME), str(RUNTIME_MANIFEST), str(runtime)],
+                    cwd=ROOT,
+                    capture_output=True,
+                    text=True,
+                    timeout=1,
+                )
+            except subprocess.TimeoutExpired:
+                self.fail("Runtime-Verifikation blockiert an einer FIFO-Spezialdatei")
+
+            self.assertNotEqual(result.returncode, 0)
 
     def test_extractor_rejects_traversal_and_link_entries(self):
         self.assertTrue(EXTRACT.is_file())

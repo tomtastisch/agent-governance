@@ -7,6 +7,7 @@ import hashlib
 import os
 from pathlib import Path, PurePosixPath
 import re
+import stat
 import sys
 
 
@@ -17,10 +18,26 @@ def fail(message: str) -> None:
     raise SystemExit(f"verify-runtime: {message}")
 
 
+def read_nonwritable_regular_file(path: Path, label: str) -> bytes:
+    flags = os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError:
+        fail(f"{label} is not a readable regular file")
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_mode & 0o022:
+            fail(f"{label} is group- or world-writable")
+        with os.fdopen(descriptor, "rb", closefd=False) as handle:
+            return handle.read()
+    finally:
+        os.close(descriptor)
+
+
 def load_expected(path: Path) -> tuple[bytes, dict[str, str]]:
-    if not path.is_absolute() or not path.is_file() or path.is_symlink():
+    if not path.is_absolute() or path.is_symlink():
         fail("expected manifest is not an absolute regular file")
-    payload = path.read_bytes()
+    payload = read_nonwritable_regular_file(path, "expected manifest")
     expected: dict[str, str] = {}
     for raw_line in payload.decode("ascii").splitlines():
         match = LINE.fullmatch(raw_line)
@@ -43,9 +60,9 @@ def verify(expected_manifest: Path, runtime: Path) -> None:
     if runtime.resolve(strict=True) != runtime:
         fail("runtime path contains a symlink")
     installed_manifest = runtime / "runtime.files.sha256"
-    if not installed_manifest.is_file() or installed_manifest.is_symlink():
+    if installed_manifest.is_symlink():
         fail("runtime manifest is missing")
-    if installed_manifest.read_bytes() != payload:
+    if read_nonwritable_regular_file(installed_manifest, "runtime manifest") != payload:
         fail("runtime manifest integrity mismatch")
 
     actual: set[str] = set()
@@ -62,8 +79,9 @@ def verify(expected_manifest: Path, runtime: Path) -> None:
 
     for relative, digest in expected.items():
         candidate = runtime / relative
-        with candidate.open("rb") as handle:
-            observed = hashlib.file_digest(handle, "sha256").hexdigest()
+        observed = hashlib.sha256(
+            read_nonwritable_regular_file(candidate, "runtime file")
+        ).hexdigest()
         if observed != digest:
             fail("runtime byte integrity mismatch")
 
