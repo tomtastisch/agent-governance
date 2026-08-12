@@ -43,15 +43,13 @@ class CleanImageContract(unittest.TestCase):
             "governed",
             "agent-governance-e2e",
             "--network none",
-            "FRESH",
-            "CURRENT",
-            "LEGACY",
+            "codex_fresh=PASS",
+            "fixture_current=PASS",
+            "fixture_legacy=PASS",
             "LC_ALL=C",
             "TZ=UTC",
             "init.defaultBranch=master",
             "HOME With Spaces",
-            "fixture_current=PASS",
-            "fixture_legacy=PASS",
         ):
             self.assertIn(term, runner)
         self.assertNotRegex(runner, r"(?m)^\s*'CURRENT=PASS'")

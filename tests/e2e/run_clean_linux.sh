@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-source_ref=HEAD
+source_ref=
 offline=false
 verify_secrets=false
 hostile_matrix=false
@@ -32,6 +32,11 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if [[ ! $source_ref =~ ^[0-9a-f]{40}$ ]]; then
+  echo "run_clean_linux: --source requires an exact 40-character commit SHA" >&2
+  exit 2
+fi
+
 repository_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd -P)
 docker_context=${AGENT_GOVERNANCE_DOCKER_CONTEXT:?AGENT_GOVERNANCE_DOCKER_CONTEXT is required}
 auth_source=${CODEX_AUTH_FILE:?CODEX_AUTH_FILE is required}
@@ -42,10 +47,16 @@ if [[ $auth_source != /* || ! -f $auth_source || -L $auth_source ]]; then
 fi
 
 source_sha=$(git -C "$repository_root" rev-parse "$source_ref^{commit}")
+if [[ $source_sha != "$source_ref" ]]; then
+  echo "run_clean_linux: source did not resolve byte-for-byte to the expected commit" >&2
+  exit 1
+fi
+git -C "$repository_root" verify-commit "$source_sha"
 resource_suffix=${source_sha:0:12}-$$
 image=agent-governance-e2e:$resource_suffix
 baseline=agent-governance-e2e-baseline-$resource_suffix
 governed=agent-governance-e2e-governed-$resource_suffix
+governed_state=agent-governance-e2e-state-$resource_suffix
 shared_tmp_root=${AGENT_GOVERNANCE_E2E_TMP_ROOT:-$(dirname -- "$repository_root")}
 if [[ $shared_tmp_root != /* || ! -d $shared_tmp_root || -L $shared_tmp_root ]]; then
   echo "run_clean_linux: E2E temporary root must be an absolute existing non-symlink directory" >&2
@@ -66,6 +77,7 @@ docker_cli() {
 cleanup() {
   docker_cli rm -f "$baseline" "$governed" >/dev/null 2>&1 || true
   docker_cli image rm -f "$image" >/dev/null 2>&1 || true
+  docker_cli volume rm "$governed_state" >/dev/null 2>&1 || true
   rm -rf -- "$e2e_tmp"
   if [[ ! -e $e2e_tmp ]]; then
     echo 'auth_cleanup=PASS'
@@ -86,6 +98,8 @@ docker_cli build \
   --tag "$image" \
   "$release_dir/tests/e2e"
 
+docker_cli volume create "$governed_state" >/dev/null
+
 docker_cli run --name "$baseline" \
   --mount "type=bind,source=$release_dir,target=/release,readonly" \
   --mount "type=bind,source=$auth_dir,target=/auth-source,readonly" \
@@ -98,19 +112,16 @@ docker_cli run --name "$governed" \
   --mount "type=bind,source=$release_dir,target=/release,readonly" \
   --mount "type=bind,source=$auth_dir,target=/auth-source,readonly" \
   --mount "type=bind,source=$output_dir,target=/output" \
-  --tmpfs /run/e2e:rw,exec,mode=1777 \
+  --mount "type=volume,source=$governed_state,target=/run/e2e" \
   "$image" \
   bash /release/tests/e2e/container_entrypoint.sh governed
 
 if [[ $offline == true ]]; then
   docker_cli run --rm --network none \
     --mount "type=bind,source=$release_dir,target=/release,readonly" \
-    --tmpfs /tmp:rw,exec,mode=1777 \
-    --workdir /release \
-    --env LC_ALL=C \
-    --env TZ=UTC \
+    --mount "type=volume,source=$governed_state,target=/run/e2e" \
     "$image" \
-    bash tests/e2e/run_neutral_harness.sh
+    bash /release/tests/e2e/container_entrypoint.sh offline
   echo 'offline_runtime=PASS'
 fi
 
@@ -123,7 +134,9 @@ if [[ $hostile_matrix == true ]]; then
     --env TZ=UTC \
     --env GIT_CONFIG_GLOBAL=/tmp/synthetic-global-gitconfig \
     "$image" \
-    bash -c 'set -euo pipefail; git config --global init.defaultBranch master; python3 -m unittest tests.test_bootstrap_contract tests.test_neutral_harness -v'
+    bash -c 'set -euo pipefail; git config --global init.defaultBranch master; python3 -m unittest tests.test_bootstrap_contract.CurrentInstall tests.test_bootstrap_contract.LegacyInstall tests.test_bootstrap_contract.Rollback tests.test_bootstrap_contract.PathSafety tests.test_neutral_harness -v'
+  echo 'fixture_current=PASS'
+  echo 'fixture_legacy=PASS'
   echo 'hostile_matrix=PASS'
 fi
 
@@ -146,6 +159,4 @@ printf '%s\n' \
   'base_image=PASS' \
   'baseline=PASS' \
   'governed=PASS' \
-  'FRESH=PASS' \
-  'CURRENT=PASS' \
-  'LEGACY=PASS'
+  'codex_fresh=PASS'

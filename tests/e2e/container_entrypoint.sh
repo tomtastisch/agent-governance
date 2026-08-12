@@ -6,6 +6,21 @@ codex_state=/run/e2e/codex-home
 synthetic_home='/run/e2e/HOME With Spaces'
 workspace=/run/e2e/workspace
 
+export LC_ALL=C
+export TZ=UTC
+export GIT_CONFIG_GLOBAL=/run/e2e/gitconfig
+
+if [[ $mode == offline ]]; then
+  test ! -e "$codex_state/auth.json"
+  runuser -u e2e -- env \
+    CODEX_HOME="$codex_state" \
+    HOME="$synthetic_home" \
+    LC_ALL=C \
+    TZ=UTC \
+    bash /release/tests/e2e/run_materialized_offline.sh
+  exit 0
+fi
+
 cleanup_auth() {
   rm -f -- "$codex_state/auth.json"
 }
@@ -16,10 +31,6 @@ chmod 700 "$codex_state" "$synthetic_home"
 cp /auth-source/auth.json "$codex_state/auth.json"
 chmod 600 "$codex_state/auth.json"
 chown -R e2e:e2e "$codex_state" "$synthetic_home" "$workspace" /output
-
-export LC_ALL=C
-export TZ=UTC
-export GIT_CONFIG_GLOBAL=/run/e2e/gitconfig
 git config --global init.defaultBranch master
 
 if [[ $mode == baseline ]]; then
