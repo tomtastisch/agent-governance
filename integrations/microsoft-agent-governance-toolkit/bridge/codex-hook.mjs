@@ -1,5 +1,5 @@
 import { constants as fsConstants } from "node:fs";
-import { lstat, open, readFile } from "node:fs/promises";
+import { open } from "node:fs/promises";
 import path from "node:path";
 
 import { evaluateEnvelope } from "./provider.mjs";
@@ -75,14 +75,24 @@ async function actionEnvelopeFromHook(input, enforcedToolName, bindingsPath) {
   if (typeof bindingsPath !== "string" || !path.isAbsolute(bindingsPath)) {
     throw new Error("action_bindings_path");
   }
-  const bindingsStat = await lstat(bindingsPath);
-  if (!bindingsStat.isFile() || bindingsStat.isSymbolicLink() || (bindingsStat.mode & 0o022) !== 0) {
-    throw new Error("action_bindings_file");
+  const bindingsHandle = await open(
+    bindingsPath,
+    fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0),
+  );
+  let bindingsPayload;
+  try {
+    const bindingsStat = await bindingsHandle.stat();
+    if (!bindingsStat.isFile() || (bindingsStat.mode & 0o022) !== 0) {
+      throw new Error("action_bindings_file");
+    }
+    if (bindingsStat.size > MAX_BINDINGS_BYTES) {
+      throw new Error("action_bindings_size");
+    }
+    bindingsPayload = await bindingsHandle.readFile("utf8");
+  } finally {
+    await bindingsHandle.close();
   }
-  if (bindingsStat.size > MAX_BINDINGS_BYTES) {
-    throw new Error("action_bindings_size");
-  }
-  const bindings = JSON.parse(await readFile(bindingsPath, "utf8"));
+  const bindings = JSON.parse(bindingsPayload);
   if (!isPlainObject(bindings)
       || !hasExactKeys(
         bindings,

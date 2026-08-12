@@ -18,6 +18,8 @@ archive="$integration_dir/upstream/agent-governance-toolkit-v4.1.0.tar.gz"
 manifest="$integration_dir/snapshot.files.sha256"
 lock="$integration_dir/upstream.lock.toml"
 extractor="$script_dir/extract-snapshot.py"
+runtime_manifest="$script_dir/runtime.files.sha256"
+runtime_verifier="$script_dir/verify-runtime.py"
 
 expected_hash=$(python3 - "$lock" <<'PY'
 import sys
@@ -45,12 +47,11 @@ if [[ -L $output ]]; then
   exit 1
 fi
 if [[ -e $output ]]; then
-  if [[ -f $output/build.receipt && -f $output/microsoft-sdk/dist/policy.js ]] \
-      && grep -Fxq "archive_sha256=$expected_hash" "$output/build.receipt"; then
+  if python3 "$runtime_verifier" "$runtime_manifest" "$output" >/dev/null; then
     echo "build-provider: PASS (current)"
     exit 0
   fi
-  echo "build-provider: existing output is not the current verified runtime" >&2
+  echo "build-provider: existing output failed runtime integrity verification" >&2
   exit 1
 fi
 
@@ -76,13 +77,14 @@ fi
   npm prune --omit=dev --ignore-scripts --no-audit --no-fund
 )
 
-mkdir -p "$stage/runtime/microsoft-sdk"
-cp -R "$sdk_source/dist" "$stage/runtime/microsoft-sdk/dist"
-cp -R "$sdk_source/node_modules" "$stage/runtime/microsoft-sdk/node_modules"
-cp "$sdk_source/package.json" "$stage/runtime/microsoft-sdk/package.json"
-cp "$sdk_source/package-lock.json" "$stage/runtime/microsoft-sdk/package-lock.json"
+mkdir -p "$stage/runtime/microsoft-sdk/dist"
+for runtime_file in policy.js protocol-facets.js types.js; do
+  cp "$sdk_source/dist/$runtime_file" "$stage/runtime/microsoft-sdk/dist/$runtime_file"
+done
 printf 'archive_sha256=%s\nresolved_tag=v4.1.0\nresolved_commit=0de71ca6c95cf8b9b975ac96f48eaa7826bbe258\n' \
   "$expected_hash" > "$stage/runtime/build.receipt"
+cp "$runtime_manifest" "$stage/runtime/runtime.files.sha256"
+python3 "$runtime_verifier" "$runtime_manifest" "$stage/runtime" >/dev/null
 mv "$stage/runtime" "$output"
 
 echo "build-provider: PASS"
