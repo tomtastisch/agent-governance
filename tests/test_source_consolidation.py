@@ -5,8 +5,10 @@ from __future__ import annotations
 
 from pathlib import Path, PurePath
 import re
+import shutil
 import subprocess
 import tarfile
+import tempfile
 import unittest
 
 try:
@@ -228,13 +230,23 @@ class ReleaseMetadataContract(unittest.TestCase):
 class PrivateProfileMigrationGuardContract(unittest.TestCase):
     @staticmethod
     def check_ignore(path: str) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            ["git", "check-ignore", "--no-index", "-v", "--", path],
-            cwd=ROOT,
-            check=False,
-            capture_output=True,
-            text=True,
-        )
+        with tempfile.TemporaryDirectory(prefix="agent-governance-ignore-") as directory:
+            repository = Path(directory)
+            shutil.copy2(ROOT / ".gitignore", repository / ".gitignore")
+            subprocess.run(
+                ["git", "-c", "init.defaultBranch=master", "init", "--quiet"],
+                cwd=repository,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            return subprocess.run(
+                ["git", "check-ignore", "--no-index", "-v", "--", path],
+                cwd=repository,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
 
     def test_private_profile_path_is_ignored_by_exact_repository_rule(self):
         result = self.check_ignore("profile/profile.md")
