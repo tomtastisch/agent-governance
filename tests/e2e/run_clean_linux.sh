@@ -47,6 +47,7 @@ image=agent-governance-e2e:$resource_suffix
 baseline=agent-governance-e2e-baseline-$resource_suffix
 governed=agent-governance-e2e-governed-$resource_suffix
 e2e_tmp=$(mktemp -d "${TMPDIR:-/tmp}/agent-governance-e2e.XXXXXX")
+e2e_tmp=$(CDPATH= cd -- "$e2e_tmp" && pwd -P)
 release_dir=$e2e_tmp/release
 auth_dir=$e2e_tmp/auth
 output_dir=$e2e_tmp/output
