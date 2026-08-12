@@ -341,8 +341,7 @@ class Rollback(LegacyInstall):
         original_copy = transaction._copy_item
 
         def fail_one_restore(source: Path, target: Path) -> None:
-            if transaction._backup is not None and source.parent == transaction._backup \
-                    and target == self.global_instruction:
+            if transaction._backup is not None and source == transaction._backup / "1":
                 raise OSError("synthetic restore failure")
             original_copy(source, target)
 

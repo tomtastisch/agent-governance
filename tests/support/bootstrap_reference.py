@@ -13,6 +13,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import tempfile
 import tomllib
 from typing import Callable, Mapping
 import uuid
@@ -84,8 +85,8 @@ class BootstrapTransaction:
         local_rules_preserved = False
         mutation_count = 0
         try:
-            self._backup = self.allowed / ".agent-governance-backups" / uuid.uuid4().hex
-            self._stage = self.allowed / (".agent-governance-stage-" + uuid.uuid4().hex)
+            self._backup = self._create_backup_directory()
+            self._stage = self._create_transaction_directory(".agent-governance-stage-")
             self._backup_targets()
             backup_verified = self._verify_backup()
             if not backup_verified:
@@ -181,6 +182,12 @@ class BootstrapTransaction:
             if target.exists() and not target.is_file():
                 raise BootstrapError("Bestehendes Harnessziel ist keine reguläre Datei")
         self._validate_root_candidates()
+        backup_root = self.allowed / ".agent-governance-backups"
+        if backup_root.exists() or backup_root.is_symlink():
+            if backup_root.is_symlink() or not backup_root.is_dir():
+                raise BootstrapError("Interne Backupwurzel ist kein reales Verzeichnis")
+            if backup_root.resolve(strict=True) != backup_root:
+                raise BootstrapError("Interne Backupwurzel darf keinen Symlink enthalten")
 
     def _validate_target(self, target: Path, allowed_real: Path) -> None:
         if not target.is_absolute():
@@ -310,7 +317,8 @@ class BootstrapTransaction:
     def _backup_targets(self, targets: tuple[Path, ...] | None = None) -> None:
         assert self._backup is not None
         self._backup_targets_active = targets if targets is not None else self._targets
-        self._backup.mkdir(parents=True, mode=0o700)
+        if not self._backup.is_dir() or self._backup.is_symlink():
+            raise BootstrapError("Transaktionsbackup ist kein reales Verzeichnis")
         metadata: dict[str, bool] = {}
         for index, target in enumerate(self._backup_targets_active):
             exists = target.exists()
@@ -351,13 +359,12 @@ class BootstrapTransaction:
         local_target = self._manifest_local_rules_target(self.install)
         local_rules_preserved = local_target.is_file()
         try:
-            self._backup = self.allowed / ".agent-governance-backups" / uuid.uuid4().hex
-            self._stage = self.allowed / (".agent-governance-stage-" + uuid.uuid4().hex)
+            self._backup = self._create_backup_directory()
+            self._stage = self._create_transaction_directory(".agent-governance-stage-")
             self._backup_targets(affected)
             backup_verified = self._verify_backup()
             if not backup_verified:
                 raise BootstrapError("Backup konnte nicht byteweise verifiziert werden")
-            self._stage.mkdir(mode=0o700)
             staged: dict[Path, Path] = {}
             for index, target in enumerate(affected):
                 path = self._stage / str(index)
@@ -397,7 +404,8 @@ class BootstrapTransaction:
         self, state: str, version: str
     ) -> tuple[Path, Path, Path, Path]:
         assert self._stage is not None
-        self._stage.mkdir(mode=0o700)
+        if not self._stage.is_dir() or self._stage.is_symlink():
+            raise BootstrapError("Transaktionsstage ist kein reales Verzeichnis")
         stage_install = self._stage / "install"
         stage_install.mkdir()
         shutil.copy2(self.release / "VERSION", stage_install / "VERSION")
@@ -549,28 +557,65 @@ class BootstrapTransaction:
         if self._backup is None or not self._backup.exists():
             self._discard_stage()
             return
+        recovery: Path | None = None
         try:
             metadata = json.loads((self._backup / "presence.json").read_text(encoding="utf-8"))
-            for target in self._backup_targets_active:
-                self._remove_item(target)
-            if self._retired_install is not None and self._retired_install.exists():
-                shutil.rmtree(self._retired_install)
+            recovery = self._create_transaction_directory(".agent-governance-recovery-")
             for index, target in enumerate(self._backup_targets_active):
                 if metadata[str(index)]:
-                    self._copy_item(self._backup / str(index), target)
+                    prepared = recovery / f"restore-{index}"
+                    self._copy_item(self._backup / str(index), prepared)
+                    if not self._same_item(self._backup / str(index), prepared):
+                        raise BootstrapError("Rollbackvorbereitung ist nicht bytegleich")
+
+            quarantined: list[Path] = []
+            for index, target in enumerate(self._backup_targets_active):
+                if target.exists() or target.is_symlink():
+                    quarantine = recovery / f"replaced-{index}"
+                    os.replace(target, quarantine)
+                    quarantined.append(quarantine)
+                if metadata[str(index)]:
+                    os.replace(recovery / f"restore-{index}", target)
             for index, target in enumerate(self._backup_targets_active):
                 if bool(metadata[str(index)]) != target.exists():
                     raise BootstrapError("Rollback konnte den Ausgangszustand nicht herstellen")
                 if metadata[str(index)] and not self._same_item(self._backup / str(index), target):
                     raise BootstrapError("Rollback ist nicht bytegleich")
-        finally:
+
+            if self._retired_install is not None and self._retired_install.exists():
+                shutil.rmtree(self._retired_install)
             shutil.rmtree(self._backup, ignore_errors=True)
             parent = self._backup.parent
             try:
                 parent.rmdir()
             except OSError:
                 pass
+            if recovery is not None:
+                shutil.rmtree(recovery, ignore_errors=True)
             self._discard_stage()
+        except Exception as error:
+            self._discard_stage()
+            raise BootstrapError(
+                f"Rollback fehlgeschlagen; verifiziertes Recovery-Backup bleibt unter {self._backup}"
+            ) from error
+
+    def _create_backup_directory(self) -> Path:
+        root = self.allowed / ".agent-governance-backups"
+        try:
+            root.mkdir(mode=0o700)
+        except FileExistsError:
+            pass
+        if root.is_symlink() or not root.is_dir() or root.resolve(strict=True) != root:
+            raise BootstrapError("Interne Backupwurzel ist unsicher")
+        os.chmod(root, 0o700)
+        return Path(tempfile.mkdtemp(prefix="transaction-", dir=root))
+
+    def _create_transaction_directory(self, prefix: str) -> Path:
+        path = Path(tempfile.mkdtemp(prefix=prefix, dir=self.allowed))
+        if path.is_symlink() or path.resolve(strict=True) != path:
+            raise BootstrapError("Interne Transaktionswurzel ist unsicher")
+        os.chmod(path, 0o700)
+        return path
 
     def _discard_stage(self) -> None:
         if self._stage is not None:
