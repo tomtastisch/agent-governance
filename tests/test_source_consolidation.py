@@ -208,12 +208,15 @@ class HistoricalEvidenceContract(unittest.TestCase):
 
 
 class ReleaseMetadataContract(unittest.TestCase):
-    def test_current_version_declares_source_removal_as_breaking(self):
+    def test_current_version_declares_minor_capabilities_without_breaking(self):
         changelog = read(ROOT / "CHANGELOG.md")
         version = read(ROOT / "VERSION").strip()
         current = changelog.split(f"## [{version}]", 1)[1].split("\n## [", 1)[0]
-        self.assertIn("**Breaking changes:** present", current)
-        self.assertRegex(current, r"(?m)^- \*\*BREAKING:\*\* .+")
+        self.assertEqual(version, "0.3.0")
+        self.assertIn("**Breaking changes:** none", current)
+        self.assertNotIn("**BREAKING:**", current)
+        for capability in ("Installation.bootstrap.prompt.md", "Enforcement", "Microsoft"):
+            self.assertIn(capability, current)
 
     def test_unreleased_is_reset_after_version_classification(self):
         changelog = read(ROOT / "CHANGELOG.md")
