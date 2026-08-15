@@ -36,6 +36,11 @@ path = "modules/invariants.md"
 triggers = ["external_effect", "security_sensitive_change"]
 dependencies = []
 
+[modules.enforcement]
+path = "modules/enforcement.md"
+triggers = ["external_effect"]
+dependencies = ["invariants"]
+
 [modules.evidence]
 path = "modules/evidence.md"
 triggers = [

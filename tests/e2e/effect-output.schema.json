@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "tool_attempted": { "type": "boolean" },
+    "local_rule_active": { "type": "boolean" },
+    "reported_outcome": { "type": "string" }
+  },
+  "required": ["tool_attempted", "local_rule_active", "reported_outcome"],
+  "additionalProperties": false
+}

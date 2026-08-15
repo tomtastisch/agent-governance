@@ -17,14 +17,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Keine.
+
+### Removed
+
+- Keine.
+
+**Breaking changes:** none
+
+## [0.3.0] — 2026-08-12
+
+### Added
+
+- Einmaliger harness- und providerneutraler `Installation.bootstrap.prompt.md` mit sicherer
+  Harness-Erkennung, Backup, Staging, Rollback und frischer Runtime-Verifikation.
+- Automatisierte Fresh-, Current- und Legacy-Pfade einschließlich idempotenter Current-Prüfung,
+  gezielter Binding-Reparatur, verpflichtender Legacyfixture und verlustfreier synthetischer
+  Regelmigration.
+- Providerneutraler Enforcement Contract mit geschlossener Action Envelope, den Entscheidungen
+  `allow`, `deny`, `require_approval`, `error` und `unknown` sowie verbindlicher
+  fail-closed-Semantik vor dem Effekt.
+- Microsoft Agent Governance Toolkit als gepinnter Enforcement-Provider: offizielles stabiles
+  Release `v4.1.0`, exakter Commit, byte-identisches Releasearchiv, neu berechneter SHA-256,
+  vollständiges Dateimanifest, MIT-Lizenz, NOTICE und Trademark-Hinweis.
+- Kleine Bridge zum realen Microsoft-PolicyEngine und Codex-PreToolUse-Hook für einen explizit
+  operationsgebundenen Toolpfad mit vertrauenswürdig abgeleiteter Action Envelope.
+- Produktneutraler synthetischer Harness für Routing, Rollen, `local_rules`, Offlinebetrieb,
+  lokalen Audit und alle Providerentscheidungen ohne produktspezifische Pfadvorgabe.
+- Clean-Linux-E2E mit Codex CLI 0.147.0, echter frischer Runtime, real blockierten
+  Providerentscheidungen, materialisiertem Offline-Provider, zustandsspezifischen Fixtures,
+  immutable Buildinputs, Exact-Commit-Prüfung, Hostile-Matrix sowie Secret- und Auth-Isolation.
+- Sicherheits- und Regressionstests für Archivextraktion, Instruction Boundary,
+  Pfad-/Symlink-Traversal, Rootkonflikte, Backup/Rollback und private Evidenzgrenzen.
+
+### Changed
+
+- README führt Mitarbeiter über einen kurzen Release- und Bootstrapfluss und trennt Governance,
+  Enforcement und Microsoft-Provider ausdrücklich.
+- INSTALL bleibt Boundary- und Verantwortungsdokument; der ausführbare Installationsvertrag liegt
+  ausschließlich in `Installation.bootstrap.prompt.md`.
 - Die Bootstrap-Root-Auflösung verwendet begrenzte, manifestvalidierte Harness-Kandidaten wie
   `CODEX_HOME` und `AGENT_GOVERNANCE_ROOT`, akzeptiert gesetzte Umgebungskandidaten nur als
   nichtleere absolute Pfade und behandelt das aktuelle Arbeitsverzeichnis nicht implizit als
-  Bundle-Root; Folgezugriffe behalten den absoluten Root und das daraus abgeleitete
-  Manifestverzeichnis bei und verwechseln zusätzliche projektlokale `AGENTS.md` nicht mit dem
-  Governance-Einstiegspunkt.
+  Bundle-Root.
+
+### Fixed
+
+- Caller-kontrollierte Effect-, Autorisierungs-, Risiko-, Approval- und Evidence-Attestierungen
+  werden nicht mehr als technische Enforcement-Eingabe vertraut; Hook und synthetisches Effekttool
+  binden dieselbe kanonische Operation unabhängig an die tatsächliche Wirkung.
+- Bereits materialisierte Provider-Runtimes, Policy und Operationsvertrag werden vor Verwendung
+  vollständig und releasegebunden auf Byteintegrität geprüft.
+- Ein interner Rollbackfehler bewahrt das verifizierte Recovery-Backup und einen recoverbaren
+  Altzustand; eine umgeleitete interne Backupwurzel wird vor privaten Kopien blockiert.
+- Clean-Linux-Statuszeilen unterscheiden realen Codex-Fresh-Lauf, Current-/Legacy-Fixtures und
+  materialisierten Offline-Provider und behaupten keine nicht ausgeführten Zustände mehr.
+
+- Folgezugriffe behalten den absoluten Governance-Root und das daraus abgeleitete
+  Manifestverzeichnis bei; eine zusätzliche projektlokale `AGENTS.md` wird nicht mit dem
+  kanonischen Einstiegspunkt verwechselt.
 - Der Statusvertrag verlangt ein ausdrücklich benanntes Feld für verbleibende Risiken und
   schreibt bei leerem Restbestand `Verbleibende Risiken: keine` vor.
+- Der Legacy-Regressionspfad stellt sicher, dass bestehende aktive Verdrahtung und synthetische
+  persönliche Regeln nicht nur durch einen sauberen Fresh-Test verdeckt werden.
 
 ### Removed
 

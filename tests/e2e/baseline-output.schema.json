@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "codex_running": { "type": "boolean" },
+    "governance_present": { "type": "boolean" },
+    "agent_governance_present": { "type": "boolean" }
+  },
+  "required": ["codex_running", "governance_present", "agent_governance_present"],
+  "additionalProperties": false
+}

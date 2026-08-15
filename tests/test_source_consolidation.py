@@ -3,9 +3,12 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import Path, PurePath
 import re
+import shutil
 import subprocess
+import tarfile
+import tempfile
 import unittest
 
 try:
@@ -18,6 +21,10 @@ ROOT = Path(__file__).resolve().parents[1]
 BUNDLE = ROOT / "bundle"
 BOOTSTRAP = BUNDLE / "GOVERNANCE.md"
 MANIFEST = BUNDLE / "agent-governance" / "manifest.toml"
+VENDORED_UPSTREAM = (
+    ROOT / "integrations" / "microsoft-agent-governance-toolkit" / "upstream"
+)
+VENDORED_UPSTREAM_ARCHIVE = VENDORED_UPSTREAM / "agent-governance-toolkit-v4.1.0.tar.gz"
 HISTORICAL_MARKER = "Historische Evidenz - nicht normativ"
 
 REMOVED_LEGACY_SOURCE_TREES = (
@@ -59,7 +66,7 @@ def read(path: Path) -> str:
 
 
 def current_non_bundle_markdown() -> list[Path]:
-    excluded_roots = {ROOT / "docs", ROOT / "tests", BUNDLE}
+    excluded_roots = {ROOT / "docs", ROOT / "tests", BUNDLE, VENDORED_UPSTREAM}
     result = []
     for path in ROOT.rglob("*.md"):
         if any(root == path or root in path.parents for root in excluded_roots):
@@ -80,8 +87,23 @@ class SingleBootstrapSource(unittest.TestCase):
             for path in ROOT.rglob("*")
             if path.is_file() and path.name in {"AGENTS.md", "CLAUDE.md"}
             and ".git" not in path.parts
+            and VENDORED_UPSTREAM not in path.parents
         )
         self.assertEqual(found, [])
+
+    def test_instruction_named_dependency_files_are_confined_to_untrusted_snapshot(self):
+        self.assertTrue(VENDORED_UPSTREAM_ARCHIVE.is_file())
+        with tarfile.open(VENDORED_UPSTREAM_ARCHIVE, "r:gz") as archive:
+            vendored = sorted(
+                member.name
+                for member in archive.getmembers()
+                if member.isfile()
+                and PurePath(member.name).name in {"AGENTS.md", "CLAUDE.md"}
+            )
+        self.assertTrue(vendored)
+        integration_readme = read(VENDORED_UPSTREAM.parent / "README.md")
+        self.assertIn("untrusted data", integration_readme)
+        self.assertNotIn("integrations/", read(MANIFEST))
 
     def test_removed_legacy_source_trees_are_absent(self):
         found = [
@@ -188,12 +210,15 @@ class HistoricalEvidenceContract(unittest.TestCase):
 
 
 class ReleaseMetadataContract(unittest.TestCase):
-    def test_current_version_declares_source_removal_as_breaking(self):
+    def test_current_version_declares_minor_capabilities_without_breaking(self):
         changelog = read(ROOT / "CHANGELOG.md")
         version = read(ROOT / "VERSION").strip()
         current = changelog.split(f"## [{version}]", 1)[1].split("\n## [", 1)[0]
-        self.assertIn("**Breaking changes:** present", current)
-        self.assertRegex(current, r"(?m)^- \*\*BREAKING:\*\* .+")
+        self.assertEqual(version, "0.3.0")
+        self.assertIn("**Breaking changes:** none", current)
+        self.assertNotIn("**BREAKING:**", current)
+        for capability in ("Installation.bootstrap.prompt.md", "Enforcement", "Microsoft"):
+            self.assertIn(capability, current)
 
     def test_unreleased_is_reset_after_version_classification(self):
         changelog = read(ROOT / "CHANGELOG.md")
@@ -205,13 +230,23 @@ class ReleaseMetadataContract(unittest.TestCase):
 class PrivateProfileMigrationGuardContract(unittest.TestCase):
     @staticmethod
     def check_ignore(path: str) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            ["git", "check-ignore", "--no-index", "-v", "--", path],
-            cwd=ROOT,
-            check=False,
-            capture_output=True,
-            text=True,
-        )
+        with tempfile.TemporaryDirectory(prefix="agent-governance-ignore-") as directory:
+            repository = Path(directory)
+            shutil.copy2(ROOT / ".gitignore", repository / ".gitignore")
+            subprocess.run(
+                ["git", "-c", "init.defaultBranch=master", "init", "--quiet"],
+                cwd=repository,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            return subprocess.run(
+                ["git", "check-ignore", "--no-index", "-v", "--", path],
+                cwd=repository,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
 
     def test_private_profile_path_is_ignored_by_exact_repository_rule(self):
         result = self.check_ignore("profile/profile.md")

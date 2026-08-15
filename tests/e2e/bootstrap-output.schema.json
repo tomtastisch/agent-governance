@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "version": { "type": "string" },
+    "state": { "type": "string", "enum": ["FRESH", "CURRENT", "LEGACY"] },
+    "governance_root": { "type": "string" },
+    "harness_type": { "type": "string" },
+    "enforcement_provider": { "type": "string" },
+    "governance_check": { "type": "boolean" },
+    "manifest_check": { "type": "boolean" },
+    "provider_check": { "type": "boolean" },
+    "binding_check": { "type": "boolean" }
+  },
+  "required": [
+    "version",
+    "state",
+    "governance_root",
+    "harness_type",
+    "enforcement_provider",
+    "governance_check",
+    "manifest_check",
+    "provider_check",
+    "binding_check"
+  ],
+  "additionalProperties": false
+}
