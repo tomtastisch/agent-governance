@@ -25,6 +25,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Breaking changes:** none
 
+## [0.3.1] — 2026-08-15
+
+### Added
+
+- Keine.
+
+### Changed
+
+- Die releasekritischen GitHub-Actions-Checkout-Schritte für Tag- und
+  Published-Release-Validierung verwenden den exakt gepinnten, reparierten
+  `actions/checkout`-Stand `de0fac2e4500dabe0009e67214ff5f5447ce83dd` (`v6.0.2`).
+- Der öffentliche signierte Tag `v0.3.0` bleibt unverändert bestehen; wegen des
+  fehlgeschlagenen Tag-CI-Laufs wurde dafür kein GitHub Release veröffentlicht.
+- `v0.3.1` enthält den vollständigen `0.3.0`-Produktstand unverändert plus ausschließlich
+  diesen Release-Pipeline-Hotfix und ersetzt `v0.3.0` als produktiven GitHub Release.
+
+### Fixed
+
+- Signierte annotierte Release-Tags bleiben in Tag- und Published-Release-CI als echte
+  Tagobjekte erhalten und können deshalb durch `release_check` kryptografisch verifiziert
+  werden.
+
+### Removed
+
+- Keine.
+
+**Breaking changes:** none
+
 ## [0.3.0] — 2026-08-12
 
 ### Added

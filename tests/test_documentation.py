@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Mitarbeiterfluss, Boundary-Dokument und Releasemetadaten für 0.3.0."""
+"""Mitarbeiterfluss, Boundary-Dokument und aktuelle Releasemetadaten."""
 
 from __future__ import annotations
 
@@ -91,20 +91,17 @@ class InstallBoundaryContract(unittest.TestCase):
 
 
 class ReleaseMetadataContract(unittest.TestCase):
-    def test_semver_minor_release_is_consistent(self):
-        self.assertEqual(VERSION, "0.3.0")
-        self.assertIn("**Version:** [`0.3.0`](VERSION)", README)
-        self.assertIn("## [0.3.0] — 2026-08-12", CHANGELOG)
-        section = CHANGELOG.split("## [0.3.0]", 1)[1].split("\n## [", 1)[0]
+    def test_semver_patch_release_is_consistent(self):
+        self.assertEqual(VERSION, "0.3.1")
+        self.assertIn("**Version:** [`0.3.1`](VERSION)", README)
+        self.assertIn("## [0.3.1] — 2026-08-15", CHANGELOG)
+        section = CHANGELOG.split("## [0.3.1]", 1)[1].split("\n## [", 1)[0]
         for term in (
-            "Installation.bootstrap.prompt.md",
-            "Fresh",
-            "Current",
-            "Legacy",
-            "Microsoft Agent Governance Toolkit",
-            "v4.1.0",
-            "Enforcement",
-            "local_rules",
+            "actions/checkout",
+            "v6.0.2",
+            "annotierte Release-Tags",
+            "v0.3.0",
+            "kein GitHub Release",
         ):
             self.assertIn(term, section)
         self.assertIn("**Breaking changes:** none", section)
