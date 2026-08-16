@@ -25,6 +25,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Breaking changes:** none
 
+## [0.3.2] — 2026-08-15
+
+### Added
+
+- Ein versionierter, auf einen einzelnen genehmigten ED25519-Release-Signer und den
+  Git-Namespace begrenzter SSH-Allowed-Signers-Trust-Anchor für reproduzierbare
+  Release-Verifikation.
+
+### Changed
+
+- Die Release-Verifikation verwendet ihren repositorygebundenen SSH-Trust-Anchor direkt und
+  hängt nicht mehr von benutzerspezifischer oder GitHub-Runner-Gitkonfiguration ab.
+- Der GitHub-Release-Check validiert nun zusätzlich die kryptografische Signatur des
+  zugehörigen Release-Tags.
+- `v0.3.0` und `v0.3.1` bleiben unveränderte signierte Git-Tags ohne GitHub Release;
+  `v0.3.2` ist der nächste produktive Releasekandidat.
+
+### Fixed
+
+- Clean GitHub-hosted Runner können signierte SSH-Release-Tags deterministisch mit
+  `git tag -v` verifizieren, weil `release_check` den fingerprint-gepinnten
+  `allowedSignersFile` explizit pro Git-Aufruf bereitstellt.
+
+### Removed
+
+- Keine.
+
+**Breaking changes:** none
+
 ## [0.3.1] — 2026-08-15
 
 ### Added
@@ -39,13 +68,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Der öffentliche signierte Tag `v0.3.0` bleibt unverändert bestehen; wegen des
   fehlgeschlagenen Tag-CI-Laufs wurde dafür kein GitHub Release veröffentlicht.
 - `v0.3.1` enthält den vollständigen `0.3.0`-Produktstand unverändert plus ausschließlich
-  diesen Release-Pipeline-Hotfix und ersetzt `v0.3.0` als produktiven GitHub Release.
+  diesen Release-Pipeline-Hotfix. Sein Tag-CI scheiterte weiterhin, weil kein SSH-Trust-Anchor
+  bereitgestellt war; daher wurde kein GitHub Release `v0.3.1` veröffentlicht.
 
 ### Fixed
 
 - Signierte annotierte Release-Tags bleiben in Tag- und Published-Release-CI als echte
-  Tagobjekte erhalten und können deshalb durch `release_check` kryptografisch verifiziert
-  werden.
+  Tagobjekte erhalten. Die vollständige Signaturprüfung auf einem cleanen Runner funktionierte
+  in `v0.3.1` jedoch noch nicht, weil dort der SSH-Trust-Anchor fehlte.
 
 ### Removed
 

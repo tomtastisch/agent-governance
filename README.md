@@ -1,6 +1,6 @@
 # Agent Governance
 
-> **Version:** [`0.3.1`](VERSION) — [Changelog](CHANGELOG.md)
+> **Version:** [`0.3.2`](VERSION) — [Changelog](CHANGELOG.md)
 
 ## Was ist agent-governance?
 
