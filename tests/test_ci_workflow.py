@@ -40,6 +40,21 @@ class ReleaseCheckoutContract(unittest.TestCase):
                     + r"          fetch-depth: 0(?:\n|\Z)",
                 )
 
+    def test_release_jobs_load_verifier_and_trust_anchor_from_main(self):
+        checkout_line = (
+            f"      - uses: actions/checkout@{CHECKOUT_SHA} # v6.0.2"
+        )
+        for job_name in ("release-tag-check", "release-validate"):
+            with self.subTest(job=job_name):
+                block = _job_block(job_name)
+                self.assertRegex(
+                    block,
+                    re.escape(checkout_line)
+                    + r"\n        with:\n"
+                    + r"          ref: refs/heads/main\n"
+                    + r"          fetch-depth: 0(?:\n|\Z)",
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

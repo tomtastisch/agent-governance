@@ -37,6 +37,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Die Release-Verifikation verwendet ihren repositorygebundenen SSH-Trust-Anchor direkt und
   hängt nicht mehr von benutzerspezifischer oder GitHub-Runner-Gitkonfiguration ab.
+- Die Tag- und Published-Release-Jobs laden Verifier und Signer-Policy vom geschützten
+  `main`-Ref und prüfen das Kandidaten-Tag separat, sodass das Tag seinen eigenen Trust Anchor
+  nicht ersetzen kann.
 - Der GitHub-Release-Check validiert nun zusätzlich die kryptografische Signatur des
   zugehörigen Release-Tags.
 - `v0.3.0` und `v0.3.1` bleiben unveränderte signierte Git-Tags ohne GitHub Release;
