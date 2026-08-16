@@ -9,9 +9,13 @@ Drei Modi — alle read-only:
 Kein Modus erstellt Tags, Releases oder verändert das Repository.
 """
 
+import base64
+import binascii
+import hashlib
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 
@@ -37,6 +41,16 @@ CHANGELOG_LINK_RE = re.compile(r"^\[(\d+\.\d+\.\d[^\]]*)\]:\s*(https?://\S+)", r
 
 STATUS_OK = 0
 STATUS_FAIL = 1
+
+RELEASE_ALLOWED_SIGNERS_REL = os.path.join(
+    ".github", "signing", "allowed_signers"
+)
+RELEASE_SIGNER_PRINCIPAL = "82227609+tomtastisch@users.noreply.github.com"
+RELEASE_SIGNER_NAMESPACE = "git"
+RELEASE_SIGNER_KEY_TYPE = "ssh-ed25519"
+RELEASE_SIGNER_FINGERPRINT = (
+    "SHA256:Ltw3DKt+a7felQ4r3C+iKSqeo3/4F9XyqO5sJMP1+TM"
+)
 
 VENDORED_UPSTREAM_REL = os.path.join(
     "integrations", "microsoft-agent-governance-toolkit", "upstream"
@@ -105,9 +119,22 @@ class GitRunner:
     @staticmethod
     def verify_signature(tag_ref, root):
         """Prüft die Signatur eines Tags. Gibt (success: bool, detail: str)."""
-        out, err, code = GitRunner.run(["tag", "-v", tag_ref], root)
+        allowed_signers, trust_error = _validate_release_trust_anchor(root)
+        if trust_error:
+            return False, trust_error
+
+        out, err, code = GitRunner.run(
+            [
+                "-c",
+                f"gpg.ssh.allowedSignersFile={allowed_signers}",
+                "tag",
+                "-v",
+                tag_ref,
+            ],
+            root,
+        )
         if code == 0:
-            return True, out
+            return True, out or err
         return False, err[:200]
 
 
@@ -147,6 +174,59 @@ def _read(rel, root):
 
 def _exists(rel, root):
     return os.path.exists(os.path.join(root, rel))
+
+
+def _validate_release_trust_anchor(root):
+    """Validiert den versionierten SSH-Release-Trust-Anchor fail-closed."""
+    allowed_signers = os.path.abspath(
+        os.path.join(root, RELEASE_ALLOWED_SIGNERS_REL)
+    )
+
+    try:
+        file_stat = os.lstat(allowed_signers)
+    except OSError:
+        return "", f"Release trust anchor fehlt: {RELEASE_ALLOWED_SIGNERS_REL}"
+
+    if stat.S_ISLNK(file_stat.st_mode) or not stat.S_ISREG(file_stat.st_mode):
+        return "", "Release trust anchor muss eine reguläre Nicht-Symlink-Datei sein"
+
+    try:
+        with open(allowed_signers, encoding="utf-8") as fh:
+            active_lines = [
+                line.strip()
+                for line in fh
+                if line.strip() and not line.lstrip().startswith("#")
+            ]
+    except (OSError, UnicodeError):
+        return "", "Release trust anchor ist nicht lesbar"
+
+    if len(active_lines) != 1:
+        return "", "Release trust anchor muss genau einen aktiven Signer enthalten"
+
+    fields = active_lines[0].split()
+    if len(fields) != 4:
+        return "", "Release trust anchor muss exakt vier Felder enthalten"
+
+    principal, options, key_type, key_blob = fields
+    if principal != RELEASE_SIGNER_PRINCIPAL:
+        return "", "Release trust anchor enthält nicht den genehmigten Principal"
+    if options != f'namespaces="{RELEASE_SIGNER_NAMESPACE}"':
+        return "", "Release trust anchor enthält nicht exakt den Git-Namespace"
+    if key_type != RELEASE_SIGNER_KEY_TYPE:
+        return "", "Release trust anchor enthält nicht den genehmigten Key-Typ"
+
+    try:
+        decoded_key = base64.b64decode(key_blob, validate=True)
+    except (binascii.Error, ValueError):
+        return "", "Release trust anchor enthält kein gültiges Base64-Keyblob"
+
+    fingerprint = "SHA256:" + base64.b64encode(
+        hashlib.sha256(decoded_key).digest()
+    ).decode("ascii").rstrip("=")
+    if fingerprint != RELEASE_SIGNER_FINGERPRINT:
+        return "", "Release trust anchor stimmt nicht mit dem genehmigten Fingerprint überein"
+
+    return allowed_signers, ""
 
 
 def _is_valid_semver(v):
@@ -455,7 +535,7 @@ def check_tag(root=None, tag_ref=None, expected_commit=None, verifier=None):
 # GitHub-Release-Konsistenz
 # ═══════════════════════════════════════════════════════════════════════
 
-def check_release(root=None, tag_ref=None, gh=None):
+def check_release(root=None, tag_ref=None, gh=None, verifier=None):
     """Prüft Konsistenz eines GitHub-Releases gegen Tag und VERSION.
 
     Args:
@@ -463,6 +543,8 @@ def check_release(root=None, tag_ref=None, gh=None):
         tag_ref: Tag-Name. Wenn None → v{VERSION}
         gh: GhRunner-artiges Objekt mit release_view(tag, root) → (dict|None, str|None).
             Wenn None → GhRunner.release_view.
+        verifier: Callable(tag_ref, root) → (ok: bool, detail: str).
+            Wenn None → GitRunner.verify_signature.
     """
     if root is None:
         root = ROOT
@@ -505,6 +587,11 @@ def check_release(root=None, tag_ref=None, gh=None):
     if peel_err:
         r.add_error(f"Lokaler Tag '{tag_ref}' nicht auf Commit auflösbar: {peel_err}")
         return r
+
+    vf = verifier or GitRunner.verify_signature
+    sig_ok, sig_detail = vf(tag_ref, root)
+    if not sig_ok:
+        r.add_error(f"Tag '{tag_ref}' Signaturprüfung fehlgeschlagen: {sig_detail[:200]}")
 
     target = data.get("targetCommitish", "")
     resolved, resolve_err = _resolve_target_commitish(target, root)
