@@ -69,6 +69,7 @@ def load_catalog_contract(
     local_rules = manifest_data.get("local_rules")
     if not isinstance(local_rules, str) or not local_rules:
         raise CatalogValidationError("Manifest local_rules muss ein nichtleerer relativer Pfad sein")
+    _optional_index_path(root, local_rules, "local_rules")
 
     routing = manifest_data.get("routing")
     if not isinstance(routing, Mapping):
@@ -94,6 +95,7 @@ def load_catalog_contract(
     scopes = _validate_vocabulary(parsed_catalogs["scopes"], "scopes")
     tools = _validate_tools(parsed_catalogs["tools"], triggers, policy_tags, scopes)
     _validate_manifest_index(root, manifest_data, triggers)
+    _validate_tool_routing(manifest_data, tools)
 
     return CatalogContract(
         manifest=manifest_data,
@@ -120,6 +122,17 @@ def _catalog_file(root: Path, raw: object) -> Path:
 
 
 def _index_file(root: Path, raw: object, kind: str) -> Path:
+    return _regular_file(root, _index_candidate(root, raw, kind), kind)
+
+
+def _optional_index_path(root: Path, raw: object, kind: str) -> Path:
+    candidate = _index_candidate(root, raw, kind)
+    if candidate.exists() or candidate.is_symlink():
+        return _regular_file(root, candidate, kind)
+    return candidate
+
+
+def _index_candidate(root: Path, raw: object, kind: str) -> Path:
     if not isinstance(raw, str) or not raw or Path(raw).is_absolute() or "\\" in raw:
         raise CatalogValidationError(f"{kind}pfad ist ungültig")
     raw_parts = raw.split("/")
@@ -132,7 +145,7 @@ def _index_file(root: Path, raw: object, kind: str) -> Path:
         current = current / part
         if current.is_symlink():
             raise CatalogValidationError(f"Symlink im {kind}pfad")
-    return _regular_file(root, candidate, kind)
+    return candidate
 
 
 def _regular_file(root: Path, candidate: Path, kind: str) -> Path:
@@ -282,6 +295,24 @@ def _validate_module_graph(dependencies: Mapping[str, tuple[str, ...]]) -> None:
 
     for module_id in dependencies:
         visit(module_id)
+
+
+def _validate_tool_routing(
+    manifest: Mapping[str, object], tools: Mapping[str, Mapping[str, object]]
+) -> None:
+    modules = manifest.get("modules")
+    tool_routing = modules.get("tool_routing") if isinstance(modules, Mapping) else None
+    if not isinstance(tool_routing, Mapping):
+        raise CatalogValidationError("Manifest benötigt das Tool-Routing-Modul")
+    actual = tool_routing.get("triggers")
+    expected = {
+        "tool_selection",
+        *(trigger for tool in tools.values() for trigger in tool["required_on"]),
+    }
+    if not isinstance(actual, list) or set(actual) != expected:
+        raise CatalogValidationError(
+            "Tool-Routing-Trigger müssen tool_selection und alle required_on-Trigger abdecken"
+        )
 
 
 def _validate_id(value: object, context: str) -> str:

@@ -463,15 +463,14 @@ class ManifestContract(unittest.TestCase):
 
     def test_tool_routing_has_closed_trigger_scope(self):
         module = self.data["modules"]["tool_routing"]
+        required_triggers = {
+            trigger
+            for tool in load_catalog("tools")["tools"].values()
+            for trigger in tool["required_on"]
+        }
         self.assertEqual(
             set(module["triggers"]),
-            {
-                "tool_selection",
-                "github_connector_required",
-                "agent_dependencies",
-                "agent_package_provenance",
-                "dependency_drift",
-            },
+            {"tool_selection", *required_triggers},
         )
         self.assertEqual(module["dependencies"], ["security"])
 

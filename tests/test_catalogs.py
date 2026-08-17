@@ -102,6 +102,17 @@ class CatalogContract(unittest.TestCase):
             self.assertLessEqual(set(tool["policy_tags"]), self.contract.policy_tags, tool_id)
             self.assertLessEqual(set(tool["scopes"]), self.contract.scopes, tool_id)
 
+    def test_every_required_tool_trigger_routes_through_tool_routing_semantics(self):
+        required_triggers = {
+            trigger
+            for tool in self.contract.tools.values()
+            for trigger in tool["required_on"]
+        }
+        self.assertEqual(
+            set(self.contract.manifest["modules"]["tool_routing"]["triggers"]),
+            {"tool_selection", *required_triggers},
+        )
+
     def test_catalog_contains_all_migrated_and_required_tools(self):
         self.assertEqual(set(self.contract.tools), EXPECTED_TOOLS)
         for required in (
@@ -320,6 +331,11 @@ class CatalogReferenceFailures(CatalogMutationCase):
         with self.assertRaisesRegex(self.validator.CatalogValidationError, "unbekannten Trigger"):
             self.load()
 
+    def test_required_on_without_tool_routing_module_fails_closed(self):
+        self.append_tool(required_on='["analysis"]')
+        with self.assertRaisesRegex(self.validator.CatalogValidationError, "Tool-Routing"):
+            self.load()
+
     def test_unknown_policy_tag_fails_closed(self):
         self.append_tool(policy_tags='["execute"]')
         with self.assertRaisesRegex(self.validator.CatalogValidationError, "unbekannten Policy-Tag"):
@@ -439,6 +455,41 @@ class CatalogSchemaFailures(CatalogMutationCase):
 
 
 class CatalogPathFailures(CatalogMutationCase):
+    def test_absolute_local_rules_path_fails_closed(self):
+        self.replace(
+            "manifest.toml",
+            'local_rules = "local/user-rules.md"',
+            'local_rules = "/tmp/user-rules.md"',
+        )
+        with self.assertRaisesRegex(self.validator.CatalogValidationError, "local_rules"):
+            self.load()
+
+    def test_local_rules_path_traversal_fails_closed(self):
+        self.replace(
+            "manifest.toml",
+            'local_rules = "local/user-rules.md"',
+            'local_rules = "../user-rules.md"',
+        )
+        with self.assertRaisesRegex(self.validator.CatalogValidationError, "Traversal"):
+            self.load()
+
+    def test_local_rules_backslash_path_fails_closed(self):
+        self.replace(
+            "manifest.toml",
+            'local_rules = "local/user-rules.md"',
+            'local_rules = "local\\\\user-rules.md"',
+        )
+        with self.assertRaisesRegex(self.validator.CatalogValidationError, "local_rules"):
+            self.load()
+
+    def test_unexpected_local_rules_symlink_fails_closed(self):
+        outside = self.root.parent / "outside-rules.md"
+        outside.write_text("outside\n", encoding="utf-8")
+        local_rules = self.root / "local" / "user-rules.md"
+        local_rules.symlink_to(outside)
+        with self.assertRaisesRegex(self.validator.CatalogValidationError, "Symlink"):
+            self.load()
+
     def test_missing_catalog_fails_closed(self):
         (self.root / "catalogs" / "tools.toml").unlink()
         with self.assertRaisesRegex(self.validator.CatalogValidationError, "reguläre"):

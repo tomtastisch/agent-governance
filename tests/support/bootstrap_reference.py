@@ -18,6 +18,8 @@ import tomllib
 from typing import Callable, Mapping
 import uuid
 
+from tests.support.catalog_validator import CatalogValidationError, load_catalog_contract
+
 
 class BootstrapError(RuntimeError):
     """Fail-closed Bootstrapfehler."""
@@ -169,6 +171,8 @@ class BootstrapTransaction:
         ):
             if not required.is_file() or required.is_symlink():
                 raise BootstrapError("Releaseartefakt ist unvollständig")
+        if not self._catalog_contract_valid(self.release):
+            raise BootstrapError("Releasekataloge sind ungültig")
 
         for target in (self.install, self.global_instruction, self.config, self.evidence):
             self._validate_target(target, allowed_real)
@@ -570,6 +574,14 @@ class BootstrapTransaction:
         ):
             os.replace(staged, target)
 
+    def _catalog_contract_valid(self, install_root: Path) -> bool:
+        manifest_dir = install_root / "bundle" / "agent-governance"
+        try:
+            load_catalog_contract(manifest_dir)
+        except CatalogValidationError:
+            return False
+        return True
+
     def _verify_active(self, version: str, local_rules_preserved: bool) -> dict[str, bool]:
         checks = {
             "version": (self.install / "VERSION").is_file()
@@ -578,6 +590,7 @@ class BootstrapTransaction:
             and self.global_instruction.read_bytes()
             == (self.install / "bundle" / "GOVERNANCE.md").read_bytes(),
             "manifest": (self.install / "bundle" / "agent-governance" / "manifest.toml").is_file(),
+            "catalogs": self._catalog_contract_valid(self.install),
             "provider": self._provider_runtime_is_current(),
             "configuration": False,
             "evidence": self.evidence.is_file(),
