@@ -8,7 +8,6 @@ on:
   pull_request:
   push:
     branches: [main]
-    tags: ["v*"]
   release:
     types: [published]
 
@@ -49,25 +48,6 @@ jobs:
           python3 tools/release_check.py tree
           git diff --check
 
-  release-tag-check:
-    name: Tag-Konsistenz (nur bei v*-Tags)
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          ref: refs/heads/main
-          fetch-depth: 0
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Tag-Name und Commit prüfen
-        run: |
-          TAG_NAME="${GITHUB_REF#refs/tags/}"
-          python3 tools/release_check.py tag "$TAG_NAME"
-
   release-validate:
     name: Release-Validierung (nur bei published)
     if: github.event_name == 'release' && github.event.action == 'published'
@@ -85,6 +65,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Release gegen Tag und VERSION prüfen
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          RELEASE_TAG="${{ github.event.release.tag_name }}"
           python3 tools/release_check.py release "$RELEASE_TAG"
