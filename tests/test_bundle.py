@@ -22,6 +22,7 @@ BUNDLE = ROOT / "bundle"
 BOOTSTRAP = BUNDLE / "GOVERNANCE.md"
 GOVERNANCE_ROOT = BUNDLE / "agent-governance"
 MANIFEST = GOVERNANCE_ROOT / "manifest.toml"
+CATALOG_ROOT = GOVERNANCE_ROOT / "catalogs"
 RULE_ID_RE = re.compile(r"(?m)^### ([A-Z][A-Z0-9-]*-\d{3}) — ")
 RULE_TOKEN_RE = re.compile(r"\b[A-Z][A-Z0-9-]*-\d{3}\b")
 MARKDOWN_LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
@@ -42,6 +43,15 @@ def load_manifest() -> dict:
     if tomllib is None:
         raise unittest.SkipTest("tomllib erfordert Python 3.11+")
     with MANIFEST.open("rb") as handle:
+        return tomllib.load(handle)
+
+
+def load_catalog(name: str) -> dict:
+    if tomllib is None:
+        raise unittest.SkipTest("tomllib erfordert Python 3.11+")
+    manifest = load_manifest()
+    path = GOVERNANCE_ROOT / manifest["catalogs"][name]
+    with path.open("rb") as handle:
         return tomllib.load(handle)
 
 
@@ -282,18 +292,20 @@ class ManifestContract(unittest.TestCase):
 
     def test_manifest_has_only_static_index_sections(self):
         self.assertEqual(set(self.data), {
-            "schema_version", "local_rules", "routing", "modules", "roles"
+            "schema_version", "local_rules", "catalogs", "routing", "modules", "roles"
         })
+        self.assertEqual(self.data["schema_version"], 2)
         lowered = MANIFEST.read_text(encoding="utf-8").lower()
         for term in FORBIDDEN_MANIFEST_TERMS:
             self.assertNotRegex(lowered, rf"(?<![a-z]){re.escape(term)}(?![a-z])", term)
 
     def test_routing_is_closed_and_fail_closed(self):
         routing = self.data["routing"]
-        self.assertEqual(set(routing), {"known_triggers", "unknown", "ambiguous"})
+        self.assertEqual(set(routing), {"unknown", "ambiguous"})
         self.assertEqual(routing["unknown"], "block")
         self.assertEqual(routing["ambiguous"], "block")
-        known = routing["known_triggers"]
+        self.assertNotIn("known_triggers", routing)
+        known = list(load_catalog("triggers")["triggers"])
         self.assertTrue(known)
         self.assertEqual(len(known), len(set(known)))
         self.assertNotIn("all", known)
@@ -307,7 +319,9 @@ class ManifestContract(unittest.TestCase):
 
     def test_paths_are_relative_and_resolve(self):
         manifest_root = MANIFEST.parent.resolve()
+        self.assertIn("catalogs", self.data)
         required_paths = [
+            *self.data["catalogs"].values(),
             *(entry["path"] for entry in self.data["modules"].values()),
             *(entry["path"] for entry in self.data["roles"].values()),
         ]
@@ -428,7 +442,8 @@ class ManifestContract(unittest.TestCase):
 
     def test_no_trigger_loads_every_module(self):
         modules = self.data["modules"]
-        for trigger in self.data["routing"]["known_triggers"]:
+        self.assertIn("catalogs", self.data)
+        for trigger in load_catalog("triggers")["triggers"]:
             selected = {
                 name for name, entry in modules.items() if trigger in entry["triggers"]
             }
@@ -456,29 +471,35 @@ class ToolRoutingContract(unittest.TestCase):
         self.path = GOVERNANCE_ROOT / "modules" / "tool-routing.md"
         self.text = self.path.read_text(encoding="utf-8")
 
-    def test_every_catalog_entry_has_the_same_governance_fields(self):
-        entries = re.split(r"(?m)^#### ", self.text)[1:]
-        self.assertGreaterEqual(len(entries), 7)
-        required = {
-            "Name", "Zweck", "Trigger", "Erforderlich", "Nützlich",
-            "Evidenzgewinn", "Read-/Write-Grenze", "Fallback",
-            "Keine Folgerung",
-        }
-        for entry in entries:
-            fields = set(re.findall(r"(?m)^\*\*([^*]+):\*\*", entry))
-            self.assertEqual(required - fields, set(), entry.splitlines()[0])
+    def test_markdown_contains_general_routing_rules_without_tool_profiles(self):
+        self.assertNotRegex(self.text, r"(?m)^#### ")
+        for term in (
+            "fachlichem Trigger",
+            "Read before Write",
+            "keine Autorisierung",
+            "Provider",
+            "fail-closed",
+            "catalogs/tools.toml",
+            "catalogs/triggers.toml",
+            "catalogs/policy-tags.toml",
+            "catalogs/scopes.toml",
+        ):
+            self.assertIn(term, self.text)
 
     def test_apm_contract_uses_declared_state_and_read_only_audit(self):
-        self.assertIn("Microsoft APM", self.text)
-        self.assertIn("`apm.yml`", self.text)
-        self.assertIn("`apm.lock.yaml`", self.text)
-        self.assertIn("`apm audit --ci`", self.text)
+        apm = load_catalog("tools")["tools"]["microsoft_apm"]
+        joined = " ".join(str(value) for value in apm.values())
+        self.assertIn("Microsoft APM", joined)
+        self.assertIn("apm.yml", joined)
+        self.assertIn("apm.lock.yaml", joined)
+        self.assertIn("apm audit --ci", joined)
 
     def test_catalog_does_not_model_tool_installation_or_availability(self):
+        catalog = (CATALOG_ROOT / "tools.toml").read_text(encoding="utf-8")
         self.assertNotRegex(
-            self.text,
-            r"(?i)\b(?:Installation|installiert|deinstalliert|Verfügbarkeit|"
-            r"nicht verfügbar|lokal verfügbar|vorhanden\w*)\b",
+            catalog,
+            r"(?im)^\s*(?:installed|available|connected|authenticated|version_on_host|"
+            r"workspace|login)\s*=",
         )
 
 
@@ -547,18 +568,10 @@ class ReviewContract(unittest.TestCase):
         self.assertIn("[DEL-009]", self.tools)
 
     def test_security_tool_trigger_delegates_to_security_ssot(self):
-        entry = self.tools.split("#### Security-Diff-Prüfung", 1)[1].split(
-            "#### Microsoft APM", 1
-        )[0]
-        trigger = re.search(r"(?m)^\*\*Trigger:\*\* (.+)$", entry)
-        self.assertIsNotNone(trigger)
-        self.assertIn("[SEC-001]", trigger.group(1))
-        for duplicated_term in (
-            "Authentisierung", "Autorisierung", "Secrets", "Berechtigungen",
-            "Trust Boundaries", "Prompt-Injection", "Review-Freigaberegeln",
-            "Tool-Berechtigungen",
-        ):
-            self.assertNotIn(duplicated_term, trigger.group(1))
+        entry = load_catalog("tools")["tools"]["security_diff_scan"]
+        self.assertEqual(entry["required_on"], ["security_review"])
+        self.assertEqual(entry["useful_on"], ["security_sensitive_change"])
+        self.assertIn("[SEC-001]", entry["constraints"])
 
 
 class TemplateContract(unittest.TestCase):
