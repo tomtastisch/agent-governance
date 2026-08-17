@@ -100,7 +100,8 @@ class GovernanceScopeContract(unittest.TestCase):
         if tomllib is None:
             self.skipTest("tomllib requires Python 3.11+")
         data = tomllib.loads(MANIFEST.read_text(encoding="utf-8"))
-        triggers = set(data["routing"]["known_triggers"])
+        trigger_path = MANIFEST.parent / data["catalogs"]["triggers"]
+        triggers = set(tomllib.loads(trigger_path.read_text(encoding="utf-8"))["triggers"])
         self.assertEqual(triggers & OUT_OF_SCOPE_TRIGGERS, set())
 
     def test_normative_bundle_contains_no_operational_execution_contract(self):

@@ -155,7 +155,10 @@ class CatalogContract(unittest.TestCase):
         self.assertRegex(apm["constraints"], r"(?is)keine automatische Installation.+Aktualisierung")
 
         memory = self.contract.tools["canonical_memory_verifier"]
-        self.assertRegex(memory["constraints"], r"(?is)explizit ausgewählte.+keine allgemeine Memory-Suche")
+        self.assertRegex(
+            memory["constraints"],
+            r"(?is)explizit.+ausgewählte.+keine allgemeine\s+Memory-Suche",
+        )
 
         supermetrics = self.contract.tools["supermetrics"]
         self.assertRegex(supermetrics["constraints"], r"(?is)kein Ersatz für Data Analytics")

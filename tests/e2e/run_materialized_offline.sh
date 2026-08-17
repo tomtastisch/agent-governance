@@ -26,6 +26,19 @@ root = Path(sys.argv[1])
 manifest_dir = root / "agent-governance"
 with (manifest_dir / "manifest.toml").open("rb") as handle:
     manifest = tomllib.load(handle)
+expected_catalogs = {
+    "triggers": "catalogs/triggers.toml",
+    "policy_tags": "catalogs/policy-tags.toml",
+    "scopes": "catalogs/scopes.toml",
+    "tools": "catalogs/tools.toml",
+}
+assert manifest["catalogs"] == expected_catalogs
+for relative in expected_catalogs.values():
+    catalog = manifest_dir / relative
+    catalog.relative_to(manifest_dir)
+    assert catalog.is_file() and not catalog.is_symlink(), relative
+    with catalog.open("rb") as handle:
+        assert tomllib.load(handle)["schema_version"] == 1, relative
 local = Path(os.path.normpath(manifest_dir / manifest["local_rules"]))
 local.relative_to(manifest_dir)
 assert "SYNTHETIC_LOCAL_RULE_ACTIVE" in local.read_text(encoding="utf-8")

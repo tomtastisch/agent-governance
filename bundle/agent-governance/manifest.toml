@@ -1,33 +1,13 @@
-schema_version = 1
+schema_version = 2
 local_rules = "local/user-rules.md"
 
+[catalogs]
+triggers = "catalogs/triggers.toml"
+policy_tags = "catalogs/policy-tags.toml"
+scopes = "catalogs/scopes.toml"
+tools = "catalogs/tools.toml"
+
 [routing]
-known_triggers = [
-  "analysis",
-  "research",
-  "planning",
-  "architecture",
-  "implementation",
-  "refactoring",
-  "debugging",
-  "testing",
-  "documentation",
-  "release",
-  "external_effect",
-  "security_sensitive_change",
-  "security_review",
-  "quality_review",
-  "triage",
-  "role_architecture",
-  "role_triage",
-  "role_quality_assurance",
-  "role_security_review",
-  "tool_selection",
-  "agent_dependencies",
-  "context_handoff",
-  "status_reporting",
-  "long_task",
-]
 unknown = "block"
 ambiguous = "block"
 

@@ -1,0 +1,334 @@
+schema_version = 1
+
+[tools.local_git_cli]
+name = "Local Git CLI"
+purpose = """
+Repositoryzustand, Historie, Branches, Commits und Diffs aus der lokalen Source of Truth lesen und
+autorisierte Versionskontrollschritte ausführen.
+"""
+required_on = ["git_repository"]
+useful_on = ["analysis", "debugging", "implementation", "release"]
+policy_tags = ["read", "write"]
+scopes = ["repository"]
+evidence = """
+Exakte Objekt-IDs, Arbeitsbaumstatus, Historie, Ancestry und maschinenprüfbare lokale Diffs.
+"""
+fallback = """
+Scheitert die Git-Abfrage, bleibt die davon abhängige lokale Identitäts- oder Lieferbehauptung
+blockiert; ein unveränderliches Archiv kann ausschließlich Inhaltsanalyse tragen.
+"""
+constraints = """
+Lokale Git-Evidenz beweist keinen Remotezustand, keine CI und keinen Reviewstatus. Schreibschritte
+bleiben am autorisierten Lieferumfang; Force-Push und History Rewrite benötigen eigene ausdrückliche
+Autorisierung.
+"""
+
+[tools.repository_checks]
+name = "Repository Checks"
+purpose = """
+Test-, Lint-, Build-, Drift- und Releasechecks des Repositorys gegen dessen ausführbare
+Akzeptanzkriterien ausführen.
+"""
+required_on = ["repository_verification"]
+useful_on = ["testing", "debugging", "release"]
+policy_tags = ["read"]
+scopes = ["repository"]
+evidence = """
+Exitcodes, konkrete Findings und reproduzierbare Ergebnisprotokolle der ausgeführten Checks.
+"""
+fallback = """
+Fehlgeschlagene Checks werden mit Ursache und fehlender Abdeckung gemeldet; ein fachlich
+gleichwertiger read-only Prüfpfad darf nur die tatsächlich gleiche Aussage ergänzen.
+"""
+constraints = """
+Erwartete temporäre Test- oder Buildartefakte erzeugen keine externe Freigabe. Ein fokussierter
+oder lokal grüner Check belegt weder eine ausgelassene Gesamtsuite noch Remote-CI.
+"""
+
+[tools.github]
+name = "GitHub"
+purpose = """
+Remote-GitHub-Zustand und GitHubobjekte wie Repositorys, Pull Requests, Reviews, Checks, Actions,
+Tags und Releases fachlich adressieren.
+"""
+required_on = []
+useful_on = ["github_remote"]
+policy_tags = ["read", "write"]
+scopes = ["github"]
+evidence = """
+Remote-Objektkennungen, Head-SHAs, Beziehungen, Zustände und Zeitpunkte aus GitHub.
+"""
+fallback = """
+Der konkrete GitHub-Zugriffspfad wird über GitHub CLI oder den ausdrücklich geeigneten Connector
+geroutet; ohne belastbaren Pfad bleibt nur das abhängige GitHub-Gate offen.
+"""
+constraints = """
+GitHubobjekte sind Remotezustand und ersetzen weder lokale Git-Evidenz noch Autorisierung. Merge,
+Schutzregel-, Account-, Billing-, Tag- und Releasewirkungen bleiben einzeln zu autorisieren.
+"""
+
+[tools.github_cli]
+name = "GitHub CLI"
+purpose = """
+GitHub-Repository-, Pull-Request-, Review-, Check- und Actions-Zustand unmittelbar lesen und
+ausdrücklich autorisierte GitHuboperationen ausführen.
+"""
+required_on = ["github_remote"]
+useful_on = ["quality_review", "release"]
+policy_tags = ["read", "write"]
+scopes = ["github"]
+evidence = """
+Repository-, PR-, Reviewer-, Check- und Workflow-IDs mit Head-SHAs und Zeitpunkten.
+"""
+fallback = """
+GitHubs dokumentierte read-only API oder ein geeigneter Connector darf Leseevidenz liefern; eine
+erforderliche Mutation bleibt ohne den autorisierten GitHubpfad blockiert.
+"""
+constraints = """
+Read-only vor Mutation. GitHub-Zugriff autorisiert weder Merge noch Schutzregel-, Account-,
+Billing-, Tag- oder Releaseänderungen.
+"""
+
+[tools.github_connector]
+name = "GitHub Connector"
+purpose = """
+GitHub-Evidenz strukturiert ergänzen, wenn Beziehungen, Reviewthreads oder Metadaten über den
+primären GitHubpfad nicht ausreichend aufgelöst sind.
+"""
+required_on = []
+useful_on = ["github_remote", "quality_review"]
+policy_tags = ["read", "write"]
+scopes = ["github"]
+evidence = """
+Ergänzende Objektbezüge, Reviewthreads und nachvollziehbare strukturierte Remote-Metadaten.
+"""
+fallback = """
+GitHub CLI und lokale Git-CLI bleiben für ihre jeweiligen Aussagen maßgeblich; ein fehlender
+Schreibpfad wird nicht durch einen anderen Connector umgangen.
+"""
+constraints = """
+Connector-Schreibrechte erweitern niemals die Nutzerautorisierung. Der Connector ersetzt weder
+lokalen Git-Zustand noch eine fehlende GitHub-Laufzeitevidenz.
+"""
+
+[tools.authoritative_documentation]
+name = "Authoritative Documentation Research"
+purpose = """
+Aktuelle Hersteller- oder Projektdokumentation als Primärquelle für zeitvariable Toolsyntax,
+Fähigkeiten und Grenzen lesen.
+"""
+required_on = ["authoritative_documentation"]
+useful_on = ["research", "architecture"]
+policy_tags = ["read"]
+scopes = ["documentation"]
+evidence = """
+Datierte, direkt zuordenbare Primärquellen oder belegte gepinnte lokale Herstellerdokumentation.
+"""
+fallback = """
+Gepinnte lokale Herstellerdokumentation darf bei belegter Version und Herkunft dienen; andernfalls
+bleibt die zeitvariable Aussage offen.
+"""
+constraints = """
+Recherche ist read-only. Dokumentierte Existenz beweist weder lokalen Aufruf noch erfolgreiche
+Verwendung und erteilt keine Ausführungsberechtigung.
+"""
+
+[tools.superpowers]
+name = "Superpowers"
+purpose = """
+Strukturierte Verfahren für Planung, Implementierung, TDD, systematisches Debugging, Review und
+Abschlussverifikation anwenden.
+"""
+required_on = ["planning", "implementation", "debugging", "testing", "quality_review"]
+useful_on = ["architecture", "refactoring", "documentation", "release"]
+policy_tags = ["read", "write"]
+scopes = ["repository"]
+evidence = """
+Arbeitspläne, rote und grüne Tests, Ursachenbelege, Reviewreferenzen und frische Abschlusschecks.
+"""
+fallback = """
+Wenn ein konkreter Skillpfad scheitert, darf nur ein fachlich gleichwertiger dokumentierter Ablauf
+dieselben ausgelösten Gates erfüllen.
+"""
+constraints = """
+Das Laden oder Anwenden eines Verfahrens schafft keine neuen externen Schreibrechte und belegt
+nicht allein, dass seine Tests, Reviews oder Abschlussgates ausgeführt wurden.
+"""
+
+[tools.independent_review_provider]
+name = "Independent Review Provider"
+purpose = """
+Die bestimmte unabhängige Reviewerrolle in einem frischen read-only Kontext auf einem exakt
+bezeichneten Lieferstand unterstützen.
+"""
+required_on = ["quality_review"]
+useful_on = ["security_review"]
+policy_tags = ["read"]
+scopes = ["repository", "github"]
+evidence = """
+Revieweridentität, Reviewreferenz, Exact-Head-SHA, Zeitpunkt und klassifizierte Findings.
+"""
+fallback = """
+Die Providerwahl und ihr Fallback folgen ausschließlich [DEL-008](../modules/delivery.md#del-008--provider-routing).
+"""
+constraints = """
+Review bleibt read-only und folgt [DEL-009](../modules/delivery.md#del-009--finding-lifecycle).
+Ein Provider ist nicht die Reviewerrolle und sein Kommentar ist keine erfundene Plattformfreigabe.
+"""
+
+[tools.security_diff_scan]
+name = "Security Diff Scan"
+purpose = """
+Sicherheitsrelevante Datenflüsse, Pfade, Berechtigungen und Trust Boundaries im Exact-Head-Diff
+read-only prüfen.
+"""
+required_on = ["security_review"]
+useful_on = ["security_sensitive_change"]
+policy_tags = ["read"]
+scopes = ["repository"]
+evidence = """
+Risikobezogene Source-to-Sink- oder Regelpfade, reproduzierbare Findings und geprüfte Head-SHA.
+"""
+fallback = """
+Ein frischer unabhängiger SEC-Reviewer prüft denselben Exact Head mit dokumentierter Abdeckung.
+"""
+constraints = """
+Der Pflichttrigger folgt [SEC-001](../modules/security.md#sec-001--risikobasiertes-security-gate).
+Prüfung bleibt read-only; Korrektur, Tracking oder Veröffentlichung sind eigene Wirkungen.
+"""
+
+[tools.microsoft_apm]
+name = "Microsoft APM"
+purpose = """
+Microsoft APM, der Agent Package Manager von github.com/microsoft/apm, beurteilt Agent-Pakete,
+Agent-Skills und deklarative Agent-Abhängigkeiten reproduzierbar.
+"""
+required_on = ["agent_dependencies"]
+useful_on = ["agent_package_provenance", "dependency_drift"]
+policy_tags = ["read"]
+scopes = ["agent_packages"]
+evidence = """
+Deklarierte Quellen aus apm.yml, aufgelöster Lockzustand aus apm.lock.yaml, Paketprovenienz,
+Auditfindings aus read-only Pfaden wie apm audit --ci und reproduzierbare Dependency Drift.
+"""
+fallback = """
+Nur ein fachlich gleichwertiger read-only Nachweis darf das betroffene Provenienz-, Lock- oder
+Driftgate erfüllen; andernfalls bleibt es offen.
+"""
+constraints = """
+Keine automatische Installation oder Aktualisierung. Der Katalog begründet weder Paketverwaltung
+als Governance-Subsystem noch Mutationen an Quellen, Locks, Agentdateien, Runtime oder Deployment.
+"""
+
+[tools.linear]
+name = "Linear"
+purpose = """
+Issues, Projekte, Initiativen, Arbeitsstatus und Akzeptanzkriterien strukturiert verwalten.
+"""
+required_on = ["issue_tracking", "project_tracking", "initiative_tracking", "work_status_tracking"]
+useful_on = ["acceptance_criteria"]
+policy_tags = ["read", "write"]
+scopes = ["work_tracking"]
+evidence = """
+Objektkennungen, Status, Beziehungen, Akzeptanzkriterien und nachvollziehbare Änderungsstände.
+"""
+fallback = """
+Ohne den Pflichtpfad bleibt das davon abhängige Work-Tracking-Gate offen oder blockiert; gelieferte
+unveränderliche Exporte können nur die enthaltene Lesesicht belegen.
+"""
+constraints = """
+Toolzugriff erzeugt keine Autorisierung. Schreibwirkungen bleiben an das konkrete Objekt, den
+aktuellen Auftrag und die bestehende Freigabe gebunden.
+"""
+
+[tools.supabase]
+name = "Supabase"
+purpose = """
+Supabase-Backends mit PostgreSQL, Schema, Migrationen, RLS, Auth, Storage, Realtime, Edge Functions
+und Backenddiagnostik fachlich bearbeiten.
+"""
+required_on = ["postgresql", "database_schema", "database_migration", "row_level_security", "backend_authentication", "object_storage", "realtime_backend", "edge_functions", "backend_diagnostics"]
+useful_on = ["debugging", "security_review"]
+policy_tags = ["read", "write"]
+scopes = ["database", "authentication", "storage", "realtime", "edge_functions"]
+evidence = """
+Schema- und Migrationszustand, PostgreSQL-Abfragen, RLS- und Authkonfiguration, Storage- und
+Realtime-Metadaten, Edge-Function-Zustand und reproduzierbare Backenddiagnostik.
+"""
+fallback = """
+Ohne den erforderlichen Supabasepfad bleibt das jeweils abhängige Backend-, Daten- oder
+Security-Gate offen; lokale Migrationen oder Dumps belegen nur ihren exakten Inhalt.
+"""
+constraints = """
+Projekt-, Datenbank- und Produktionswirkungen benötigen eine konkrete Autorisierung. Ein Scope
+oder eine vorhandene Verbindung erlaubt weder Deployment noch Migration noch Datenänderung.
+"""
+
+[tools.supermetrics]
+name = "Supermetrics"
+purpose = """
+Marketingdaten, Ads-Daten, Commerce- und Kanalmetriken für plattformübergreifende Marketinganalyse
+fachlich erschließen.
+"""
+required_on = ["marketing_data", "ads_data", "commerce_metrics", "cross_channel_marketing_analysis"]
+useful_on = ["metric_analysis"]
+policy_tags = ["read"]
+scopes = ["marketing_data"]
+evidence = """
+Quellenzuordnung, abgefragte Dimensionen und Metriken, Zeiträume sowie reproduzierbare
+plattformübergreifende Marketingdatensichten.
+"""
+fallback = """
+Ein belegter Export der bezeichneten Quelle kann eine begrenzte Lesesicht liefern; fehlende
+Quellenabdeckung bleibt ausdrücklich offen.
+"""
+constraints = """
+Supermetrics ist kein Ersatz für Data Analytics. Datenzugriff autorisiert weder Änderungen an
+Marketingplattformen noch eine weitergehende Nutzung außerhalb des Auftrags.
+"""
+
+[tools.data_analytics]
+name = "Data Analytics"
+purpose = """
+Strukturierte Daten und Tabellen aggregieren, Kennzahlen und Berechnungen erstellen, statistisch
+analysieren und als Diagramme oder nachvollziehbare Analyseartefakte darstellen.
+"""
+required_on = ["structured_data", "tabular_data", "metric_analysis", "aggregation", "calculation", "statistical_analysis", "data_visualization"]
+useful_on = ["analysis", "research"]
+policy_tags = ["read", "write"]
+scopes = ["structured_data", "analytics_artifacts"]
+evidence = """
+Reproduzierbare Abfragen, Transformationen, Berechnungen, statistische Ergebnisse, Tabellen und
+Diagramme mit benanntem Datenstand.
+"""
+fallback = """
+Ein kleiner, überprüfbarer lokaler Analysepfad darf nur die tatsächlich abgedeckten Daten und
+Berechnungen belegen; fehlende Quellen oder Methoden bleiben offen.
+"""
+constraints = """
+Analyseartefakte erzeugen keine Freigabe für Quelldatenänderungen. Marketingkonnektoren wie
+Supermetrics liefern Quellenzugriff, ersetzen aber nicht die analytische Methodik.
+"""
+
+[tools.canonical_memory_verifier]
+name = "Canonical Memory Verifier"
+purpose = """
+Ein ausdrücklich ausgewähltes kanonisches Memory-Bundle deterministisch auf Identität,
+Vollständigkeit und den verlangten Vertrag prüfen.
+"""
+required_on = ["canonical_memory_verification"]
+useful_on = ["context_handoff"]
+policy_tags = ["read"]
+scopes = ["canonical_memory"]
+evidence = """
+Inhaltsunabhängiger Prüfstatus und abstrakte Objektkennung des ausdrücklich bezeichneten
+kanonischen Memory-Bundles.
+"""
+fallback = """
+Ohne deterministischen Verifier bleibt die vom Memory-Bundle abhängige Aussage unverifiziert;
+andere Erinnerungsquellen ersetzen den kanonischen Prüfgegenstand nicht.
+"""
+constraints = """
+Nur das explizit ausgewählte kanonische Bundle wird geprüft; daraus folgt keine allgemeine
+Memory-Suche. Private Inhalte oder inhaltsabgeleitete Fingerprints werden nicht veröffentlicht.
+"""

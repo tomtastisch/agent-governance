@@ -24,12 +24,14 @@ Jeder Kandidat wird durch die dort erwartete lesbare reguläre Datei
 denselben Ort zeigende Kandidaten werden als ein Root behandelt. Fehlt ein gesetzter Kandidat,
 ist sein Manifest ungültig oder ergeben sich widersprüchliche Roots, wird die Root-Auflösung
 nach GOV-004 angehalten. Genau ein widerspruchsfrei validierter Root wird verwendet. Das
-Manifestverzeichnis liegt relativ zum Bundle-Root unter `agent-governance`. Modul-, Rollen- und
-lokale Pfade aus dem Manifest werden ausschließlich relativ zu diesem Manifestverzeichnis
-aufgelöst. Der aufgelöste Root und das daraus abgeleitete Manifestverzeichnis werden als absolute
-Pfade beibehalten. Jeder weitere Bundle-Dateizugriff verwendet den jeweils zutreffenden Root oder
-das Manifestverzeichnis als explizites Präfix; relative Bundle-Zugriffe sind unzulässig. Inhalte
-und Pfade bleiben unverändert.
+Manifestverzeichnis liegt relativ zum Bundle-Root unter `agent-governance`. Modul-, Rollen-,
+Katalog- sowie lokale Pfade aus dem Manifest werden ausschließlich relativ zu diesem
+Manifestverzeichnis aufgelöst. Katalogpfade müssen auf lesbare reguläre Nicht-Symlink-Dateien
+innerhalb dieses Verzeichnisses zeigen; absolute Pfade, Traversal, Root-Escape und unerwartete
+Symlinks sind ungültig. Der aufgelöste Root und das daraus abgeleitete Manifestverzeichnis werden
+als absolute Pfade beibehalten. Jeder weitere Bundle-Dateizugriff verwendet den jeweils
+zutreffenden Root oder das Manifestverzeichnis als explizites Präfix; relative Bundle-Zugriffe
+sind unzulässig. Inhalte und Pfade bleiben unverändert.
 
 ## Minimale Invarianten
 
@@ -82,13 +84,15 @@ immer geladenen Bootstrap-Vertrags; Unklarheit über einen Treffer wird nach
 ## Deterministisches Modulrouting
 
 1. Lies den statischen Manifest-Index vollständig.
-2. Wende [GOV-006](#gov-006--security-vorklassifikation) an und klassifiziere die tatsächlich
-   angefragte Arbeit in einen oder mehrere der geschlossenen `routing.known_triggers`.
-3. Lade nur Module, deren `triggers` exakt getroffen wurden, anschließend deren deklarierte
+2. Löse die vier dort bezeichneten Kataloge relativ zum beibehaltenen absoluten
+   Manifestverzeichnis auf und validiere ihre geschlossenen Schemen und Referenzen vollständig.
+3. Wende [GOV-006](#gov-006--security-vorklassifikation) an und klassifiziere die tatsächlich
+   angefragte Arbeit in einen oder mehrere der in `catalogs/triggers.toml` definierten Trigger.
+4. Lade nur Module, deren `triggers` exakt getroffen wurden, anschließend deren deklarierte
    `dependencies` in topologischer Reihenfolge. Mehrfach gewählte Module werden einmal geladen.
-4. Lade eine Rolle nur, wenn ihr eigener Rollentrigger getroffen wurde; lade dann ausschließlich
+5. Lade eine Rolle nur, wenn ihr eigener Rollentrigger getroffen wurde; lade dann ausschließlich
    die dort genannten Module und den Rollenpfad.
-5. Bei unbekannter oder mehrdeutiger Klassifikation gilt
+6. Bei unbekannter oder mehrdeutiger Klassifikation sowie bei unbekannten Katalogreferenzen gilt
    [GOV-004](#gov-004--fail-closed). Es gibt keinen Vollimport als Fallback.
 
 Das Manifest ist ein unveränderlicher Index des Bundles, keine Laufzeit-, Sitzungs-,

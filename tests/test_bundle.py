@@ -315,6 +315,9 @@ class ManifestContract(unittest.TestCase):
             for entry in group.values()
             for trigger in entry["triggers"]
         }
+        for tool in load_catalog("tools")["tools"].values():
+            referenced.update(tool["required_on"])
+            referenced.update(tool["useful_on"])
         self.assertEqual(set(known), referenced)
 
     def test_paths_are_relative_and_resolve(self):
