@@ -92,16 +92,16 @@ class InstallBoundaryContract(unittest.TestCase):
 
 class ReleaseMetadataContract(unittest.TestCase):
     def test_semver_patch_release_is_consistent(self):
-        self.assertEqual(VERSION, "0.3.1")
-        self.assertIn("**Version:** [`0.3.1`](VERSION)", README)
-        self.assertIn("## [0.3.1] — 2026-08-15", CHANGELOG)
-        section = CHANGELOG.split("## [0.3.1]", 1)[1].split("\n## [", 1)[0]
+        self.assertEqual(VERSION, "0.3.2")
+        self.assertIn("**Version:** [`0.3.2`](VERSION)", README)
+        self.assertIn("## [0.3.2] — 2026-08-15", CHANGELOG)
+        section = CHANGELOG.split("## [0.3.2]", 1)[1].split("\n## [", 1)[0]
         for term in (
-            "actions/checkout",
-            "v6.0.2",
-            "annotierte Release-Tags",
-            "v0.3.0",
-            "kein GitHub Release",
+            "Allowed-Signers",
+            "fingerprint",
+            "Release-Verifikation",
+            "v0.3.1",
+            "ohne GitHub Release",
         ):
             self.assertIn(term, section)
         self.assertIn("**Breaking changes:** none", section)

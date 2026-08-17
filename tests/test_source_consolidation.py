@@ -214,10 +214,10 @@ class ReleaseMetadataContract(unittest.TestCase):
         changelog = read(ROOT / "CHANGELOG.md")
         version = read(ROOT / "VERSION").strip()
         current = changelog.split(f"## [{version}]", 1)[1].split("\n## [", 1)[0]
-        self.assertEqual(version, "0.3.1")
+        self.assertEqual(version, "0.3.2")
         self.assertIn("**Breaking changes:** none", current)
         self.assertNotIn("**BREAKING:**", current)
-        for recovery_term in ("actions/checkout", "v6.0.2", "annotierte", "v0.3.0"):
+        for recovery_term in ("Allowed-Signers", "fingerprint", "Signatur", "v0.3.1"):
             self.assertIn(recovery_term, current)
 
     def test_unreleased_is_reset_after_version_classification(self):

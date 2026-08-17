@@ -10,35 +10,123 @@ ROOT = Path(__file__).resolve().parents[1]
 CI_WORKFLOW = (ROOT / ".github" / "workflows" / "ci.yml").read_text(
     encoding="utf-8"
 )
+TAG_GATE_PATH = ROOT / ".github" / "workflows" / "release-tag-verify.yml"
 CHECKOUT_SHA = "de0fac2e4500dabe0009e67214ff5f5447ce83dd"
 
 
-def _job_block(job_name: str) -> str:
+def _job_block(workflow: str, job_name: str) -> str:
     match = re.search(
-        rf"(?ms)^  {re.escape(job_name)}:\n(?P<body>.*?)(?=^  [a-z0-9_-]+:\n|\Z)",
-        CI_WORKFLOW,
+        rf"(?ms)^  {re.escape(job_name)}:\n"
+        rf"(?P<body>.*?)(?=^  [a-z0-9_-]+:\n|\Z)",
+        workflow,
     )
     if match is None:
         raise AssertionError(f"CI job not found: {job_name}")
     return match.group("body")
 
 
-class ReleaseCheckoutContract(unittest.TestCase):
-    def test_release_jobs_preserve_annotated_tags_with_pinned_checkout(self):
+def _run_blocks(job_body: str) -> list[str]:
+    return re.findall(
+        r"(?m)^        run: \|\n"
+        r"((?:          [^\n]*(?:\n|$))*)",
+        job_body,
+    )
+
+
+class ReleaseWorkflowSecurityContract(unittest.TestCase):
+    def test_release_validate_preserves_pinned_main_checkout(self):
+        block = _job_block(CI_WORKFLOW, "release-validate")
         checkout_line = (
             f"      - uses: actions/checkout@{CHECKOUT_SHA} # v6.0.2"
         )
-        for job_name in ("release-tag-check", "release-validate"):
-            with self.subTest(job=job_name):
-                block = _job_block(job_name)
-                self.assertEqual(block.count("actions/checkout@"), 1)
-                self.assertIn(checkout_line, block)
-                self.assertRegex(
-                    block,
-                    re.escape(checkout_line)
-                    + r"\n        with:\n(?:          [^\n]+\n)*"
-                    + r"          fetch-depth: 0(?:\n|\Z)",
-                )
+
+        self.assertEqual(block.count("actions/checkout@"), 1)
+        self.assertRegex(
+            block,
+            re.escape(checkout_line)
+            + r"\n        with:\n"
+            + r"          ref: refs/heads/main\n"
+            + r"          fetch-depth: 0(?:\n|\Z)",
+        )
+
+    def test_ci_does_not_execute_release_verification_on_tag_push(self):
+        self.assertNotIn('    tags: ["v*"]', CI_WORKFLOW)
+        self.assertNotIn("\n  release-tag-check:\n", CI_WORKFLOW)
+
+    def test_release_validate_passes_tag_via_env_without_run_interpolation(self):
+        block = _job_block(CI_WORKFLOW, "release-validate")
+
+        self.assertIn(
+            '      - name: Release gegen Tag und VERSION prüfen\n'
+            '        env:\n'
+            '          RELEASE_TAG: ${{ github.event.release.tag_name }}\n'
+            '        run: |\n'
+            '          python3 tools/release_check.py release "$RELEASE_TAG"\n',
+            block,
+        )
+
+        run_blocks = _run_blocks(block)
+        self.assertTrue(run_blocks)
+        for run_block in run_blocks:
+            self.assertNotIn("${{", run_block)
+
+    def test_manual_tag_gate_is_default_branch_controlled(self):
+        self.assertTrue(
+            TAG_GATE_PATH.is_file(),
+            "trusted manual release-tag workflow is missing",
+        )
+
+        trusted = TAG_GATE_PATH.read_text(encoding="utf-8")
+
+        self.assertIn(
+            "  workflow_dispatch:\n"
+            "    inputs:\n"
+            "      tag:\n",
+            trusted,
+        )
+        self.assertIn("        required: true\n", trusted)
+        self.assertIn("        type: string\n", trusted)
+
+        self.assertNotIn("\n  push:\n", trusted)
+        self.assertNotIn("\n  pull_request:\n", trusted)
+        self.assertNotIn("\n  release:\n", trusted)
+
+        self.assertIn(
+            "permissions:\n"
+            "  contents: read\n",
+            trusted,
+        )
+
+        block = _job_block(trusted, "release-tag-check")
+        checkout_line = (
+            f"      - uses: actions/checkout@{CHECKOUT_SHA} # v6.0.2"
+        )
+
+        self.assertIn(
+            "    if: github.ref == 'refs/heads/main'\n",
+            block,
+        )
+        self.assertEqual(block.count("actions/checkout@"), 1)
+        self.assertRegex(
+            block,
+            re.escape(checkout_line)
+            + r"\n        with:\n"
+            + r"          ref: refs/heads/main\n"
+            + r"          fetch-depth: 0(?:\n|\Z)",
+        )
+        self.assertIn(
+            "          RELEASE_TAG: ${{ inputs.tag }}\n",
+            block,
+        )
+        self.assertIn(
+            '          python3 tools/release_check.py tag "$RELEASE_TAG"\n',
+            block,
+        )
+
+        run_blocks = _run_blocks(block)
+        self.assertTrue(run_blocks)
+        for run_block in run_blocks:
+            self.assertNotIn("${{", run_block)
 
 
 if __name__ == "__main__":

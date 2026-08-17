@@ -11,14 +11,19 @@ Abdeckung:
   Cluster D: README/INSTALL/VERSION fail-closed
 """
 
+import base64
+import inspect
 import os
 import re
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import tools.release_check as release_check  # noqa: E402
 
 from tools.release_check import (  # noqa: E402
     CheckResult, GitRunner, GhRunner,
@@ -41,6 +46,15 @@ _CHANGELOG_MIN = (
 )
 _README_MIN = "**Version:** [`0.1.0`](VERSION)\n"
 _INSTALL_MIN = "See [`VERSION`](VERSION)\n"
+
+_RELEASE_SIGNER_PRINCIPAL = "82227609+tomtastisch@users.noreply.github.com"
+_RELEASE_SIGNER_KEY = (
+    "AAAAC3NzaC1lZDI1NTE5AAAAIJJqgiZKUWTznfSu2g34z5dJoK0GLqv+fiIX/i6hzYCB"
+)
+_RELEASE_ALLOWED_SIGNER = (
+    f'{_RELEASE_SIGNER_PRINCIPAL} namespaces="git" '
+    f"ssh-ed25519 {_RELEASE_SIGNER_KEY}\n"
+)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -504,6 +518,121 @@ class TagSignature(TagConsistencyBase):
         self.assertTrue(any("Signaturprüfung fehlgeschlagen" in e for e in r.errors))
 
 
+class ReleaseTrustAnchorTests(unittest.TestCase):
+    """Repositorygebundener, fingerprint-gepinnter SSH-Release-Trust-Anchor."""
+
+    def setUp(self):
+        self.d = tempfile.TemporaryDirectory()
+        self.root = self.d.name
+        self.allowed_signers = os.path.join(
+            self.root, ".github", "signing", "allowed_signers"
+        )
+
+    def tearDown(self):
+        self.d.cleanup()
+
+    def _write_allowed_signers(self, content):
+        _write(self.allowed_signers, content)
+
+    def _verify_with_successful_git(self):
+        with mock.patch.object(
+            GitRunner, "run", return_value=("Good signature", "", 0)
+        ) as git_run:
+            result = GitRunner.verify_signature("v0.3.1", self.root)
+        return result, git_run
+
+    def test_missing_trust_anchor_is_rejected_before_git(self):
+        (ok, detail), git_run = self._verify_with_successful_git()
+        self.assertFalse(ok)
+        self.assertIn("allowed_signers", detail)
+        git_run.assert_not_called()
+
+    def test_wrong_fingerprint_is_rejected_before_git(self):
+        other_blob = base64.b64encode(b"synthetic-different-key-blob").decode()
+        self._write_allowed_signers(
+            f'{_RELEASE_SIGNER_PRINCIPAL} namespaces="git" '
+            f"ssh-ed25519 {other_blob}\n"
+        )
+        (ok, _detail), git_run = self._verify_with_successful_git()
+        self.assertFalse(ok)
+        git_run.assert_not_called()
+
+    def test_wrong_principal_is_rejected_before_git(self):
+        self._write_allowed_signers(
+            f'other-signer namespaces="git" ssh-ed25519 {_RELEASE_SIGNER_KEY}\n'
+        )
+        (ok, _detail), git_run = self._verify_with_successful_git()
+        self.assertFalse(ok)
+        git_run.assert_not_called()
+
+    def test_wrong_namespace_is_rejected_before_git(self):
+        self._write_allowed_signers(
+            f'{_RELEASE_SIGNER_PRINCIPAL} namespaces="file" '
+            f"ssh-ed25519 {_RELEASE_SIGNER_KEY}\n"
+        )
+        (ok, _detail), git_run = self._verify_with_successful_git()
+        self.assertFalse(ok)
+        git_run.assert_not_called()
+
+    def test_wrong_key_type_is_rejected_before_git(self):
+        self._write_allowed_signers(
+            f'{_RELEASE_SIGNER_PRINCIPAL} namespaces="git" '
+            f"ssh-rsa {_RELEASE_SIGNER_KEY}\n"
+        )
+        (ok, _detail), git_run = self._verify_with_successful_git()
+        self.assertFalse(ok)
+        git_run.assert_not_called()
+
+    def test_invalid_base64_key_blob_is_rejected_before_git(self):
+        self._write_allowed_signers(
+            f'{_RELEASE_SIGNER_PRINCIPAL} namespaces="git" '
+            "ssh-ed25519 not+strict/base64!\n"
+        )
+        (ok, _detail), git_run = self._verify_with_successful_git()
+        self.assertFalse(ok)
+        git_run.assert_not_called()
+
+    def test_multiple_active_signers_are_rejected_before_git(self):
+        self._write_allowed_signers(_RELEASE_ALLOWED_SIGNER * 2)
+        (ok, _detail), git_run = self._verify_with_successful_git()
+        self.assertFalse(ok)
+        git_run.assert_not_called()
+
+    def test_correct_trust_material_is_accepted(self):
+        self._write_allowed_signers(_RELEASE_ALLOWED_SIGNER)
+        validator = getattr(release_check, "_validate_release_trust_anchor", None)
+        self.assertIsNotNone(
+            validator, "release_check must expose the trust-anchor validator"
+        )
+        path, error = validator(self.root)
+        self.assertEqual(error, "")
+        self.assertEqual(path, os.path.abspath(self.allowed_signers))
+
+    def test_git_uses_absolute_allowed_signers_path_per_invocation(self):
+        self._write_allowed_signers(_RELEASE_ALLOWED_SIGNER)
+        (ok, detail), git_run = self._verify_with_successful_git()
+        self.assertTrue(ok, detail)
+        git_run.assert_called_once_with(
+            [
+                "-c",
+                f"gpg.ssh.allowedSignersFile={os.path.abspath(self.allowed_signers)}",
+                "tag",
+                "-v",
+                "v0.3.1",
+            ],
+            self.root,
+        )
+
+    def test_symlink_trust_anchor_is_rejected_before_git(self):
+        target = os.path.join(self.root, "synthetic-allowed-signers")
+        _write(target, _RELEASE_ALLOWED_SIGNER)
+        os.makedirs(os.path.dirname(self.allowed_signers), exist_ok=True)
+        os.symlink(target, self.allowed_signers)
+        (ok, _detail), git_run = self._verify_with_successful_git()
+        self.assertFalse(ok)
+        git_run.assert_not_called()
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # Cluster C: Release-Modus
 # ═══════════════════════════════════════════════════════════════════════
@@ -567,7 +696,7 @@ class ReleaseTargetCommitishTests(TagConsistencyBase):
         self._tag(self.root, "v0.1.0")
         head = self._git("rev-parse", "HEAD")
         gh = FakeGhRunner(data={"tagName": "v0.1.0", "targetCommitish": head, "isDraft": False, "isPrerelease": False})
-        r = check_release(root=self.root, tag_ref="v0.1.0", gh=gh)
+        r = check_release(root=self.root, tag_ref="v0.1.0", gh=gh, verifier=self.mock_verifier)
         self.assertTrue(r.ok, f"Erwartet OK, Fehler: {r.errors}")
 
     def test_release_sha_mismatch_is_error(self):
@@ -575,7 +704,7 @@ class ReleaseTargetCommitishTests(TagConsistencyBase):
         self._tag(self.root, "v0.1.0")
         wrong_sha = "0" * 40
         gh = FakeGhRunner(data={"tagName": "v0.1.0", "targetCommitish": wrong_sha, "isDraft": False, "isPrerelease": False})
-        r = check_release(root=self.root, tag_ref="v0.1.0", gh=gh)
+        r = check_release(root=self.root, tag_ref="v0.1.0", gh=gh, verifier=self.mock_verifier)
         self.assertFalse(r.ok)
         self.assertTrue(any("weicht von Tag-Commit" in e for e in r.errors))
 
@@ -583,7 +712,7 @@ class ReleaseTargetCommitishTests(TagConsistencyBase):
         self._init_git("0.1.0")
         self._tag(self.root, "v0.1.0")
         gh = FakeGhRunner(data={"tagName": "v0.1.0", "targetCommitish": "main", "isDraft": False, "isPrerelease": False})
-        r = check_release(root=self.root, tag_ref="v0.1.0", gh=gh)
+        r = check_release(root=self.root, tag_ref="v0.1.0", gh=gh, verifier=self.mock_verifier)
         self.assertTrue(r.ok, f"Erwartet OK, Fehler: {r.errors}")
 
     def test_release_local_branch_mismatch_is_error(self):
@@ -594,7 +723,7 @@ class ReleaseTargetCommitishTests(TagConsistencyBase):
         self._git("add", "extra")
         self._git("-c", "commit.gpgsign=false", "commit", "-m", "extra")
         gh = FakeGhRunner(data={"tagName": "v0.1.0", "targetCommitish": "main", "isDraft": False, "isPrerelease": False})
-        r = check_release(root=self.root, tag_ref="v0.1.0", gh=gh)
+        r = check_release(root=self.root, tag_ref="v0.1.0", gh=gh, verifier=self.mock_verifier)
         self.assertFalse(r.ok)
         self.assertTrue(any("weicht von Tag-Commit" in e for e in r.errors))
 
@@ -607,14 +736,14 @@ class ReleaseTargetCommitishTests(TagConsistencyBase):
         self._git("checkout", "--detach", head)
         self._git("branch", "-D", "main")
         gh = FakeGhRunner(data={"tagName": "v0.1.0", "targetCommitish": "main", "isDraft": False, "isPrerelease": False})
-        r = check_release(root=self.root, tag_ref="v0.1.0", gh=gh)
+        r = check_release(root=self.root, tag_ref="v0.1.0", gh=gh, verifier=self.mock_verifier)
         self.assertTrue(r.ok, f"Erwartet OK (origin/main), Fehler: {r.errors}")
 
     def test_release_unknown_branch_is_error(self):
         self._init_git("0.1.0")
         self._tag(self.root, "v0.1.0")
         gh = FakeGhRunner(data={"tagName": "v0.1.0", "targetCommitish": "ghost", "isDraft": False, "isPrerelease": False})
-        r = check_release(root=self.root, tag_ref="v0.1.0", gh=gh)
+        r = check_release(root=self.root, tag_ref="v0.1.0", gh=gh, verifier=self.mock_verifier)
         self.assertFalse(r.ok)
         self.assertTrue(any("nicht auflösbar" in e for e in r.errors))
 
@@ -622,7 +751,7 @@ class ReleaseTargetCommitishTests(TagConsistencyBase):
         self._init_git("0.1.0")
         self._tag(self.root, "v0.1.0")
         gh = FakeGhRunner(error="gh CLI nicht verfügbar")
-        r = check_release(root=self.root, tag_ref="v0.1.0", gh=gh)
+        r = check_release(root=self.root, tag_ref="v0.1.0", gh=gh, verifier=self.mock_verifier)
         self.assertFalse(r.ok)
         self.assertTrue(any("gh CLI nicht verfügbar" in e for e in r.errors))
 
@@ -630,7 +759,7 @@ class ReleaseTargetCommitishTests(TagConsistencyBase):
         self._init_git("0.1.0")
         self._tag(self.root, "v0.1.0")
         gh = FakeGhRunner(error="Release nicht gefunden")
-        r = check_release(root=self.root, tag_ref="v0.1.0", gh=gh)
+        r = check_release(root=self.root, tag_ref="v0.1.0", gh=gh, verifier=self.mock_verifier)
         self.assertFalse(r.ok)
         self.assertTrue(any("Release nicht gefunden" in e for e in r.errors))
 
@@ -638,7 +767,7 @@ class ReleaseTargetCommitishTests(TagConsistencyBase):
         self._init_git("0.1.0")
         self._tag(self.root, "v0.1.0")
         gh = FakeGhRunner(data={"tagName": "v0.2.0", "targetCommitish": "main", "isDraft": False, "isPrerelease": False})
-        r = check_release(root=self.root, tag_ref="v0.1.0", gh=gh)
+        r = check_release(root=self.root, tag_ref="v0.1.0", gh=gh, verifier=self.mock_verifier)
         self.assertFalse(r.ok)
         self.assertTrue(any("tagName" in e for e in r.errors))
 
@@ -646,7 +775,7 @@ class ReleaseTargetCommitishTests(TagConsistencyBase):
         self._init_git("0.1.0")
         self._tag(self.root, "v0.1.0")
         gh = FakeGhRunner(data={"tagName": "v0.1.0", "targetCommitish": "main", "isDraft": True, "isPrerelease": False})
-        r = check_release(root=self.root, tag_ref="v0.1.0", gh=gh)
+        r = check_release(root=self.root, tag_ref="v0.1.0", gh=gh, verifier=self.mock_verifier)
         self.assertFalse(r.ok)
         self.assertTrue(any("Draft" in e for e in r.errors))
 
@@ -656,8 +785,36 @@ class ReleaseTargetCommitishTests(TagConsistencyBase):
         head = self._git("rev-parse", "HEAD")
         self._git("-c", "tag.gpgsign=false", "tag", "-m", "release", "v0.1.0")
         gh = FakeGhRunner(data={"tagName": "v0.1.0", "targetCommitish": head, "isDraft": False, "isPrerelease": False})
-        r = check_release(root=self.root, tag_ref="v0.1.0", gh=gh)
+        r = check_release(root=self.root, tag_ref="v0.1.0", gh=gh, verifier=self.mock_verifier)
         self.assertTrue(r.ok, f"Erwartet OK (annotiert + SHA-match), Fehler: {r.errors}")
+
+    def test_release_rejects_invalid_tag_signature(self):
+        self._init_git("0.1.0")
+        self._tag(self.root, "v0.1.0")
+        head = self._git("rev-parse", "HEAD")
+        gh = FakeGhRunner(data={
+            "tagName": "v0.1.0",
+            "targetCommitish": head,
+            "isDraft": False,
+            "isPrerelease": False,
+        })
+        calls = []
+
+        def invalid_signature(tag, root):
+            calls.append((tag, root))
+            return False, "signature invalid"
+
+        if "verifier" not in inspect.signature(check_release).parameters:
+            self.fail("check_release must accept an injectable signature verifier")
+        r = check_release(
+            root=self.root,
+            tag_ref="v0.1.0",
+            gh=gh,
+            verifier=invalid_signature,
+        )
+        self.assertFalse(r.ok)
+        self.assertEqual(calls, [("v0.1.0", self.root)])
+        self.assertTrue(any("Signaturprüfung fehlgeschlagen" in e for e in r.errors))
 
     def test_version_missing_is_error(self):
         with tempfile.TemporaryDirectory() as d:

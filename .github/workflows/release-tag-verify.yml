@@ -1,0 +1,31 @@
+name: Trusted Release Tag Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Annotated release tag to verify; must equal v<VERSION>"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  release-tag-check:
+    name: Tag-Konsistenz (trusted main)
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: refs/heads/main
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Tag-Name, Commit und Signatur prüfen
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          python3 tools/release_check.py tag "$RELEASE_TAG"
