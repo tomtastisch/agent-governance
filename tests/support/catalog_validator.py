@@ -18,6 +18,8 @@ MANIFEST_FIELDS = frozenset(
 )
 CATALOG_NAMES = ("triggers", "policy_tags", "scopes", "tools")
 VOCABULARY_FIELDS = frozenset({"label", "description"})
+MODULE_FIELDS = frozenset({"path", "triggers", "dependencies"})
+ROLE_FIELDS = frozenset({"path", "triggers", "modules"})
 TOOL_FIELDS = frozenset(
     {
         "name",
@@ -91,7 +93,7 @@ def load_catalog_contract(
     policy_tags = _validate_vocabulary(parsed_catalogs["policy_tags"], "policy_tags")
     scopes = _validate_vocabulary(parsed_catalogs["scopes"], "scopes")
     tools = _validate_tools(parsed_catalogs["tools"], triggers, policy_tags, scopes)
-    _validate_manifest_trigger_references(manifest_data, triggers)
+    _validate_manifest_index(root, manifest_data, triggers)
 
     return CatalogContract(
         manifest=manifest_data,
@@ -114,18 +116,23 @@ def _manifest_root(path: Path) -> Path:
 
 
 def _catalog_file(root: Path, raw: object) -> Path:
+    return _index_file(root, raw, "Katalog")
+
+
+def _index_file(root: Path, raw: object, kind: str) -> Path:
     if not isinstance(raw, str) or not raw or Path(raw).is_absolute() or "\\" in raw:
-        raise CatalogValidationError("Katalogpfad ist ungültig")
+        raise CatalogValidationError(f"{kind}pfad ist ungültig")
+    raw_parts = raw.split("/")
+    if any(part in {"", ".", "..", "~"} for part in raw_parts):
+        raise CatalogValidationError(f"{kind}pfad enthält Traversal")
     pure = PurePosixPath(raw)
-    if not pure.parts or ".." in pure.parts or "~" in pure.parts or "." in pure.parts:
-        raise CatalogValidationError("Katalogpfad enthält Traversal")
     candidate = root.joinpath(*pure.parts)
     current = root
     for part in pure.parts:
         current = current / part
         if current.is_symlink():
-            raise CatalogValidationError("Symlink im Katalogpfad")
-    return _regular_file(root, candidate, "Katalog")
+            raise CatalogValidationError(f"Symlink im {kind}pfad")
+    return _regular_file(root, candidate, kind)
 
 
 def _regular_file(root: Path, candidate: Path, kind: str) -> Path:
@@ -215,20 +222,66 @@ def _validate_tools(
     return tools
 
 
-def _validate_manifest_trigger_references(
-    manifest: Mapping[str, object], triggers: frozenset[str]
+def _validate_manifest_index(
+    root: Path,
+    manifest: Mapping[str, object],
+    triggers: frozenset[str],
 ) -> None:
-    for group_name in ("modules", "roles"):
-        group = manifest.get(group_name)
-        if not isinstance(group, Mapping) or not group:
-            raise CatalogValidationError(f"Manifest {group_name} muss eine nichtleere Tabelle sein")
-        for item_id, item in group.items():
-            if not isinstance(item, Mapping):
-                raise CatalogValidationError(f"Manifest {group_name}.{item_id} muss eine Tabelle sein")
-            references = _id_list(
-                item.get("triggers"), f"Manifest {group_name}.{item_id}.triggers"
-            )
-            _known_references(references, triggers, "unbekannten Trigger", f"{group_name}.{item_id}")
+    modules = manifest.get("modules")
+    if not isinstance(modules, Mapping) or not modules:
+        raise CatalogValidationError("Manifest modules muss eine nichtleere Tabelle sein")
+    module_ids = frozenset(_validate_id(module_id, "Manifest modules") for module_id in modules)
+    module_dependencies: dict[str, tuple[str, ...]] = {}
+    for module_id, module in modules.items():
+        context = f"Manifest modules.{module_id}"
+        if not isinstance(module, Mapping):
+            raise CatalogValidationError(f"{context} muss eine Tabelle sein")
+        _exact_fields(module, MODULE_FIELDS, context)
+        _index_file(root, module.get("path"), "Modul")
+        module_triggers = _nonempty_id_list(module.get("triggers"), f"{context}.triggers")
+        _known_references(module_triggers, triggers, "unbekannten Trigger", context)
+        module_dependencies[module_id] = _id_list(
+            module.get("dependencies"), f"{context}.dependencies"
+        )
+
+    for module_id, dependencies in module_dependencies.items():
+        _known_references(dependencies, module_ids, "unbekannte Module", f"modules.{module_id}")
+    _validate_module_graph(module_dependencies)
+
+    roles = manifest.get("roles")
+    if not isinstance(roles, Mapping) or not roles:
+        raise CatalogValidationError("Manifest roles muss eine nichtleere Tabelle sein")
+    for role_id, role in roles.items():
+        _validate_id(role_id, "Manifest roles")
+        context = f"Manifest roles.{role_id}"
+        if not isinstance(role, Mapping):
+            raise CatalogValidationError(f"{context} muss eine Tabelle sein")
+        _exact_fields(role, ROLE_FIELDS, context)
+        _index_file(root, role.get("path"), "Rollen")
+        role_triggers = _nonempty_id_list(role.get("triggers"), f"{context}.triggers")
+        _known_references(role_triggers, triggers, "unbekannten Trigger", context)
+        role_modules = _nonempty_id_list(role.get("modules"), f"{context}.modules")
+        _known_references(role_modules, module_ids, "unbekannte Module", context)
+
+
+def _validate_module_graph(dependencies: Mapping[str, tuple[str, ...]]) -> None:
+    visited: set[str] = set()
+    visiting: list[str] = []
+
+    def visit(module_id: str) -> None:
+        if module_id in visited:
+            return
+        if module_id in visiting:
+            cycle = " -> ".join([*visiting[visiting.index(module_id):], module_id])
+            raise CatalogValidationError(f"Modulabhängigkeiten sind zyklisch: {cycle}")
+        visiting.append(module_id)
+        for dependency in dependencies[module_id]:
+            visit(dependency)
+        visiting.pop()
+        visited.add(module_id)
+
+    for module_id in dependencies:
+        visit(module_id)
 
 
 def _validate_id(value: object, context: str) -> str:
@@ -243,6 +296,13 @@ def _id_list(value: object, context: str) -> tuple[str, ...]:
     result = tuple(_validate_id(item, context) for item in value)
     if len(result) != len(set(result)):
         raise CatalogValidationError(f"{context} enthält doppelte IDs")
+    return result
+
+
+def _nonempty_id_list(value: object, context: str) -> tuple[str, ...]:
+    result = _id_list(value, context)
+    if not result:
+        raise CatalogValidationError(f"{context} muss mindestens eine ID enthalten")
     return result
 
 

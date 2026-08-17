@@ -31,7 +31,7 @@ Akzeptanzkriterien ausführen.
 """
 required_on = ["repository_verification"]
 useful_on = ["testing", "debugging", "release"]
-policy_tags = ["read"]
+policy_tags = ["read", "write"]
 scopes = ["repository"]
 evidence = """
 Exitcodes, konkrete Findings und reproduzierbare Ergebnisprotokolle der ausgeführten Checks.
@@ -42,7 +42,8 @@ gleichwertiger read-only Prüfpfad darf nur die tatsächlich gleiche Aussage erg
 """
 constraints = """
 Erwartete temporäre Test- oder Buildartefakte erzeugen keine externe Freigabe. Ein fokussierter
-oder lokal grüner Check belegt weder eine ausgelassene Gesamtsuite noch Remote-CI.
+oder lokal grüner Check belegt weder eine ausgelassene Gesamtsuite noch Remote-CI. Der Policy-Tag
+write klassifiziert die mögliche Artefaktwirkung und erzeugt keine Autorisierung.
 """
 
 [tools.github]
@@ -95,7 +96,7 @@ purpose = """
 GitHub-Evidenz strukturiert ergänzen, wenn Beziehungen, Reviewthreads oder Metadaten über den
 primären GitHubpfad nicht ausreichend aufgelöst sind.
 """
-required_on = []
+required_on = ["github_connector_required"]
 useful_on = ["github_remote", "quality_review"]
 policy_tags = ["read", "write"]
 scopes = ["github"]
@@ -104,7 +105,8 @@ Ergänzende Objektbezüge, Reviewthreads und nachvollziehbare strukturierte Remo
 """
 fallback = """
 GitHub CLI und lokale Git-CLI bleiben für ihre jeweiligen Aussagen maßgeblich; ein fehlender
-Schreibpfad wird nicht durch einen anderen Connector umgangen.
+Schreibpfad wird nicht durch einen anderen Connector umgangen. Ist der Connector Pflichtpfad und
+die maßgebliche Evidenz weiterhin nicht auflösbar, bleibt das davon abhängige Gate offen.
 """
 constraints = """
 Connector-Schreibrechte erweitern niemals die Nutzerautorisierung. Der Connector ersetzt weder
@@ -203,8 +205,8 @@ purpose = """
 Microsoft APM, der Agent Package Manager von github.com/microsoft/apm, beurteilt Agent-Pakete,
 Agent-Skills und deklarative Agent-Abhängigkeiten reproduzierbar.
 """
-required_on = ["agent_dependencies"]
-useful_on = ["agent_package_provenance", "dependency_drift"]
+required_on = ["agent_dependencies", "agent_package_provenance", "dependency_drift"]
+useful_on = []
 policy_tags = ["read"]
 scopes = ["agent_packages"]
 evidence = """
@@ -218,6 +220,7 @@ Driftgate erfüllen; andernfalls bleibt es offen.
 constraints = """
 Keine automatische Installation oder Aktualisierung. Der Katalog begründet weder Paketverwaltung
 als Governance-Subsystem noch Mutationen an Quellen, Locks, Agentdateien, Runtime oder Deployment.
+Fehlt deklarierter APM-Zustand, wird diese Abwesenheit belegt, ohne Dateien anzulegen.
 """
 
 [tools.linear]

@@ -67,7 +67,13 @@ dependencies = ["evidence", "delivery"]
 
 [modules.tool_routing]
 path = "modules/tool-routing.md"
-triggers = ["tool_selection", "agent_dependencies"]
+triggers = [
+  "tool_selection",
+  "github_connector_required",
+  "agent_dependencies",
+  "agent_package_provenance",
+  "dependency_drift",
+]
 dependencies = ["security"]
 
 [modules.templates]

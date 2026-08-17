@@ -188,6 +188,51 @@ class CatalogContract(unittest.TestCase):
             r"(?is)keinen Remotezustand",
         )
 
+    def test_repository_checks_classify_expected_artifact_writes(self):
+        self.assertEqual(
+            self.contract.tools["repository_checks"]["policy_tags"],
+            ["read", "write"],
+        )
+        self.assertRegex(
+            self.contract.tools["repository_checks"]["constraints"],
+            r"(?is)write.+keine Autorisierung",
+        )
+
+    def test_github_connector_preserves_conditional_required_path(self):
+        connector_trigger = "github_connector_required"
+        connector = self.contract.tools["github_connector"]
+        self.assertIn(connector_trigger, self.contract.triggers)
+        self.assertEqual(connector["required_on"], [connector_trigger])
+        self.assertIn(
+            connector_trigger,
+            self.contract.manifest["modules"]["tool_routing"]["triggers"],
+        )
+        trigger_description = self.contract.catalogs["triggers"]["triggers"][
+            connector_trigger
+        ]["description"]
+        self.assertRegex(
+            trigger_description,
+            r"(?is)ausdrücklich.+Connector.+primäre.+Evidenz.+nicht.+auflösbar",
+        )
+
+    def test_microsoft_apm_preserves_required_provenance_and_drift_paths(self):
+        required = {
+            "agent_dependencies",
+            "agent_package_provenance",
+            "dependency_drift",
+        }
+        apm = self.contract.tools["microsoft_apm"]
+        self.assertEqual(set(apm["required_on"]), required)
+        self.assertEqual(apm["useful_on"], [])
+        self.assertLessEqual(
+            {"agent_package_provenance", "dependency_drift"},
+            set(self.contract.manifest["modules"]["tool_routing"]["triggers"]),
+        )
+        self.assertRegex(
+            apm["constraints"],
+            r"(?is)fehlt.+deklarierter APM-Zustand.+Abwesenheit.+ohne Dateien anzulegen",
+        )
+
     def test_tool_catalog_has_no_installation_or_availability_state(self):
         text = (GOVERNANCE_ROOT / EXPECTED_CATALOG_PATHS["tools"]).read_text(
             encoding="utf-8"
@@ -285,6 +330,33 @@ class CatalogReferenceFailures(CatalogMutationCase):
         with self.assertRaisesRegex(self.validator.CatalogValidationError, "unbekannten Scope"):
             self.load()
 
+    def test_unknown_module_dependency_fails_closed(self):
+        self.replace(
+            "manifest.toml",
+            'dependencies = []\n\n[modules.enforcement]',
+            'dependencies = ["missing_module"]\n\n[modules.enforcement]',
+        )
+        with self.assertRaisesRegex(self.validator.CatalogValidationError, "unbekannte Module"):
+            self.load()
+
+    def test_unknown_role_module_fails_closed(self):
+        self.replace(
+            "manifest.toml",
+            'modules = ["evidence", "architecture", "invariants", "delivery"]',
+            'modules = ["evidence", "architecture", "missing_module", "delivery"]',
+        )
+        with self.assertRaisesRegex(self.validator.CatalogValidationError, "unbekannte Module"):
+            self.load()
+
+    def test_module_dependency_cycle_fails_closed(self):
+        self.replace(
+            "manifest.toml",
+            'dependencies = []\n\n[modules.enforcement]',
+            'dependencies = ["enforcement"]\n\n[modules.enforcement]',
+        )
+        with self.assertRaisesRegex(self.validator.CatalogValidationError, "zyklisch"):
+            self.load()
+
 
 class CatalogSchemaFailures(CatalogMutationCase):
     def test_unknown_tool_field_fails_closed(self):
@@ -324,6 +396,44 @@ class CatalogSchemaFailures(CatalogMutationCase):
 
     def test_invalid_id_fails_closed(self):
         self.append_tool(tool_id="Invalid-ID")
+        with self.assertRaisesRegex(self.validator.CatalogValidationError, "ungültige ID"):
+            self.load()
+
+    def test_unknown_module_field_fails_closed(self):
+        self.replace(
+            "manifest.toml",
+            'dependencies = []\n\n[modules.enforcement]',
+            'dependencies = []\nunexpected = true\n\n[modules.enforcement]',
+        )
+        with self.assertRaisesRegex(self.validator.CatalogValidationError, "unbekannte Felder"):
+            self.load()
+
+    def test_unknown_role_field_fails_closed(self):
+        self.replace(
+            "manifest.toml",
+            'modules = ["evidence", "architecture", "invariants", "delivery"]',
+            'modules = ["evidence", "architecture", "invariants", "delivery"]\n'
+            'unexpected = true',
+        )
+        with self.assertRaisesRegex(self.validator.CatalogValidationError, "unbekannte Felder"):
+            self.load()
+
+    def test_missing_module_field_fails_closed(self):
+        self.replace("manifest.toml", 'path = "modules/invariants.md"\n', "")
+        with self.assertRaisesRegex(self.validator.CatalogValidationError, "fehlende Felder"):
+            self.load()
+
+    def test_wrong_module_field_type_fails_closed(self):
+        self.replace(
+            "manifest.toml",
+            'dependencies = []\n\n[modules.enforcement]',
+            'dependencies = "none"\n\n[modules.enforcement]',
+        )
+        with self.assertRaisesRegex(self.validator.CatalogValidationError, "Liste"):
+            self.load()
+
+    def test_invalid_module_id_fails_closed(self):
+        self.replace("manifest.toml", "[modules.invariants]", '[modules."Invalid-ID"]')
         with self.assertRaisesRegex(self.validator.CatalogValidationError, "ungültige ID"):
             self.load()
 
@@ -371,6 +481,37 @@ class CatalogPathFailures(CatalogMutationCase):
         shutil.copy2(source, target)
         source.unlink()
         source.symlink_to(target)
+        with self.assertRaisesRegex(self.validator.CatalogValidationError, "Symlink"):
+            self.load()
+
+    def test_absolute_unselected_module_path_fails_closed(self):
+        outside = self.root.parent / "outside.md"
+        outside.write_text("outside\n", encoding="utf-8")
+        self.replace(
+            "manifest.toml",
+            'path = "modules/context.md"',
+            f'path = "{outside}"',
+        )
+        with self.assertRaisesRegex(self.validator.CatalogValidationError, "Modulpfad"):
+            self.load()
+
+    def test_unselected_module_path_traversal_fails_closed(self):
+        outside = self.root.parent / "outside.md"
+        outside.write_text("outside\n", encoding="utf-8")
+        self.replace(
+            "manifest.toml",
+            'path = "modules/context.md"',
+            'path = "../outside.md"',
+        )
+        with self.assertRaisesRegex(self.validator.CatalogValidationError, "Traversal"):
+            self.load()
+
+    def test_unexpected_unselected_module_symlink_fails_closed(self):
+        outside = self.root.parent / "outside.md"
+        outside.write_text("outside\n", encoding="utf-8")
+        module = self.root / "modules" / "context.md"
+        module.unlink()
+        module.symlink_to(outside)
         with self.assertRaisesRegex(self.validator.CatalogValidationError, "Symlink"):
             self.load()
 

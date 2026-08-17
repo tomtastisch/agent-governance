@@ -162,6 +162,13 @@ description = """
 Remote-GitHub-Zustand oder GitHubobjekte sind Teil der benötigten Evidenz oder Wirkung.
 """
 
+[triggers.github_connector_required]
+label = "GitHub Connector Required"
+description = """
+Der Auftrag verlangt ausdrücklich den GitHub Connector oder maßgebliche primäre GitHub-Evidenz
+ist über den vorgesehenen primären Pfad nicht auflösbar.
+"""
+
 [triggers.authoritative_documentation]
 label = "Authoritative Documentation"
 description = """
