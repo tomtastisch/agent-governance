@@ -129,5 +129,33 @@ class ReleaseWorkflowSecurityContract(unittest.TestCase):
             self.assertNotIn("${{", run_block)
 
 
+    def test_node24_action_runtime_contract(self):
+        self.assertTrue(
+            TAG_GATE_PATH.is_file(),
+            "trusted manual release-tag workflow is missing",
+        )
+        trusted = TAG_GATE_PATH.read_text(encoding="utf-8")
+        consistency = _job_block(CI_WORKFLOW, "consistency-tests")
+        metadata = _job_block(CI_WORKFLOW, "release-metadata")
+        release = _job_block(CI_WORKFLOW, "release-validate")
+
+        self.assertIn("actions/checkout@v7", consistency)
+        self.assertIn("actions/setup-python@v7", consistency)
+        self.assertIn("actions/setup-node@v7", consistency)
+        self.assertIn('node-version: "24"', consistency)
+        self.assertIn("package-manager-cache: false", consistency)
+
+        self.assertIn("actions/checkout@v7", metadata)
+        self.assertIn("actions/setup-python@v7", metadata)
+
+        self.assertIn("actions/setup-python@v7", release)
+        self.assertIn("actions/setup-python@v7", trusted)
+
+        self.assertNotIn("actions/checkout@v4", CI_WORKFLOW)
+        self.assertNotIn("actions/setup-python@v5", CI_WORKFLOW + trusted)
+        self.assertNotIn("actions/setup-node@v4", CI_WORKFLOW)
+        self.assertNotIn('node-version: "20"', CI_WORKFLOW)
+
+
 if __name__ == "__main__":
     unittest.main()
