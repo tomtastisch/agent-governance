@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import tomllib
 import unittest
 from unittest import mock
 
@@ -24,6 +25,25 @@ class NeutralHarnessContract(unittest.TestCase):
 
 
 class NeutralHarnessRouting(NeutralRuntimeCase):
+    def test_every_required_tool_trigger_loads_tool_routing_semantics(self):
+        tools_path = self.root / "agent-governance" / "catalogs" / "tools.toml"
+        tools = tomllib.loads(tools_path.read_text(encoding="utf-8"))["tools"]
+        required_triggers = {
+            trigger
+            for tool in tools.values()
+            for trigger in tool["required_on"]
+        }
+
+        missing = []
+        for trigger in sorted(required_triggers):
+            result = self.harness.new_session(
+                task=f"required tool route for {trigger}",
+                triggers=(trigger,),
+            )
+            if "modules/tool-routing.md" not in result.module_paths:
+                missing.append(trigger)
+        self.assertEqual(missing, [])
+
     def test_absolute_interface_works_without_product_environment_or_known_cwd(self):
         environment = os.environ.copy()
         for name in tuple(environment):

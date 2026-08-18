@@ -1,33 +1,13 @@
-schema_version = 1
+schema_version = 2
 local_rules = "local/user-rules.md"
 
+[catalogs]
+triggers = "catalogs/triggers.toml"
+policy_tags = "catalogs/policy-tags.toml"
+scopes = "catalogs/scopes.toml"
+tools = "catalogs/tools.toml"
+
 [routing]
-known_triggers = [
-  "analysis",
-  "research",
-  "planning",
-  "architecture",
-  "implementation",
-  "refactoring",
-  "debugging",
-  "testing",
-  "documentation",
-  "release",
-  "external_effect",
-  "security_sensitive_change",
-  "security_review",
-  "quality_review",
-  "triage",
-  "role_architecture",
-  "role_triage",
-  "role_quality_assurance",
-  "role_security_review",
-  "tool_selection",
-  "agent_dependencies",
-  "context_handoff",
-  "status_reporting",
-  "long_task",
-]
 unknown = "block"
 ambiguous = "block"
 
@@ -87,7 +67,48 @@ dependencies = ["evidence", "delivery"]
 
 [modules.tool_routing]
 path = "modules/tool-routing.md"
-triggers = ["tool_selection", "agent_dependencies"]
+triggers = [
+  "ads_data",
+  "agent_dependencies",
+  "agent_package_provenance",
+  "aggregation",
+  "authoritative_documentation",
+  "backend_authentication",
+  "backend_diagnostics",
+  "calculation",
+  "canonical_memory_verification",
+  "commerce_metrics",
+  "cross_channel_marketing_analysis",
+  "data_visualization",
+  "database_migration",
+  "database_schema",
+  "debugging",
+  "dependency_drift",
+  "edge_functions",
+  "git_repository",
+  "github_connector_required",
+  "github_remote",
+  "implementation",
+  "initiative_tracking",
+  "issue_tracking",
+  "marketing_data",
+  "metric_analysis",
+  "object_storage",
+  "planning",
+  "postgresql",
+  "project_tracking",
+  "quality_review",
+  "realtime_backend",
+  "repository_verification",
+  "row_level_security",
+  "security_review",
+  "statistical_analysis",
+  "structured_data",
+  "tabular_data",
+  "testing",
+  "tool_selection",
+  "work_status_tracking",
+]
 dependencies = ["security"]
 
 [modules.templates]

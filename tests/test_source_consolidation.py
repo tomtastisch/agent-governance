@@ -210,21 +210,23 @@ class HistoricalEvidenceContract(unittest.TestCase):
 
 
 class ReleaseMetadataContract(unittest.TestCase):
-    def test_current_version_declares_recovery_patch_without_breaking(self):
+    def test_current_version_declares_typed_catalog_minor_candidate(self):
         changelog = read(ROOT / "CHANGELOG.md")
         version = read(ROOT / "VERSION").strip()
-        current = changelog.split(f"## [{version}]", 1)[1].split("\n## [", 1)[0]
-        self.assertEqual(version, "0.3.2")
-        self.assertIn("**Breaking changes:** none", current)
-        self.assertNotIn("**BREAKING:**", current)
-        for recovery_term in ("Allowed-Signers", "fingerprint", "Signatur", "v0.3.1"):
-            self.assertIn(recovery_term, current)
-
-    def test_unreleased_is_reset_after_version_classification(self):
-        changelog = read(ROOT / "CHANGELOG.md")
         unreleased = changelog.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0]
-        self.assertIn("**Breaking changes:** none", unreleased)
-        self.assertNotIn("**BREAKING:**", unreleased)
+        self.assertEqual(version, "0.4.0")
+        self.assertIn("**Breaking changes:** present", unreleased)
+        self.assertIn("**BREAKING:**", unreleased)
+        for catalog in ("triggers", "policy-tags", "scopes", "tools"):
+            self.assertIn(f"catalogs/{catalog}.toml", unreleased)
+
+    def test_published_recovery_patch_remains_unchanged(self):
+        changelog = read(ROOT / "CHANGELOG.md")
+        published = changelog.split("## [0.3.2]", 1)[1].split("\n## [", 1)[0]
+        self.assertIn("**Breaking changes:** none", published)
+        self.assertNotIn("**BREAKING:**", published)
+        for recovery_term in ("Allowed-Signers", "fingerprint", "Signatur", "v0.3.1"):
+            self.assertIn(recovery_term, published)
 
 
 class PrivateProfileMigrationGuardContract(unittest.TestCase):

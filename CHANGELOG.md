@@ -9,11 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Keine.
+- Vier geschlossene, maschinenvalidierbare Kataloge für Trigger, Policy-Tags, Scopes und Tools
+  unter `catalogs/triggers.toml`, `catalogs/policy-tags.toml`, `catalogs/scopes.toml` und
+  `catalogs/tools.toml`.
+- Der zentrale Toolkatalog umfasst die weiterhin gültigen Standardtoolklassen sowie Linear,
+  Supabase, Superpowers, Supermetrics, GitHub, Data Analytics, Canonical Memory Verifier und
+  Microsoft APM.
+- Zwei lokale, ausdrücklich nicht normative Erklärungsgrafiken zu Wirkung und Binding-Ablauf in
+  der README.
 
 ### Changed
 
-- Keine.
+- Das Manifest verwendet Manifest-Schema 2, bleibt Root-Index und referenziert die vier Katalogpfade
+  ausschließlich relativ zum kanonischen Manifestverzeichnis.
+- Toolprofile und ihre geschlossenen Trigger-, Policy-Tag- und Scope-Referenzen liegen nur noch in
+  `catalogs/tools.toml`; `modules/tool-routing.md` enthält ausschließlich allgemeine
+  Routingsemantik und Autorisierungsgrenzen.
+- Validatoren, Bootstrapmaterialisierung und produktneutraler Harness prüfen Katalogschema,
+  Referenzintegrität und Pfadsicherheit deterministisch fail-closed.
 
 ### Fixed
 
@@ -21,9 +34,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- Keine.
+- `routing.known_triggers` und die vollständigen Markdown-Toolprofile als parallele
+  maschinenlesbare beziehungsweise normative Katalogquellen.
 
-**Breaking changes:** none
+- **BREAKING:** Consumer des Manifest-Schemas 1 müssen `routing.known_triggers` durch den vom
+  Manifest referenzierten Triggerkatalog ersetzen und die vier Kataloge vor dem Modulrouting
+  validieren.
+
+**Breaking changes:** present
 
 ## [0.3.2] — 2026-08-15
 

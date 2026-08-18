@@ -13,6 +13,8 @@ import subprocess
 import tomllib
 from typing import Mapping, Sequence
 
+from tests.support.catalog_validator import CatalogValidationError, load_catalog_contract
+
 
 class NeutralHarnessError(RuntimeError):
     """Fail-closed Fehler des synthetischen Harnesses."""
@@ -112,7 +114,14 @@ class NeutralHarness:
         except (OSError, tomllib.TOMLDecodeError) as error:
             raise NeutralHarnessError("Governance-Manifest ist ungültig") from error
 
-        chain = ["bootstrap", "manifest"]
+        try:
+            contract = load_catalog_contract(self.manifest_dir, manifest=manifest)
+        except CatalogValidationError as error:
+            raise NeutralHarnessError(f"Governance-Kataloge sind ungültig: {error}") from error
+
+        read_paths.extend(contract.catalog_paths)
+        chain = ["bootstrap", "manifest", "catalogs"]
+        manifest = contract.manifest
         local_path = self._local_rules_path(manifest)
         local_rules_loaded = local_path.is_file() and not local_path.is_symlink()
         marker = None
@@ -123,7 +132,9 @@ class NeutralHarness:
             marker = match.group(1) if match else None
             chain.append("local_rules")
 
-        module_paths, role_paths, routed_paths = self._resolve_routes(manifest, triggers)
+        module_paths, role_paths, routed_paths = self._resolve_routes(
+            manifest, contract.triggers, triggers
+        )
         read_paths.extend(routed_paths)
         chain.append("modules")
 
@@ -179,15 +190,16 @@ class NeutralHarness:
         return candidate
 
     def _resolve_routes(
-        self, manifest: Mapping[str, object], triggers: Sequence[str]
+        self,
+        manifest: Mapping[str, object],
+        known_triggers: frozenset[str],
+        triggers: Sequence[str],
     ) -> tuple[tuple[str, ...], tuple[str, ...], list[Path]]:
-        routing = manifest.get("routing")
         modules = manifest.get("modules")
         roles = manifest.get("roles")
-        if not isinstance(routing, dict) or not isinstance(modules, dict) or not isinstance(roles, dict):
+        if not isinstance(modules, dict) or not isinstance(roles, dict):
             raise NeutralHarnessError("Manifestindex ist unvollständig")
-        known = routing.get("known_triggers")
-        if not isinstance(known, list) or any(trigger not in known for trigger in triggers):
+        if any(not isinstance(trigger, str) or trigger not in known_triggers for trigger in triggers):
             raise NeutralHarnessError("Unbekannter oder mehrdeutiger Trigger")
 
         selected: set[str] = set()

@@ -28,7 +28,8 @@ prüfe sie unmittelbar vor Aktivierung erneut, damit ein TOCTOU-Wechsel blockier
 ## Phase 1 — Release und Harness erkennen
 
 1. Ermittle den absoluten Pfad dieses veröffentlichten Release-Snapshots und prüfe `VERSION`,
-   `bundle/GOVERNANCE.md`, Manifest, Module, Rollen, Microsoft-`upstream.lock.toml`,
+   `bundle/GOVERNANCE.md`, Manifest, die vier manifestreferenzierten Kataloge, Module, Rollen,
+   Microsoft-`upstream.lock.toml`,
    `snapshot.files.sha256`, Lizenz, NOTICE und Trademark-Hinweis.
 2. Führe eine **Harness-Erkennung** anhand tatsächlich vorhandener, dokumentierter
    Harnessmechanismen durch. Ermittle den persistenten globalen Instruktionszielpfad, den
@@ -142,7 +143,7 @@ stoppe; lösche niemals das letzte recoverbare Exemplar.
 Eine frische Session muss Folgendes verifizieren; der installierende Prozess allein genügt nicht:
 
 1. kanonische Governance-Discovery und eindeutige Manifestauflösung;
-2. korrektes Modul- und Rollenrouting;
+2. geschlossene Katalogschemen und Referenzen sowie korrektes Modul- und Rollenrouting;
 3. Governance-gesteuertes Laden synthetischer `local_rules` aus dem Manifestpfad;
 4. read-only, autorisierte harmlose Workspace-Mutation und blockierte nicht autorisierte Wirkung;
 5. Provideraufruf vor Effekt sowie reale `allow`-, `deny`-, `require_approval`-, `error`- und

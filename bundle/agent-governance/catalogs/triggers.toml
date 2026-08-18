@@ -1,0 +1,344 @@
+schema_version = 1
+
+[triggers.analysis]
+label = "Analysis"
+description = """
+Der Auftrag erfordert eine strukturierte Untersuchung oder Bewertung.
+"""
+
+[triggers.research]
+label = "Research"
+description = """
+Der Auftrag erfordert belegte Recherche in autoritativen Quellen.
+"""
+
+[triggers.planning]
+label = "Planning"
+description = """
+Der Auftrag erfordert einen überprüfbaren Arbeits- oder Implementierungsplan.
+"""
+
+[triggers.architecture]
+label = "Architecture"
+description = """
+Der Auftrag betrifft Architekturgrenzen, Verantwortungen oder Source-of-Truth-Entscheidungen.
+"""
+
+[triggers.implementation]
+label = "Implementation"
+description = """
+Der Auftrag verlangt die Umsetzung einer freigegebenen Änderung.
+"""
+
+[triggers.refactoring]
+label = "Refactoring"
+description = """
+Der Auftrag verändert interne Struktur bei beabsichtigt gleichbleibendem Verhalten.
+"""
+
+[triggers.debugging]
+label = "Debugging"
+description = """
+Ein reproduzierbarer Fehler oder unerwartetes Verhalten muss ursächlich untersucht werden.
+"""
+
+[triggers.testing]
+label = "Testing"
+description = """
+Der Auftrag verlangt ausführbare Prüfungen oder Testvertragsänderungen.
+"""
+
+[triggers.documentation]
+label = "Documentation"
+description = """
+Der Auftrag verändert oder prüft erklärende Dokumentation.
+"""
+
+[triggers.release]
+label = "Release"
+description = """
+Der Auftrag betrifft versionierte Liefer- oder Releasegates.
+"""
+
+[triggers.external_effect]
+label = "External Effect"
+description = """
+Eine geplante Aktion kann persistenten oder nach außen wirkenden Zustand verändern.
+"""
+
+[triggers.security_sensitive_change]
+label = "Security-Sensitive Change"
+description = """
+Die Änderung berührt eine Sicherheitsgrenze nach GOV-006.
+"""
+
+[triggers.security_review]
+label = "Security Review"
+description = """
+Ein unabhängiges risikobasiertes Security-Gate ist erforderlich.
+"""
+
+[triggers.quality_review]
+label = "Quality Review"
+description = """
+Ein unabhängiges Lieferqualitäts-Gate ist erforderlich.
+"""
+
+[triggers.triage]
+label = "Triage"
+description = """
+Ein Befund muss reproduziert, abgegrenzt und klassifiziert werden.
+"""
+
+[triggers.role_architecture]
+label = "Architecture Role"
+description = """
+Die unabhängige Architekturrolle soll für den bezeichneten Stand geladen werden.
+"""
+
+[triggers.role_triage]
+label = "Triage Role"
+description = """
+Die unabhängige Triage-Rolle soll für den bezeichneten Stand geladen werden.
+"""
+
+[triggers.role_quality_assurance]
+label = "Quality Assurance Role"
+description = """
+Die unabhängige Quality-Assurance-Rolle soll für den bezeichneten Stand geladen werden.
+"""
+
+[triggers.role_security_review]
+label = "Security Review Role"
+description = """
+Die unabhängige Security-Review-Rolle soll für den bezeichneten Stand geladen werden.
+"""
+
+[triggers.tool_selection]
+label = "Tool Selection"
+description = """
+Werkzeuge müssen anhand des fachlichen Auslösers geroutet werden.
+"""
+
+[triggers.agent_dependencies]
+label = "Agent Dependencies"
+description = """
+Deklarative Agent-Abhängigkeiten oder Agent-Pakete müssen beurteilt werden.
+"""
+
+[triggers.context_handoff]
+label = "Context Handoff"
+description = """
+Ein exakter Arbeitsstand muss strukturiert übergeben werden.
+"""
+
+[triggers.status_reporting]
+label = "Status Reporting"
+description = """
+Der aktuelle nachgewiesene Arbeitsstand muss berichtet werden.
+"""
+
+[triggers.long_task]
+label = "Long Task"
+description = """
+Der Auftrag benötigt über mehrere Schritte hinweg ein persistentes Sitzungsledger.
+"""
+
+[triggers.git_repository]
+label = "Git Repository"
+description = """
+Lokaler Repositoryzustand, Historie, Branches, Commits oder Diffs sind fachlich relevant.
+"""
+
+[triggers.repository_verification]
+label = "Repository Verification"
+description = """
+Repositoryeigene Test-, Lint-, Build-, Drift- oder Releasechecks müssen ausgeführt werden.
+"""
+
+[triggers.github_remote]
+label = "GitHub Remote"
+description = """
+Remote-GitHub-Zustand oder GitHubobjekte sind Teil der benötigten Evidenz oder Wirkung.
+"""
+
+[triggers.github_connector_required]
+label = "GitHub Connector Required"
+description = """
+Der Auftrag verlangt ausdrücklich den GitHub Connector oder maßgebliche primäre GitHub-Evidenz
+ist über den vorgesehenen primären Pfad nicht auflösbar.
+"""
+
+[triggers.authoritative_documentation]
+label = "Authoritative Documentation"
+description = """
+Zeitvariable Syntax, Fähigkeiten oder Grenzen müssen aus einer Primärquelle belegt werden.
+"""
+
+[triggers.issue_tracking]
+label = "Issue Tracking"
+description = """
+Issues und ihre fachlichen Zustände müssen gelesen oder im autorisierten Scope verändert werden.
+"""
+
+[triggers.project_tracking]
+label = "Project Tracking"
+description = """
+Projektstruktur, Projektstatus oder Projektbeziehungen sind fachlich relevant.
+"""
+
+[triggers.initiative_tracking]
+label = "Initiative Tracking"
+description = """
+Initiativen und ihre Beziehungen zu Projekten oder Arbeitseinheiten sind fachlich relevant.
+"""
+
+[triggers.work_status_tracking]
+label = "Work Status Tracking"
+description = """
+Der nachvollziehbare Arbeitsstatus einer verwalteten Arbeitseinheit ist fachlich relevant.
+"""
+
+[triggers.acceptance_criteria]
+label = "Acceptance Criteria"
+description = """
+Akzeptanzkriterien müssen strukturiert gelesen, geprüft oder im autorisierten Scope gepflegt werden.
+"""
+
+[triggers.postgresql]
+label = "PostgreSQL"
+description = """
+Eine PostgreSQL-Datenbank oder ihr Datenzustand ist Gegenstand des Auftrags.
+"""
+
+[triggers.database_schema]
+label = "Database Schema"
+description = """
+Ein Datenbankschema oder eine Schemaentscheidung ist Gegenstand des Auftrags.
+"""
+
+[triggers.database_migration]
+label = "Database Migration"
+description = """
+Eine Datenbankmigration muss entworfen, geprüft oder im autorisierten Scope ausgeführt werden.
+"""
+
+[triggers.row_level_security]
+label = "Row-Level Security"
+description = """
+Row-Level-Security-Regeln oder ihre Wirkung sind Gegenstand des Auftrags.
+"""
+
+[triggers.backend_authentication]
+label = "Backend Authentication"
+description = """
+Backend-Authentifizierung, Identitäten oder Sitzungsgrenzen sind Gegenstand des Auftrags.
+"""
+
+[triggers.object_storage]
+label = "Object Storage"
+description = """
+Objektspeicher, Buckets oder gespeicherte Objekte sind Gegenstand des Auftrags.
+"""
+
+[triggers.realtime_backend]
+label = "Realtime Backend"
+description = """
+Echtzeitkanäle oder Realtime-Datenflüsse sind Gegenstand des Auftrags.
+"""
+
+[triggers.edge_functions]
+label = "Edge Functions"
+description = """
+Edge Functions oder ihre Ausführung sind Gegenstand des Auftrags.
+"""
+
+[triggers.backend_diagnostics]
+label = "Backend Diagnostics"
+description = """
+Backendzustand oder Backendfehler müssen strukturiert diagnostiziert werden.
+"""
+
+[triggers.marketing_data]
+label = "Marketing Data"
+description = """
+Marketingdaten aus einer oder mehreren Quellen sind Gegenstand des Auftrags.
+"""
+
+[triggers.ads_data]
+label = "Ads Data"
+description = """
+Werbeplattformdaten oder Kampagnenmetriken sind Gegenstand des Auftrags.
+"""
+
+[triggers.commerce_metrics]
+label = "Commerce Metrics"
+description = """
+Commerce- oder Kanalmetriken sind Gegenstand des Auftrags.
+"""
+
+[triggers.cross_channel_marketing_analysis]
+label = "Cross-Channel Marketing Analysis"
+description = """
+Marketingdaten mehrerer Plattformen oder Kanäle müssen gemeinsam analysiert werden.
+"""
+
+[triggers.structured_data]
+label = "Structured Data"
+description = """
+Strukturierte Daten müssen fachlich untersucht oder verarbeitet werden.
+"""
+
+[triggers.tabular_data]
+label = "Tabular Data"
+description = """
+Tabellenförmige Daten sind Gegenstand der Analyse.
+"""
+
+[triggers.metric_analysis]
+label = "Metric Analysis"
+description = """
+Kennzahlen müssen definiert, berechnet, verglichen oder diagnostiziert werden.
+"""
+
+[triggers.aggregation]
+label = "Aggregation"
+description = """
+Daten müssen nach einem fachlichen Vertrag aggregiert werden.
+"""
+
+[triggers.calculation]
+label = "Calculation"
+description = """
+Nachvollziehbare Berechnungen sind für das Ergebnis erforderlich.
+"""
+
+[triggers.statistical_analysis]
+label = "Statistical Analysis"
+description = """
+Statistische Verfahren sind zur Beantwortung des Auftrags erforderlich.
+"""
+
+[triggers.data_visualization]
+label = "Data Visualization"
+description = """
+Quantitative Zusammenhänge sollen als Diagramm oder andere Datenvisualisierung dargestellt werden.
+"""
+
+[triggers.canonical_memory_verification]
+label = "Canonical Memory Verification"
+description = """
+Ein ausdrücklich ausgewähltes kanonisches Memory-Bundle muss deterministisch geprüft werden.
+"""
+
+[triggers.agent_package_provenance]
+label = "Agent Package Provenance"
+description = """
+Herkunft und deklarierter Zustand eines Agent-Pakets müssen belegt werden.
+"""
+
+[triggers.dependency_drift]
+label = "Dependency Drift"
+description = """
+Deklarierter und aufgelöster Abhängigkeitszustand müssen auf Drift verglichen werden.
+"""

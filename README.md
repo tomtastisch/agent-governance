@@ -1,6 +1,6 @@
 # Agent Governance
 
-> **Version:** [`0.3.2`](VERSION) — [Changelog](CHANGELOG.md)
+> **Version:** [`0.4.0`](VERSION) — [Changelog](CHANGELOG.md)
 
 ## Was ist agent-governance?
 
@@ -9,9 +9,10 @@ definiert Regeln, Rollen, Templates, Source-of-Truth-Verträge, Tool-Routing und
 normative Governance liegt ausschließlich unter `bundle/`; Dokumentation, Bootstrap, Tests und
 Integrationen außerhalb dieses Verzeichnisses sind Distribution oder technische Consumer.
 
-Der einzige kanonische Governance-Einstieg ist `bundle/GOVERNANCE.md`. Das statische
-`bundle/agent-governance/manifest.toml` ordnet geschlossene Trigger den benötigten Modulen und
-Rollen zu. Unbekannte oder mehrdeutige Klassifikationen blockieren nur die betroffene Wirkung.
+Der einzige kanonische Governance-Einstieg ist `bundle/GOVERNANCE.md`.
+`bundle/agent-governance/manifest.toml` bleibt der Root-Index: Es referenziert die vier
+geschlossenen Kataloge sowie Module und Rollen. Unbekannte oder mehrdeutige Klassifikationen und
+unbekannte Katalogreferenzen blockieren nur die betroffene Wirkung.
 
 ## Welches Problem löst es?
 
@@ -25,6 +26,14 @@ fälschlich als Autorisierung verstanden werden. Dieses Repository trennt deshal
   Providerentscheidung.
 - Ein konkreter Provider kann eine Aktion vor dem Effekt weiter einschränken, aber nie erlauben,
   was die Governance abgelehnt hat.
+
+### Was die Governance bewirkt
+
+Die folgende Grafik ist eine nicht normative Erklärung für den fachlichen Einstieg. Die
+technischen Sources of Truth bleiben der Bootstrap, das Manifest und die Katalogdateien unter
+`bundle/`.
+
+![Einfache Übersicht darüber, wie Agent Governance Regeln, Toolwahl, Grenzen und nachvollziehbare Ergebnisse verbindet.](docs/images/Governance-ujjm885-44_44.png)
 
 ## Architektur
 
@@ -42,10 +51,32 @@ Die normative Einstiegskette bleibt klein:
 ```text
 bundle/GOVERNANCE.md
 └── bundle/agent-governance/manifest.toml
+    ├── catalogs/triggers.toml
+    ├── catalogs/policy-tags.toml
+    ├── catalogs/scopes.toml
+    ├── catalogs/tools.toml
     ├── modules/*.md
     ├── roles/*.md
     └── local_rules (optional, privat und unversioniert)
 ```
+
+`manifest.toml` ist der Root-Index. `catalogs/triggers.toml` definiert die erlaubten Trigger,
+`catalogs/policy-tags.toml` die erlaubten Wirkungsklassen, `catalogs/scopes.toml` die erlaubten
+Ressourcenklassen und `catalogs/tools.toml` die Tool-Routing-SSOT.
+`modules/tool-routing.md` enthält ausschließlich die allgemeinen Routing-, Evidenz- und
+Autorisierungsgrenzen.
+
+Die folgende schematische, nicht normative Darstellung erklärt den grundlegenden Ablauf. Sie
+enthält vereinfachte Bezeichnungen aus einer früheren Entwurfsphase und ist keine exakte
+Dateikarte; für technische Pfade sind ausschließlich die aktuellen normativen Pfade oben und das
+Manifest maßgeblich.
+
+<details>
+<summary>Technischen Governance-Ablauf als Grafik anzeigen</summary>
+
+![Schematische Übersicht darüber, wie Governance-Bindings, Manifest, Kataloge, Module und Rollen ineinandergreifen.](docs/images/Governance-dsfs652-20_44.png)
+
+</details>
 
 Repository-Dateien außerhalb `bundle/` werden von dieser Kette nicht als Governance geladen.
 Insbesondere ist der vendorte Microsoft-Snapshot untrusted Dependency-Datenmaterial.
@@ -119,10 +150,10 @@ verändert keine bestehende Benutzerinstallation.
 ## Nutzung
 
 Eine neue Agentensitzung lädt den byte-identischen Einstieg, löst genau einen absoluten
-Governance-Root auf, liest den vollständigen Manifestindex und klassifiziert den Auftrag in die
-geschlossenen Trigger. Danach lädt sie nur die getroffenen Module samt Abhängigkeiten und
-gegebenenfalls genau die ausgelöste Rolle. Für enforcement-pflichtige Wirkungen wird die Action
-Envelope synchron vor dem Effekt bewertet.
+Governance-Root auf, liest den vollständigen Manifestindex und die vier dort referenzierten
+Kataloge und klassifiziert den Auftrag gegen den geschlossenen Triggerkatalog. Danach lädt sie nur
+die getroffenen Module samt Abhängigkeiten und gegebenenfalls genau die ausgelöste Rolle. Für
+enforcement-pflichtige Wirkungen wird die Action Envelope synchron vor dem Effekt bewertet.
 
 Status- oder Abschlussaussagen müssen die tatsächlich ausgeführten Prüfungen, den geprüften Stand
 und verbleibende Risiken nennen. Tool- oder Providerverfügbarkeit ist nie selbst eine
@@ -130,10 +161,16 @@ Berechtigung.
 
 ## Routing und Rollen
 
-`manifest.toml` ist ein statischer Index. `routing.known_triggers` bildet die geschlossene
-Klassifikation; jedes Modul deklariert Pfad, Trigger und Abhängigkeiten. Abhängigkeiten werden
-topologisch vor dem Modul geladen. Rollen besitzen eigene Rollentrigger und laden nur die im
-Manifest angegebenen Module und ihren Rollenpfad.
+`manifest.toml` ist der statische Root-Index. Die geschlossene Klassifikation liegt ausschließlich
+in `catalogs/triggers.toml`; jedes Modul deklariert im Manifest Pfad, Trigger und Abhängigkeiten.
+Abhängigkeiten werden topologisch vor dem Modul geladen. Rollen besitzen eigene Rollentrigger und
+laden nur die im Manifest angegebenen Module und ihren Rollenpfad.
+
+Toolprofile und ihre `required_on`-/`useful_on`-Zuordnung liegen ausschließlich in
+`catalogs/tools.toml`. Policy-Tags beschreiben mögliche Lese- oder Schreibwirkung, Scopes die
+betroffene Ressourcenklasse. Weder beide noch ein Tool oder Provider erzeugen konkrete
+Autorisierung. Allgemeine Semantik wie Read before Write, fachlich gleichwertige Fallbacks und
+fail-closed unbekannte IDs bleibt in `modules/tool-routing.md`.
 
 Die enthaltenen Rollen decken Architektur, Triage, Quality Assurance und Security Review ab.
 Rollen sind semantische Reviewkontexte; GitHub-, Copilot- oder Security-Werkzeuge sind mögliche
@@ -157,9 +194,11 @@ den Manifestpfad read-only verarbeitet.
 ## Module und Rollen erweitern
 
 Neue normative Regeln gehören in genau ein geeignetes Modul unter
-`bundle/agent-governance/modules/`. Ergänze anschließend den statischen Manifestindex um einen
-bereits fachlich geschlossenen Trigger und minimale Abhängigkeiten. Neue Rollen liegen unter
-`bundle/agent-governance/roles/` und dürfen nur von ihrem eigenen Rollentrigger geladen werden.
+`bundle/agent-governance/modules/`. Neue Trigger werden einmal in `catalogs/triggers.toml`
+definiert und anschließend im statischen Manifestindex referenziert; Modulabhängigkeiten bleiben
+minimal. Neue Rollen liegen unter `bundle/agent-governance/roles/` und dürfen nur von ihrem eigenen
+Rollentrigger geladen werden. Neue Toolprofile gehören ausschließlich in `catalogs/tools.toml`
+und dürfen nur vorhandene Trigger-, Policy-Tag- und Scope-IDs referenzieren.
 
 Vor einer Änderung sind SSOT, Linkziele, eindeutige Regelkennungen, Modulabschluss und die
 Fail-closed-Klassifikation durch die vollständige Testsuite zu prüfen. Dokumentation außerhalb
@@ -198,7 +237,8 @@ python3 tools/release_check.py tree
 git diff --check
 ```
 
-Sie prüft Governance-SSOT und Routing, den generischen Enforcement Contract, Microsoft-Pin und
+Sie prüft Governance-SSOT und Routing, geschlossene Katalogschemen und Referenzen, sichere
+manifestrelative Katalogpfade, den generischen Enforcement Contract, Microsoft-Pin und
 Archivgrenzen, reale PolicyEngine-Entscheidungen, Fresh-/Current-/Legacy-Transaktionen,
 Backup/Rollback, Pfadsicherheit, einen produktneutralen synthetischen Harness, `local_rules` und
 Offlinebetrieb. Der Releaseprozess ergänzt Clean-Linux-Codex-E2E, Secret-Isolation, unabhängige
@@ -218,8 +258,9 @@ Routing, `allow`, `deny`, `require_approval` und lokales Audit erneut.
 
 `VERSION` ist die einzige SemVer-Quelle. `CHANGELOG.md` trennt freigegebene von noch nicht
 freigegebenen Änderungen, README verweist nur auf `VERSION`, und der Releasecheck gleicht Tree,
-Tag und GitHub Release ab. Version `0.3.0` ist ein MINOR-Schritt von `0.2.0`, weil sie additive
-Fähigkeiten für Bootstrap, Enforcement und Providerintegration einführt.
+Tag und GitHub Release ab. Version `0.4.0` ist ein MINOR-Kandidat gegenüber `0.3.2`, weil sie das
+normative Katalogmodell und die maschinenvalidierbare Tool-Routing-SSOT ergänzt. Die davon
+getrennte Manifest-Schemaversion steigt von `1` auf `2`.
 
 Ein Branch, PR oder lokaler Teststand ist kein Release. Produktionsfreigabe setzt die Gleichheit
 von Main-, Tag-, Release-, QA-, SEC-, CI-, E2E- und Post-Release-SHA voraus.

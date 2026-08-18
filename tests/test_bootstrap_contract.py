@@ -201,8 +201,50 @@ class BootstrapTestCase(unittest.TestCase):
     def run_transaction(self, **overrides):
         return self.reference.BootstrapTransaction(self.request(**overrides)).run()
 
+    def release_copy(self):
+        release = self.base / "mutable-release"
+        release.mkdir()
+        shutil.copy2(ROOT / "VERSION", release / "VERSION")
+        shutil.copytree(ROOT / "bundle", release / "bundle")
+        shutil.copytree(ROOT / "integrations", release / "integrations")
+        return release
+
 
 class FreshInstall(BootstrapTestCase):
+    def test_missing_catalog_fails_preflight_without_mutation(self):
+        release = self.release_copy()
+        (release / "bundle" / "agent-governance" / "catalogs" / "tools.toml").unlink()
+        before = tree_bytes(self.allowed)
+
+        with self.assertRaises(self.reference.BootstrapError):
+            self.run_transaction(release_root=release)
+
+        self.assertEqual(tree_bytes(self.allowed), before)
+        self.assertFalse(self.install.exists())
+
+    def test_malformed_catalog_fails_preflight_without_mutation(self):
+        release = self.release_copy()
+        tools = release / "bundle" / "agent-governance" / "catalogs" / "tools.toml"
+        tools.write_text("not valid = [\n", encoding="utf-8")
+        before = tree_bytes(self.allowed)
+
+        with self.assertRaises(self.reference.BootstrapError):
+            self.run_transaction(release_root=release)
+
+        self.assertEqual(tree_bytes(self.allowed), before)
+        self.assertFalse(self.install.exists())
+
+    def test_active_verification_includes_closed_catalog_contract(self):
+        self.run_transaction()
+        tools = self.install / "bundle" / "agent-governance" / "catalogs" / "tools.toml"
+        tools.unlink()
+
+        transaction = self.reference.BootstrapTransaction(self.request())
+        checks = transaction._verify_active("0.4.0", False)
+
+        self.assertIn("catalogs", checks)
+        self.assertFalse(checks["catalogs"])
+
     def test_fresh_installs_bundle_binding_provider_and_safe_receipt(self):
         with foreign_cwd():
             result = self.run_transaction()

@@ -109,6 +109,17 @@ class CleanImageContract(unittest.TestCase):
             with self.subTest(relative=relative):
                 self.assertTrue((manifest_dir / relative).is_file(), relative)
 
+    def test_offline_routing_probe_loads_all_manifest_catalogs(self):
+        offline_probe = read("run_materialized_offline.sh")
+        for relative in (
+            "catalogs/triggers.toml",
+            "catalogs/policy-tags.toml",
+            "catalogs/scopes.toml",
+            "catalogs/tools.toml",
+        ):
+            with self.subTest(relative=relative):
+                self.assertIn(relative, offline_probe)
+
     def test_persistent_governed_volume_is_initialized_for_unprivileged_runtime(self):
         entrypoint = read("container_entrypoint.sh")
         self.assertRegex(

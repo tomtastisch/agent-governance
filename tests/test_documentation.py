@@ -80,6 +80,31 @@ class EmployeeReadmeContract(unittest.TestCase):
             self.assertIn(term, README)
         self.assertRegex(README, r"(?is)codex debug prompt-input.+nicht ausreichend")
 
+    def test_governance_diagrams_are_local_non_normative_explanations(self):
+        image_names = (
+            "Governance-ujjm885-44_44.png",
+            "Governance-dsfs652-20_44.png",
+        )
+        for name in image_names:
+            with self.subTest(name=name):
+                self.assertTrue((ROOT / "docs" / "images" / name).is_file())
+                self.assertIn(f"docs/images/{name}", README)
+        self.assertRegex(README, r"(?is)nicht normative.+Erklärung")
+        self.assertIn("<details>", README)
+        self.assertIn("Technischen Governance-Ablauf als Grafik anzeigen", README)
+
+    def test_readme_names_current_catalog_paths_without_duplication(self):
+        for path in (
+            "catalogs/triggers.toml",
+            "catalogs/policy-tags.toml",
+            "catalogs/scopes.toml",
+            "catalogs/tools.toml",
+            "modules/tool-routing.md",
+        ):
+            self.assertIn(path, README)
+        self.assertRegex(README, r"(?is)manifest\.toml.+Root-Index")
+        self.assertRegex(README, r"(?is)schematisch.+nicht normativ")
+
 
 class InstallBoundaryContract(unittest.TestCase):
     def test_install_is_boundary_not_second_executable_guide(self):
@@ -91,9 +116,22 @@ class InstallBoundaryContract(unittest.TestCase):
 
 
 class ReleaseMetadataContract(unittest.TestCase):
-    def test_semver_patch_release_is_consistent(self):
-        self.assertEqual(VERSION, "0.3.2")
-        self.assertIn("**Version:** [`0.3.2`](VERSION)", README)
+    def test_semver_minor_candidate_is_consistent(self):
+        self.assertEqual(VERSION, "0.4.0")
+        self.assertIn("**Version:** [`0.4.0`](VERSION)", README)
+        unreleased = CHANGELOG.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0]
+        for term in (
+            "Manifest-Schema 2",
+            "catalogs/triggers.toml",
+            "catalogs/policy-tags.toml",
+            "catalogs/scopes.toml",
+            "catalogs/tools.toml",
+            "**BREAKING:**",
+        ):
+            self.assertIn(term, unreleased)
+        self.assertIn("**Breaking changes:** present", unreleased)
+
+    def test_published_032_recovery_metadata_remains_historical(self):
         self.assertIn("## [0.3.2] — 2026-08-15", CHANGELOG)
         section = CHANGELOG.split("## [0.3.2]", 1)[1].split("\n## [", 1)[0]
         for term in (
