@@ -130,6 +130,10 @@ class ReleaseWorkflowSecurityContract(unittest.TestCase):
 
 
     def test_node24_action_runtime_contract(self):
+        self.assertTrue(
+            TAG_GATE_PATH.is_file(),
+            "trusted manual release-tag workflow is missing",
+        )
         trusted = TAG_GATE_PATH.read_text(encoding="utf-8")
         consistency = _job_block(CI_WORKFLOW, "consistency-tests")
         metadata = _job_block(CI_WORKFLOW, "release-metadata")
