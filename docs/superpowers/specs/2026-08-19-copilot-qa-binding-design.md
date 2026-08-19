@@ -9,12 +9,15 @@
 
 Der verifizierte Ausgang ist `tomtastisch/agent-governance` auf
 `a8dfc1e1bad77af27a37fd5339e2cc342a7f935b` (`origin/main`, frisch aufgelöst am 2026-08-19),
-Version `0.4.0`, ohne offenen Pull Request.
+Version `0.4.0`, ohne offenen Pull Request. Dies ist die Revision des bereits committeten
+Step-3-Specs `1a6258a3cc16ee3940c0255ecd890c30c83a7bd6`; sie korrigiert zwei Designpunkte:
+(1) der eigene Materializer entfällt zugunsten einer dünnen referenziellen Binding-Datei und
+(2) ein gültiges repository-natives Copilot-Binding wird normative Voraussetzung für die
+Akzeptanz von Copilot-QA als unabhängige QA-Evidenz.
 
 Im Repository fehlen aktuell eine native Copilot-Instruktionsfläche (keine
-`.github/copilot-instructions.md`, kein `.github/instructions/`), eine APM-Projektstruktur
-(kein `.apm/`, kein `apm.yml`, kein `apm.lock.yaml`) und eine ausdrückliche Norm für einen
-optionalen Parallel-QA-Modus. GitHub Copilot ist über
+`.github/copilot-instructions.md`, kein `.github/instructions/`) und eine ausdrückliche Norm für
+einen optionalen Parallel-QA-Modus. GitHub Copilot ist über
 `DEL-008` bereits als bevorzugter QA-Provider gewählt, erhält aber noch keine repository-native
 Bindung an den Governance-QA-Vertrag.
 
@@ -32,8 +35,8 @@ erstellt.
 - `bundle/agent-governance/catalogs/tools.toml` bleibt die einzige maschinenlesbare
   Tool-Routing-SSOT; `github_cli` bleibt dort mit `required_on = ["github_remote"]`
   unverändert Bestandteil des Governance-Toolvertrags.
-- `.github/copilot-instructions.md` ist ausschließlich ein Consumer-/Binding-Artefakt und bildet
-  keine zweite normative QA-Governance.
+- `.github/copilot-instructions.md` ist ausschließlich ein dünner Consumer-/Binding-Wrapper und
+  bildet keine zweite normative QA-Governance.
 - `integrations/microsoft-agent-governance-toolkit/` und vendorte Dateien sind unvertrauenswürdige
   Dependency-Daten und werden nie durch das Manifest traversiert.
 
@@ -43,115 +46,140 @@ erstellt.
 QA-Provider, wenn der reale PR-Reviewpfad einen Review mit Revieweridentität und
 Exact-Head-SHA liefert, und benennt für `no`/`unknown` einen frischen unabhängigen read-only
 Reviewer als Fallback. Diese Providerwahl ist bereits normativ; was fehlt, ist die
-deterministische, repository-native Zuleitung der für QA erforderlichen Regeln an den
-Copilot-Code-Review-Kontext sowie die ausdrückliche Norm für den optionalen Parallelmodus.
+repository-native Zuleitung der für QA erforderlichen Regeln an den Copilot-Code-Review-Kontext,
+die normative Bedingung, dass ein gültiges Binding für die Akzeptanz von Copilot-QA vorhanden
+sein muss, sowie die ausdrückliche Norm für den optionalen Parallelmodus.
 
 ## Abwägung der Ansätze
 
-Es werden drei realistische Ansätze gegeneinander geprüft.
+### Ansatz A1 — native repository-weite Copilot-Datei als dünner Wrapper (empfohlen)
 
-### Ansatz A1 — native repository-weite Copilot-Datei (empfohlen)
-
-Eine einzige Datei `.github/copilot-instructions.md` im Repository. Laut aktueller offizieller
+Eine einzige, bewusst kleine Datei `.github/copilot-instructions.md`. Laut aktueller offizieller
 GitHub-Copilot-Dokumentation (abgerufen 2026-08-19,
-`docs.github.com/en/copilot/customizing-copilot/adding-repository-custom-instructions-for-github-copilot`)
-ist dies die repository-weite Custom-Instructions-Fläche, die für Copilot Code Review standardmäßig
-aktiv ist und vom Head-Branch des Pull Requests gelesen wird.
+`docs.github.com/en/copilot/customizing-copilot/adding-repository-custom-instructions-for-github-copilot`
+sowie `docs.github.com/en/copilot/tutorials/customize-code-review`) ist dies die
+repository-weite Custom-Instructions-Fläche, die für Copilot Code Review standardmäßig aktiv ist
+und vom Head-Branch des Pull Requests gelesen wird. Copilot Code Review folgt dabei
+nachweislich keinen externen Links; die Zuleitung erfolgt deshalb ausschließlich über
+repository-lokale Pfadreferenzen auf dem PR-Head.
 
 - Kleinster produktnativer Mechanismus; keine zusätzliche Infrastruktur.
-- Gilt für den gesamten PR-Code-Review; genau die benötigte Fläche für eine globale QA-Bindung.
-- Wird über eine deterministische Materialisierung aus der Governance-SSOT erzeugt und durch
-  einen Drift-Test byte-identisch zurückgeführt; damit ist Provenienz und Drift prüfbar und es
-  entsteht keine zweite manuell gepflegte QA-Kopie.
+- Der Wrapper enthält keine semantische Kopie der QA-Rolle, sondern verweist direkt auf die
+  kanonischen Bundle-Dateien desselben Repository-Heads; Drift wird durch Referenzintegrität
+  statt Inhaltsduplikation verhindert.
 
-### Ansatz A2 — APM-basierte Instructions-Struktur (verworfen)
+### Ansatz A2 — APM-basierte Compile-/Instructions-Fläche (verworfen)
 
-Eine `.github/instructions/*.instructions.md`-Fläche ist zwar ebenfalls eine native
-Copilot-Oberfläche, dient aber primär pfad-/glob-bezogenen Teilinstruktionen und benötigt für eine
-APM-verwaltete, versionierte Ableitung eine `apm.yml`/`apm.lock.yaml`-Projektstruktur. Im
-Repository existiert keine solche Struktur. Der bestehende `microsoft_apm`-Toolvertrag in
-`catalogs/tools.toml` ist bewusst auf read-only Provenienz-/Driftnachweise begrenzt
-(`agent_dependencies`, `agent_package_provenance`, `dependency_drift`) und verbietet
-automatische Installation/Aktualisierung sowie das Anlegen von Dateien bei fehlendem deklariertem
-APM-Zustand. APM hier einzuführen würde ein neues Subsystem erzeugen und gegen
-`tests/test_governance.py` (positive operative APM-Verantwortung wird abgelehnt) sowie die
-YAGNI-Vorgabe verstoßen.
+APM könnte über `apm compile -t copilot` eine `.github/copilot-instructions.md` materialisieren
+(offiziell als kleiner, quasi konfigurationsfreier Copilot-Pfad dokumentiert) und verwaltet die
+Datei nur, wenn sie den Marker `<!-- Generated by APM CLI from .apm/ primitives -->` trägt.
+Dennoch ist APM für diesen Fall unnötig, weil GitHub die exakt benötigte repositoryweite
+Binding-Fläche bereits nativ anbietet, unsere Binding-Datei lediglich stabile Repo-Pfade und
+Rule-IDs referenzieren muss und APM für diesen einzelnen Wrapper eine zusätzliche
+`.apm/`-Primitiv-/Buildfläche einführen würde. Der bestehende `microsoft_apm`-Toolvertrag ist
+bewusst auf read-only Paketprovenienz/Dependency-Drift begrenzt; seine Erweiterung für diesen
+Anwendungsfall wäre YAGNI.
 
 ### Ansatz A3 — Eigenbau-Distribution (verworfen)
 
-Eine eigene Distributions-/Sync-Engine, die Governance-Inhalte in einen Copilot-Consumer
-vervielfältigt, ist eine Gegenhypothese. Sie würde eine parallele Regelquelle und unnötige
-Eigenlogik schaffen. Es besteht keine zwingende Notwendigkeit; der Ansatz wird verworfen.
+Eine eigene Distributions-/Sync-Engine oder ein eigener Materializer, der Governance-Inhalte in
+einen Copilot-Consumer vervielfältigt, ist eine Gegenhypothese. Sie würde eine parallele
+Regelquelle und unnötige Eigenlogik schaffen. Es besteht keine zwingende Notwendigkeit; der
+Ansatz wird verworfen.
 
 ### Entscheidung
 
-**Ansatz A1.** Eine kleine native Copilot-Datei mit deterministischer Materialisierung und einem
-Governance-Drift-Test ist die bessere Lösung gegenüber einer APM-Paket-/Instructions-Struktur.
-Es wird keine dritte Eigenbau-Distribution erfunden und keine eigene Distribution-Engine gebaut.
+**Ansatz A1.** Eine kleine native Copilot-Datei als dünner referenzieller Wrapper ist die
+bessere Lösung gegenüber APM-Compile und gegenüber einem eigenen Materializer. Es wird keine
+dritte Eigenbau-Distribution und kein eigener Sync-/Materialisierungscode gebaut.
 
 ## Empfohlener Zielvertrag
 
-### A. Copilot-QA-Binding
+### A. Native Copilot-Binding-Datei
 
-1. Es entsteht genau eine Datei `.github/copilot-instructions.md`. Sie ist ein
-   Consumer-/Binding-Artefakt und keine normative Governancequelle.
+Es entsteht genau eine Datei `.github/copilot-instructions.md`. Sie ist bewusst klein, enthält
+keine vollständige Kopie der QA-Rolle und ist ein Consumer-/Binding-Artefakt, keine normative
+Governancequelle.
 
-2. Die Datei wird nicht von Hand gepflegt, sondern deterministisch aus der Governance-SSOT
-   materialisiert. Ein kleiner, reiner Python-3.11-Standardbibliotheks-Materializer
-   `tests/support/copilot_qa_binding.py` besitzt genau eine reine Funktion
-   `materialize(governance_root) -> str`, die ohne Netzwerk und ohne Seiteneffekte den
-   vollständigen Dateiinhalt erzeugt. Sie liest:
-   - `bundle/agent-governance/roles/quality-assurance.md` (vollständiger Rollenvertrag) und
-   - `bundle/agent-governance/modules/delivery.md` (die Blöcke `DEL-003`, `DEL-007`, `DEL-008`,
-     `DEL-009`) sowie
-   - `bundle/agent-governance/modules/tool-routing.md` (den Block `TOL-004`).
+Sie weist Copilot für Code Review ausdrücklich an:
 
-3. Der erzeugte Inhalt besteht aus zwei Teilen:
-   - einem kurzen, eindeutig abgegrenzten Provenienz-Block, der die Quellpfade, die referenzierten
-     Regelkennungen (`DEL-003`, `DEL-007`, `DEL-008`, `DEL-009`, `TOL-004`) und den
-     `sha256` des nachfolgenden Instruktionskörpers nennt, und
-   - einem Instruktionskörper, der die materialisierte QA-Semantik als natürliche Sprache
-     enthält und Copilot als technischen Provider adressiert.
+1. als technischer Provider der Quality-Assurance-Rolle zu arbeiten, nicht als Rollenautorität;
+2. vor dem Urteil die kanonische Datei `bundle/agent-governance/roles/quality-assurance.md` zu
+   lesen und anzuwenden;
+3. die relevanten Delivery-Regeln aus `bundle/agent-governance/modules/delivery.md` anzuwenden,
+   mindestens die für Exact Head, unabhängige QA, Rollen-/Providertrennung, Provider-Routing und
+   Finding-Lifecycle maßgeblichen Rule-IDs (`DEL-002`, `DEL-003`, `DEL-007`, `DEL-008`,
+   `DEL-009`);
+4. falls fachlich benötigt, `TOL-004` aus `bundle/agent-governance/modules/tool-routing.md` als
+   Provider-/Fallbackgrenze anzuwenden;
+5. ausschließlich den PR-Exact-Head zu prüfen;
+6. Findings nicht selbst zu reparieren;
+7. bei nicht lesbaren oder widersprüchlichen kanonischen Referenzen keinen PASS zu behaupten.
 
-4. Es wird keine GitHub-URL als vermeintlicher Instruction-Include verwendet. Der Inhalt ist
-   ausschließlich lokal materialisierter Text aus der SSOT.
+Es werden keine GitHub-URL-Includes und keine `$HOME`-Dateien verwendet; ausschließlich
+Repositorypfade des PR-Heads.
 
-5. Remote-GitHub-Copilot ist zu keinem Zeitpunkt von einer nur lokal unter `$HOME` vorhandenen
-   Datei abhängig: Die Binding-Datei ist im Repository versioniert und liegt im Head-Branch des
-   Pull Requests; Copilot Code Review liest sie laut offizieller Dokumentation vom Head-Branch.
-   Der Materializer läuft ausschließlich in den repositoryeigenen Tests/CI und nie im
-   Copilot-Kontext.
+### B. Kein eigener Materializer
 
-6. Provenienz und Drift sind deterministisch prüfbar: Ein Drift-Test ruft
-   `materialize(governance_root)` erneut auf und vergleicht das Ergebnis byte-identisch mit der
-   committeten Datei. Jede Governance-Änderung an den SSOT-Quellen erzeugt damit sofort einen
-   erkennbaren Drift, bis die Datei neu materialisiert wird.
+Aus dem Zielentwurf entfallen `tests/support/copilot_qa_binding.py`, eine
+`materialize(...)`-Funktion, eine SHA-256-Provenienz des materialisierten QA-Körpers, die
+byte-identische Reproduktion der vollständigen QA-Semantik und jede eigene
+Distributions-/Synchronisationsengine.
 
-### B. Inhaltliche Copilot-QA-Bindung
+Begründung: Der Wrapper enthält keine semantische Kopie, die synchron gehalten werden müsste. Er
+verweist unmittelbar auf die kanonischen Dateien desselben Repository-Heads. Drift wird damit
+primär durch Referenzintegrität statt Inhaltsduplikation verhindert.
 
-Der Instruktionskörper stellt mindestens folgende bestehende Governance-Semantik sicher; jede
-Zeile wird aus der SSOT abgeleitet und nicht neu erfunden:
+### C. Mechanischer Binding-Test
 
-- Review bleibt unabhängig und read-only (`roles/quality-assurance.md`, `DEL-003`).
-- Prüfgegenstand ist der Exact Head des PR; Copilot nennt in der Review-Evidenz die geprüfte
-  Exact-Head-SHA (`DEL-002`, `DEL-008`).
-- Findings werden nicht durch den Reviewer selbst repariert (`roles/quality-assurance.md`).
-- Prüfumfang umfasst den tatsächlichen Diff, Verhalten, Tests, Fehlerpfade, Dokumentation und
-  relevante Akzeptanzkriterien (`roles/quality-assurance.md`).
-- Findings folgen der `DEL-009`-Klassifikation (`blocking-valid`, `nonblocking-valid`,
-  `invalid`, `not-applicable`).
-- `blocking-valid` verhindert `pass` (`DEL-003`, `DEL-009`).
-- Eine Änderung des Heads invalidiert die betroffene Reviewevidenz (`DEL-002`,
-  `roles/quality-assurance.md`).
-- Copilot ist technischer Provider, nicht die Governance-Rolle selbst (`DEL-007`, `DEL-008`,
-  `TOL-004`).
+Es entsteht ein fokussierter neuer Test `tests/test_copilot_qa_binding.py`. Er verifiziert
+mindestens:
 
-Die Providerwahl und der Fallback bleiben bei `DEL-008`; der Instruktionskörper verweist darauf
-und wiederholt keine Provider-Auswahl als konkurrierende Regel.
+1. `.github/copilot-instructions.md` existiert;
+2. sie ist als nicht normative Consumer-/Binding-Fläche erkennbar;
+3. sie verweist auf die exakt vorgesehenen kanonischen QA-/Delivery-Pfade;
+4. jede von ihr genannte Rule-ID existiert exakt einmal in den normativen Bundle-Dateien;
+5. alle referenzierten Pfade sind repositorylokal, regulär und auflösbar;
+6. keine `$HOME`-, absolute Host-, HTTP-/HTTPS- oder GitHub-URL als Governance-Include verwendet
+   wird;
+7. die Datei definiert selbst keine normative `### XXX-000 —`-Governance-Regel;
+8. sie enthält keine große kopierte QA-/Delivery-Regelmenge;
+9. ein absichtlich entfernter/umbenannter referenzierter Rule-ID- oder Dateipfad den Test rot
+   macht;
+10. `github_cli.required_on == ["github_remote"]` unverändert bleibt.
 
-### C. Optionales Parallel-QA
+Es wird keine Parser-/Generatorarchitektur gebaut, die über diese kleinen mechanischen
+Referenzchecks hinausgeht. Der Negativfall (9) verwendet das bestehende
+Isolations-/Mutationsmuster aus `tests/test_catalogs.py` (temporäre Kopie der Bundle-/Wrapper-
+Dateien, synthetische Mutation), ohne Produktionsdateien zu verändern.
 
-Der optionale Parallelmodus wird als ein schlanker normativer Vertrag in
+### D. Normative Copilot-Binding-Bedingung
+
+Die spätere normative Änderung in `bundle/agent-governance/modules/delivery.md` betrifft nicht
+ausschließlich Parallel-QA. Ein GitHub-Copilot-PR-Review erfüllt die bevorzugte QA-Providerrolle
+künftig nur, wenn:
+
+- Revieweridentität belegt ist;
+- der Review an den Exact-Head-SHA gebunden ist;
+- auf demselben Exact Head das vorgeschriebene repository-native Copilot-QA-Binding vorhanden
+  ist;
+- dessen kanonische Referenzen auflösbar sind.
+
+Fehlt das Binding, sind seine referenzierten Dateien/Rule-IDs nicht auflösbar oder ist seine
+Identität für den geprüften Head nicht belegbar, gilt: Copilot wird nicht als
+governance-konformes QA-Gate gewertet, der betroffene Copilot-Pfad gilt fail-closed als nicht
+verwendbar, und der bestehende unabhängige read-only QA-Fallback nach `DEL-008` bleibt verfügbar.
+
+Entscheidung: Die Bedingung wird direkt in `DEL-008` ergänzt (kleinste Änderung), da `DEL-008`
+bereits GitHub-spezifisch ist und die Providerwahl zentral hält. Es werden keine neue Rolle und
+kein neuer Trigger eingeführt. Weil `DEL-008` im portablen Bundle liegt, gilt die
+Binding-Voraussetzung damit konzeptionell für jedes GitHub-Projekt, das Agent Governance
+verwendet; jedes solche Projekt muss auf dem geprüften Head sein eigenes gültiges
+`.github/copilot-instructions.md`-Binding bereitstellen.
+
+### E. Optionales Parallel-QA
+
+Der optionale Parallelmodus wird als schlanker normativer Vertrag in
 `bundle/agent-governance/modules/delivery.md` als neue Regel mit der nächsten freien Kennung
 `DEL-010` definiert. Da `delivery` bereits über den Trigger `quality_review` und die
 Rollenmodule `roles.quality_assurance` geladen wird, ist dafür keine Rollen- oder
@@ -159,101 +187,116 @@ Manifeständerung erforderlich.
 
 `DEL-010` legt fest:
 
-- Parallel-QA aktiviert sich ausschließlich, wenn der Nutzer dies ausdrücklich verlangt oder eine
-  bestehende Governance-Risikoeinstufung/Qualitätsanforderung dies ausdrücklich auslöst. Es wird
-  nicht automatisch jedes normale Review verdoppelt.
-- Beide Reviewer arbeiten frisch und read-only auf demselben Exact Head.
-- Findings werden getrennt erfasst und nach `DEL-009` klassifiziert.
-- Ein `blocking-valid` Finding eines erforderlichen Reviewers blockiert die Abschlussaussage.
-- Parallel-QA ersetzt SEC nicht; falls SEC getriggert ist, läuft SEC zusätzlich und darf
-  parallel zu QA ausgeführt werden (dieselbe Exact-Head-Bindung wie `DEL-008`).
-- Kein Reviewer erhält die Findings des anderen vor seinem eigenen Urteil als Eingabe, wenn
-  dadurch die Unabhängigkeit verloren ginge.
+- Parallel-QA ist nicht standardmäßig aktiv; sie aktiviert sich ausschließlich bei
+  ausdrücklichem Nutzerwunsch oder einem künftig ausdrücklich definierten
+  Governance-Risiko-/Qualitätstrigger.
+- Copilot und der unabhängige QA-Reviewer arbeiten frisch und read-only auf demselben Exact Head.
+- Findings bleiben bis zu den eigenen Urteilen voneinander getrennt.
+- Alle Findings werden nach `DEL-009` klassifiziert.
+- Jedes `blocking-valid` Finding eines erforderlichen Reviewers blockiert.
+- SEC bleibt bei ihrem Trigger zusätzlich erforderlich; SEC kann parallel laufen, ersetzt QA
+  aber nie.
 
-### D. APM-Entscheidung
+### F. APM korrekt begründen
 
-Die geplante Copilot-Bindung benötigt APM nicht als Runtime-Pflicht. Der bestehende
-`microsoft_apm`-Toolvertrag in `catalogs/tools.toml` bleibt unverändert und wird weder um
-Schreibberechtigung noch um neue Trigger erweitert. APM wird für diesen Schritt nicht eingeführt,
-nicht installiert und nicht aktualisiert (YAGNI). Sollte das Repository künftig aus einem echten
-`agent_dependencies`-/`agent_package_provenance`-Bedarf eine APM-Projektstruktur erhalten, kann die
-Binding-Entscheidung in einem eigenen Schritt erneut geprüft werden; das ist nicht Teil dieses
-Specs.
+APM bleibt für diesen konkreten Binding-Fall verworfen, aber mit korrigierter Begründung. APM
+bietet mit `apm compile -t copilot` offiziell einen kleinen, quasi konfigurationsfreien
+Copilot-Compile-Pfad, der `.github/copilot-instructions.md` schreibt; `compile` erzeugt selbst
+keinen Lockfile (Lockfiles entstehen über `apm install`/`apm lock`), und GitHub Copilot liest
+nativ auch `.github/instructions/*.instructions.md`. APM ist trotzdem unnötig, weil:
+
+- GitHub die exakt benötigte repositoryweite Binding-Fläche bereits nativ anbietet;
+- unsere Binding-Datei lediglich stabile Repo-Pfade und Rule-IDs referenzieren muss;
+- APM für diesen einzelnen Wrapper eine zusätzliche `.apm`-Primitiv-/Buildfläche einführen würde;
+- der aktuelle `microsoft_apm`-Governance-Toolvertrag in `catalogs/tools.toml` bewusst auf
+  read-only Paketprovenienz/Dependency-Drift begrenzt ist;
+- eine Erweiterung dieses Toolvertrags für diesen Anwendungsfall YAGNI wäre.
+
+Der bestehende `microsoft_apm`-Katalogeintrag bleibt unverändert.
 
 ## Betroffene spätere Produktionsdateien
 
 Die spätere Umsetzung (nicht Teil dieses Spec-Schritts) berührt konkret:
 
-- `.github/copilot-instructions.md` (neu; Consumer-/Binding-Artefakt, deterministisch
-  materialisiert).
-- `tests/support/copilot_qa_binding.py` (neu; reiner Materializer).
-- `tests/test_copilot_qa_binding.py` (neu; Binding-, Drift- und Parallel-QA-Verträge).
-- `bundle/agent-governance/modules/delivery.md` (einzige normative Änderung: `DEL-010`).
+- `.github/copilot-instructions.md` (neu; dünner Consumer-/Binding-Wrapper mit
+  repository-lokalen Referenzen auf die kanonische Governance-SSOT).
+- `tests/test_copilot_qa_binding.py` (neu; mechanische Referenz-, Regelkennungs- und
+  Parallel-QA-Verträge).
+- `bundle/agent-governance/modules/delivery.md` (einzige normative Änderung: `DEL-008` um die
+  Binding-Voraussetzung ergänzt und `DEL-010` für optionales Parallel-QA).
 - `CHANGELOG.md` (bei der Umsetzung um den Unreleased-Eintrag ergänzen; keine Versionsänderung in
   diesem Spec-Schritt).
 
 Nicht verändert werden: `manifest.toml`, die vier Kataloge einschließlich `tools.toml`,
 `roles/quality-assurance.md`, `modules/tool-routing.md`, `bundle/GOVERNANCE.md` und die CI-
-Workflows. `github_cli` bleibt mit `required_on = ["github_remote"]` unverändert.
+Workflows. `github_cli` bleibt mit `required_on = ["github_remote"]` unverändert. Es entsteht
+kein `tests/support/copilot_qa_binding.py` und keine Materialisierungs-/Synchronisationslogik.
 
 ## Teststrategie
 
 Der spätere Implementation Plan muss mindestens folgende Verträge abdecken (im neuen
 `tests/test_copilot_qa_binding.py`, ergänzt um die bestehende Suite):
 
-1. Binding-Artefakt existiert und wird deterministisch erzeugt:
-   `materialize(...)` liefert byte-identisch den committeten Inhalt von
-   `.github/copilot-instructions.md`.
-2. Binding lässt sich auf den kanonischen Governance-Stand zurückführen: der Provenienz-Block
-   nennt die exakten SSOT-Pfade und die Regelkennungen `DEL-003`, `DEL-007`, `DEL-008`,
-   `DEL-009`, `TOL-004`.
-3. Drift zwischen Governance und Copilot-Consumer wird erkannt: eine synthetische Mutation der
-   SSOT-Quelle erzeugt eine Abweichung zur committeten Datei (rot).
-4. Copilot-QA verlangt Exact Head: der Instruktionskörper enthält die Exact-Head-SHA-Pflicht.
-5. Copilot `no`/`unknown` aktiviert weiterhin den QA-Fallback: der Körper verweist auf die
-   `DEL-008`-Fallbacksemantik.
-6. Der Normalfall startet nicht automatisch Doppel-QA: `DEL-010` formuliert Parallel-QA als
-   ausdrücklich opt-in.
-7. Expliziter Parallel-QA-Modus verlangt zwei unabhängige QA-Urteile auf demselben Head.
-8. SEC bleibt bei ihrem Trigger zusätzlich erforderlich: `DEL-010` stellt SEC nicht in Frage und
-   `DEL-003`/`DEL-007` bleiben unverändert.
-9. `gh` bleibt für `github_remote` Pflichtprofil: `github_cli.required_on == ["github_remote"]`
-   und `github_remote` bleibt im `tool_routing`-Modul triggergebunden (Regressionsguard).
-10. Bestehende Bundle-, Katalog-, Rule-ID- und Manifest-Verträge bleiben grün:
-    `python3 -m unittest discover -s tests -v`, `python3 tools/release_check.py tree`,
-    `git diff --check`.
+1. `.github/copilot-instructions.md` existiert und ist als nicht normative
+   Consumer-/Binding-Fläche erkennbar.
+2. Die Datei verweist auf die exakt vorgesehenen kanonischen Pfade
+   (`bundle/agent-governance/roles/quality-assurance.md`,
+   `bundle/agent-governance/modules/delivery.md`,
+   `bundle/agent-governance/modules/tool-routing.md`).
+3. Jede genannte Rule-ID (`DEL-002`, `DEL-003`, `DEL-007`, `DEL-008`, `DEL-009`, `TOL-004`)
+   existiert exakt einmal in den normativen Bundle-Dateien.
+4. Alle referenzierten Pfade sind repositorylokal, regulär und auflösbar; keine `$HOME`-,
+   absoluten Host-, HTTP-/HTTPS- oder GitHub-URL-Includes.
+5. Die Datei definiert selbst keine `### XXX-000 —`-Governance-Regel und enthält keine große
+   kopierte QA-/Delivery-Regelmenge.
+6. Ein absichtlich entfernter/umbenannter referenzierter Rule-ID- oder Dateipfad macht den Test
+   rot (Negativfall über synthetische Mutation).
+7. `DEL-008` verlangt die Binding-Voraussetzung (Binding vorhanden und Referenzen auflösbar auf
+   demselben Exact Head) und hält den Fallback bei fehlendem/ungültigem Binding bereit.
+8. Copilot `no`/`unknown` aktiviert weiterhin den QA-Fallback.
+9. Der Normalfall startet nicht automatisch Doppel-QA; expliziter Parallel-QA-Modus verlangt zwei
+   unabhängige QA-Urteile auf demselben Head (`DEL-010`).
+10. SEC bleibt bei ihrem Trigger zusätzlich erforderlich; `gh` bleibt für `github_remote`
+    Pflichtprofil (`github_cli.required_on == ["github_remote"]`); bestehende Bundle-, Katalog-,
+    Rule-ID- und Manifest-Verträge bleiben grün.
 
 ## Rollback und Driftprüfung
 
-- Rollback: Da die einzige neue Fläche im Repo eine generierte Datei plus Test-Support ist, ist
-  ein Rollback der Umsetzung ein reines `git`-Zurücksetzen der vier neuen/geänderten Dateien;
-  es gibt keinen externen Effekt und keinen Zustand außerhalb des Repositorys.
-- Driftprüfung: Der byte-identische Vergleich zwischen `materialize(...)` und der committeten
-  Binding-Datei ist die laufende Driftprüfung. Zusätzlich validiert der Provenienz-Block
-  (`sha256` des Körpers) die Integrität des Artefakts unabhängig vom Generator.
+- Rollback: Da die einzige neue Fläche im Repo eine dünne Binding-Datei, ein Test und die
+  `delivery.md`-Änderung ist, ist ein Rollback der Umsetzung ein reines `git`-Zurücksetzen der
+  betroffenen Dateien; es gibt keinen externen Effekt und keinen Zustand außerhalb des
+  Repositorys.
+- Driftprüfung: Drift wird durch Referenzintegrität erkannt. Der mechanische Binding-Test prüft,
+  dass jede referenzierte Datei und Rule-ID auf demselben Head existiert und auflösbar ist; eine
+  Umbenennung, Entfernung oder Regelkennungsänderung in der SSOT macht den Test rot.
 - Exact-Head-Konsistenz: Da Copilot die Instructions vom Head-Branch liest, ist die
-  Binding-Datei automatisch an denselben Stand gebunden, den CI und QA prüfen; ein Head-Wechsel
-  ohne erneute Materialisierung der SSOT fällt über den Drift-Test auf.
+  Binding-Datei automatisch an denselben Stand gebunden, den CI und QA prüfen; die
+  Binding-Voraussetzung in `DEL-008` verlangt das Binding ausdrücklich auf demselben Exact Head.
 
 ## Offene Verifikationspunkte bei der Umsetzung
 
-- Die exakte Copilot-Code-Review-Leseoberfläche (`.github/copilot-instructions.md` und ihr
-  Head-Branch-Bezug) ist eine zeitvariable Produktaussage. Sie wurde am 2026-08-19 aus der
-  offiziellen GitHub-Dokumentation belegt und ist bei der Umsetzung erneut gegen die dann aktuelle
-  offizielle Dokumentation zu verifizieren (Trigger `authoritative_documentation`). Bei
+- Die Copilot-Code-Review-Leseoberfläche (`.github/copilot-instructions.md`, Head-Branch-Bezug,
+  keine externen Link-Includes) ist eine zeitvariable Produktaussage. Sie wurde am 2026-08-19 aus
+  der offiziellen GitHub-Dokumentation belegt und ist bei der Umsetzung erneut gegen die dann
+  aktuelle offizielle Dokumentation zu verifizieren (Trigger `authoritative_documentation`). Bei
   abweichendem Stand gilt fail-closed; der Spec wird dann angepasst statt stillschweigend
   angenommen.
-- Ob Copilot die Instruktionsfläche für Code Review nutzt, ist eine Produkteinstellung, die im
-  Repository standardmäßig aktiv ist; die Umsetzung dokumentiert dies als belegte
-  Repository-Gegebenheit, ohne es zu erzwingen.
+- Ob Copilot eine natürlichsprachige Anweisung zum Lesen einer repository-lokalen Datei in jedem
+  Review zuverlässig befolgt, ist nicht deterministisch (offiziell dokumentierte
+  Nicht-Determinismus-Grenze). Die Binding-Voraussetzung in `DEL-008` ist deshalb eine
+  Governance-seitige, mechanisch prüfbare Bedingung (Datei vorhanden, nicht normativ, Referenzen
+  auflösbar) und hängt nicht davon ab, dass Copilot die Anweisung perfekt befolgt; bei Zweifel
+  greift der unabhängige QA-Fallback.
 
 ## Akzeptanzkriterien
 
 Der Spec gilt als bereit zur Nutzerprüfung, wenn: die aktuelle Governance-Struktur korrekt
 beschrieben ist; `gh` ausdrücklich unverändert bleibt; GitHub Copilot PR Review weiterhin primärer
 QA-Provider ist; die fehlende Copilot-native Binding-Fläche exakt geschlossen wird; die normative
-QA-SSOT weiterhin in Agent Governance liegt; kein zweites manuell gepflegtes QA-Regelwerk entsteht;
-der Remote-Copilot-Review ohne lokale `$HOME`-Abhängigkeit funktioniert; der optionale
-Parallel-QA-Modus exakt definiert ist; SEC weiterhin additiv bleibt; die APM-Rolle minimal und
-eindeutig festgelegt ist; konkrete spätere Dateien und Tests benannt werden; Rollback und
-Driftprüfung beschrieben sind; kein unnötiges Framework oder eigener Orchestrator vorgesehen wird.
+QA-SSOT weiterhin in Agent Governance liegt; kein zweites manuell gepflegtes QA-Regelwerk und kein
+eigener Materializer entsteht; der Remote-Copilot-Review ohne lokale `$HOME`-Abhängigkeit
+funktioniert; ein gültiges Binding normative Voraussetzung für akzeptierte Copilot-QA ist und dies
+konzeptionell für jedes Governance-verwendende GitHub-Projekt gilt; der optionale Parallel-QA-Modus
+exakt definiert und opt-in ist; SEC weiterhin additiv bleibt; die APM-Rolle korrekt und minimal
+begründet ist; konkrete spätere Dateien und Tests benannt werden; Rollback und Driftprüfung
+beschrieben sind; kein unnötiges Framework oder eigener Orchestrator vorgesehen wird.
