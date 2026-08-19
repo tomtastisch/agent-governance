@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path
 import re
 import unittest
@@ -38,6 +39,7 @@ def normative_files() -> list[Path]:
     ]
 
 
+@lru_cache(maxsize=1)
 def rule_definitions() -> dict[str, list[Path]]:
     definitions: dict[str, list[Path]] = {}
     for path in normative_files():
@@ -144,6 +146,11 @@ class DeliveryContract(unittest.TestCase):
     def setUp(self):
         self.delivery = DELIVERY.read_text(encoding="utf-8")
 
+    def del_010_block(self) -> str:
+        match = re.search(r"(?s)### DEL-010 — .+?(?=\n## |\Z)", self.delivery)
+        self.assertIsNotNone(match, "DEL-010-Block fehlt in delivery.md")
+        return match.group(0)
+
     def test_del_008_requires_valid_binding(self):
         self.assertRegex(
             self.delivery,
@@ -157,14 +164,14 @@ class DeliveryContract(unittest.TestCase):
         self.assertRegex(self.delivery, r"frischer\s+unabhängiger read-only")
 
     def test_del_010_defines_opt_in_parallel_qa(self):
-        self.assertRegex(self.delivery, r"(?m)^### DEL-010 — ")
-        self.assertRegex(self.delivery, r"(?is)DEL-010")
-        self.assertRegex(self.delivery, r"(?is)nicht standardmäßig")
-        self.assertRegex(self.delivery, r"(?is)ausdrücklich")
-        self.assertRegex(self.delivery, r"(?is)denselben Exact Head")
+        block = self.del_010_block()
+        self.assertRegex(block, r"(?is)nicht standardmäßig")
+        self.assertRegex(block, r"(?is)ausdrücklich")
+        self.assertRegex(block, r"(?is)denselben Exact Head")
 
     def test_del_010_keeps_sec_additive(self):
-        self.assertRegex(self.delivery, r"(?is)Parallel-QA ersetzt SEC nicht")
+        block = self.del_010_block()
+        self.assertRegex(block, r"(?is)Parallel-QA ersetzt SEC nicht")
         self.assertRegex(self.delivery, r"(?is)SEC-Rolle.+zusätzlich erforderlich")
 
 
