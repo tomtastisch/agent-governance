@@ -16,7 +16,6 @@ except ModuleNotFoundError:  # pragma: no cover - Projekt erfordert Python 3.11+
 ROOT = Path(__file__).resolve().parents[1]
 BUNDLE = ROOT / "bundle"
 GOVERNANCE_ROOT = BUNDLE / "agent-governance"
-MANIFEST = GOVERNANCE_ROOT / "manifest.toml"
 BINDING = ROOT / ".github" / "copilot-instructions.md"
 DELIVERY = GOVERNANCE_ROOT / "modules" / "delivery.md"
 
@@ -57,6 +56,9 @@ def binding_violations(text: str) -> list[str]:
         candidate = span.strip()
         if not (candidate.startswith("bundle/") and candidate.endswith((".md", ".toml"))):
             continue
+        if ".." in Path(candidate).parts:
+            violations.append(f"Traversal-Pfad: {candidate}")
+            continue
         if not (ROOT / candidate).is_file():
             violations.append(f"nicht auflösbarer Pfad: {candidate}")
     definitions = rule_definitions()
@@ -68,10 +70,10 @@ def binding_violations(text: str) -> list[str]:
 
 class BindingArtifactContract(unittest.TestCase):
     def setUp(self):
+        self.assertTrue(
+            BINDING.is_file(), ".github/copilot-instructions.md fehlt"
+        )
         self.text = BINDING.read_text(encoding="utf-8")
-
-    def test_binding_file_exists(self):
-        self.assertTrue(BINDING.is_file())
 
     def test_binding_is_non_normative_consumer_artifact(self):
         self.assertRegex(self.text, r"(?i)nicht normativ")
@@ -96,6 +98,7 @@ class BindingArtifactContract(unittest.TestCase):
         source = "\n".join([
             (GOVERNANCE_ROOT / "roles" / "quality-assurance.md").read_text(encoding="utf-8"),
             (GOVERNANCE_ROOT / "modules" / "delivery.md").read_text(encoding="utf-8"),
+            (GOVERNANCE_ROOT / "modules" / "tool-routing.md").read_text(encoding="utf-8"),
         ])
         source_paragraphs = {
             " ".join(p.split()) for p in re.split(r"\n\s*\n", source)
@@ -117,6 +120,11 @@ class BindingArtifactContract(unittest.TestCase):
         )
         self.assertIn("Rule-ID nicht eindeutig: DEL-999", violations)
         self.assertIn("HTTP(S)-URL", violations)
+
+    def test_binding_reference_traversal_fails(self):
+        bad = "Referenz auf `bundle/agent-governance/../outside.md`."
+        violations = binding_violations(bad)
+        self.assertIn("Traversal-Pfad: bundle/agent-governance/../outside.md", violations)
 
 
 class DeliveryContract(unittest.TestCase):
