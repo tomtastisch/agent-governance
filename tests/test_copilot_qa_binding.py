@@ -63,8 +63,9 @@ def binding_violations(text: str) -> list[str]:
             violations.append(f"nicht auflösbarer Pfad: {candidate}")
     definitions = rule_definitions()
     for rule_id in sorted(set(RULE_TOKEN_RE.findall(text))):
-        if len(definitions.get(rule_id, [])) != 1:
-            violations.append(f"Rule-ID nicht eindeutig: {rule_id}")
+        count = len(definitions.get(rule_id, []))
+        if count != 1:
+            violations.append(f"Rule-ID existiert nicht exakt einmal: {rule_id} (Anzahl: {count})")
     return violations
 
 
@@ -118,7 +119,10 @@ class BindingArtifactContract(unittest.TestCase):
             "nicht auflösbarer Pfad: bundle/agent-governance/roles/qualitaetssicherung.md",
             violations,
         )
-        self.assertIn("Rule-ID nicht eindeutig: DEL-999", violations)
+        self.assertIn(
+            "Rule-ID existiert nicht exakt einmal: DEL-999 (Anzahl: 0)",
+            violations,
+        )
         self.assertIn("HTTP(S)-URL", violations)
 
     def test_binding_reference_traversal_fails(self):
