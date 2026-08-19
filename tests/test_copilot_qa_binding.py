@@ -54,12 +54,13 @@ def binding_violations(text: str) -> list[str]:
         violations.append("Home-/Host-Pfad")
     for span in re.findall(r"`([^`]+)`", text):
         candidate = span.strip()
-        if not (candidate.startswith("bundle/") and candidate.endswith((".md", ".toml"))):
+        path_part = re.split(r"[#?]", candidate)[0]
+        if not (path_part.startswith("bundle/") and path_part.endswith((".md", ".toml"))):
             continue
-        if ".." in Path(candidate).parts:
+        if ".." in Path(path_part).parts:
             violations.append(f"Traversal-Pfad: {candidate}")
             continue
-        if not (ROOT / candidate).is_file():
+        if not (ROOT / path_part).is_file():
             violations.append(f"nicht auflösbarer Pfad: {candidate}")
     definitions = rule_definitions()
     for rule_id in sorted(set(RULE_TOKEN_RE.findall(text))):
@@ -129,6 +130,14 @@ class BindingArtifactContract(unittest.TestCase):
         bad = "Referenz auf `bundle/agent-governance/../outside.md`."
         violations = binding_violations(bad)
         self.assertIn("Traversal-Pfad: bundle/agent-governance/../outside.md", violations)
+
+    def test_binding_reference_fragment_fails(self):
+        bad = "Referenz auf `bundle/agent-governance/modules/fehlt.md#del-999`."
+        violations = binding_violations(bad)
+        self.assertIn(
+            "nicht auflösbarer Pfad: bundle/agent-governance/modules/fehlt.md#del-999",
+            violations,
+        )
 
 
 class DeliveryContract(unittest.TestCase):
