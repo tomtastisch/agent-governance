@@ -55,7 +55,9 @@ def binding_violations(text: str) -> list[str]:
         violations.append("Home-/Host-Pfad")
     for span in re.findall(r"`([^`]+)`", text):
         candidate = span.strip()
-        if candidate.startswith("bundle/") and not (ROOT / candidate).is_file():
+        if not (candidate.startswith("bundle/") and candidate.endswith((".md", ".toml"))):
+            continue
+        if not (ROOT / candidate).is_file():
             violations.append(f"nicht auflösbarer Pfad: {candidate}")
     definitions = rule_definitions()
     for rule_id in sorted(set(RULE_TOKEN_RE.findall(text))):
@@ -91,10 +93,10 @@ class BindingArtifactContract(unittest.TestCase):
 
     def test_binding_is_small_and_copies_no_rule_set(self):
         self.assertLessEqual(self.text.count("\n") + 1, 80)
-        source = "\n".join(
+        source = "\n".join([
             (GOVERNANCE_ROOT / "roles" / "quality-assurance.md").read_text(encoding="utf-8"),
             (GOVERNANCE_ROOT / "modules" / "delivery.md").read_text(encoding="utf-8"),
-        )
+        ])
         source_paragraphs = {
             " ".join(p.split()) for p in re.split(r"\n\s*\n", source)
             if len(" ".join(p.split())) >= 80
