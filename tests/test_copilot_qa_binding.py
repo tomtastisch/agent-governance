@@ -85,8 +85,12 @@ class BindingArtifactContract(unittest.TestCase):
         self.assertNotRegex(self.text, RULE_DEF_RE)
 
     def test_binding_references_canonical_paths(self):
-        for path in EXPECTED_BINDING_PATHS:
-            self.assertIn(path, self.text, path)
+        referenced = {
+            span.strip()
+            for span in re.findall(r"`([^`]+)`", self.text)
+            if span.strip().startswith("bundle/") and span.strip().endswith((".md", ".toml"))
+        }
+        self.assertEqual(referenced, set(EXPECTED_BINDING_PATHS))
 
     def test_binding_rule_ids_exist_exactly_once(self):
         definitions = rule_definitions()
