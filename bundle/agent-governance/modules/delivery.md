@@ -60,11 +60,15 @@ umgedeutet.
 ### DEL-008 — Provider-Routing
 
 Bei einem GitHub-Repository ist GitHub Copilot der bevorzugte QA-Provider, wenn der reale
-PR-Reviewpfad einen Review mit Revieweridentität und Exact-Head-SHA liefert. Ein frischer
+PR-Reviewpfad einen Review mit Revieweridentität und Exact-Head-SHA liefert und auf demselben
+Exact Head ein gültiges repository-natives Copilot-QA-Binding
+(`.github/copilot-instructions.md`) mit auflösbaren kanonischen QA-/Delivery-Referenzen
+vorhanden ist. Fehlt das Binding oder sind seine Referenzen nicht auflösbar, gilt der
+Copilot-Pfad für dieses Gate fail-closed als nicht verwendbar. Ein frischer
 unabhängiger read-only Reviewer ist der QA-Fallback, sobald der Providerzustand `no` oder
-`unknown` lautet; Quoten-, Billing- oder Restbudgetzahlen werden nicht erfunden und ein
-bestätigtes Negativergebnis wird nicht mit Retry-Spam verfolgt. Eine SEC-Rolle bleibt bei
-ihrem Risikotrigger zusätzlich erforderlich und prüft denselben Exact Head.
+`unknown` lautet oder das Binding ungültig ist; Quoten-, Billing- oder Restbudgetzahlen werden
+nicht erfunden und ein bestätigtes Negativergebnis wird nicht mit Retry-Spam verfolgt. Eine
+SEC-Rolle bleibt bei ihrem Risikotrigger zusätzlich erforderlich und prüft denselben Exact Head.
 
 ### DEL-009 — Finding-Lifecycle
 
@@ -74,6 +78,17 @@ Jedes Finding wird als `blocking-valid`, `nonblocking-valid`, `invalid` oder
 anderen Klassen benötigen eine kurze überprüfbare Begründung. Nach jeder inhaltlichen
 Korrektur werden betroffene Tests und Rollenprüfungen auf dem neuen Exact Head erneut
 ausgeführt; offene valide Blocking-Findings verbieten eine Abschlussaussage.
+
+### DEL-010 — Optionales Parallel-QA
+
+Ein optionaler Parallel-QA-Modus wird nur aktiviert, wenn der Nutzer dies ausdrücklich verlangt
+oder eine bestehende Governance-Risikoeinstufung/Qualitätsanforderung dies ausdrücklich auslöst;
+er wird nicht standardmäßig für jedes Review ausgeführt. In diesem Modus prüfen zwei
+unabhängige QA-Kontexte frisch und read-only denselben Exact Head. Ihre Findings bleiben bis zu
+den jeweils eigenen Urteilen voneinander getrennt und werden anschließend nach
+[DEL-009](delivery.md#del-009--finding-lifecycle) klassifiziert. Ein `blocking-valid` Finding
+eines erforderlichen Reviewers blockiert die Abschlussaussage. Parallel-QA ersetzt SEC nicht;
+ist SEC getriggert, läuft sie zusätzlich und kann parallel zu QA ausgeführt werden.
 
 ## Definition of Done
 
