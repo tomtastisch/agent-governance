@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Microsoft APM.
 - Zwei lokale, ausdrücklich nicht normative Erklärungsgrafiken zu Wirkung und Binding-Ablauf in
   der README.
+- Ein repository-natives Copilot-QA-Binding `.github/copilot-instructions.md` als dünner
+  Consumer-Wrapper, der GitHub Copilot Code Review an die kanonische QA-Governance bindet.
+- `DEL-010` (Optionales Parallel-QA) als ausdrücklich opt-in Vertrag.
 
 ### Changed
 
@@ -27,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Routingsemantik und Autorisierungsgrenzen.
 - Validatoren, Bootstrapmaterialisierung und produktneutraler Harness prüfen Katalogschema,
   Referenzintegrität und Pfadsicherheit deterministisch fail-closed.
+- `DEL-008` verlangt ein gültiges repository-natives Copilot-QA-Binding auf demselben Exact Head
+  als Voraussetzung dafür, dass GitHub Copilot als bevorzugter QA-Provider gilt.
 
 ### Fixed
 
