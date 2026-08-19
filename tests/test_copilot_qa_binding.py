@@ -22,6 +22,7 @@ DELIVERY = GOVERNANCE_ROOT / "modules" / "delivery.md"
 
 RULE_DEF_RE = re.compile(r"(?m)^### ([A-Z][A-Z0-9-]*-\d{3}) — ")
 RULE_TOKEN_RE = re.compile(r"\b[A-Z][A-Z0-9-]*-\d{3}\b")
+BUNDLE_PATH_RE = re.compile(r"bundle/agent-governance/[^\s`\)\]]+\.(?:md|toml)")
 
 EXPECTED_BINDING_PATHS = (
     "bundle/agent-governance/roles/quality-assurance.md",
@@ -54,16 +55,13 @@ def binding_violations(text: str) -> list[str]:
         violations.append("HTTP(S)-URL")
     if re.search(r"(?:^|[\s`])(?:~/|/Users/|/home/|\$HOME/)", text):
         violations.append("Home-/Host-Pfad")
-    for span in re.findall(r"`([^`]+)`", text):
-        candidate = span.strip()
-        path_part = re.split(r"[#?]", candidate)[0]
-        if not (path_part.startswith("bundle/") and path_part.endswith((".md", ".toml"))):
-            continue
+    for match in BUNDLE_PATH_RE.findall(text):
+        path_part = re.split(r"[#?]", match)[0]
         if ".." in Path(path_part).parts:
-            violations.append(f"Traversal-Pfad: {candidate}")
+            violations.append(f"Traversal-Pfad: {match}")
             continue
         if not (ROOT / path_part).is_file():
-            violations.append(f"nicht auflösbarer Pfad: {candidate}")
+            violations.append(f"nicht auflösbarer Pfad: {match}")
     definitions = rule_definitions()
     for rule_id in sorted(set(RULE_TOKEN_RE.findall(text))):
         count = len(definitions.get(rule_id, []))
@@ -86,9 +84,8 @@ class BindingArtifactContract(unittest.TestCase):
 
     def test_binding_references_canonical_paths(self):
         referenced = {
-            span.strip()
-            for span in re.findall(r"`([^`]+)`", self.text)
-            if span.strip().startswith("bundle/") and span.strip().endswith((".md", ".toml"))
+            re.split(r"[#?]", match)[0]
+            for match in BUNDLE_PATH_RE.findall(self.text)
         }
         self.assertEqual(referenced, set(EXPECTED_BINDING_PATHS))
 
@@ -141,7 +138,7 @@ class BindingArtifactContract(unittest.TestCase):
         bad = "Referenz auf `bundle/agent-governance/modules/fehlt.md#del-999`."
         violations = binding_violations(bad)
         self.assertIn(
-            "nicht auflösbarer Pfad: bundle/agent-governance/modules/fehlt.md#del-999",
+            "nicht auflösbarer Pfad: bundle/agent-governance/modules/fehlt.md",
             violations,
         )
 
