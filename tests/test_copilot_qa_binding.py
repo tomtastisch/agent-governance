@@ -27,7 +27,7 @@ BUNDLE_PATH_RE = re.compile(
 )
 BACKSLASH_BUNDLE_RE = re.compile(r"bundle[\\/][^\s`\)\]]*\\[^\s`\)\]]*")
 NONLOCAL_PATH_RE = re.compile(
-    r"(?:^|[\s`(])((?:(?:[A-Za-z]:[\\/])|(?:\\{2}[^\\\s])|file://|/)[^\s`)]*)"
+    r"(?:^|[\s`(\"'<[])((?:(?:[A-Za-z]:[\\/])|(?:\\{2}[^\\\s])|file://|/)[^\s`)\]>\"']*)"
 )
 
 EXPECTED_BINDING_PATHS = (
@@ -210,6 +210,23 @@ class BindingArtifactContract(unittest.TestCase):
         self.assertIn(
             "Nicht repositorylokale Pfadform: \\\\server\\share\\file.md", violations
         )
+
+    def test_binding_reference_angle_bracket_path_fails(self):
+        bad = "Referenz auf `<C:\\Users\\x\\file.md>`."
+        violations = binding_violations(bad)
+        self.assertIn(
+            "Nicht repositorylokale Pfadform: C:\\Users\\x\\file.md", violations
+        )
+
+    def test_binding_reference_quoted_path_fails(self):
+        bad = 'Referenz auf "/etc/passwd".'
+        violations = binding_violations(bad)
+        self.assertIn("Nicht repositorylokale Pfadform: /etc/passwd", violations)
+
+    def test_binding_reference_bracket_path_fails(self):
+        bad = "Referenz auf `[/etc/passwd]`."
+        violations = binding_violations(bad)
+        self.assertIn("Nicht repositorylokale Pfadform: /etc/passwd", violations)
 
 
 class DeliveryContract(unittest.TestCase):
