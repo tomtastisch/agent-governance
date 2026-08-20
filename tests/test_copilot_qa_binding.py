@@ -22,7 +22,13 @@ DELIVERY = GOVERNANCE_ROOT / "modules" / "delivery.md"
 
 RULE_DEF_RE = re.compile(r"(?m)^### ([A-Z][A-Z0-9-]*-\d{3}) — ")
 RULE_TOKEN_RE = re.compile(r"\b[A-Z][A-Z0-9-]*-\d{3}\b")
-BUNDLE_PATH_RE = re.compile(r"bundle/agent-governance/[^\s`\)\]]+\.(?:md|toml)")
+BUNDLE_PATH_RE = re.compile(
+    r"bundle/agent-governance/[^\s`\)\]]+\.(?:md|toml)(?:[#?][^\s`\)\]]*)?"
+)
+BACKSLASH_BUNDLE_RE = re.compile(r"bundle[\\/][^\s`\)\]]*\\[^\s`\)\]]*")
+NONLOCAL_PATH_RE = re.compile(
+    r"(?:^|[\s`(])((?:(?:[A-Za-z]:[\\/])|(?:\\{2}[^\\\s])|file://|/)[^\s`)]*)"
+)
 
 EXPECTED_BINDING_PATHS = (
     "bundle/agent-governance/roles/quality-assurance.md",
@@ -56,12 +62,18 @@ def binding_violations(text: str) -> list[str]:
     if re.search(r"(?:^|[\s`])(?:~/|/Users/|/home/|\$HOME/)", text):
         violations.append("Home-/Host-Pfad")
     for match in BUNDLE_PATH_RE.findall(text):
-        path_part = re.split(r"[#?]", match)[0]
-        if ".." in Path(path_part).parts:
+        if "#" in match or "?" in match:
+            violations.append(f"Fragment/Query nicht zulässig: {match}")
+            continue
+        if ".." in Path(match).parts:
             violations.append(f"Traversal-Pfad: {match}")
             continue
-        if not (ROOT / path_part).is_file():
+        if not (ROOT / match).is_file():
             violations.append(f"nicht auflösbarer Pfad: {match}")
+    for match in BACKSLASH_BUNDLE_RE.findall(text):
+        violations.append(f"Windows-/Backslash-Pfad: {match}")
+    for match in NONLOCAL_PATH_RE.findall(text):
+        violations.append(f"Nicht repositorylokale Pfadform: {match}")
     definitions = rule_definitions()
     for rule_id in sorted(set(RULE_TOKEN_RE.findall(text))):
         count = len(definitions.get(rule_id, []))
@@ -135,11 +147,68 @@ class BindingArtifactContract(unittest.TestCase):
         self.assertIn("Traversal-Pfad: bundle/agent-governance/../outside.md", violations)
 
     def test_binding_reference_fragment_fails(self):
-        bad = "Referenz auf `bundle/agent-governance/modules/fehlt.md#del-999`."
+        bad = (
+            "Referenz auf "
+            "`bundle/agent-governance/modules/delivery.md#does-not-exist`."
+        )
         violations = binding_violations(bad)
         self.assertIn(
-            "nicht auflösbarer Pfad: bundle/agent-governance/modules/fehlt.md",
+            "Fragment/Query nicht zulässig: "
+            "bundle/agent-governance/modules/delivery.md#does-not-exist",
             violations,
+        )
+
+    def test_binding_reference_real_anchor_fails(self):
+        bad = (
+            "Referenz auf "
+            "`bundle/agent-governance/modules/delivery.md#del-008--provider-routing`."
+        )
+        violations = binding_violations(bad)
+        self.assertIn(
+            "Fragment/Query nicht zulässig: "
+            "bundle/agent-governance/modules/delivery.md#del-008--provider-routing",
+            violations,
+        )
+
+    def test_binding_reference_query_fails(self):
+        bad = (
+            "Referenz auf "
+            "`bundle/agent-governance/modules/delivery.md?query=value`."
+        )
+        violations = binding_violations(bad)
+        self.assertIn(
+            "Fragment/Query nicht zulässig: "
+            "bundle/agent-governance/modules/delivery.md?query=value",
+            violations,
+        )
+
+    def test_binding_reference_backslash_path_fails(self):
+        bad = "Referenz auf `bundle\\..\\outside.md`."
+        violations = binding_violations(bad)
+        self.assertIn("Windows-/Backslash-Pfad: bundle\\..\\outside.md", violations)
+
+    def test_binding_reference_absolute_path_fails(self):
+        bad = "Referenz auf `/etc/passwd`."
+        violations = binding_violations(bad)
+        self.assertIn("Nicht repositorylokale Pfadform: /etc/passwd", violations)
+
+    def test_binding_reference_windows_drive_fails(self):
+        bad = "Referenz auf `C:\\Users\\x\\file.md`."
+        violations = binding_violations(bad)
+        self.assertIn(
+            "Nicht repositorylokale Pfadform: C:\\Users\\x\\file.md", violations
+        )
+
+    def test_binding_reference_file_scheme_fails(self):
+        bad = "Referenz auf `file:///etc/passwd`."
+        violations = binding_violations(bad)
+        self.assertIn("Nicht repositorylokale Pfadform: file:///etc/passwd", violations)
+
+    def test_binding_reference_unc_path_fails(self):
+        bad = "Referenz auf `\\\\server\\share\\file.md`."
+        violations = binding_violations(bad)
+        self.assertIn(
+            "Nicht repositorylokale Pfadform: \\\\server\\share\\file.md", violations
         )
 
 
