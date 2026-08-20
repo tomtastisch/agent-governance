@@ -27,10 +27,11 @@ BUNDLE_PATH_RE = re.compile(
 )
 BUNDLE_TOKEN_RE = re.compile(r"(?:^|[\s`(\"'<[])(bundle[/\\][^\s`)\]>\"']*)")
 NONLOCAL_PATH_RE = re.compile(
-    r"(?:^|[\s`(\"'<[])((?:(?:[A-Za-z]:[\\/])|(?:\\{2}[^\\\s])|file:(?=[^\s`)\]>\"'])|/(?![\s`)\]>\"']))[^\s`)\]>\"']*)"
+    r"(?:^|[\s`(\"'<[])((?:(?:[A-Za-z]:[\\/])|(?:\\+[^\\\s])|file:(?=[^\s`)\]>\"'])|/(?![\s`)\]>\"']))[^\s`)\]>\"']*)",
+    re.IGNORECASE,
 )
 RELATIVE_TRAVERSAL_RE = re.compile(
-    r"(?:^|[\s`(\"'<[])((?!bundle[/\\])[^\s`)\]>\"']*\.\.[^\s`)\]>\"']*)"
+    r"(?:^|[\s`(\"'<[])((?!bundle[/\\])(?:[^\s`)\]>\"']*[/\\])?\.\.(?:[/\\][^\s`)\]>\"']*)?)"
 )
 
 EXPECTED_BINDING_PATHS = (
@@ -60,7 +61,7 @@ def rule_definitions() -> dict[str, list[Path]]:
 
 def binding_violations(text: str) -> list[str]:
     violations: list[str] = []
-    if re.search(r"https?://", text):
+    if re.search(r"https?://", text, re.IGNORECASE):
         violations.append("HTTP(S)-URL")
     if re.search(r"(?:^|[\s`])(?:~/|/Users/|/home/|\$HOME/)", text):
         violations.append("Home-/Host-Pfad")
@@ -293,6 +294,26 @@ class BindingArtifactContract(unittest.TestCase):
         bad = "Referenz auf `foo/../../etc/passwd`."
         violations = binding_violations(bad)
         self.assertIn("Traversal-Pfad: foo/../../etc/passwd", violations)
+
+    def test_binding_reference_uppercase_scheme_fails(self):
+        bad = "Referenz auf `FILE:///etc/passwd`."
+        violations = binding_violations(bad)
+        self.assertIn("Nicht repositorylokale Pfadform: FILE:///etc/passwd", violations)
+
+    def test_binding_reference_uppercase_http_fails(self):
+        bad = "Referenz auf `HTTPS://example.com`."
+        violations = binding_violations(bad)
+        self.assertIn("HTTP(S)-URL", violations)
+
+    def test_binding_reference_single_backslash_root_fails(self):
+        bad = "Referenz auf `\\etc\\passwd`."
+        violations = binding_violations(bad)
+        self.assertIn("Nicht repositorylokale Pfadform: \\etc\\passwd", violations)
+
+    def test_binding_reference_dotdot_in_word_not_flagged(self):
+        bad = "Referenz auf `x..y` und `version 1..2`."
+        violations = binding_violations(bad)
+        self.assertEqual(violations, [])
 
     def test_binding_reference_bundle_word_prose_not_flagged(self):
         bad = "Ein bundles-Paket oder subbundle ist Prosa, kein Pfad."
