@@ -25,9 +25,9 @@ RULE_TOKEN_RE = re.compile(r"\b[A-Z][A-Z0-9-]*-\d{3}\b")
 BUNDLE_PATH_RE = re.compile(
     r"bundle/agent-governance/[^\s`\)\]]+\.(?:md|toml)(?:[#?][^\s`\)\]]*)?"
 )
-BACKSLASH_BUNDLE_RE = re.compile(r"bundle[^\s`\)\]]*\\[^\s`\)\]]*")
+BUNDLE_TOKEN_RE = re.compile(r"bundle[^\s`\)\]>\"']*")
 NONLOCAL_PATH_RE = re.compile(
-    r"(?:^|[\s`(\"'<[])((?:(?:[A-Za-z]:[\\/])|(?:\\{2}[^\\\s])|file://|/)[^\s`)\]>\"']*)"
+    r"(?:^|[\s`(\"'<[])((?:(?:[A-Za-z]:[\\/])|(?:\\{2}[^\\\s])|file://|/[^\s/`)\]>\"'])[^\s`)\]>\"']*)"
 )
 
 EXPECTED_BINDING_PATHS = (
@@ -61,17 +61,21 @@ def binding_violations(text: str) -> list[str]:
         violations.append("HTTP(S)-URL")
     if re.search(r"(?:^|[\s`])(?:~/|/Users/|/home/|\$HOME/)", text):
         violations.append("Home-/Host-Pfad")
-    for match in BUNDLE_PATH_RE.findall(text):
-        if "#" in match or "?" in match:
-            violations.append(f"Fragment/Query nicht zulässig: {match}")
-            continue
-        if ".." in Path(match).parts:
-            violations.append(f"Traversal-Pfad: {match}")
-            continue
-        if not (ROOT / match).is_file():
-            violations.append(f"nicht auflösbarer Pfad: {match}")
-    for match in BACKSLASH_BUNDLE_RE.findall(text):
-        violations.append(f"Windows-/Backslash-Pfad: {match}")
+    for token in BUNDLE_TOKEN_RE.findall(text):
+        if "\\" in token:
+            violations.append(f"Windows-/Backslash-Pfad: {token}")
+        elif ".." in Path(token).parts:
+            violations.append(f"Traversal-Pfad: {token}")
+        else:
+            path_part = re.split(r"[#?]", token)[0]
+            if "#" in token or "?" in token:
+                violations.append(f"Fragment/Query nicht zulässig: {token}")
+            elif path_part.endswith("/"):
+                continue
+            elif not path_part.endswith((".md", ".toml")):
+                violations.append(f"nicht auflösbarer Pfad: {token}")
+            elif not (ROOT / path_part).is_file():
+                violations.append(f"nicht auflösbarer Pfad: {token}")
     for match in NONLOCAL_PATH_RE.findall(text):
         violations.append(f"Nicht repositorylokale Pfadform: {match}")
     definitions = rule_definitions()
@@ -235,6 +239,21 @@ class BindingArtifactContract(unittest.TestCase):
         bad = "Referenz auf `[/etc/passwd]`."
         violations = binding_violations(bad)
         self.assertIn("Nicht repositorylokale Pfadform: /etc/passwd", violations)
+
+    def test_binding_reference_bundle_traversal_escape_fails(self):
+        bad = "Referenz auf `bundle/../outside.md`."
+        violations = binding_violations(bad)
+        self.assertIn("Traversal-Pfad: bundle/../outside.md", violations)
+
+    def test_binding_reference_bundle_drive_fails(self):
+        bad = "Referenz auf `bundle/C:/outside.md`."
+        violations = binding_violations(bad)
+        self.assertIn("nicht auflösbarer Pfad: bundle/C:/outside.md", violations)
+
+    def test_binding_reference_bare_slash_not_flagged(self):
+        bad = "Text mit A / B ist keine Pfadreferenz."
+        violations = binding_violations(bad)
+        self.assertNotIn("Nicht repositorylokale Pfadform: /", violations)
 
 
 class DeliveryContract(unittest.TestCase):
