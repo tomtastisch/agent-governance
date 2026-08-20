@@ -27,7 +27,7 @@ BUNDLE_PATH_RE = re.compile(
 )
 BUNDLE_TOKEN_RE = re.compile(r"bundle[^\s`\)\]>\"']*")
 NONLOCAL_PATH_RE = re.compile(
-    r"(?:^|[\s`(\"'<[])((?:(?:[A-Za-z]:[\\/])|(?:\\{2}[^\\\s])|file://|/[^\s/`)\]>\"'])[^\s`)\]>\"']*)"
+    r"(?:^|[\s`(\"'<[])((?:(?:[A-Za-z]:[\\/])|(?:\\{2}[^\\\s])|file://|/(?![\s`)\]>\"']))[^\s`)\]>\"']*)"
 )
 
 EXPECTED_BINDING_PATHS = (
@@ -254,6 +254,13 @@ class BindingArtifactContract(unittest.TestCase):
         bad = "Text mit A / B ist keine Pfadreferenz."
         violations = binding_violations(bad)
         self.assertNotIn("Nicht repositorylokale Pfadform: /", violations)
+
+    def test_binding_reference_protocol_relative_path_fails(self):
+        bad = "Referenz auf `//example.com/include`."
+        violations = binding_violations(bad)
+        self.assertIn(
+            "Nicht repositorylokale Pfadform: //example.com/include", violations
+        )
 
 
 class DeliveryContract(unittest.TestCase):
