@@ -25,7 +25,7 @@ RULE_TOKEN_RE = re.compile(r"\b[A-Z][A-Z0-9-]*-\d{3}\b")
 BUNDLE_PATH_RE = re.compile(
     r"bundle/agent-governance/[^\s`\)\]]+\.(?:md|toml)(?:[#?][^\s`\)\]]*)?"
 )
-BACKSLASH_BUNDLE_RE = re.compile(r"bundle[\\/][^\s`\)\]]*\\[^\s`\)\]]*")
+BACKSLASH_BUNDLE_RE = re.compile(r"bundle[^\s`\)\]]*\\[^\s`\)\]]*")
 NONLOCAL_PATH_RE = re.compile(
     r"(?:^|[\s`(\"'<[])((?:(?:[A-Za-z]:[\\/])|(?:\\{2}[^\\\s])|file://|/)[^\s`)\]>\"']*)"
 )
@@ -186,6 +186,14 @@ class BindingArtifactContract(unittest.TestCase):
         bad = "Referenz auf `bundle\\..\\outside.md`."
         violations = binding_violations(bad)
         self.assertIn("Windows-/Backslash-Pfad: bundle\\..\\outside.md", violations)
+
+    def test_binding_reference_single_backslash_after_bundle_fails(self):
+        bad = "Referenz auf `bundle\\agent-governance/roles/quality-assurance.md`."
+        violations = binding_violations(bad)
+        self.assertIn(
+            "Windows-/Backslash-Pfad: bundle\\agent-governance/roles/quality-assurance.md",
+            violations,
+        )
 
     def test_binding_reference_absolute_path_fails(self):
         bad = "Referenz auf `/etc/passwd`."
