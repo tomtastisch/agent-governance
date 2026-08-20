@@ -25,12 +25,12 @@ RULE_TOKEN_RE = re.compile(r"\b[A-Z][A-Z0-9-]*-\d{3}\b")
 BUNDLE_PATH_RE = re.compile(
     r"bundle/agent-governance/[^\s`\)\]]+\.(?:md|toml)(?:[#?][^\s`\)\]]*)?"
 )
-BUNDLE_TOKEN_RE = re.compile(r"bundle[/\\][^\s`\)\]>\"']*")
+BUNDLE_TOKEN_RE = re.compile(r"(?:^|[\s`(\"'<[])(bundle[/\\][^\s`)\]>\"']*)")
 NONLOCAL_PATH_RE = re.compile(
     r"(?:^|[\s`(\"'<[])((?:(?:[A-Za-z]:[\\/])|(?:\\{2}[^\\\s])|file:(?=[^\s`)\]>\"'])|/(?![\s`)\]>\"']))[^\s`)\]>\"']*)"
 )
 RELATIVE_TRAVERSAL_RE = re.compile(
-    r"(?:^|[\s`(\"'<[])((?:\.\.)[/\\][^\s`)\]>\"']*)"
+    r"(?:^|[\s`(\"'<[])((?!bundle[/\\])[^\s`)\]>\"']*\.\.[^\s`)\]>\"']*)"
 )
 
 EXPECTED_BINDING_PATHS = (
@@ -283,6 +283,16 @@ class BindingArtifactContract(unittest.TestCase):
         bad = "Referenz auf `../outside.md`."
         violations = binding_violations(bad)
         self.assertIn("Traversal-Pfad: ../outside.md", violations)
+
+    def test_binding_reference_dot_prefixed_relative_traversal_fails(self):
+        bad = "Referenz auf `./../outside.md`."
+        violations = binding_violations(bad)
+        self.assertIn("Traversal-Pfad: ./../outside.md", violations)
+
+    def test_binding_reference_embedded_relative_traversal_fails(self):
+        bad = "Referenz auf `foo/../../etc/passwd`."
+        violations = binding_violations(bad)
+        self.assertIn("Traversal-Pfad: foo/../../etc/passwd", violations)
 
     def test_binding_reference_bundle_word_prose_not_flagged(self):
         bad = "Ein bundles-Paket oder subbundle ist Prosa, kein Pfad."
