@@ -25,9 +25,12 @@ RULE_TOKEN_RE = re.compile(r"\b[A-Z][A-Z0-9-]*-\d{3}\b")
 BUNDLE_PATH_RE = re.compile(
     r"bundle/agent-governance/[^\s`\)\]]+\.(?:md|toml)(?:[#?][^\s`\)\]]*)?"
 )
-BUNDLE_TOKEN_RE = re.compile(r"bundle[^\s`\)\]>\"']*")
+BUNDLE_TOKEN_RE = re.compile(r"bundle[/\\][^\s`\)\]>\"']*")
 NONLOCAL_PATH_RE = re.compile(
     r"(?:^|[\s`(\"'<[])((?:(?:[A-Za-z]:[\\/])|(?:\\{2}[^\\\s])|file:(?=[^\s`)\]>\"'])|/(?![\s`)\]>\"']))[^\s`)\]>\"']*)"
+)
+RELATIVE_TRAVERSAL_RE = re.compile(
+    r"(?:^|[\s`(\"'<[])((?:\.\.)[/\\][^\s`)\]>\"']*)"
 )
 
 EXPECTED_BINDING_PATHS = (
@@ -78,6 +81,8 @@ def binding_violations(text: str) -> list[str]:
                 violations.append(f"nicht auflösbarer Pfad: {token}")
     for match in NONLOCAL_PATH_RE.findall(text):
         violations.append(f"Nicht repositorylokale Pfadform: {match}")
+    for match in RELATIVE_TRAVERSAL_RE.findall(text):
+        violations.append(f"Traversal-Pfad: {match}")
     definitions = rule_definitions()
     for rule_id in sorted(set(RULE_TOKEN_RE.findall(text))):
         count = len(definitions.get(rule_id, []))
@@ -273,6 +278,16 @@ class BindingArtifactContract(unittest.TestCase):
         self.assertIn(
             "Nicht repositorylokale Pfadform: file:C:/Windows/system.ini", violations
         )
+
+    def test_binding_reference_relative_traversal_fails(self):
+        bad = "Referenz auf `../outside.md`."
+        violations = binding_violations(bad)
+        self.assertIn("Traversal-Pfad: ../outside.md", violations)
+
+    def test_binding_reference_bundle_word_prose_not_flagged(self):
+        bad = "Ein bundles-Paket oder subbundle ist Prosa, kein Pfad."
+        violations = binding_violations(bad)
+        self.assertEqual(violations, [])
 
 
 class DeliveryContract(unittest.TestCase):
