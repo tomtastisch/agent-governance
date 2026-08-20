@@ -27,7 +27,7 @@ BUNDLE_PATH_RE = re.compile(
 )
 BUNDLE_TOKEN_RE = re.compile(r"bundle[^\s`\)\]>\"']*")
 NONLOCAL_PATH_RE = re.compile(
-    r"(?:^|[\s`(\"'<[])((?:(?:[A-Za-z]:[\\/])|(?:\\{2}[^\\\s])|file://|/(?![\s`)\]>\"']))[^\s`)\]>\"']*)"
+    r"(?:^|[\s`(\"'<[])((?:(?:[A-Za-z]:[\\/])|(?:\\{2}[^\\\s])|file:/|/(?![\s`)\]>\"']))[^\s`)\]>\"']*)"
 )
 
 EXPECTED_BINDING_PATHS = (
@@ -261,6 +261,11 @@ class BindingArtifactContract(unittest.TestCase):
         self.assertIn(
             "Nicht repositorylokale Pfadform: //example.com/include", violations
         )
+
+    def test_binding_reference_single_slash_file_uri_fails(self):
+        bad = "Referenz auf `file:/etc/passwd`."
+        violations = binding_violations(bad)
+        self.assertIn("Nicht repositorylokale Pfadform: file:/etc/passwd", violations)
 
 
 class DeliveryContract(unittest.TestCase):
