@@ -116,11 +116,20 @@ class InstallBoundaryContract(unittest.TestCase):
 
 
 class ReleaseMetadataContract(unittest.TestCase):
-    def test_semver_minor_release_is_consistent(self):
-        self.assertEqual(VERSION, "0.4.0")
-        self.assertIn("**Version:** [`0.4.0`](VERSION)", README)
-        self.assertIn("## [0.4.0] — 2026-08-21", CHANGELOG)
+    def test_semver_patch_followup_release_is_consistent(self):
+        self.assertEqual(VERSION, "0.4.1")
+        self.assertIn("**Version:** [`0.4.1`](VERSION)", README)
+        self.assertIn("## [0.4.1] — 2026-08-21", CHANGELOG)
         current = CHANGELOG.split(f"## [{VERSION}]", 1)[1].split("\n## [", 1)[0]
+        for term in (
+            "copilot-instructions.md",
+            "DEL-010",
+            "DEL-008",
+            "Node 24",
+        ):
+            self.assertIn(term, current)
+        self.assertIn("**Breaking changes:** none", current)
+        historical = CHANGELOG.split("## [0.4.0]", 1)[1].split("\n## [", 1)[0]
         for term in (
             "Manifest-Schema 2",
             "catalogs/triggers.toml",
@@ -129,8 +138,8 @@ class ReleaseMetadataContract(unittest.TestCase):
             "catalogs/tools.toml",
             "**BREAKING:**",
         ):
-            self.assertIn(term, current)
-        self.assertIn("**Breaking changes:** present", current)
+            self.assertIn(term, historical)
+        self.assertIn("**Breaking changes:** present", historical)
 
     def test_published_032_recovery_metadata_remains_historical(self):
         self.assertIn("## [0.3.2] — 2026-08-15", CHANGELOG)

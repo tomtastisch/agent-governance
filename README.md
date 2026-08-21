@@ -1,6 +1,6 @@
 # Agent Governance
 
-> **Version:** [`0.4.0`](VERSION) — [Changelog](CHANGELOG.md)
+> **Version:** [`0.4.1`](VERSION) — [Changelog](CHANGELOG.md)
 
 ## Was ist agent-governance?
 
@@ -258,9 +258,10 @@ Routing, `allow`, `deny`, `require_approval` und lokales Audit erneut.
 
 `VERSION` ist die einzige SemVer-Quelle. `CHANGELOG.md` trennt freigegebene von noch nicht
 freigegebenen Änderungen, README verweist nur auf `VERSION`, und der Releasecheck gleicht Tree,
-Tag und GitHub Release ab. Version `0.4.0` ist ein MINOR-Kandidat gegenüber `0.3.2`, weil sie das
-normative Katalogmodell und die maschinenvalidierbare Tool-Routing-SSOT ergänzt. Die davon
-getrennte Manifest-Schemaversion steigt von `1` auf `2`.
+Tag und GitHub Release ab. Version `0.4.1` ist ein kompatibler Patch-/Follow-up-Release gegenüber
+`0.4.0`: Sie übernimmt den veröffentlichten `0.4.0`-Stand unverändert und ergänzt die nach dem
+`0.4.0`-Tag entstandenen Änderungen (repository-natives Copilot-QA-Binding, `DEL-008`/`DEL-010`-Härtung,
+CI-Node-24) ohne Breaking Changes. Die davon getrennte Manifest-Schemaversion bleibt `2`.
 
 Ein Branch, PR oder lokaler Teststand ist kein Release. Produktionsfreigabe setzt die Gleichheit
 von Main-, Tag-, Release-, QA-, SEC-, CI-, E2E- und Post-Release-SHA voraus.
