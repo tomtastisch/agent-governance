@@ -25,31 +25,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Breaking changes:** none
 
-## [0.4.0] — 2026-08-21
+## [0.4.1] — 2026-08-21
 
 ### Added
 
-- Vier geschlossene, maschinenvalidierbare Kataloge für Trigger, Policy-Tags, Scopes und Tools
-  unter `catalogs/triggers.toml`, `catalogs/policy-tags.toml`, `catalogs/scopes.toml` und
-  `catalogs/tools.toml`.
-- Der zentrale Toolkatalog umfasst die weiterhin gültigen Standardtoolklassen sowie Linear,
-  Supabase, Superpowers, Supermetrics, GitHub, Data Analytics, Canonical Memory Verifier und
-  Microsoft APM.
-- Zwei lokale, ausdrücklich nicht normative Erklärungsgrafiken zu Wirkung und Binding-Ablauf in
-  der README.
 - Ein repository-natives Copilot-QA-Binding `.github/copilot-instructions.md` als dünner
   Consumer-Wrapper, der GitHub Copilot Code Review an die kanonische QA-Governance bindet.
 - `DEL-010` (Optionales Parallel-QA) als ausdrücklich opt-in Vertrag.
 
 ### Changed
 
-- Das Manifest verwendet Manifest-Schema 2, bleibt Root-Index und referenziert die vier Katalogpfade
-  ausschließlich relativ zum kanonischen Manifestverzeichnis.
-- Toolprofile und ihre geschlossenen Trigger-, Policy-Tag- und Scope-Referenzen liegen nur noch in
-  `catalogs/tools.toml`; `modules/tool-routing.md` enthält ausschließlich allgemeine
-  Routingsemantik und Autorisierungsgrenzen.
-- Validatoren, Bootstrapmaterialisierung und produktneutraler Harness prüfen Katalogschema,
-  Referenzintegrität und Pfadsicherheit deterministisch fail-closed.
 - `DEL-008` verlangt ein gültiges repository-natives Copilot-QA-Binding auf demselben Exact Head
   als Voraussetzung dafür, dass GitHub Copilot als bevorzugter QA-Provider gilt.
 - Die nicht releasekritischen GitHub-Actions-Schritte verwenden die aktuelle Node-24-kompatible
@@ -62,6 +47,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Query (`?…`) fail-closed ab und blockiert Backslash-/Windows-, Traversal-, absolute POSIX-,
   gerootete Laufwerkspfade (`C:/…`, `C:\…`), UNC- sowie sämtliche
   Groß-/Kleinschreibungsvarianten des `file:`-Schemas als nicht-repositorylokale Referenzen.
+
+### Removed
+
+- Keine.
+
+**Breaking changes:** none
+
+## [0.4.0] — 2026-08-18
+
+### Added
+
+- Vier geschlossene, maschinenvalidierbare Kataloge für Trigger, Policy-Tags, Scopes und Tools
+  unter `catalogs/triggers.toml`, `catalogs/policy-tags.toml`, `catalogs/scopes.toml` und
+  `catalogs/tools.toml`.
+- Der zentrale Toolkatalog umfasst die weiterhin gültigen Standardtoolklassen sowie Linear,
+  Supabase, Superpowers, Supermetrics, GitHub, Data Analytics, Canonical Memory Verifier und
+  Microsoft APM.
+- Zwei lokale, ausdrücklich nicht normative Erklärungsgrafiken zu Wirkung und Binding-Ablauf in
+  der README.
+
+### Changed
+
+- Das Manifest verwendet Manifest-Schema 2, bleibt Root-Index und referenziert die vier Katalogpfade
+  ausschließlich relativ zum kanonischen Manifestverzeichnis.
+- Toolprofile und ihre geschlossenen Trigger-, Policy-Tag- und Scope-Referenzen liegen nur noch in
+  `catalogs/tools.toml`; `modules/tool-routing.md` enthält ausschließlich allgemeine
+  Routingsemantik und Autorisierungsgrenzen.
+- Validatoren, Bootstrapmaterialisierung und produktneutraler Harness prüfen Katalogschema,
+  Referenzintegrität und Pfadsicherheit deterministisch fail-closed.
+
+### Fixed
+
+- Keine.
 
 ### Removed
 

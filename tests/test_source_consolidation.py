@@ -210,15 +210,17 @@ class HistoricalEvidenceContract(unittest.TestCase):
 
 
 class ReleaseMetadataContract(unittest.TestCase):
-    def test_current_version_declares_typed_catalog_minor_release(self):
+    def test_current_version_declares_patch_followup_release(self):
         changelog = read(ROOT / "CHANGELOG.md")
         version = read(ROOT / "VERSION").strip()
         current = changelog.split(f"## [{version}]", 1)[1].split("\n## [", 1)[0]
-        self.assertEqual(version, "0.4.0")
-        self.assertIn("**Breaking changes:** present", current)
-        self.assertIn("**BREAKING:**", current)
+        self.assertEqual(version, "0.4.1")
+        self.assertIn("**Breaking changes:** none", current)
+        historical = changelog.split("## [0.4.0]", 1)[1].split("\n## [", 1)[0]
+        self.assertIn("**Breaking changes:** present", historical)
+        self.assertIn("**BREAKING:**", historical)
         for catalog in ("triggers", "policy-tags", "scopes", "tools"):
-            self.assertIn(f"catalogs/{catalog}.toml", current)
+            self.assertIn(f"catalogs/{catalog}.toml", historical)
 
     def test_unreleased_is_reset_after_version_classification(self):
         changelog = read(ROOT / "CHANGELOG.md")
