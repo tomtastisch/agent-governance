@@ -35,7 +35,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Keine.
+- Der Copilot-QA-Binding-Validator lehnt Bundle-Referenzen mit Markdown-Fragment (`#…`) oder
+  Query (`?…`) jetzt fail-closed als Verletzung ab, statt den Suffix still abzuschneiden und nur
+  die Datei-Existenz zu prüfen. Zusätzlich werden Windows-/Backslash-Pfadformen sowie absolute,
+  Laufwerks-, UNC- und `file://`-Pfadformen als nicht-repositorylokale Referenzen abgelehnt.
 
 ### Removed
 

@@ -22,7 +22,17 @@ DELIVERY = GOVERNANCE_ROOT / "modules" / "delivery.md"
 
 RULE_DEF_RE = re.compile(r"(?m)^### ([A-Z][A-Z0-9-]*-\d{3}) — ")
 RULE_TOKEN_RE = re.compile(r"\b[A-Z][A-Z0-9-]*-\d{3}\b")
-BUNDLE_PATH_RE = re.compile(r"bundle/agent-governance/[^\s`\)\]]+\.(?:md|toml)")
+BUNDLE_PATH_RE = re.compile(
+    r"bundle/agent-governance/[^\s`\)\]]+\.(?:md|toml)(?:[#?][^\s`\)\]]*)?"
+)
+BUNDLE_TOKEN_RE = re.compile(r"(?:^|[\s`(\"'<[])(bundle[/\\][^\s`)\]>\"']*)")
+NONLOCAL_PATH_RE = re.compile(
+    r"(?:^|[\s`(\"'<[])((?:(?:[A-Za-z]:[\\/])|(?:\\+[^\\\s])|file:(?=[^\s`)\]>\"'])|/(?![\s`)\]>\"']))[^\s`)\]>\"']*)",
+    re.IGNORECASE,
+)
+RELATIVE_TRAVERSAL_RE = re.compile(
+    r"(?:^|[\s`(\"'<[])((?!bundle[/\\])(?:[^\s`)\]>\"']*[/\\])?\.\.(?:[/\\][^\s`)\]>\"']*)?)"
+)
 
 EXPECTED_BINDING_PATHS = (
     "bundle/agent-governance/roles/quality-assurance.md",
@@ -51,17 +61,29 @@ def rule_definitions() -> dict[str, list[Path]]:
 
 def binding_violations(text: str) -> list[str]:
     violations: list[str] = []
-    if re.search(r"https?://", text):
+    if re.search(r"https?://", text, re.IGNORECASE):
         violations.append("HTTP(S)-URL")
     if re.search(r"(?:^|[\s`])(?:~/|/Users/|/home/|\$HOME/)", text):
         violations.append("Home-/Host-Pfad")
-    for match in BUNDLE_PATH_RE.findall(text):
-        path_part = re.split(r"[#?]", match)[0]
-        if ".." in Path(path_part).parts:
-            violations.append(f"Traversal-Pfad: {match}")
-            continue
-        if not (ROOT / path_part).is_file():
-            violations.append(f"nicht auflösbarer Pfad: {match}")
+    for token in BUNDLE_TOKEN_RE.findall(text):
+        if "\\" in token:
+            violations.append(f"Windows-/Backslash-Pfad: {token}")
+        elif ".." in Path(token).parts:
+            violations.append(f"Traversal-Pfad: {token}")
+        else:
+            path_part = re.split(r"[#?]", token)[0]
+            if "#" in token or "?" in token:
+                violations.append(f"Fragment/Query nicht zulässig: {token}")
+            elif path_part.endswith("/"):
+                continue
+            elif not path_part.endswith((".md", ".toml")):
+                violations.append(f"nicht auflösbarer Pfad: {token}")
+            elif not (ROOT / path_part).is_file():
+                violations.append(f"nicht auflösbarer Pfad: {token}")
+    for match in NONLOCAL_PATH_RE.findall(text):
+        violations.append(f"Nicht repositorylokale Pfadform: {match}")
+    for match in RELATIVE_TRAVERSAL_RE.findall(text):
+        violations.append(f"Traversal-Pfad: {match}")
     definitions = rule_definitions()
     for rule_id in sorted(set(RULE_TOKEN_RE.findall(text))):
         count = len(definitions.get(rule_id, []))
@@ -135,12 +157,168 @@ class BindingArtifactContract(unittest.TestCase):
         self.assertIn("Traversal-Pfad: bundle/agent-governance/../outside.md", violations)
 
     def test_binding_reference_fragment_fails(self):
-        bad = "Referenz auf `bundle/agent-governance/modules/fehlt.md#del-999`."
+        bad = (
+            "Referenz auf "
+            "`bundle/agent-governance/modules/delivery.md#does-not-exist`."
+        )
         violations = binding_violations(bad)
         self.assertIn(
-            "nicht auflösbarer Pfad: bundle/agent-governance/modules/fehlt.md",
+            "Fragment/Query nicht zulässig: "
+            "bundle/agent-governance/modules/delivery.md#does-not-exist",
             violations,
         )
+
+    def test_binding_reference_real_anchor_fails(self):
+        bad = (
+            "Referenz auf "
+            "`bundle/agent-governance/modules/delivery.md#del-008--provider-routing`."
+        )
+        violations = binding_violations(bad)
+        self.assertIn(
+            "Fragment/Query nicht zulässig: "
+            "bundle/agent-governance/modules/delivery.md#del-008--provider-routing",
+            violations,
+        )
+
+    def test_binding_reference_query_fails(self):
+        bad = (
+            "Referenz auf "
+            "`bundle/agent-governance/modules/delivery.md?query=value`."
+        )
+        violations = binding_violations(bad)
+        self.assertIn(
+            "Fragment/Query nicht zulässig: "
+            "bundle/agent-governance/modules/delivery.md?query=value",
+            violations,
+        )
+
+    def test_binding_reference_backslash_path_fails(self):
+        bad = "Referenz auf `bundle\\..\\outside.md`."
+        violations = binding_violations(bad)
+        self.assertIn("Windows-/Backslash-Pfad: bundle\\..\\outside.md", violations)
+
+    def test_binding_reference_single_backslash_after_bundle_fails(self):
+        bad = "Referenz auf `bundle\\agent-governance/roles/quality-assurance.md`."
+        violations = binding_violations(bad)
+        self.assertIn(
+            "Windows-/Backslash-Pfad: bundle\\agent-governance/roles/quality-assurance.md",
+            violations,
+        )
+
+    def test_binding_reference_absolute_path_fails(self):
+        bad = "Referenz auf `/etc/passwd`."
+        violations = binding_violations(bad)
+        self.assertIn("Nicht repositorylokale Pfadform: /etc/passwd", violations)
+
+    def test_binding_reference_windows_drive_fails(self):
+        bad = "Referenz auf `C:\\Users\\x\\file.md`."
+        violations = binding_violations(bad)
+        self.assertIn(
+            "Nicht repositorylokale Pfadform: C:\\Users\\x\\file.md", violations
+        )
+
+    def test_binding_reference_file_scheme_fails(self):
+        bad = "Referenz auf `file:///etc/passwd`."
+        violations = binding_violations(bad)
+        self.assertIn("Nicht repositorylokale Pfadform: file:///etc/passwd", violations)
+
+    def test_binding_reference_unc_path_fails(self):
+        bad = "Referenz auf `\\\\server\\share\\file.md`."
+        violations = binding_violations(bad)
+        self.assertIn(
+            "Nicht repositorylokale Pfadform: \\\\server\\share\\file.md", violations
+        )
+
+    def test_binding_reference_angle_bracket_path_fails(self):
+        bad = "Referenz auf `<C:\\Users\\x\\file.md>`."
+        violations = binding_violations(bad)
+        self.assertIn(
+            "Nicht repositorylokale Pfadform: C:\\Users\\x\\file.md", violations
+        )
+
+    def test_binding_reference_quoted_path_fails(self):
+        bad = 'Referenz auf "/etc/passwd".'
+        violations = binding_violations(bad)
+        self.assertIn("Nicht repositorylokale Pfadform: /etc/passwd", violations)
+
+    def test_binding_reference_bracket_path_fails(self):
+        bad = "Referenz auf `[/etc/passwd]`."
+        violations = binding_violations(bad)
+        self.assertIn("Nicht repositorylokale Pfadform: /etc/passwd", violations)
+
+    def test_binding_reference_bundle_traversal_escape_fails(self):
+        bad = "Referenz auf `bundle/../outside.md`."
+        violations = binding_violations(bad)
+        self.assertIn("Traversal-Pfad: bundle/../outside.md", violations)
+
+    def test_binding_reference_bundle_drive_fails(self):
+        bad = "Referenz auf `bundle/C:/outside.md`."
+        violations = binding_violations(bad)
+        self.assertIn("nicht auflösbarer Pfad: bundle/C:/outside.md", violations)
+
+    def test_binding_reference_bare_slash_not_flagged(self):
+        bad = "Text mit A / B ist keine Pfadreferenz."
+        violations = binding_violations(bad)
+        self.assertNotIn("Nicht repositorylokale Pfadform: /", violations)
+
+    def test_binding_reference_protocol_relative_path_fails(self):
+        bad = "Referenz auf `//example.com/include`."
+        violations = binding_violations(bad)
+        self.assertIn(
+            "Nicht repositorylokale Pfadform: //example.com/include", violations
+        )
+
+    def test_binding_reference_single_slash_file_uri_fails(self):
+        bad = "Referenz auf `file:/etc/passwd`."
+        violations = binding_violations(bad)
+        self.assertIn("Nicht repositorylokale Pfadform: file:/etc/passwd", violations)
+
+    def test_binding_reference_rootless_file_uri_fails(self):
+        bad = "Referenz auf `file:C:/Windows/system.ini`."
+        violations = binding_violations(bad)
+        self.assertIn(
+            "Nicht repositorylokale Pfadform: file:C:/Windows/system.ini", violations
+        )
+
+    def test_binding_reference_relative_traversal_fails(self):
+        bad = "Referenz auf `../outside.md`."
+        violations = binding_violations(bad)
+        self.assertIn("Traversal-Pfad: ../outside.md", violations)
+
+    def test_binding_reference_dot_prefixed_relative_traversal_fails(self):
+        bad = "Referenz auf `./../outside.md`."
+        violations = binding_violations(bad)
+        self.assertIn("Traversal-Pfad: ./../outside.md", violations)
+
+    def test_binding_reference_embedded_relative_traversal_fails(self):
+        bad = "Referenz auf `foo/../../etc/passwd`."
+        violations = binding_violations(bad)
+        self.assertIn("Traversal-Pfad: foo/../../etc/passwd", violations)
+
+    def test_binding_reference_uppercase_scheme_fails(self):
+        bad = "Referenz auf `FILE:///etc/passwd`."
+        violations = binding_violations(bad)
+        self.assertIn("Nicht repositorylokale Pfadform: FILE:///etc/passwd", violations)
+
+    def test_binding_reference_uppercase_http_fails(self):
+        bad = "Referenz auf `HTTPS://example.com`."
+        violations = binding_violations(bad)
+        self.assertIn("HTTP(S)-URL", violations)
+
+    def test_binding_reference_single_backslash_root_fails(self):
+        bad = "Referenz auf `\\etc\\passwd`."
+        violations = binding_violations(bad)
+        self.assertIn("Nicht repositorylokale Pfadform: \\etc\\passwd", violations)
+
+    def test_binding_reference_dotdot_in_word_not_flagged(self):
+        bad = "Referenz auf `x..y` und `version 1..2`."
+        violations = binding_violations(bad)
+        self.assertEqual(violations, [])
+
+    def test_binding_reference_bundle_word_prose_not_flagged(self):
+        bad = "Ein bundles-Paket oder subbundle ist Prosa, kein Pfad."
+        violations = binding_violations(bad)
+        self.assertEqual(violations, [])
 
 
 class DeliveryContract(unittest.TestCase):
