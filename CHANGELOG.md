@@ -60,8 +60,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Der Copilot-QA-Binding-Validator lehnt Bundle-Referenzen mit Markdown-Fragment (`#…`) oder
   Query (`?…`) fail-closed ab und blockiert Backslash-/Windows-, Traversal-, absolute POSIX-,
-  Laufwerks-, UNC- sowie sämtliche Groß-/Kleinschreibungsvarianten des `file:`-Schemas als
-  nicht-repositorylokale Referenzen.
+  gerootete Laufwerkspfade (`C:/…`, `C:\…`), UNC- sowie sämtliche
+  Groß-/Kleinschreibungsvarianten des `file:`-Schemas als nicht-repositorylokale Referenzen.
 
 ### Removed
 
