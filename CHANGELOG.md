@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Keine.
+
+### Changed
+
+- Keine.
+
+### Fixed
+
+- Keine.
+
+### Removed
+
+- Keine.
+
+**Breaking changes:** none
+
+## [0.4.0] — 2026-08-21
+
+### Added
+
 - Vier geschlossene, maschinenvalidierbare Kataloge für Trigger, Policy-Tags, Scopes und Tools
   unter `catalogs/triggers.toml`, `catalogs/policy-tags.toml`, `catalogs/scopes.toml` und
   `catalogs/tools.toml`.
@@ -32,13 +52,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Referenzintegrität und Pfadsicherheit deterministisch fail-closed.
 - `DEL-008` verlangt ein gültiges repository-natives Copilot-QA-Binding auf demselben Exact Head
   als Voraussetzung dafür, dass GitHub Copilot als bevorzugter QA-Provider gilt.
+- Die nicht releasekritischen GitHub-Actions-Schritte verwenden die aktuelle Node-24-kompatible
+  Action-Generation; der CI-Node-Runtimepfad wurde auf Node 24 LTS angehoben, während
+  releasekritische Checkouts unverändert auf dem auditierten SHA-Pin bleiben.
 
 ### Fixed
 
 - Der Copilot-QA-Binding-Validator lehnt Bundle-Referenzen mit Markdown-Fragment (`#…`) oder
-  Query (`?…`) jetzt fail-closed als Verletzung ab, statt den Suffix still abzuschneiden und nur
-  die Datei-Existenz zu prüfen. Zusätzlich werden Windows-/Backslash-Pfadformen sowie absolute,
-  Laufwerks-, UNC- und `file://`-Pfadformen als nicht-repositorylokale Referenzen abgelehnt.
+  Query (`?…`) fail-closed ab und blockiert Backslash-/Windows-, Traversal-, absolute POSIX-,
+  gerootete Laufwerkspfade (`C:/…`, `C:\…`), UNC- sowie sämtliche
+  Groß-/Kleinschreibungsvarianten des `file:`-Schemas als nicht-repositorylokale Referenzen.
 
 ### Removed
 
