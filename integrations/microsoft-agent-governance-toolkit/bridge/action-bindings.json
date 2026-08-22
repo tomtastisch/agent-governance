@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "tool_name": "mcp__agent_governance__execute",
+  "tool_name": "agent_governance__execute",
   "resource_scheme": "synthetic",
   "operations": {
     "read": {

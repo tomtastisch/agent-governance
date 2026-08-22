@@ -54,7 +54,7 @@ Akzeptanz verlangt, dass ein neuer Prozess den Root ohne injiziertes `AGENT_GOVE
 eindeutig über seine dokumentierten Kandidaten auflösen kann. Materialisiere den vollständigen
 Release, baue den gepinnten Provider aus dem lokalen Snapshot, binde die byte-identische globale
 Instruktion und konfiguriere den synchronen PreToolUse-Hook für
-`mcp__agent_governance__execute`. Nutze ausschließlich absolute lokale Pfade. Gib danach nur das
+`agent_governance__execute`. Nutze ausschließlich absolute lokale Pfade. Gib danach nur das
 angeforderte sichere JSON aus.
 """
 Path(sys.argv[2]).write_text(contract + context, encoding="utf-8")
@@ -99,7 +99,7 @@ test -f "$codex_state/agent-governance/manifest.toml"
 test -f "$codex_state/integrations/microsoft-agent-governance-toolkit/upstream.lock.toml"
 test -f "$codex_state/runtime/microsoft-provider/microsoft-sdk/dist/policy.js"
 test -f "$codex_state/hooks.json"
-grep -q 'mcp__agent_governance__execute' "$codex_state/hooks.json"
+grep -q 'agent_governance__execute' "$codex_state/hooks.json"
 grep -q 'codex-hook\.mjs' "$codex_state/hooks.json"
 
 python3 - "$codex_state" "$release_root/tests/fixtures/runtime/synthetic-local-rules.md" <<'PY'
@@ -215,7 +215,7 @@ module = Path(sys.argv[3])
 evidence = Path(sys.argv[4])
 command = "env " + " ".join((
     "AGENT_GOVERNANCE_MSAGT_POLICY_MODULE=" + shlex.quote(str(module)),
-    "AGENT_GOVERNANCE_ENFORCED_TOOL_NAME=mcp__agent_governance__execute",
+    "AGENT_GOVERNANCE_ENFORCED_TOOL_NAME=agent_governance__execute",
     "AGENT_GOVERNANCE_ACTION_BINDINGS=" + shlex.quote(str(root / "integrations" / "microsoft-agent-governance-toolkit" / "bridge" / "action-bindings.json")),
     "AGENT_GOVERNANCE_EVIDENCE_LOG=" + shlex.quote(str(evidence)),
     "node",
@@ -225,7 +225,7 @@ payload = {
     "description": "Synthetic exact-head E2E binding",
     "hooks": {
         "PreToolUse": [{
-            "matcher": "^mcp__agent_governance__execute$",
+            "matcher": "^agent_governance__execute$",
             "hooks": [{"type": "command", "command": command, "timeout": 30}],
         }],
     },

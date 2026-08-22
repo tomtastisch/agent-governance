@@ -198,7 +198,7 @@ class RealCodexContract(unittest.TestCase):
         self.assertIn("writeFile", server)
         self.assertNotRegex(server, r"https?://")
         probe = read("run_codex_local_rules.sh")
-        self.assertIn("mcp__agent_governance__execute", probe)
+        self.assertIn("agent_governance__execute", probe)
         self.assertIn("codex-hook.mjs", probe)
 
 

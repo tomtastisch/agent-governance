@@ -7,7 +7,7 @@ import { evaluateEnvelope } from "./provider.mjs";
 
 const MAX_INPUT_BYTES = 1024 * 1024;
 const MAX_BINDINGS_BYTES = 64 * 1024;
-const ACTION_BINDINGS_SHA256 = "c1dd902c14edfa8bf44c263503594e25c816696f653e430f4169e08a3f108dbd";
+const ACTION_BINDINGS_SHA256 = "3ac3c10cf9a57d275f64262b0137e3d881cc6028fcb49a6d0247f7b4ef07cffc";
 const OPAQUE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
 const RESOURCE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const BINDING_KEYS = new Set([
