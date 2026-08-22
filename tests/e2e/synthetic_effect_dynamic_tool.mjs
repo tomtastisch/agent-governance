@@ -62,18 +62,52 @@ async function executeDynamicTool(params) {
   };
 }
 
-const server = spawn("codex", ["app-server", "--stdio"], {
+const timeoutMs = Number.parseInt(
+  process.env.AGENT_GOVERNANCE_E2E_TIMEOUT_MS ?? "180000",
+  10,
+);
+if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 300000) {
+  throw new Error("invalid E2E timeout");
+}
+
+const server = spawn(
+  "codex",
+  ["--dangerously-bypass-hook-trust", "app-server", "--stdio"],
+  {
   cwd: workspace,
   env: process.env,
   stdio: ["pipe", "pipe", "inherit"],
-});
+  },
+);
 const lines = createInterface({ input: server.stdout, crlfDelay: Infinity });
 let nextId = 1;
 const pending = new Map();
 let finalMessage = null;
-let turnCompleted;
-const completed = new Promise((resolve) => {
-  turnCompleted = resolve;
+let expectedTurnId = null;
+let terminal = false;
+let completeTurn;
+let failTurn;
+const completed = new Promise((resolve, reject) => {
+  completeTurn = resolve;
+  failTurn = reject;
+});
+
+function failPending(error) {
+  if (terminal) return;
+  terminal = true;
+  for (const { reject, timer } of pending.values()) {
+    clearTimeout(timer);
+    reject(error);
+  }
+  pending.clear();
+  failTurn(error);
+}
+
+server.once("error", (error) => failPending(error));
+server.once("exit", (code, signal) => {
+  if (!terminal) {
+    failPending(new Error(`app-server exited before completion: ${code ?? signal}`));
+  }
 });
 
 function send(message) {
@@ -84,7 +118,12 @@ function request(method, params) {
   const id = nextId;
   nextId += 1;
   send({ id, method, params });
-  return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      failPending(new Error(`app-server request timed out: ${method}`));
+    }, timeoutMs);
+    pending.set(id, { resolve, reject, timer });
+  });
 }
 
 const reader = (async () => {
@@ -109,6 +148,7 @@ const reader = (async () => {
       const waiter = pending.get(message.id);
       if (waiter) {
         pending.delete(message.id);
+        clearTimeout(waiter.timer);
         if (message.error !== undefined) waiter.reject(new Error(JSON.stringify(message.error)));
         else waiter.resolve(message.result);
       }
@@ -117,8 +157,17 @@ const reader = (async () => {
     if (message.method === "item/completed" && message.params?.item?.type === "agentMessage") {
       finalMessage = message.params.item.text;
     }
-    if (message.method === "turn/completed") turnCompleted(message.params);
+    if (message.method === "turn/completed") {
+      const turn = message.params?.turn;
+      if (turn?.id !== expectedTurnId || turn?.status !== "completed") {
+        failPending(new Error("unexpected turn completion"));
+      } else if (!terminal) {
+        terminal = true;
+        completeTurn(turn);
+      }
+    }
   }
+  if (!terminal) failPending(new Error("app-server output ended before completion"));
 })();
 
 try {
@@ -144,15 +193,17 @@ try {
       },
     }],
   });
-  await request("turn/start", {
+  const turnStarted = await request("turn/start", {
     threadId: started.thread.id,
     input: [{ type: "text", text: await readFile(taskPath, "utf8") }],
     outputSchema: JSON.parse(await readFile(schemaPath, "utf8")),
   });
+  expectedTurnId = turnStarted.turn.id;
   await completed;
   if (typeof finalMessage !== "string") throw new Error("missing final agent message");
   await writeFile(outputPath, finalMessage, { flag: "wx", mode: 0o600 });
 } finally {
   server.stdin.end();
+  if (server.exitCode === null && server.signalCode === null) server.kill("SIGTERM");
   await reader;
 }

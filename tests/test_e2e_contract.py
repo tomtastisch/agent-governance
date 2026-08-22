@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
+import subprocess
 import unittest
 
 
@@ -152,6 +153,16 @@ class SecretIsolationContract(unittest.TestCase):
 
 
 class RealCodexContract(unittest.TestCase):
+    def test_dynamic_tool_client_lifecycle_fails_closed(self):
+        result = subprocess.run(
+            ["node", "--test", str(ROOT / "tests" / "node" / "dynamic_tool_client.test.mjs")],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+
     def test_local_rules_probe_uses_fresh_codex_exec_not_prompt_debug(self):
         probe = read("run_codex_local_rules.sh")
         self.assertIn("codex exec", probe)
@@ -201,6 +212,7 @@ class RealCodexContract(unittest.TestCase):
         self.assertIn("agent_governance__execute", probe)
         self.assertIn("codex-hook.mjs", probe)
         self.assertIn("dynamicTools", client)
+        self.assertIn("--dangerously-bypass-hook-trust", client)
         self.assertNotIn("[mcp_servers.agent_governance]", probe)
         self.assertNotIn("synthetic_effect_mcp.mjs", probe)
 
