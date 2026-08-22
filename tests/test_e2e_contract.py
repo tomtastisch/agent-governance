@@ -186,20 +186,23 @@ class RealCodexContract(unittest.TestCase):
         for item in required:
             self.assertIn(item, probes)
 
-    def test_synthetic_mcp_effect_is_confined_and_hook_mediated(self):
-        server = read("synthetic_effect_mcp.mjs")
-        self.assertIn("tools/list", server)
-        self.assertIn("tools/call", server)
-        self.assertIn("action_request", server)
-        self.assertIn("operation", server)
-        self.assertIn("resource_id", server)
-        self.assertNotIn("semantic_authorization", server)
-        self.assertIn("SYNTHETIC_EFFECT_ROOT", server)
-        self.assertIn("writeFile", server)
-        self.assertNotRegex(server, r"https?://")
+    def test_synthetic_dynamic_tool_is_confined_and_hook_mediated(self):
+        client = read("synthetic_effect_dynamic_tool.mjs")
+        self.assertIn('message.method === "item/tool/call"', client)
+        self.assertIn('const TOOL_NAME = "agent_governance__execute"', client)
+        self.assertIn("action_request", client)
+        self.assertIn("operation", client)
+        self.assertIn("resource_id", client)
+        self.assertNotIn("semantic_authorization", client)
+        self.assertIn("SYNTHETIC_EFFECT_ROOT", client)
+        self.assertIn("writeFile", client)
+        self.assertNotRegex(client, r"https?://")
         probe = read("run_codex_local_rules.sh")
         self.assertIn("agent_governance__execute", probe)
         self.assertIn("codex-hook.mjs", probe)
+        self.assertIn("dynamicTools", client)
+        self.assertNotIn("[mcp_servers.agent_governance]", probe)
+        self.assertNotIn("synthetic_effect_mcp.mjs", probe)
 
 
 class NeutralAndCiContract(unittest.TestCase):

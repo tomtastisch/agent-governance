@@ -30,7 +30,7 @@ ACTION_BINDINGS = BRIDGE / "action-bindings.json"
 
 CANONICAL_TOOL_NAME = "agent_governance__execute"
 LEGACY_TOOL_NAME = "mcp__agent_governance__execute"
-CODEX_DYNAMIC_TOOL_IDENTIFIER = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+CODEX_DYNAMIC_TOOL_IDENTIFIER = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 ACTIVE_TOOL_CONTRACTS = (
     ACTION_BINDINGS,
     ROOT / "tests" / "node" / "provider_bridge.test.mjs",

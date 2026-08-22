@@ -39,6 +39,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Governance-Handler verwirft.
 - Alle Provider verwenden weiterhin denselben Governance-Handler und dieselbe Governance-SSOT;
   die Entscheidungs-, Policy-, Scope-, Trigger- und Rollensemantik bleibt unverändert.
+- Der Clean-Linux-Codex-Vertrag registriert die kanonische Oberfläche als einzelnes
+  App-Server-Dynamic-Tool statt als MCP-Tool, damit Hook-Matcher und externer Identifier
+  byte-identisch bleiben.
 - **Migration:** Consumer, Policies, Adapter und Tests, die die frühere Tool-ID exakt
   referenzieren, müssen auf
   `agent_governance__execute` migrieren. Version `0.5.0` registriert keinen
