@@ -85,6 +85,7 @@ const pending = new Map();
 let finalMessage = null;
 let expectedTurnId = null;
 let terminal = false;
+let completionTimer = null;
 let completeTurn;
 let failTurn;
 const completed = new Promise((resolve, reject) => {
@@ -95,6 +96,7 @@ const completed = new Promise((resolve, reject) => {
 function failPending(error) {
   if (terminal) return;
   terminal = true;
+  clearTimeout(completionTimer);
   for (const { reject, timer } of pending.values()) {
     clearTimeout(timer);
     reject(error);
@@ -163,6 +165,7 @@ const reader = (async () => {
         failPending(new Error("unexpected turn completion"));
       } else if (!terminal) {
         terminal = true;
+        clearTimeout(completionTimer);
         completeTurn(turn);
       }
     }
@@ -199,6 +202,9 @@ try {
     outputSchema: JSON.parse(await readFile(schemaPath, "utf8")),
   });
   expectedTurnId = turnStarted.turn.id;
+  completionTimer = setTimeout(() => {
+    failPending(new Error("app-server turn completion timed out"));
+  }, timeoutMs);
   await completed;
   if (typeof finalMessage !== "string") throw new Error("missing final agent message");
   await writeFile(outputPath, finalMessage, { flag: "wx", mode: 0o600 });

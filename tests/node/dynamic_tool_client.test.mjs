@@ -28,6 +28,7 @@ input.on("line", (line) => {
   }
   if (message.method === "turn/start") {
     send({ id: message.id, result: { turn: { id: "turn-1" } } });
+    if (mode === "no_completion") return;
     if (mode === "allow") return send({ id: 900, method: "item/tool/call", params: {
       namespace: null, tool: "agent_governance__execute",
       arguments: { action_request: { operation: "workspace_write", resource_id: "allow-effect" } },
@@ -92,7 +93,14 @@ test("client performs no effect when app-server sends no dynamic tool call", asy
   assert.deepEqual(await readdir(effects), []);
 });
 
-for (const mode of ["early_exit", "rpc_error", "timeout", "wrong_turn", "failed_turn"]) {
+for (const mode of [
+  "early_exit",
+  "rpc_error",
+  "timeout",
+  "no_completion",
+  "wrong_turn",
+  "failed_turn",
+]) {
   test(`client fails closed for ${mode}`, async () => {
     const { effects, result } = await runClient(mode);
     assert.equal(result.signal, null, `client hung for ${mode}`);
