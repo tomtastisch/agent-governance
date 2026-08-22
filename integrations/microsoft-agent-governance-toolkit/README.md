@@ -57,7 +57,9 @@ werden zur Ausführung über sichere Handles gelesen und gegen releasegebundene 
 `bridge/codex-hook.mjs` ist eine kleine eigene Standardschnittstelle für die offiziell
 dokumentierte synchrone Codex-`PreToolUse`-Fläche; sie ist kein Microsoft-Adapter. Sie vermittelt
 ausschließlich einen explizit konfigurierten operationsgebundenen Toolpfad. Der Toolcaller darf
-nur Operation und begrenzte Resource-ID liefern. `bridge/action-bindings.json` ist hashgebunden;
+nur Operation und begrenzte Resource-ID liefern. Die einzige kanonische externe Tool-ID lautet
+`agent_governance__execute`; ein Alias für die frühere Codex-inkompatible ID wird nicht registriert.
+`bridge/action-bindings.json` ist hashgebunden;
 der Hook leitet daraus Action, Effekt, Governance-Autorisierung und Risiko sowie aus der Harness-
 Tool-ID die Korrelationskennungen ab. Eine bloß vom Caller behauptete Approval-ID ist keine gültige
 Approval-Evidenz. Nur Provider-`allow`

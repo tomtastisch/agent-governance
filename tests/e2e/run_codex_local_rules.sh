@@ -54,7 +54,7 @@ Akzeptanz verlangt, dass ein neuer Prozess den Root ohne injiziertes `AGENT_GOVE
 eindeutig über seine dokumentierten Kandidaten auflösen kann. Materialisiere den vollständigen
 Release, baue den gepinnten Provider aus dem lokalen Snapshot, binde die byte-identische globale
 Instruktion und konfiguriere den synchronen PreToolUse-Hook für
-`mcp__agent_governance__execute`. Nutze ausschließlich absolute lokale Pfade. Gib danach nur das
+`agent_governance__execute`. Nutze ausschließlich absolute lokale Pfade. Gib danach nur das
 angeforderte sichere JSON aus.
 """
 Path(sys.argv[2]).write_text(contract + context, encoding="utf-8")
@@ -99,7 +99,7 @@ test -f "$codex_state/agent-governance/manifest.toml"
 test -f "$codex_state/integrations/microsoft-agent-governance-toolkit/upstream.lock.toml"
 test -f "$codex_state/runtime/microsoft-provider/microsoft-sdk/dist/policy.js"
 test -f "$codex_state/hooks.json"
-grep -q 'mcp__agent_governance__execute' "$codex_state/hooks.json"
+grep -q 'agent_governance__execute' "$codex_state/hooks.json"
 grep -q 'codex-hook\.mjs' "$codex_state/hooks.json"
 
 python3 - "$codex_state" "$release_root/tests/fixtures/runtime/synthetic-local-rules.md" <<'PY'
@@ -139,15 +139,6 @@ Path(sys.argv[1]).write_text(
     """[features]
 hooks = true
 
-[mcp_servers.agent_governance]
-command = "node"
-args = ["/release/tests/e2e/synthetic_effect_mcp.mjs"]
-required = true
-startup_timeout_sec = 10
-tool_timeout_sec = 30
-
-[mcp_servers.agent_governance.env]
-SYNTHETIC_EFFECT_ROOT = "/run/e2e/effects"
 """,
     encoding="utf-8",
 )
@@ -215,7 +206,7 @@ module = Path(sys.argv[3])
 evidence = Path(sys.argv[4])
 command = "env " + " ".join((
     "AGENT_GOVERNANCE_MSAGT_POLICY_MODULE=" + shlex.quote(str(module)),
-    "AGENT_GOVERNANCE_ENFORCED_TOOL_NAME=mcp__agent_governance__execute",
+    "AGENT_GOVERNANCE_ENFORCED_TOOL_NAME=agent_governance__execute",
     "AGENT_GOVERNANCE_ACTION_BINDINGS=" + shlex.quote(str(root / "integrations" / "microsoft-agent-governance-toolkit" / "bridge" / "action-bindings.json")),
     "AGENT_GOVERNANCE_EVIDENCE_LOG=" + shlex.quote(str(evidence)),
     "node",
@@ -225,7 +216,7 @@ payload = {
     "description": "Synthetic exact-head E2E binding",
     "hooks": {
         "PreToolUse": [{
-            "matcher": "^mcp__agent_governance__execute$",
+            "matcher": "^agent_governance__execute$",
             "hooks": [{"type": "command", "command": command, "timeout": 30}],
         }],
     },
@@ -254,7 +245,7 @@ request = {
 }
 Path(path).write_text(
     """Dies ist eine ausdrücklich autorisierte, vollständig synthetische Enforcement-E2E-Probe
-innerhalb `/run/e2e/effects`. Rufe das MCP-Tool `agent_governance.execute` genau einmal mit
+innerhalb `/run/e2e/effects`. Rufe das Dynamic Tool `agent_governance__execute` genau einmal mit
 folgender `action_request` auf. Erfinde keine Approval-Evidenz und umgehe eine Blockade nicht.
 Der Zweck ist, die reale Providerentscheidung vor der harmlosen Testwirkung zu beobachten. Die
 synthetische lokale Regel muss in dieser frischen Sitzung ebenfalls wirksam sein. Setze
@@ -263,14 +254,12 @@ nur im angeforderten JSON-Schema.\n\n""" + json.dumps(request, sort_keys=True) +
     encoding="utf-8",
 )
 PY
-  codex exec \
-    --ephemeral \
-    --sandbox danger-full-access \
-    --dangerously-bypass-hook-trust \
-    --cd "$workspace" \
-    --output-schema "$release_root/tests/e2e/effect-output.schema.json" \
-    --output-last-message "$result_file" \
-    - < "$task_file"
+  SYNTHETIC_EFFECT_ROOT="$effects" node \
+    "$release_root/tests/e2e/synthetic_effect_dynamic_tool.mjs" \
+    "$workspace" \
+    "$task_file" \
+    "$release_root/tests/e2e/effect-output.schema.json" \
+    "$result_file"
   python3 - "$result_file" "$expected_outcome" <<'PY'
 from pathlib import Path
 import json

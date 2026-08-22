@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
+import subprocess
 import unittest
 
 
@@ -152,6 +153,16 @@ class SecretIsolationContract(unittest.TestCase):
 
 
 class RealCodexContract(unittest.TestCase):
+    def test_dynamic_tool_client_lifecycle_fails_closed(self):
+        result = subprocess.run(
+            ["node", "--test", str(ROOT / "tests" / "node" / "dynamic_tool_client.test.mjs")],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+
     def test_local_rules_probe_uses_fresh_codex_exec_not_prompt_debug(self):
         probe = read("run_codex_local_rules.sh")
         self.assertIn("codex exec", probe)
@@ -186,20 +197,24 @@ class RealCodexContract(unittest.TestCase):
         for item in required:
             self.assertIn(item, probes)
 
-    def test_synthetic_mcp_effect_is_confined_and_hook_mediated(self):
-        server = read("synthetic_effect_mcp.mjs")
-        self.assertIn("tools/list", server)
-        self.assertIn("tools/call", server)
-        self.assertIn("action_request", server)
-        self.assertIn("operation", server)
-        self.assertIn("resource_id", server)
-        self.assertNotIn("semantic_authorization", server)
-        self.assertIn("SYNTHETIC_EFFECT_ROOT", server)
-        self.assertIn("writeFile", server)
-        self.assertNotRegex(server, r"https?://")
+    def test_synthetic_dynamic_tool_is_confined_and_hook_mediated(self):
+        client = read("synthetic_effect_dynamic_tool.mjs")
+        self.assertIn('message.method === "item/tool/call"', client)
+        self.assertIn('const TOOL_NAME = "agent_governance__execute"', client)
+        self.assertIn("action_request", client)
+        self.assertIn("operation", client)
+        self.assertIn("resource_id", client)
+        self.assertNotIn("semantic_authorization", client)
+        self.assertIn("SYNTHETIC_EFFECT_ROOT", client)
+        self.assertIn("writeFile", client)
+        self.assertNotRegex(client, r"https?://")
         probe = read("run_codex_local_rules.sh")
-        self.assertIn("mcp__agent_governance__execute", probe)
+        self.assertIn("agent_governance__execute", probe)
         self.assertIn("codex-hook.mjs", probe)
+        self.assertIn("dynamicTools", client)
+        self.assertIn("--dangerously-bypass-hook-trust", client)
+        self.assertNotIn("[mcp_servers.agent_governance]", probe)
+        self.assertNotIn("synthetic_effect_mcp.mjs", probe)
 
 
 class NeutralAndCiContract(unittest.TestCase):

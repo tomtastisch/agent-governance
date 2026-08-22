@@ -195,7 +195,7 @@ function runCodexHook(actionEnvelope, evidenceLog, environmentOverrides = {}) {
     model: "synthetic-model",
     permission_mode: "default",
     turn_id: "turn-synthetic-001",
-    tool_name: "mcp__agent_governance__execute",
+    tool_name: "agent_governance__execute",
     tool_use_id: toolUseId,
     tool_input: {
       action_envelope: {
@@ -212,7 +212,7 @@ function runCodexHook(actionEnvelope, evidenceLog, environmentOverrides = {}) {
     env: {
       ...process.env,
       AGENT_GOVERNANCE_MSAGT_POLICY_MODULE: policyModulePath,
-      AGENT_GOVERNANCE_ENFORCED_TOOL_NAME: "mcp__agent_governance__execute",
+      AGENT_GOVERNANCE_ENFORCED_TOOL_NAME: "agent_governance__execute",
       AGENT_GOVERNANCE_EVIDENCE_LOG: evidenceLog,
       ...environmentOverrides,
     },
@@ -226,7 +226,7 @@ function runBoundCodexHook(actionRequest, evidenceLog, environmentOverrides = {}
   const toolUseId = `action-synthetic-bound-${hookCounter}`;
   const hookInput = {
     hook_event_name: "PreToolUse",
-    tool_name: "mcp__agent_governance__execute",
+    tool_name: "agent_governance__execute",
     tool_use_id: toolUseId,
     tool_input: { action_request: actionRequest },
   };
@@ -238,7 +238,7 @@ function runBoundCodexHook(actionRequest, evidenceLog, environmentOverrides = {}
     env: {
       ...process.env,
       AGENT_GOVERNANCE_MSAGT_POLICY_MODULE: policyModulePath,
-      AGENT_GOVERNANCE_ENFORCED_TOOL_NAME: "mcp__agent_governance__execute",
+      AGENT_GOVERNANCE_ENFORCED_TOOL_NAME: "agent_governance__execute",
       AGENT_GOVERNANCE_ACTION_BINDINGS: actionBindingsPath,
       AGENT_GOVERNANCE_EVIDENCE_LOG: evidenceLog,
       ...environmentOverrides,

@@ -54,7 +54,7 @@ PY
 
 install -m 600 /dev/null "$evidence"
 export AGENT_GOVERNANCE_MSAGT_POLICY_MODULE="$policy_module"
-export AGENT_GOVERNANCE_ENFORCED_TOOL_NAME=mcp__agent_governance__execute
+export AGENT_GOVERNANCE_ENFORCED_TOOL_NAME=agent_governance__execute
 export AGENT_GOVERNANCE_ACTION_BINDINGS="$bindings"
 export AGENT_GOVERNANCE_EVIDENCE_LOG="$evidence"
 
@@ -63,7 +63,7 @@ run_hook() {
   local operation=$2
   local resource_id=$3
   node "$hook" <<EOF
-{"hook_event_name":"PreToolUse","tool_name":"mcp__agent_governance__execute","tool_use_id":"$tool_use_id","tool_input":{"action_request":{"operation":"$operation","resource_id":"$resource_id"}}}
+{"hook_event_name":"PreToolUse","tool_name":"agent_governance__execute","tool_use_id":"$tool_use_id","tool_input":{"action_request":{"operation":"$operation","resource_id":"$resource_id"}}}
 EOF
 }
 

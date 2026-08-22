@@ -25,6 +25,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Breaking changes:** none
 
+## [0.5.0] — 2026-08-22
+
+### Added
+
+- Keine.
+
+### Changed
+
+- Die kanonische externe Governance-Tool-ID wurde von
+  `mcp__agent_governance__execute` in `agent_governance__execute` geändert, weil Codex `mcp`
+  und `mcp__*` für native MCP-Namensräume reserviert und die frühere Dynamic-Tool-ID vor dem
+  Governance-Handler verwirft.
+- Alle Provider verwenden weiterhin denselben Governance-Handler und dieselbe Governance-SSOT;
+  die Entscheidungs-, Policy-, Scope-, Trigger- und Rollensemantik bleibt unverändert.
+- Der Clean-Linux-Codex-Vertrag registriert die kanonische Oberfläche als einzelnes
+  App-Server-Dynamic-Tool statt als MCP-Tool, damit Hook-Matcher und externer Identifier
+  byte-identisch bleiben.
+- **Migration:** Consumer, Policies, Adapter und Tests, die die frühere Tool-ID exakt
+  referenzieren, müssen auf
+  `agent_governance__execute` migrieren. Version `0.5.0` registriert keinen
+  Kompatibilitätsalias für den alten Namen.
+
+### Fixed
+
+- Codex kann die kanonische Governance-Tooloberfläche als Dynamic Tool akzeptieren, ohne dass ein
+  reservierter nativer MCP-Namensraum den Dispatch vor dem Governance-Handler blockiert.
+
+### Removed
+
+- **BREAKING:** Die externe Tool-ID `mcp__agent_governance__execute` ist keine aktive
+  Runtime- oder Integrationsoberfläche mehr.
+
+**Breaking changes:** present
+
 ## [0.4.1] — 2026-08-21
 
 ### Added
