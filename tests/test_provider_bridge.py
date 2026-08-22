@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import hashlib
 import io
+import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tarfile
@@ -24,9 +26,36 @@ PROVIDER = BRIDGE / "provider.mjs"
 CODEX_HOOK = BRIDGE / "codex-hook.mjs"
 POLICY = BRIDGE / "policy.json"
 NODE_TEST = ROOT / "tests" / "node" / "provider_bridge.test.mjs"
+ACTION_BINDINGS = BRIDGE / "action-bindings.json"
+
+CANONICAL_TOOL_NAME = "agent_governance__execute"
+LEGACY_TOOL_NAME = "mcp__agent_governance__execute"
+CODEX_DYNAMIC_TOOL_IDENTIFIER = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+ACTIVE_TOOL_CONTRACTS = (
+    ACTION_BINDINGS,
+    ROOT / "tests" / "node" / "provider_bridge.test.mjs",
+    ROOT / "tests" / "e2e" / "run_codex_local_rules.sh",
+    ROOT / "tests" / "e2e" / "run_materialized_offline.sh",
+)
 
 
 class ProviderBridgeContract(unittest.TestCase):
+    def test_canonical_tool_name_is_codex_safe_across_active_contracts(self):
+        bindings = json.loads(ACTION_BINDINGS.read_text(encoding="utf-8"))
+        tool_name = bindings["tool_name"]
+
+        self.assertEqual(tool_name, CANONICAL_TOOL_NAME)
+        self.assertRegex(tool_name, CODEX_DYNAMIC_TOOL_IDENTIFIER)
+        self.assertNotEqual(tool_name, "mcp")
+        self.assertFalse(tool_name.startswith("mcp__"))
+
+        legacy_references = [
+            path.relative_to(ROOT).as_posix()
+            for path in ACTIVE_TOOL_CONTRACTS
+            if LEGACY_TOOL_NAME in path.read_text(encoding="utf-8")
+        ]
+        self.assertEqual(legacy_references, [])
+
     def test_bridge_files_are_explicit_and_repository_runtime_is_clean(self):
         for path in (BUILD, EXTRACT, PROVIDER, CODEX_HOOK, POLICY):
             self.assertTrue(path.is_file(), path.relative_to(ROOT))
