@@ -116,19 +116,22 @@ class InstallBoundaryContract(unittest.TestCase):
 
 
 class ReleaseMetadataContract(unittest.TestCase):
-    def test_semver_patch_followup_release_is_consistent(self):
-        self.assertEqual(VERSION, "0.4.1")
-        self.assertIn("**Version:** [`0.4.1`](VERSION)", README)
-        self.assertIn("## [0.4.1] — 2026-08-21", CHANGELOG)
+    def test_semver_breaking_tool_name_release_is_consistent(self):
+        self.assertEqual(VERSION, "0.5.0")
+        self.assertIn("**Version:** [`0.5.0`](VERSION)", README)
+        self.assertIn("## [0.5.0] — 2026-08-22", CHANGELOG)
         current = CHANGELOG.split(f"## [{VERSION}]", 1)[1].split("\n## [", 1)[0]
         for term in (
-            "copilot-instructions.md",
-            "DEL-010",
-            "DEL-008",
-            "Node 24",
+            "mcp__agent_governance__execute",
+            "agent_governance__execute",
+            "native MCP-Namensräume",
+            "Kompatibilitätsalias",
+            "**BREAKING:**",
         ):
             self.assertIn(term, current)
-        self.assertIn("**Breaking changes:** none", current)
+        self.assertIn("**Breaking changes:** present", current)
+        recovery_patch = CHANGELOG.split("## [0.4.1]", 1)[1].split("\n## [", 1)[0]
+        self.assertIn("**Breaking changes:** none", recovery_patch)
         historical = CHANGELOG.split("## [0.4.0]", 1)[1].split("\n## [", 1)[0]
         for term in (
             "Manifest-Schema 2",
