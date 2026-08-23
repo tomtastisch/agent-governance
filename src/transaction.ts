@@ -14,6 +14,7 @@ import { dirname, join } from "node:path";
 
 import { classifyCodex, inspectCodex } from "./codex.ts";
 import type { InstallPhase, InstallResult, InstallerRequest } from "./contracts.ts";
+import { InstallerFailure } from "./errors.ts";
 import { captureIdentity, assertIdentity, validateAllowedPath, type PathIdentity } from "./filesystem.ts";
 import { mergeGovernanceHook } from "./hooks.ts";
 import { planCodex } from "./planner.ts";
@@ -107,17 +108,29 @@ export class InstallerTransaction {
 
   async rollback(): Promise<InstallResult> {
     const receiptPath = join(this.request.home, ".agent-governance-rollback.json");
+    await validateAllowedPath(receiptPath, this.request.allowedRoot, "file");
     const raw = await readFile(receiptPath, "utf8");
     const receipt = this.parseReceipt(raw);
+    await validateAllowedPath(receipt.backupRoot, this.request.allowedRoot, "directory");
+    if (this.request.dryRun) {
+      return { outcome: "SUCCESS", state: "CURRENT", phase: "plan", rollbackStatus: "NOT_REQUIRED" };
+    }
     if (receipt.rolledBack) {
       return { outcome: "SUCCESS", state: "FRESH", phase: "rollback", rollbackStatus: "SUCCEEDED" };
     }
     for (const resource of [...receipt.resources].reverse()) {
       await validateAllowedPath(resource.target, this.request.allowedRoot, (await exists(resource.target)) ? "any" : "missing");
       if (await exists(resource.target)) await rm(resource.target, { recursive: true, force: true });
-      if (resource.existed) await copySafe(join(receipt.backupRoot, String(resource.index)), resource.target);
+      if (resource.existed) {
+        const backup = join(receipt.backupRoot, String(resource.index));
+        await validateAllowedPath(backup, this.request.allowedRoot, "any");
+        await copySafe(backup, resource.target);
+        if (!(await sameTree(backup, resource.target))) throw new Error("rollback readback failed");
+      } else if (await exists(resource.target)) {
+        throw new Error("rollback absence readback failed");
+      }
     }
-    await writeFile(receiptPath, `${JSON.stringify({ ...receipt, rolledBack: true }, null, 2)}\n`, { mode: 0o600 });
+    await this.writeReceipt(receiptPath, { ...receipt, rolledBack: true });
     return { outcome: "SUCCESS", state: "FRESH", phase: "rollback", rollbackStatus: "SUCCEEDED" };
   }
 
@@ -130,10 +143,20 @@ export class InstallerTransaction {
       throw new Error("rollback receipt has invalid schema");
     }
     if (!candidate.backupRoot.startsWith(`${this.request.allowedRoot}/`)) throw new Error("rollback backup escapes allowed root");
+    const expectedTargets = [
+      join(this.request.home, "AGENTS.md"),
+      join(this.request.home, "hooks.json"),
+      this.request.installRoot,
+    ];
+    if (candidate.resources.length !== expectedTargets.length) throw new Error("rollback receipt resource count is invalid");
     for (const resource of candidate.resources) {
       if (typeof resource !== "object" || resource === null || typeof resource.target !== "string" ||
           typeof resource.existed !== "boolean" || !Number.isInteger(resource.index)) {
         throw new Error("rollback receipt resource is invalid");
+      }
+      if (resource.index < 0 || resource.index >= expectedTargets.length ||
+          resource.target !== expectedTargets[resource.index]) {
+        throw new Error("rollback receipt resource target is invalid");
       }
     }
     return candidate as RollbackReceipt;
@@ -160,10 +183,16 @@ export class InstallerTransaction {
     }
 
     const transactionId = randomUUID();
-    const backupRoot = join(request.allowedRoot, ".agent-governance-backups", transactionId);
+    const backupParent = join(request.allowedRoot, ".agent-governance-backups");
+    const receiptPath = join(request.home, ".agent-governance-rollback.json");
+    await validateAllowedPath(receiptPath, request.allowedRoot, "missing");
+    const backupParentExists = await exists(backupParent);
+    await validateAllowedPath(backupParent, request.allowedRoot, backupParentExists ? "directory" : "missing");
+    if (!backupParentExists) await mkdir(backupParent, { mode: 0o700 });
+    const backupRoot = join(backupParent, transactionId);
     const stageRoot = await mkdtemp(join(request.allowedRoot, ".agent-governance-stage-"));
     const retiredRoot = join(request.allowedRoot, `.agent-governance-retired-${transactionId}`);
-    await mkdir(backupRoot, { recursive: true, mode: 0o700 });
+    await mkdir(backupRoot, { mode: 0o700 });
     await mkdir(retiredRoot, { mode: 0o700 });
     const targets = [join(request.home, "AGENTS.md"), join(request.home, "hooks.json"), request.installRoot];
     const parentIdentities = new Map<string, PathIdentity>();
@@ -191,7 +220,11 @@ export class InstallerTransaction {
     if (state === "LEGACY" && inventory.agents !== undefined) {
       const personalRules = inventory.agents
         .split(/(?<=\n)/)
-        .filter((line) => !line.includes("@~/agent-governance/adapters/AGENTS.md") && !line.includes("@~/agent-governance/adapters/codex.md"))
+        .filter((line) => {
+          const normalized = line.replace(/\r?\n$/, "");
+          return normalized !== "@~/agent-governance/adapters/AGENTS.md" &&
+            normalized !== "@~/agent-governance/adapters/codex.md";
+        })
         .join("");
       if (personalRules !== "") {
         const manifest = await readFile(
@@ -225,6 +258,7 @@ export class InstallerTransaction {
       { target: targets[1]!, staged: stagedHooks, retired: join(retiredRoot, "1"), existed: backupPresence[1]!, activated: false },
       { target: targets[2]!, staged: stagedInstall, retired: join(retiredRoot, "2"), existed: backupPresence[2]!, activated: false },
     ];
+    let activePhase: InstallPhase = "activate";
     try {
       for (const entry of entries) {
         if (entry.existed) await rename(entry.target, entry.retired);
@@ -232,6 +266,7 @@ export class InstallerTransaction {
         entry.activated = true;
       }
       this.fault("activate");
+      activePhase = "verify";
       const activeGovernance = await readFile(join(request.installRoot, "bundle", "GOVERNANCE.md"));
       const activeAgents = await readFile(join(request.home, "AGENTS.md"));
       if (!activeGovernance.equals(activeAgents)) throw new Error("instruction readback mismatch");
@@ -243,18 +278,32 @@ export class InstallerTransaction {
         rolledBack: false,
         resources: targets.map((target, index) => ({ target, existed: backupPresence[index]!, index })),
       };
-      await writeFile(
-        join(request.home, ".agent-governance-rollback.json"),
-        `${JSON.stringify(receipt, null, 2)}\n`,
-        { mode: 0o600 },
-      );
+      await this.writeReceipt(receiptPath, receipt);
       await rm(retiredRoot, { recursive: true, force: true });
       await rm(stageRoot, { recursive: true, force: true });
       return { outcome: "SUCCESS", state, phase: "verify", rollbackStatus: "NOT_REQUIRED", plan };
     } catch (error) {
-      await this.rollbackEntries(entries);
-      await rm(stageRoot, { recursive: true, force: true });
-      throw error;
+      try {
+        await this.rollbackEntries(entries);
+        await rm(stageRoot, { recursive: true, force: true });
+      } catch (rollbackError) {
+        throw new InstallerFailure(
+          "ROLLBACK_FAILED",
+          activePhase,
+          "installation",
+          "ROLLBACK_FAILED",
+          `${(error as Error).message}; rollback failed: ${(rollbackError as Error).message}`,
+          "FAILED",
+        );
+      }
+      throw new InstallerFailure(
+        "VERIFICATION_ROLLED_BACK",
+        activePhase,
+        "installation",
+        "VERIFICATION_ROLLED_BACK",
+        (error as Error).message,
+        "SUCCEEDED",
+      );
     }
   }
 
@@ -275,5 +324,15 @@ export class InstallerTransaction {
       if (entry.activated && (await exists(entry.target))) await rm(entry.target, { recursive: true, force: true });
       if (entry.existed && (await exists(entry.retired))) await rename(entry.retired, entry.target);
     }
+  }
+
+  private async writeReceipt(receiptPath: string, receipt: RollbackReceipt): Promise<void> {
+    const temporary = `${receiptPath}.${randomUUID()}.tmp`;
+    await validateAllowedPath(temporary, this.request.allowedRoot, "missing");
+    await writeFile(temporary, `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o600, flag: "wx" });
+    await rename(temporary, receiptPath);
+    await validateAllowedPath(receiptPath, this.request.allowedRoot, "file");
+    const readback = this.parseReceipt(await readFile(receiptPath, "utf8"));
+    if (JSON.stringify(readback) !== JSON.stringify(receipt)) throw new Error("rollback receipt readback failed");
   }
 }

@@ -2,10 +2,12 @@
 import { pathToFileURL } from "node:url";
 
 import { EXIT_CODES, exitCodeFor, type InstallerRequest } from "./contracts.ts";
+import { InstallerFailure } from "./errors.ts";
 import { InstallerTransaction } from "./transaction.ts";
 
 type Writer = (value: string) => void;
 const COMMANDS = new Set(["inspect", "plan", "install", "verify", "rollback", "status"]);
+const VALUE_OPTIONS = new Set(["--harness", "--home", "--allowed-root", "--release-root", "--install-root"]);
 
 function parse(argv: readonly string[]): { command: string; request: InstallerRequest; json: boolean } {
   const command = argv[0];
@@ -18,6 +20,8 @@ function parse(argv: readonly string[]): { command: string; request: InstallerRe
     if (option === "--json") { json = true; continue; }
     if (option === "--dry-run") { dryRun = true; continue; }
     if (option === undefined || !option.startsWith("--")) throw new Error("invalid argument");
+    if (!VALUE_OPTIONS.has(option)) throw new Error(`unknown option ${option}`);
+    if (values.has(option)) throw new Error(`duplicate option ${option}`);
     const value = argv[index + 1];
     if (value === undefined || value.startsWith("--")) throw new Error(`missing value for ${option}`);
     values.set(option, value);
@@ -57,6 +61,17 @@ export async function runCli(argv: readonly string[], out: Writer = console.log,
     out(parsed.json ? JSON.stringify(result) : `${result.outcome}: ${result.state} (${result.phase})`);
     return exitCodeFor(result.outcome);
   } catch (cause) {
+    if (cause instanceof InstallerFailure) {
+      error(JSON.stringify({
+        outcome: cause.outcome,
+        phase: cause.phase,
+        resourceId: cause.resourceId,
+        rollbackStatus: cause.rollbackStatus,
+        code: cause.code,
+        error: cause.message,
+      }));
+      return exitCodeFor(cause.outcome);
+    }
     error(JSON.stringify({ outcome: "UNSAFE_STATE", error: (cause as Error).message }));
     return EXIT_CODES.UNSAFE_STATE;
   }

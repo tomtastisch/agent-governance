@@ -18,6 +18,7 @@ export interface CodexInventory {
   readonly configPresent: boolean;
   readonly manifestPresent: boolean;
   readonly legacyImport: boolean;
+  readonly ambiguousLegacyImport: boolean;
   readonly bindingCurrent: boolean;
   readonly hookCurrent: boolean;
 }
@@ -55,6 +56,9 @@ export async function inspectCodex(home: string, installRoot: string): Promise<C
       hookCurrent = false;
     }
   }
+  const agentLines = agents?.split(/\r?\n/) ?? [];
+  const exactLegacyImports = agentLines.filter((line) => LEGACY_IMPORTS.includes(line as (typeof LEGACY_IMPORTS)[number]));
+  const containsLegacyImport = agents !== undefined && LEGACY_IMPORTS.some((item) => agents.includes(item));
   return {
     harness: "codex",
     home,
@@ -64,7 +68,8 @@ export async function inspectCodex(home: string, installRoot: string): Promise<C
     hooksPresent: hooks !== undefined,
     configPresent: config !== undefined,
     manifestPresent: manifest !== undefined,
-    legacyImport: agents !== undefined && LEGACY_IMPORTS.some((item) => agents.includes(item)),
+    legacyImport: exactLegacyImports.length > 0,
+    ambiguousLegacyImport: containsLegacyImport && exactLegacyImports.length === 0,
     bindingCurrent: agents !== undefined && governance !== undefined && agents === governance,
     hookCurrent,
   };
@@ -74,6 +79,7 @@ export function classifyCodex(inventory: CodexInventory | { readonly harness: st
   if (inventory.harness !== "codex") throw new Error(`unsupported harness: ${inventory.harness}`);
   const codex = inventory as CodexInventory;
   if (codex.overridePresent) return "UNKNOWN";
+  if (codex.ambiguousLegacyImport) return "UNKNOWN";
   if (codex.legacyImport && codex.manifestPresent) return "UNKNOWN";
   if (codex.legacyImport) return "LEGACY";
   if (codex.manifestPresent && codex.bindingCurrent && codex.hookCurrent) return "CURRENT";

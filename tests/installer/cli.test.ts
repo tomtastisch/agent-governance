@@ -6,6 +6,8 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { runCli } from "../../src/cli.ts";
+import { InstallerFailure } from "../../src/errors.ts";
+import { InstallerTransaction } from "../../src/transaction.ts";
 
 async function roots(): Promise<{ allowed: string; home: string; release: string; install: string }> {
   const allowed = await mkdtemp(join(tmpdir(), "agent-governance-cli-"));
@@ -59,5 +61,29 @@ test("CLI rejects unsupported harness and incomplete invocation", async () => {
   unsupported[unsupported.indexOf("codex")] = "opencode";
   assert.equal(await runCli(unsupported, () => {}, (value) => errors.push(value)), 3);
   assert.equal(await runCli(["install", "--json"], () => {}, (value) => errors.push(value)), 2);
+  assert.equal(await runCli([...args("inspect", r), "--unknown", "value"], () => {}, (value) => errors.push(value)), 2);
+  assert.equal(await runCli([...args("inspect", r), "--home", r.home], () => {}, (value) => errors.push(value)), 2);
   assert.equal(errors.some((value) => value.includes("token")), false);
+});
+
+test("CLI maps structured installer failures to their stable exit codes", async () => {
+  const original = InstallerTransaction.prototype.install;
+  InstallerTransaction.prototype.install = async () => {
+    throw new InstallerFailure("VERIFY", "verify", "installation", "VERIFICATION_ROLLED_BACK", "failed", "SUCCEEDED");
+  };
+  try {
+    const r = await roots();
+    const errors: string[] = [];
+    assert.equal(await runCli(args("install", r), () => {}, (value) => errors.push(value)), 5);
+    assert.deepEqual(JSON.parse(errors[0]!), {
+      outcome: "VERIFICATION_ROLLED_BACK",
+      phase: "verify",
+      resourceId: "installation",
+      rollbackStatus: "SUCCEEDED",
+      code: "VERIFY",
+      error: "failed",
+    });
+  } finally {
+    InstallerTransaction.prototype.install = original;
+  }
 });

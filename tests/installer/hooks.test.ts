@@ -24,3 +24,14 @@ test("hook merge rejects malformed and duplicate governance configuration", () =
   });
   assert.throws(() => mergeGovernanceHook(duplicate, "/safe/hook.mjs"), /ambiguous/);
 });
+
+test("hook command shell-quotes paths containing command substitutions and apostrophes", () => {
+  const hostile = "/safe/$(touch pwned)/it's-hook.mjs";
+  const result = JSON.parse(mergeGovernanceHook(undefined, hostile)) as {
+    hooks: { PreToolUse: Array<{ hooks: Array<{ command: string }> }> };
+  };
+  assert.equal(
+    result.hooks.PreToolUse[0]?.hooks[0]?.command,
+    "node '/safe/$(touch pwned)/it'\"'\"'s-hook.mjs'",
+  );
+});

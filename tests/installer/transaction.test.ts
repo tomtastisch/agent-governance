@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { access, mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, lstat, mkdtemp, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
 import { InstallerTransaction } from "../../src/transaction.ts";
+import { InstallerFailure } from "../../src/errors.ts";
 
 async function fixture(): Promise<{ allowed: string; home: string; release: string; install: string }> {
   const allowed = await mkdtemp(join(tmpdir(), "agent-governance-transaction-"));
@@ -64,7 +65,14 @@ test("verification fault rolls back all previously absent targets", async () => 
     harness: "codex", home: f.home, allowedRoot: f.allowed, releaseRoot: f.release,
     installRoot: f.install, dryRun: false, faultAfter: "activate",
   });
-  await assert.rejects(transaction.install(), /injected failure/);
+  await assert.rejects(transaction.install(), (error: unknown) => {
+    assert.equal(error instanceof InstallerFailure, true);
+    const failure = error as InstallerFailure;
+    assert.equal(failure.outcome, "VERIFICATION_ROLLED_BACK");
+    assert.equal(failure.rollbackStatus, "SUCCEEDED");
+    assert.equal(failure.phase, "activate");
+    return true;
+  });
   await assert.rejects(access(join(f.home, "AGENTS.md")));
   await assert.rejects(access(join(f.home, "hooks.json")));
   await assert.rejects(access(f.install));
@@ -106,4 +114,59 @@ test("tampered current binding fails closed instead of reporting CURRENT", async
   await new InstallerTransaction(request).install();
   await writeFile(join(f.home, "AGENTS.md"), "tampered\n");
   await assert.rejects(new InstallerTransaction(request).install(), /unsafe install state/);
+});
+
+test("preexisting symlink backup directory prevents every productive mutation", async () => {
+  const f = await fixture();
+  const outside = await mkdtemp(join(tmpdir(), "agent-governance-outside-"));
+  await symlink(outside, join(f.allowed, ".agent-governance-backups"));
+  const transaction = new InstallerTransaction({
+    harness: "codex", home: f.home, allowedRoot: f.allowed, releaseRoot: f.release,
+    installRoot: f.install, dryRun: false,
+  });
+  await assert.rejects(transaction.install(), /symlink/);
+  await assert.rejects(access(join(f.home, "AGENTS.md")));
+  await assert.rejects(access(f.install));
+});
+
+test("preexisting symlink rollback receipt prevents every productive mutation", async () => {
+  const f = await fixture();
+  const outside = join(await mkdtemp(join(tmpdir(), "agent-governance-outside-")), "receipt.json");
+  await writeFile(outside, "private\n");
+  await symlink(outside, join(f.home, ".agent-governance-rollback.json"));
+  const transaction = new InstallerTransaction({
+    harness: "codex", home: f.home, allowedRoot: f.allowed, releaseRoot: f.release,
+    installRoot: f.install, dryRun: false,
+  });
+  await assert.rejects(transaction.install(), /symlink|receipt/);
+  assert.equal(await readFile(outside, "utf8"), "private\n");
+  await assert.rejects(access(join(f.home, "AGENTS.md")));
+});
+
+test("rollback dry run never mutates installed resources or receipt", async () => {
+  const f = await fixture();
+  const base = { harness: "codex" as const, home: f.home, allowedRoot: f.allowed,
+    releaseRoot: f.release, installRoot: f.install };
+  await new InstallerTransaction({ ...base, dryRun: false }).install();
+  const receipt = await readFile(join(f.home, ".agent-governance-rollback.json"));
+  const result = await new InstallerTransaction({ ...base, dryRun: true }).rollback();
+  assert.equal(result.phase, "plan");
+  assert.equal(await readFile(join(f.home, "AGENTS.md"), "utf8"), "canonical governance\n");
+  assert.deepEqual(await readFile(join(f.home, ".agent-governance-rollback.json")), receipt);
+});
+
+test("rollback validates receipt targets and backup tree before mutation", async () => {
+  const f = await fixture();
+  const receipt = join(f.home, ".agent-governance-rollback.json");
+  await writeFile(receipt, JSON.stringify({
+    schemaVersion: 1,
+    backupRoot: join(f.allowed, ".agent-governance-backups", "forged"),
+    rolledBack: false,
+    resources: [{ target: join(f.allowed, "unrelated"), existed: false, index: 0 }],
+  }));
+  await assert.rejects(new InstallerTransaction({
+    harness: "codex", home: f.home, allowedRoot: f.allowed, releaseRoot: f.release,
+    installRoot: f.install, dryRun: false,
+  }).rollback(), /receipt resource|backup/);
+  assert.equal((await lstat(receipt)).isFile(), true);
 });

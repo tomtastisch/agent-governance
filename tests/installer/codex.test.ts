@@ -21,6 +21,12 @@ test("Codex recognizes only enumerated legacy imports", async () => {
   assert.equal(classifyCodex(await inspectCodex(codexHome, join(codexHome, "governance"))), "LEGACY");
 });
 
+test("Codex treats embedded legacy import text as ambiguous", async () => {
+  const codexHome = await home();
+  await writeFile(join(codexHome, "AGENTS.md"), "Keep @~/agent-governance/adapters/AGENTS.md as documentation.\n");
+  assert.equal(classifyCodex(await inspectCodex(codexHome, join(codexHome, "governance"))), "UNKNOWN");
+});
+
 test("Codex fails closed for override instructions and conflicting markers", async () => {
   const codexHome = await home();
   await writeFile(join(codexHome, "AGENTS.override.md"), "other\n");

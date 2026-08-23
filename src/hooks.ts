@@ -10,6 +10,10 @@ function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", `'"'"'`)}'`;
+}
+
 export function mergeGovernanceHook(existing: string | undefined, commandPath: string): string {
   let root: Record<string, unknown> = {};
   if (existing !== undefined && existing.trim() !== "") {
@@ -34,7 +38,7 @@ export function mergeGovernanceHook(existing: string | undefined, commandPath: s
   if (matching.length > 1) throw new Error("governance hook configuration is ambiguous");
   const governance: HookGroup = {
     matcher: TOOL_NAME,
-    hooks: [{ type: "command", command: `node ${JSON.stringify(commandPath)}`, timeout: 30 }],
+    hooks: [{ type: "command", command: `node ${shellQuote(commandPath)}`, timeout: 30 }],
   };
   hooks.PreToolUse = matching.length === 0
     ? [...current, governance]
