@@ -116,8 +116,8 @@ class InstallBoundaryContract(unittest.TestCase):
 
 
 class ReleaseMetadataContract(unittest.TestCase):
-    def test_semver_breaking_tool_name_release_is_consistent(self):
-        self.assertEqual(VERSION, "0.5.0")
+    def test_installer_minor_release_is_consistent(self):
+        self.assertEqual(VERSION, "0.6.0")
         badge_line = README.splitlines()[2]
         self.assertIn(
             "[![Version](https://img.shields.io/github/v/release/"
@@ -139,17 +139,16 @@ class ReleaseMetadataContract(unittest.TestCase):
             "coffee_colour=ffffff)](https://buymeacoffee.com/tomtastisch)",
             README,
         )
-        self.assertIn("## [0.5.0] — 2026-08-22", CHANGELOG)
+        self.assertIn("## [0.6.0] — 2026-08-23", CHANGELOG)
         current = CHANGELOG.split(f"## [{VERSION}]", 1)[1].split("\n## [", 1)[0]
         for term in (
-            "mcp__agent_governance__execute",
-            "agent_governance__execute",
-            "native MCP-Namensräume",
-            "Kompatibilitätsalias",
-            "**BREAKING:**",
+            "transaktionalen Installer",
+            "Codex",
+            "Rollback",
+            "keine MCP-Auto-Approval",
         ):
             self.assertIn(term, current)
-        self.assertIn("**Breaking changes:** present", current)
+        self.assertIn("**Breaking changes:** none", current)
         recovery_patch = CHANGELOG.split("## [0.4.1]", 1)[1].split("\n## [", 1)[0]
         self.assertIn("**Breaking changes:** none", recovery_patch)
         historical = CHANGELOG.split("## [0.4.0]", 1)[1].split("\n## [", 1)[0]

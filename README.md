@@ -116,6 +116,18 @@ kein Homeverzeichnis und keinen Produktpfad voraus. Das generische Rootkonzept i
 `AGENT_GOVERNANCE_ROOT`; `CODEX_HOME` ist nur nach realer Codex-Erkennung ein möglicher
 Harnesskandidat.
 
+Ab 0.6.0 führt das paketierte CLI diesen Vertrag deterministisch aus. Ein produktiver Aufruf
+verlangt explizite absolute Wurzeln und unterstützt ausschließlich Codex:
+
+```text
+npx agent-governance@0.6.0 plan --harness codex --home <codex-home> --allowed-root <root> --release-root <release> --install-root <ziel> --json
+npx agent-governance@0.6.0 install --harness codex --home <codex-home> --allowed-root <root> --release-root <release> --install-root <ziel> --json
+```
+
+`inspect`, `verify`, `rollback` und `status` verwenden dieselben expliziten Grenzen. `--dry-run`
+verändert keine produktiven Ziele. OpenCode, Claude Code und andere Harnesses werden als nicht
+unterstützt abgelehnt; dieser Auftrag veröffentlicht das Paket nicht in einer Registry.
+
 Vor jeder Mutation inventarisiert und sichert der Agent die betroffenen Ziele außerhalb aktiver
 Instruktionsnamen, verifiziert das Backup, bereitet Governance und Provider in einer
 Stagingwurzel vor und aktiviert den Zustand erst danach. Relative Roots, Rootkonflikte,
@@ -283,6 +295,14 @@ Scheitert ein Rollback selbst, bleiben das verifizierte Recovery-Backup und ein 
 Altzustand erhalten, statt sie im Fehlerpfad zu löschen.
 
 ## Bekannte Einschränkungen
+
+- Produktiv unterstützt ist in 0.6.0 ausschließlich Codex. Die Fixturematrix läuft auf Linux und
+  macOS; die credentialgebundene Fresh-Session-Evidenz bleibt auf Codex CLI 0.147.0 unter Linux
+  begrenzt.
+- Der synchrone Schutz gilt für das explizit gebundene Dynamic Tool
+  `agent_governance__execute`. Beliebige Shell-, Hosted-Tool- oder andere Harnesswirkungen werden
+  nicht als universell intercepted behauptet.
+- Die Installation ändert keine MCP-Konfiguration und aktiviert keine MCP-Auto-Approvals.
 
 - Microsoft Agent Governance Toolkit und seine Frameworkschnittstellen befinden sich im Status
   Public Preview.

@@ -38,9 +38,9 @@ prüfe sie unmittelbar vor Aktivierung erneut, damit ein TOCTOU-Wechsel blockier
 3. Bestimme eine autorisierte absolute Installationswurzel und darunter einen absoluten
    Governance-Installationsroot. Das generische Rootkonzept ist `AGENT_GOVERNANCE_ROOT`.
    `CODEX_HOME` ist nur ein Codex-Harness-Kandidat und niemals die generische SSOT.
-4. Bei einem unbekannten Harness darfst du nur fortsetzen, wenn dieser ausdrücklich einen
-   absoluten globalen Instruktionszielpfad, einen absoluten Konfigurationspfad und eine
-   definierte synchrone Tool-/Enforcement-Schnittstelle bereitstellt. Sonst stoppe.
+4. Dieser Release unterstützt produktiv ausschließlich Codex. Erkenne OpenCode, Claude Code und
+   andere Harnesses nur, um vor jeder Mutation mit `UNSUPPORTED_HARNESS` zu stoppen. Erfinde oder
+   materialisiere keine teilweise Unterstützung.
 
 ### Bedingte Codex-Bindung nach positiver Erkennung
 
@@ -53,7 +53,8 @@ Dokumentation eindeutig als Codex erkannt wurde, verwende dessen dokumentierte F
   `CODEX_HOME/agent-governance/manifest.toml` liegt.
 - Binde die globale Startup-Instruktion als byte-identische `AGENTS.md` im erkannten absoluten
   `CODEX_HOME`. Bewahre vorhandene persönliche Instruktionen nach den Regeln dieses Vertrags;
-  überschreibe keine unklare Quelle.
+  überschreibe keine unklare Quelle. Eine vorhandene `AGENTS.override.md` besitzt Vorrang und ist
+  ohne explizite eindeutige Migration ein blockierender unbekannter Zustand.
 - Verwende für den explizit Envelope-vermittelten Toolpfad einen synchronen `PreToolUse`-Hook in
   der dokumentierten globalen `hooks.json`-Fläche. Der Matcher muss nur den tatsächlich
   enforcement-pflichtigen Toolnamen treffen, und der Handler muss den absoluten lokalen

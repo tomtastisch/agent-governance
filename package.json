@@ -1,6 +1,6 @@
 {
   "name": "agent-governance",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Transactional installer for the agent-governance bundle",
   "type": "module",
   "bin": {

@@ -1,5 +1,7 @@
 # Transactional Installer and Codex Adapter Design
 
+> Historische Evidenz - nicht normativ.
+
 ## Status and scope
 
 This design prepares version 0.6.0 from exact base

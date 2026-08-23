@@ -21,5 +21,11 @@ oder Releaseartefakte. Bei unklarer Autorisierung, nicht verlustfrei zuordenbare
 Pfadkonflikten oder fehlgeschlagener Verifikation stoppt der Bootstrap fail-closed oder stellt den
 verifizierten Ausgangszustand wieder her.
 
+Version 0.6.0 enthält dafür einen transaktionalen CLI-Consumer. Seine Zustandsmaschine,
+Codex-Bindung, Exit-Codes und Recoverygrenzen sind nicht normativ in
+[`docs/installer-architecture.md`](docs/installer-architecture.md) beschrieben. Produktiv
+unterstützt ist ausschließlich Codex; andere Harnesses stoppen vor jeder Mutation. Die CLI ändert
+keine MCP-Konfiguration und erweitert keine Auto-Approvals.
+
 Serverdeployment, Azure-Ressourcen, Fleet-Orchestrierung, Telemetrie, Hintergrundupdates,
 Credential Services und Änderungen fremder Systeme liegen außerhalb dieser Verantwortung.

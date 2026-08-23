@@ -25,6 +25,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Breaking changes:** none
 
+## [0.6.0] — 2026-08-23
+
+### Added
+
+- Einen strikt typisierten, transaktionalen Installer mit den Phasen Inspektion,
+  Klassifikation, Plan, Backup, Staging, Aktivierung, Verifikation und Rollback.
+- Eine nichtinteraktive CLI mit `inspect`, `plan`, `install`, `verify`, `rollback` und `status`
+  sowie strukturierter JSON-Ausgabe, Dry-Run und expliziten isolierten Zielwurzeln.
+- Den produktiven Codex-Adapter für globale `AGENTS.md`-Instruktionen und den synchronen
+  `agent_governance__execute`-Hook; andere Harnesses werden erkannt, aber nicht unterstützt.
+- Linux- und macOS-Fixture-Gates für Paket, Migration, Rollback, Manipulation und Idempotenz.
+
+### Changed
+
+- `Installation.bootstrap.prompt.md` bleibt der einzige normative Installationsvertrag; die CLI
+  führt ihn als schmaler Distributionsconsumer deterministisch aus.
+- Der Installationspayload besitzt ein vollständiges SHA-256-Dateimanifest. `VERSION` bleibt die
+  einzige SemVer-Quelle; `package.json` und Lockfile müssen exakt damit übereinstimmen.
+
+### Fixed
+
+- Legacy-Codex-Bindings werden nur bei eindeutiger Zuordnung migriert; persönliche Regeln werden
+  am manifestdefinierten `local_rules`-Pfad erhalten.
+- Verifikationsfehler lösen ein getestetes Rollback aus, ohne partielle Installation als Erfolg zu
+  melden.
+
+### Removed
+
+- Keine. Insbesondere erfolgt keine MCP-Auto-Approval-Erweiterung und kein stilles Binding anderer
+  Harnesses.
+
+**Breaking changes:** none
+
 ## [0.5.0] — 2026-08-22
 
 ### Added
