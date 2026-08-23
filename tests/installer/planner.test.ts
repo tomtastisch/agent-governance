@@ -19,5 +19,6 @@ test("Codex plan is deterministic and never mutates MCP or approvals", () => {
     "codex-global-instructions",
     "codex-hooks",
     "governance-installation",
+    "transaction-receipt",
   ]);
 });

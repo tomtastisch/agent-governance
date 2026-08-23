@@ -21,6 +21,7 @@ export function planCodex(input: CodexPlanInput): InstallPlan {
       { id: "codex-global-instructions", target: join(input.home, "AGENTS.md"), operation },
       { id: "codex-hooks", target: join(input.home, "hooks.json"), operation },
       { id: "governance-installation", target: input.installRoot, operation },
+      { id: "transaction-receipt", target: join(input.home, ".agent-governance-rollback.json"), operation },
     ],
     mcpMutation: false,
     approvalExpansion: false,

@@ -31,6 +31,13 @@ interface ActivationEntry {
   activated: boolean;
 }
 
+interface RollbackReceipt {
+  readonly schemaVersion: 1;
+  readonly backupRoot: string;
+  readonly rolledBack: boolean;
+  readonly resources: readonly { readonly target: string; readonly existed: boolean; readonly index: number }[];
+}
+
 async function exists(path: string): Promise<boolean> {
   try {
     await access(path);
@@ -74,6 +81,62 @@ export class InstallerTransaction {
 
   private fault(phase: InstallPhase): void {
     if (this.request.faultAfter === phase) throw new Error(`injected failure after ${phase}`);
+  }
+
+  async inspect(): Promise<InstallResult> {
+    await validateAllowedPath(this.request.home, this.request.allowedRoot, "directory");
+    await verifyRelease(this.request.releaseRoot);
+    if (this.request.harness !== "codex") throw new Error(`unsupported harness: ${this.request.harness}`);
+    const state = classifyCodex(await inspectCodex(this.request.home, this.request.installRoot));
+    return { outcome: "SUCCESS", state, phase: "classify", rollbackStatus: "NOT_REQUIRED" };
+  }
+
+  async plan(): Promise<InstallResult> {
+    return new InstallerTransaction({ ...this.request, dryRun: true }).install();
+  }
+
+  async verify(): Promise<InstallResult> {
+    const result = await this.inspect();
+    if (result.state !== "CURRENT") throw new Error(`verification failed: ${result.state}`);
+    return { ...result, phase: "verify" };
+  }
+
+  async status(): Promise<InstallResult> {
+    return this.inspect();
+  }
+
+  async rollback(): Promise<InstallResult> {
+    const receiptPath = join(this.request.home, ".agent-governance-rollback.json");
+    const raw = await readFile(receiptPath, "utf8");
+    const receipt = this.parseReceipt(raw);
+    if (receipt.rolledBack) {
+      return { outcome: "SUCCESS", state: "FRESH", phase: "rollback", rollbackStatus: "SUCCEEDED" };
+    }
+    for (const resource of [...receipt.resources].reverse()) {
+      await validateAllowedPath(resource.target, this.request.allowedRoot, (await exists(resource.target)) ? "any" : "missing");
+      if (await exists(resource.target)) await rm(resource.target, { recursive: true, force: true });
+      if (resource.existed) await copySafe(join(receipt.backupRoot, String(resource.index)), resource.target);
+    }
+    await writeFile(receiptPath, `${JSON.stringify({ ...receipt, rolledBack: true }, null, 2)}\n`, { mode: 0o600 });
+    return { outcome: "SUCCESS", state: "FRESH", phase: "rollback", rollbackStatus: "SUCCEEDED" };
+  }
+
+  private parseReceipt(raw: string): RollbackReceipt {
+    let value: unknown;
+    try { value = JSON.parse(raw); } catch { throw new Error("rollback receipt is invalid JSON"); }
+    const candidate = value as Partial<RollbackReceipt>;
+    if (candidate.schemaVersion !== 1 || typeof candidate.backupRoot !== "string" ||
+        typeof candidate.rolledBack !== "boolean" || !Array.isArray(candidate.resources)) {
+      throw new Error("rollback receipt has invalid schema");
+    }
+    if (!candidate.backupRoot.startsWith(`${this.request.allowedRoot}/`)) throw new Error("rollback backup escapes allowed root");
+    for (const resource of candidate.resources) {
+      if (typeof resource !== "object" || resource === null || typeof resource.target !== "string" ||
+          typeof resource.existed !== "boolean" || !Number.isInteger(resource.index)) {
+        throw new Error("rollback receipt resource is invalid");
+      }
+    }
+    return candidate as RollbackReceipt;
   }
 
   async install(): Promise<InstallResult> {
@@ -174,6 +237,17 @@ export class InstallerTransaction {
       if (!activeGovernance.equals(activeAgents)) throw new Error("instruction readback mismatch");
       await verifyRelease(request.installRoot);
       this.fault("verify");
+      const receipt: RollbackReceipt = {
+        schemaVersion: 1,
+        backupRoot,
+        rolledBack: false,
+        resources: targets.map((target, index) => ({ target, existed: backupPresence[index]!, index })),
+      };
+      await writeFile(
+        join(request.home, ".agent-governance-rollback.json"),
+        `${JSON.stringify(receipt, null, 2)}\n`,
+        { mode: 0o600 },
+      );
       await rm(retiredRoot, { recursive: true, force: true });
       await rm(stageRoot, { recursive: true, force: true });
       return { outcome: "SUCCESS", state, phase: "verify", rollbackStatus: "NOT_REQUIRED", plan };
