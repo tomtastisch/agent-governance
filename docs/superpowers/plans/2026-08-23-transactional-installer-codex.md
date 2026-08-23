@@ -92,6 +92,19 @@
 - [ ] Run transaction tests, all Node tests, typecheck, and existing Python bootstrap tests; expect PASS.
 - [ ] Commit as `feat(installer): add transactional activation and rollback`.
 
+#### Completion amendment: catchable process interruption
+
+- [ ] Add RED tests for listener lifecycle, pre-mutation `SIGINT`/`SIGTERM`, interruption between
+  activation renames, interruption before verification completion, repeated signals, signal during
+  rollback, rollback failure, persistent `PREPARED` recovery, 130/143 exit mapping, and subsequent
+  idempotent recovery.
+- [ ] Implement a first-signal latch whose handlers never mutate the filesystem, cooperative
+  checkpoints around atomic operations, and exactly one rollback path.
+- [ ] Write and read back a schema-2 `PREPARED` receipt before activation; transition it to
+  `COMMITTED` or `ROLLED_BACK` without weakening path and backup validation.
+- [ ] Remove listeners in `finally`, document the `SIGKILL`/runtime-crash/power-loss boundary, and
+  rerun transaction, CLI, package, repository, review, and CI gates on the resulting exact head.
+
 ### Task 5: CLI and isolated integration tests
 
 **Files:**

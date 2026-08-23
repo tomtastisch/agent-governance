@@ -122,6 +122,25 @@ power loss, and filesystem failure can interrupt activation. The receipt is crea
 successful verification, so a hard interruption before that point requires manual inspection of
 the retained backup and retired paths; explicit `rollback` is supported after a completed install.
 
+### Signal-recovery continuation
+
+The completion slice replaces that limitation for catchable `SIGINT` and `SIGTERM`. A signal
+coordinator registers one listener per signal for one productive install call, latches only the
+first signal, and removes both listeners in `finally`. The handlers never perform filesystem work:
+they only record interruption. Checkpoints before the first productive mutation, between atomic
+renames, before verification, and before success serialization turn the latched signal into one
+serialized rollback after any in-flight atomic operation completes. Repeated signals cannot start
+a concurrent rollback.
+
+After backup and staging have verified, but before activation, the installer atomically writes and
+reads back a schema-2 receipt with state `PREPARED`. Successful verification advances it to
+`COMMITTED`; successful rollback advances it to `ROLLED_BACK`. Therefore a catchable signal returns
+structured interruption evidence and conventional exit status 130 (`SIGINT`) or 143 (`SIGTERM`),
+while an uncatchable `SIGKILL`, runtime crash, or power loss leaves a validated `PREPARED` recovery
+entry for an explicit later rollback. The journal does not claim to make interrupted multi-file
+activation atomic, and post-crash recovery remains fail-closed if receipt, backup, targets, or path
+boundaries cannot be validated.
+
 ## Test strategy
 
 Each behavior change begins with a failing Node test. Unit and fixture tests cover every state,
