@@ -131,8 +131,12 @@ class ReleaseMetadataContract(unittest.TestCase):
             "style=flat-square)](CHANGELOG.md)",
             badge_line,
         )
+        self.assertIn("\n## Support\n", README)
         self.assertIn(
-            "](https://buymeacoffee.com/tomtastisch)",
+            "[![Buy Me a Coffee](https://img.buymeacoffee.com/button-api/?"
+            "text=Buy%20me%20a%20coffee&emoji=&slug=tomtastisch&button_colour=FFDD00&"
+            "font_colour=000000&font_family=Cookie&outline_colour=000000&"
+            "coffee_colour=ffffff)](https://buymeacoffee.com/tomtastisch)",
             README,
         )
         self.assertIn("## [0.5.0] — 2026-08-22", CHANGELOG)
