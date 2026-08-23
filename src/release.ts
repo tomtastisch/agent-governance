@@ -33,7 +33,7 @@ async function safeRegularFile(path: string): Promise<Buffer> {
   if (stat.isSymbolicLink() || !stat.isFile()) {
     throw new Error("release inventory entry must be a regular non-symlink file");
   }
-  if (stat.size > 16 * 1024 * 1024) {
+  if (stat.size > 64 * 1024 * 1024) {
     throw new Error("release inventory entry exceeds size limit");
   }
   return readFile(path);

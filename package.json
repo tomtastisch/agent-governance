@@ -13,6 +13,7 @@
     "Installation.bootstrap.prompt.md",
     "LICENSE",
     "README.md",
+    "release.files.sha256",
     "VERSION"
   ],
   "engines": {

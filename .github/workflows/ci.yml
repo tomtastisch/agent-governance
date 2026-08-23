@@ -15,6 +15,34 @@ permissions:
   contents: read
 
 jobs:
+  installer-package:
+    name: Installer package (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      npm_config_cache: ${{ runner.temp }}/npm-cache
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Install exact package toolchain
+        run: npm ci --ignore-scripts
+      - name: Typecheck, test, build, audit, and inspect package
+        run: |
+          npm run typecheck
+          npm test
+          npm run build
+          python3 tools/release_manifest.py check
+          npm audit --audit-level=high
+          npm pack --dry-run --json
+      - name: Run isolated installer fixture
+        run: tests/e2e/run_installer_fixture.sh
+
   consistency-tests:
     name: Konsistenz- & Drift-Tests (blockierend)
     runs-on: ubuntu-latest
