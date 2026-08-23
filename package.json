@@ -1,0 +1,32 @@
+{
+  "name": "agent-governance",
+  "version": "0.5.0",
+  "description": "Transactional installer for the agent-governance bundle",
+  "type": "module",
+  "bin": {
+    "agent-governance": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "bundle",
+    "integrations",
+    "Installation.bootstrap.prompt.md",
+    "LICENSE",
+    "README.md",
+    "VERSION"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "node --experimental-strip-types --test tests/installer/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "tsc -p tsconfig.json --noEmit && git diff --check"
+  },
+  "devDependencies": {
+    "@types/node": "24.3.0",
+    "typescript": "5.9.2"
+  },
+  "license": "Apache-2.0"
+}
