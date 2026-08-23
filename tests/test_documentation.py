@@ -118,7 +118,27 @@ class InstallBoundaryContract(unittest.TestCase):
 class ReleaseMetadataContract(unittest.TestCase):
     def test_semver_breaking_tool_name_release_is_consistent(self):
         self.assertEqual(VERSION, "0.5.0")
-        self.assertIn("**Version:** [`0.5.0`](VERSION)", README)
+        badge_line = README.splitlines()[2]
+        self.assertIn(
+            "[![Version](https://img.shields.io/github/v/release/"
+            "tomtastisch/agent-governance?sort=semver&display_name=tag&style=flat-square&"
+            "label=version&color=2ea44f)](VERSION)",
+            badge_line,
+        )
+        self.assertNotIn(VERSION, badge_line)
+        self.assertIn(
+            "[![Changelog](https://img.shields.io/badge/changelog-view-1f6feb?"
+            "style=flat-square)](CHANGELOG.md)",
+            badge_line,
+        )
+        self.assertIn("\n## Support\n", README)
+        self.assertIn(
+            "[![Buy Me a Coffee](https://img.buymeacoffee.com/button-api/?"
+            "text=Buy%20me%20a%20coffee&emoji=&slug=tomtastisch&button_colour=FFDD00&"
+            "font_colour=000000&font_family=Cookie&outline_colour=000000&"
+            "coffee_colour=ffffff)](https://buymeacoffee.com/tomtastisch)",
+            README,
+        )
         self.assertIn("## [0.5.0] — 2026-08-22", CHANGELOG)
         current = CHANGELOG.split(f"## [{VERSION}]", 1)[1].split("\n## [", 1)[0]
         for term in (
