@@ -117,9 +117,10 @@ Exit codes are: `0` success/current, `2` invalid invocation, `3` unsupported har
 unsafe state, `5` verification failure with successful rollback, and `6` rollback failure. Human
 output is rendered from the same structured result as JSON output.
 
-Signals received after backup cause the same rollback path when Node can safely execute it. Signal
-handling is documented as best-effort: `SIGKILL`, host power loss, and filesystem failure cannot be
-intercepted, so the receipt and retained recovery paths support subsequent explicit `rollback`.
+The implemented 0.6.0 core does not register signal handlers. `SIGTERM`, `SIGINT`, `SIGKILL`, host
+power loss, and filesystem failure can interrupt activation. The receipt is created only after
+successful verification, so a hard interruption before that point requires manual inspection of
+the retained backup and retired paths; explicit `rollback` is supported after a completed install.
 
 ## Test strategy
 

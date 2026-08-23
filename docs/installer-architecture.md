@@ -19,9 +19,11 @@ explizite Abwesenheit. Staging liegt unter derselben erlaubten Dateisystemgrenze
 der Aktivierung werden Elternidentitäten erneut geprüft. Jede Aktivierung verwendet einen Rename
 innerhalb eines Dateisystems; Erfolg wird erst nach Readback und Payload-Verifikation gemeldet.
 
-`SIGTERM` und `SIGINT` können nur best-effort behandelt werden. `SIGKILL`, Stromausfall und
-Dateisystemdefekte sind nicht synchron abfangbar. Deshalb bleibt ein privates Recovery-Receipt mit
-dem verifizierten Backup erhalten. Wiederholtes Rollback ist idempotent.
+Der CLI-Kern registriert in 0.6.0 keine eigenen Signalhandler. `SIGTERM`, `SIGINT`, `SIGKILL`,
+Stromausfall und Dateisystemdefekte können deshalb eine laufende Aktivierung unterbrechen. Das
+private Recovery-Receipt entsteht erst nach erfolgreicher Verifikation; bei einem früheren harten
+Abbruch müssen Backup- und Retired-Verzeichnisse manuell geprüft werden. Für erfolgreich
+abgeschlossene Installationen ist wiederholtes explizites Rollback idempotent.
 
 ## Codex-Adapter
 

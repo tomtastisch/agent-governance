@@ -14,6 +14,10 @@ function shellQuote(value: string): string {
   return `'${value.replaceAll("'", `'"'"'`)}'`;
 }
 
+export function governanceHookCommand(commandPath: string): string {
+  return `node ${shellQuote(commandPath)}`;
+}
+
 export function mergeGovernanceHook(existing: string | undefined, commandPath: string): string {
   let root: Record<string, unknown> = {};
   if (existing !== undefined && existing.trim() !== "") {
@@ -38,7 +42,7 @@ export function mergeGovernanceHook(existing: string | undefined, commandPath: s
   if (matching.length > 1) throw new Error("governance hook configuration is ambiguous");
   const governance: HookGroup = {
     matcher: TOOL_NAME,
-    hooks: [{ type: "command", command: `node ${shellQuote(commandPath)}`, timeout: 30 }],
+    hooks: [{ type: "command", command: governanceHookCommand(commandPath), timeout: 30 }],
   };
   hooks.PreToolUse = matching.length === 0
     ? [...current, governance]

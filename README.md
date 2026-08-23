@@ -303,6 +303,9 @@ Altzustand erhalten, statt sie im Fehlerpfad zu löschen.
   `agent_governance__execute`. Beliebige Shell-, Hosted-Tool- oder andere Harnesswirkungen werden
   nicht als universell intercepted behauptet.
 - Die Installation ändert keine MCP-Konfiguration und aktiviert keine MCP-Auto-Approvals.
+- Der CLI-Kern registriert keine Signalhandler. Ein harter Abbruch vor dem nach erfolgreicher
+  Verifikation geschriebenen Rollback-Receipt erfordert die manuelle Prüfung der erhaltenen
+  Backup- und Retired-Verzeichnisse.
 
 - Microsoft Agent Governance Toolkit und seine Frameworkschnittstellen befinden sich im Status
   Public Preview.

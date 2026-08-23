@@ -2,6 +2,7 @@ import { lstat, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { InstallState } from "./contracts.ts";
+import { governanceHookCommand } from "./hooks.ts";
 
 const LEGACY_IMPORTS = [
   "@~/agent-governance/adapters/AGENTS.md",
@@ -49,9 +50,23 @@ export async function inspectCodex(home: string, installRoot: string): Promise<C
     try {
       const parsed: unknown = JSON.parse(hooks);
       const groups = (parsed as { hooks?: { PreToolUse?: unknown } }).hooks?.PreToolUse;
-      hookCurrent = Array.isArray(groups) && groups.filter(
+      const matching = Array.isArray(groups) ? groups.filter(
         (group) => (group as { matcher?: unknown }).matcher === "agent_governance__execute",
-      ).length === 1;
+      ) : [];
+      const expectedCommand = governanceHookCommand(join(
+        installRoot,
+        "integrations",
+        "microsoft-agent-governance-toolkit",
+        "bridge",
+        "codex-hook.mjs",
+      ));
+      if (matching.length === 1) {
+        const hookEntries = (matching[0] as { hooks?: unknown }).hooks;
+        hookCurrent = Array.isArray(hookEntries) && hookEntries.length === 1 &&
+          (hookEntries[0] as { type?: unknown }).type === "command" &&
+          (hookEntries[0] as { command?: unknown }).command === expectedCommand &&
+          (hookEntries[0] as { timeout?: unknown }).timeout === 30;
+      }
     } catch {
       hookCurrent = false;
     }
