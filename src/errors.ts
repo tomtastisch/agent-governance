@@ -1,4 +1,4 @@
-import type { InstallPhase, TerminalOutcome } from "./contracts.js";
+import type { InstallPhase, TerminalOutcome } from "./contracts.ts";
 
 export class InstallerFailure extends Error {
   constructor(
