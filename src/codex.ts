@@ -18,6 +18,8 @@ export interface CodexInventory {
   readonly configPresent: boolean;
   readonly manifestPresent: boolean;
   readonly legacyImport: boolean;
+  readonly bindingCurrent: boolean;
+  readonly hookCurrent: boolean;
 }
 
 async function optionalFile(path: string): Promise<string | undefined> {
@@ -33,13 +35,26 @@ async function optionalFile(path: string): Promise<string | undefined> {
 }
 
 export async function inspectCodex(home: string, installRoot: string): Promise<CodexInventory> {
-  const [agents, override, hooks, config, manifest] = await Promise.all([
+  const [agents, override, hooks, config, manifest, governance] = await Promise.all([
     optionalFile(join(home, "AGENTS.md")),
     optionalFile(join(home, "AGENTS.override.md")),
     optionalFile(join(home, "hooks.json")),
     optionalFile(join(home, "config.toml")),
     optionalFile(join(installRoot, "bundle", "agent-governance", "manifest.toml")),
+    optionalFile(join(installRoot, "bundle", "GOVERNANCE.md")),
   ]);
+  let hookCurrent = false;
+  if (hooks !== undefined) {
+    try {
+      const parsed: unknown = JSON.parse(hooks);
+      const groups = (parsed as { hooks?: { PreToolUse?: unknown } }).hooks?.PreToolUse;
+      hookCurrent = Array.isArray(groups) && groups.filter(
+        (group) => (group as { matcher?: unknown }).matcher === "agent_governance__execute",
+      ).length === 1;
+    } catch {
+      hookCurrent = false;
+    }
+  }
   return {
     harness: "codex",
     home,
@@ -50,6 +65,8 @@ export async function inspectCodex(home: string, installRoot: string): Promise<C
     configPresent: config !== undefined,
     manifestPresent: manifest !== undefined,
     legacyImport: agents !== undefined && LEGACY_IMPORTS.some((item) => agents.includes(item)),
+    bindingCurrent: agents !== undefined && governance !== undefined && agents === governance,
+    hookCurrent,
   };
 }
 
@@ -59,7 +76,7 @@ export function classifyCodex(inventory: CodexInventory | { readonly harness: st
   if (codex.overridePresent) return "UNKNOWN";
   if (codex.legacyImport && codex.manifestPresent) return "UNKNOWN";
   if (codex.legacyImport) return "LEGACY";
-  if (codex.manifestPresent && codex.agents !== undefined && codex.hooksPresent) return "CURRENT";
+  if (codex.manifestPresent && codex.bindingCurrent && codex.hookCurrent) return "CURRENT";
   if (codex.manifestPresent || codex.agents !== undefined || codex.hooksPresent || codex.configPresent) {
     return "UNKNOWN";
   }
