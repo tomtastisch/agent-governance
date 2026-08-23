@@ -1,6 +1,6 @@
 # Agent Governance
 
-> **Version:** [`0.5.0`](VERSION) — [Changelog](CHANGELOG.md)
+[![Version](https://img.shields.io/github/v/release/tomtastisch/agent-governance?sort=semver&display_name=tag&style=flat-square&label=version&color=2ea44f)](VERSION) [![Changelog](https://img.shields.io/badge/changelog-view-1f6feb?style=flat-square)](CHANGELOG.md)
 
 ## Was ist agent-governance?
 
@@ -305,3 +305,10 @@ Altzustand erhalten, statt sie im Fehlerpfad zu löschen.
   eine Abweichung, wird fail-closed blockiert; sie ersetzt keine Host-Dateiberechtigungen.
 - Dieses Repository enthält keine Control Plane, keinen automatischen Updater und kein
   Credential Management.
+
+## Support
+
+Wenn dir das Projekt hilft und du Danke sagen möchtest, kannst du mich mit einem Kaffee
+unterstützen.
+
+[![Buy Me a Coffee](https://img.buymeacoffee.com/button-api/?text=Buy%20me%20a%20coffee&emoji=&slug=tomtastisch&button_colour=FFDD00&font_colour=000000&font_family=Cookie&outline_colour=000000&coffee_colour=ffffff)](https://buymeacoffee.com/tomtastisch)
