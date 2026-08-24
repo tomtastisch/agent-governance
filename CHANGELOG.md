@@ -79,7 +79,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Plan- und Dry-Run-Ausgaben benennen für explizite lokale Regeln die tatsächlich manifestgebundene
   Markdown-Datei statt nur deren übergeordnetes Verzeichnis.
 - Die Tarball-Allowlist normalisiert sowohl das Arrayformat von npm 11 als auch das
-  paketnamengebundene Objektformat von npm 12, ohne Pfad-, Secret- oder Native-Prüfungen zu lockern.
+  paketnamengebundene Objektformat von npm 12, bindet beide an den autorisierten Paketnamen und
+  lockert keine Pfad-, Secret- oder Native-Prüfung.
 
 ### Removed
 
