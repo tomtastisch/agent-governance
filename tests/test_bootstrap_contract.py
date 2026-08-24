@@ -18,7 +18,6 @@ from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
-BOOTSTRAP = ROOT / "Installation.bootstrap.prompt.md"
 REFERENCE = ROOT / "tests" / "support" / "bootstrap_reference.py"
 FIXTURES = ROOT / "tests" / "fixtures" / "bootstrap"
 
@@ -77,68 +76,6 @@ def foreign_cwd():
             yield
         finally:
             os.chdir(previous)
-
-
-class BootstrapPromptContract(unittest.TestCase):
-    def read_prompt(self) -> str:
-        if not BOOTSTRAP.is_file():
-            raise AssertionError("Installation.bootstrap.prompt.md fehlt")
-        return BOOTSTRAP.read_text(encoding="utf-8")
-
-    def test_prompt_is_one_time_harness_neutral_contract(self):
-        text = self.read_prompt()
-        for term in (
-            "einmaliger Installations-, Integrations- und Migrationsvertrag",
-            "Harness-Erkennung",
-            "AGENT_GOVERNANCE_ROOT",
-            "absolut",
-            "FRESH",
-            "CURRENT",
-            "LEGACY",
-            "Rollback",
-            "frische Session",
-        ):
-            self.assertIn(term, text)
-        self.assertNotIn("~/.codex", text)
-        self.assertNotRegex(text, r"(?m)/(?:Users|home)/")
-        self.assertRegex(text, r"(?is)CODEX_HOME.+nur.+Codex.+Kandidat")
-        self.assertRegex(text, r"(?is)kein.+Updater.+kein.+Daemon.+keine.+Control Plane")
-
-    def test_prompt_reads_local_rules_path_from_manifest_and_protects_privacy(self):
-        text = self.read_prompt()
-        self.assertRegex(text, r"(?is)local_rules.+manifest\.toml.+nicht.+hardcod")
-        for forbidden in (
-            "private Regelhashes",
-            "private Regelgrößen",
-            "private Regelzeilenzahlen",
-        ):
-            self.assertIn(forbidden, text)
-        self.assertRegex(text, r"(?is)Boolean.+cmp.+keine.+Fingerprint")
-        self.assertRegex(text, r"(?is)codex debug prompt-input.+nicht ausreichend")
-        self.assertIn("codex exec", text)
-
-    def test_prompt_requires_transactional_pre_effect_enforcement(self):
-        text = self.read_prompt()
-        for decision in ("allow", "deny", "require_approval", "error", "unknown"):
-            self.assertIn(f"`{decision}`", text)
-        self.assertRegex(text, r"(?is)Provider.+vor.+Effekt")
-        self.assertRegex(text, r"(?is)ausschließlich.+`allow`.+fort")
-        self.assertRegex(text, r"(?is)Providerfehler.+fail-closed")
-        self.assertIn("upstream.lock.toml", text)
-        self.assertIn("snapshot.files.sha256", text)
-
-    def test_prompt_emits_only_safe_evidence(self):
-        text = self.read_prompt()
-        for field in (
-            "Version",
-            "Release-/Commitkennung",
-            "Governance-Root",
-            "Harness-Typ",
-            "Enforcement-Provider",
-            "PASS/FAIL",
-        ):
-            self.assertIn(field, text)
-        self.assertRegex(text, r"(?is)keine.+Secrets.+Tokens.+private Regeltexte")
 
 
 class BootstrapFixtureContract(unittest.TestCase):

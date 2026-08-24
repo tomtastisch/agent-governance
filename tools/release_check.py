@@ -307,10 +307,11 @@ def check_tree(root=None):
 
 def _check_no_competing_source(root, r):
     authority = {"VERSION", "CHANGELOG.md"}
+    authoritative_version = _read("VERSION", root).strip()
     vendored_root = os.path.abspath(os.path.join(root, VENDORED_UPSTREAM_REL))
     vendored_materialized = all(_exists(path, root) for path in VENDORED_UPSTREAM_SENTINELS)
     for base, dirs, files in os.walk(root):
-        dirs[:] = [d for d in dirs if d not in {".git", "tests", ".github"}]
+        dirs[:] = [d for d in dirs if d not in {".git", "tests", ".github", "node_modules", "dist"}]
         if vendored_materialized:
             dirs[:] = [
                 directory
@@ -327,7 +328,26 @@ def _check_no_competing_source(root, r):
                     r.add_error(f"{rel}: konkurrierende version-Deklaration")
             elif name.endswith(".json"):
                 txt = _read(rel, root)
-                if re.search(r'"version"\s*:\s*"\d+\.\d+\.\d+', txt):
+                if rel in {"package.json", "package-lock.json"}:
+                    try:
+                        package_data = json.loads(txt)
+                        package_version = package_data.get("version")
+                    except (json.JSONDecodeError, AttributeError):
+                        r.add_error(f"{rel}: ungültiges JSON für VERSION-Abgleich")
+                        continue
+                    if package_version != authoritative_version:
+                        r.add_error(
+                            f"{rel}-Version ({package_version}) weicht von VERSION "
+                            f"({authoritative_version}) ab"
+                        )
+                    if rel == "package-lock.json":
+                        root_package_version = package_data.get("packages", {}).get("", {}).get("version")
+                        if root_package_version is not None and root_package_version != authoritative_version:
+                            r.add_error(
+                                f"package-lock.json Root-Paketversion ({root_package_version}) "
+                                f"weicht von VERSION ({authoritative_version}) ab"
+                            )
+                elif re.search(r'"version"\s*:\s*"\d+\.\d+\.\d+', txt):
                     r.add_error(f"{rel}: konkurrierende version-Deklaration")
             elif name.lower() in ("version.txt", "version", ".version"):
                 r.add_error(f"{rel}: parallele Versionsdatei neben VERSION")

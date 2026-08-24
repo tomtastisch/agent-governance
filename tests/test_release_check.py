@@ -143,13 +143,35 @@ class TreeCompetingSource(unittest.TestCase):
             self.assertFalse(r.ok)
             self.assertTrue(any("konkurrierende version-Deklaration" in e for e in r.errors))
 
-    def test_json_version_is_competing(self):
+    def test_root_package_version_must_match_version_source(self):
         with tempfile.TemporaryDirectory() as d:
-            _write(os.path.join(d, "VERSION"), "0.1.0\n")
+            self._write_minimum_tree(d)
             _write(os.path.join(d, "package.json"), '{"version": "0.2.0"}')
             r = check_tree(root=d)
             self.assertFalse(r.ok)
-            self.assertTrue(any("konkurrierende version-Deklaration" in e for e in r.errors))
+            self.assertTrue(any("package.json" in e and "VERSION" in e for e in r.errors))
+
+    def test_matching_root_package_version_is_derived_metadata(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._write_minimum_tree(d)
+            _write(os.path.join(d, "package.json"), '{"version": "0.1.0"}')
+            r = check_tree(root=d)
+            self.assertTrue(r.ok, r.errors)
+
+    def test_matching_root_lock_version_is_derived_metadata(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._write_minimum_tree(d)
+            _write(os.path.join(d, "package-lock.json"), '{"version": "0.1.0"}')
+            r = check_tree(root=d)
+            self.assertTrue(r.ok, r.errors)
+
+    def test_root_lock_version_drift_fails(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._write_minimum_tree(d)
+            _write(os.path.join(d, "package-lock.json"), '{"version": "0.2.0"}')
+            r = check_tree(root=d)
+            self.assertFalse(r.ok)
+            self.assertTrue(any("package-lock.json" in e and "VERSION" in e for e in r.errors))
 
     def test_parallel_version_file_is_competing(self):
         with tempfile.TemporaryDirectory() as d:

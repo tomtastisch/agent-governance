@@ -1,0 +1,109 @@
+# Global Explicit-Path Installer Design
+
+> Historische Evidenz - nicht normativ. Maßgeblich sind das veröffentlichte Bundle und der
+> implementierte, getestete Installervertrag.
+
+## Status and decision
+
+This specification records the user-approved `GLOBAL_EXPLICIT_PATH_MANAGED_BLOCK` architecture
+for the first public `@tomtastisch/agent-governance` release. It supersedes the unpublished
+Codex-only installer design. The governance bundle remains the only normative source; the
+installer materializes a reproducible projection that points to the installed bundle.
+
+## Scope
+
+The package provides a global, non-interactive Node.js CLI without third-party runtime dependencies.
+A repository-owned Node-API C primitive supplies handle-bound exclusive rename on supported platforms. Every target
+is explicit: an absolute canonical `--target-root`, a relative Markdown `--entry-file`, global
+`--scope`, and an absolute canonical `--installation-root`. The runtime contains no harness names,
+presets, detection, adapters, hooks, MCP mutation, approval logic, or harness-specific parsers.
+
+The supported commands are `inspect`, `plan`, `install`, `verify`, `status`, `update`, `uninstall`,
+and `rollback`. Mutating commands support `--dry-run`; all commands support deterministic JSON and
+non-interactive operation. Unknown options, duplicate values, relative roots, root escape,
+symlinks, non-Markdown entries, unexpected file types, ambiguous markers, inventory drift, and
+identity changes fail closed before productive mutation.
+
+## Installed layout and release integrity
+
+`<installation-root>/releases/<version>/bundle` contains the verified release bundle,
+`<installation-root>/bindings/<binding-id>/current.json` atomically identifies the active version
+and digests for one explicit target/entry pair, and
+`<installation-root>/backups` contains immutable per-transaction backups and receipts. A metadata
+file is preferred over a `current` symlink so trusted internal links and untrusted target links do
+not share one validation path.
+
+The package ships a closed inventory of the governance payload. Verification rejects missing
+inventory entries, additional normative files, traversal, links, non-regular payload files,
+oversized files, duplicate paths, unsupported manifest shape, and digest mismatch. Staging is on
+the destination filesystem. Activation uses write-with-exclusive-create, readback, atomic rename,
+directory identity revalidation, and a durable receipt; no active pointer or entry file changes
+before the staged release and backup have both been verified.
+The native operations bind parent directories and provide atomic no-clobber, but Linux and Darwin
+do not provide an expected-inode compare-and-rename predicate for a malicious same-UID writer that
+swaps the final component in the last observation-to-syscall window. This narrow limitation does
+not remove fail-closed checks for observable root, parent, symlink, receipt, backup, or collision
+changes, and the product introduces no privileged broker.
+
+## Managed block
+
+The entry contains at most one block delimited by:
+
+```text
+<!-- BEGIN AGENT_GOVERNANCE_MANAGED_V1 -->
+<!-- END AGENT_GOVERNANCE_MANAGED_V1 -->
+```
+
+The generated body identifies itself as a projection and records the governance version,
+canonical installation root, normative bootstrap and manifest paths, their expected SHA-256
+digests, the mandatory pre-response load order, separation of personal local rules, and
+fail-closed behavior. It is derived solely from the verified installed release.
+
+Bytes outside the block are preserved exactly. Existing LF or CRLF is retained; a new file uses
+UTF-8 without BOM and LF. Duplicate, incomplete, nested, or foreign-version markers are rejected.
+`verify` compares the exact deterministic block. `update` replaces only that block. `uninstall`
+removes only that block. Rollback restores the complete pre-mutation entry bytes.
+
+## Transaction and recovery
+
+Before the first productive mutation, the installer captures target identities and writes a
+byte-for-byte backup, reads it back, and records whether each resource was absent. The receipt
+uses closed schemas and transitions through `PREPARED`, `COMMITTED`, or `ROLLED_BACK`. Failures and
+catchable signals are serialized through one rollback. Repeated rollback, install, update,
+uninstall, and recovery are idempotent. `SIGKILL`, power loss, and filesystem failure cannot be
+made fully atomic; a verified prepared receipt enables explicit fail-closed recovery.
+Expected identities for the entry parent, installation root, binding root, releases root, and any
+release, local-rules parent, or backup root involved in restore are persisted in the receipt and
+revalidated on later recovery. Native file replace/remove and directory activation remain relative
+to those bound parents. A real no-clobber rename probe runs on the affected filesystems before
+productive mutation. A newly activated verified release is retained unreferenced after rollback
+rather than recursively deleted through a re-resolved pathname.
+
+## Local rules
+
+`--local-rules` is optional and explicit. It is copied only into the installed bundle path declared
+by the manifest, must be an absolute canonical regular non-symlink Markdown file, and is never
+logged or included in output fingerprints. It must be valid UTF-8 and may contain only TAB, LF,
+and CR from the raw C0/DEL controls. Installed rules are revalidated before status, verification,
+or update carry-forward. Absence is valid. Updates preserve the installed local-rules content unless
+a new explicit source is supplied.
+
+## Evidence and compatibility
+
+JSON output uses closed versioned schemas, stable outcome names, capability states, resource IDs,
+phase, rollback status, and numeric exit codes; it never includes entry contents or local rules.
+Filesystem tests are harness-neutral. Harness recipes live only in documentation and E2E fixtures,
+must cite current primary documentation, and earn `HARNESS_E2E_VERIFIED` only from a fresh process
+that proves entry loading, root and manifest resolution, synthetic local rules, legacy absence, and
+fail-closed behavior.
+
+Release proceeds through `1.0.0-rc.N` under `next`, public-registry readback and fresh-install
+verification, then a separate `1.0.0` promotion under `latest`. Both releases require signed tags,
+repository release checks, npm provenance or trusted publishing, independent QA and security
+review, and exact-head CI.
+
+## Explicit non-goals
+
+The installer does not install models or harnesses, infer a home directory, default to the current
+directory, modify projects, configure providers, hooks, MCP, approvals, or enforcement, support
+unknown entry formats, or claim universal pre-effect enforcement.

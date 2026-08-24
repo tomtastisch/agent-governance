@@ -210,14 +210,15 @@ class HistoricalEvidenceContract(unittest.TestCase):
 
 
 class ReleaseMetadataContract(unittest.TestCase):
-    def test_current_version_declares_breaking_tool_name_release(self):
+    def test_current_version_declares_global_installer_release_candidate(self):
         changelog = read(ROOT / "CHANGELOG.md")
         version = read(ROOT / "VERSION").strip()
         current = changelog.split(f"## [{version}]", 1)[1].split("\n## [", 1)[0]
-        self.assertEqual(version, "0.5.0")
-        self.assertIn("agent_governance__execute", current)
+        self.assertEqual(version, "1.0.0-rc.1")
+        self.assertIn("transaktionalem Explicit-Path-Installer", current)
+        self.assertIn("GLOBAL_EXPLICIT_PATH_MANAGED_BLOCK", current)
+        self.assertIn("keine Harnessadapter", current)
         self.assertIn("**Breaking changes:** present", current)
-        self.assertIn("**BREAKING:**", current)
         recovery_patch = changelog.split("## [0.4.1]", 1)[1].split("\n## [", 1)[0]
         self.assertIn("**Breaking changes:** none", recovery_patch)
         historical = changelog.split("## [0.4.0]", 1)[1].split("\n## [", 1)[0]

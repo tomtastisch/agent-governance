@@ -9,21 +9,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Keine.
+- Eine repo-eigene Node-API-C-Primitive mit nativen Darwin-/Linux-Prebuilds für arm64 und x64.
 
 ### Changed
 
-- Keine.
+- Mutierende Installeroperationen prüfen die native Capability vor produktiver Mutation; ein
+  fehlendes oder nicht unterstütztes Binary besitzt keinen unsicheren Pathname-Fallback.
+- Der Sicherheitsvertrag grenzt ausschließlich den nicht atomar entscheidbaren bösartigen
+  Same-UID-Final-Component-Swap aus; beobachtbare Container- und Persistenzabweichungen bleiben
+  fail-closed, und es wird kein privilegierter Broker eingeführt.
 
 ### Fixed
 
-- Keine.
+- Rollback bindet die Entry-Wiederherstellung per exklusiv reserviertem, recoveryfähigem
+  Same-Filesystem-Detach an das validierte Postimage und behält dessen receipt-spezifische
+  Evidenz bei; zwischenzeitlich geänderte Nutzerbytes werden nicht überschrieben oder gelöscht.
+- Der Entry-Detach verwendet offene Directory-Handles und atomaren No-Replace-Rename
+  (`renameat2/RENAME_NOREPLACE` beziehungsweise `renameatx_np/RENAME_EXCL`), sodass ein Austausch
+  des sichtbaren Reservation-Pfads weder fremde Ersatzbytes beschreibt noch löscht.
+- Der Detach liegt als receipt-eindeutiger Sibling im vorab identifizierten Entry-Parent; auch die
+  Wiederanlage bindet sich nativ an diesen Parent, statt eine nach `mkdir` erneut aufgelöste
+  Verzeichnisidentität zu autorisieren.
+- Receipts persistieren die erwarteten Identitäten von Entry-Parent, Installation, Binding-Root,
+  Releases-Root, Release und Local-Rules-Parent, damit später beobachtbare Containerwechsel vor
+  Recovery- und Cleanup-Mutationen fail-closed blockieren.
+- Ein partiell fehlgeschlagenes natives Exclusive-Create entfernt seine weiterhin identisch
+  beobachtete eigene Datei dirfd-relativ und bewahrt den ursprünglichen I/O-Fehler.
+- Current-, Local-Rules-, Receipt-, Lock- und Release-Aktivierungssinks mutieren ausschließlich
+  relativ zu geöffneten identitätsgeprüften Parent-dirfds; Backup-Root-Identität ist receiptgebunden.
+- Native Replace-/Remove-Operationen vergleichen zusätzlich die erwartete finale Objektidentität;
+  Replace prüft auch den sichtbaren temporären Quellnamen unmittelbar vor dem Rename.
+- Eine reale Rename-Capability-Probe läuft auf den betroffenen Dateisystemen vor der ersten
+  produktiven Mutation. Neue verifizierte Releases bleiben bei Rollback als harmlose
+  unreferenzierte Recoveryartefakte erhalten, statt rekursiv pathname-basiert gelöscht zu werden.
+- Update-Pläne weisen die tatsächlich in ein neues Release übernommenen lokalen Regeln aus.
+- Plan- und Dry-Run-Ausgaben benennen für explizite lokale Regeln die tatsächlich manifestgebundene
+  Markdown-Datei statt nur deren übergeordnetes Verzeichnis.
 
 ### Removed
 
 - Keine.
 
 **Breaking changes:** none
+
+## [1.0.0-rc.1] — 2026-08-24
+
+### Added
+
+- Das öffentliche Paket `@tomtastisch/agent-governance` mit globalem, adapterlosem,
+  transaktionalem Explicit-Path-Installer und den Commands `inspect`, `plan`, `install`, `verify`,
+  `status`, `update`, `uninstall` und `rollback`.
+- Einen deterministischen Managed Block, geschlossene JSON-Schemas, verifizierte Backups,
+  Releaseinventar, vollständige Bundle- und Manifestprüfung, Signal-Rollback und explizite lokale Regeln.
+- Targetgebundene Binding-/Receipt-Metadaten für mehrere globale Einstiegsdateien unter einem
+  gemeinsamen Installationsroot sowie einen OIDC-basierten npm-Publishworkflow.
+
+### Changed
+
+- Die Installationsarchitektur ist `GLOBAL_EXPLICIT_PATH_MANAGED_BLOCK`; Zielroot,
+  Markdown-Einstieg und Installationsroot sind vollständig explizit.
+- Das npm-Artefakt enthält keine Harnessadapter, Hooks, MCP-Mutationen, Auto-Approvals,
+  Fremdadapter oder Runtime-Abhängigkeiten.
+
+### Fixed
+
+- macOS-Testfixtures kanonisieren den temporären Root, ohne die produktive Symlinkgrenze
+  abzuschwächen.
+
+### Removed
+
+- Der unveröffentlichte Codex-only-Installerentwurf mit Harness-ID, festen Codexpfaden und
+  Hookmutation wurde aus Runtime und öffentlichem Paket entfernt.
+
+**Breaking changes:** present
+
+- **BREAKING:** Gegenüber dem manuellen v0.5.0-Bootstrap verlangt der Installer explizite globale
+  Zielparameter und verwaltet ausschließlich seinen markierten Markdown-Block.
 
 ## [0.5.0] — 2026-08-22
 
