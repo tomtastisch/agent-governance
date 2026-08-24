@@ -26,6 +26,9 @@ letzten Kernel-Race-Fenster; die enge Grenze ist im
 [Threat Model](installer-threat-model.md#out-of-atomic-guarantee) definiert. Vor jedem weiteren
 produktiven Rename werden beobachtbare Identitäten erneut geprüft;
 Backup, Staging, Aktivierung, Verifikation und Rollback haben geschlossene Zustände.
+Current-, Local-Rules-, Receipt- und Lockdateien werden über native, identitätsgebundene Parent-
+dirfds ersetzt oder entfernt. Eine rückstandsfreie Probe führt den exklusiven Rename auf jedem
+betroffenen Dateisystem vor der ersten produktiven Mutation real aus.
 
 ## Managed Block und JSON
 
@@ -55,6 +58,9 @@ crash-sicher auf `PREPARED`, bevor ein Rollback versucht wird.
 Das Receipt bindet zusätzlich die erwarteten Identitäten von Entry-Parent, Installationsroot,
 Binding-Root, Releases-Root sowie den gegebenenfalls vorhandenen Release- und Local-Rules-Parent.
 Ein später beobachtbarer Austausch eines dieser Container blockiert Recovery vor dessen Mutation.
+Ein neu aktivierter Release bleibt nach fehlgeschlagener Transaktion als vollständig verifiziertes,
+unreferenziertes Recoveryartefakt erhalten, statt über einen rekursiv erneut aufgelösten Pathname
+entfernt zu werden.
 Die receipt-spezifische Sibling-Detach-Datei bleibt als Recoveryevidenz erhalten. Der Installer
 entfernt sie nicht pathname-basiert und löscht dadurch bei einem späteren Namensaustausch keine
 fremden Bytes. Auch die Wiederanlage des gewünschten Entry-Postimages erfolgt exklusiv über den

@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <stdint.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -94,6 +95,22 @@ static napi_value secure_rename_no_replace(napi_env env, napi_callback_info info
   return undefined;
 }
 
+static napi_value secure_rename_directory_no_replace(napi_env env, napi_callback_info info) {
+  size_t argc = 10; napi_value argv[10]; napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+  int source_fd, destination_fd; uint64_t source_dev, source_ino, object_dev, object_ino, destination_dev, destination_ino; char source_name[256], destination_name[256];
+  if (argc != 10 || !get_fd(env, argv[0], &source_fd) || !get_basename(env, argv[1], source_name, sizeof(source_name)) || !get_u64(env, argv[2], &source_dev) || !get_u64(env, argv[3], &source_ino) || !get_u64(env, argv[4], &object_dev) || !get_u64(env, argv[5], &object_ino) || !get_fd(env, argv[6], &destination_fd) || !get_basename(env, argv[7], destination_name, sizeof(destination_name)) || !get_u64(env, argv[8], &destination_dev) || !get_u64(env, argv[9], &destination_ino)) { napi_throw_type_error(env, "NATIVE_FS_INVALID_ARGUMENT", "native directory rename requires valid directory fds, identities, and single basenames"); return NULL; }
+  struct stat source_directory, destination_directory, source_object;
+  if (fstat(source_fd, &source_directory) != 0 || !S_ISDIR(source_directory.st_mode) || (uint64_t)source_directory.st_dev != source_dev || (uint64_t)source_directory.st_ino != source_ino || fstat(destination_fd, &destination_directory) != 0 || !S_ISDIR(destination_directory.st_mode) || (uint64_t)destination_directory.st_dev != destination_dev || (uint64_t)destination_directory.st_ino != destination_ino || fstatat(source_fd, source_name, &source_object, AT_SYMLINK_NOFOLLOW) != 0 || !S_ISDIR(source_object.st_mode) || (uint64_t)source_object.st_dev != object_dev || (uint64_t)source_object.st_ino != object_ino) { errno = ESTALE; throw_errno(env, "directory rename identity validation"); return NULL; }
+  int result;
+#if defined(__linux__)
+  result = (int)syscall(SYS_renameat2, source_fd, source_name, destination_fd, destination_name, RENAME_NOREPLACE);
+#elif defined(__APPLE__)
+  result = renameatx_np(source_fd, source_name, destination_fd, destination_name, RENAME_EXCL);
+#endif
+  if (result != 0) { throw_errno(env, "exclusive directory-relative directory rename"); return NULL; }
+  napi_value undefined; napi_get_undefined(env, &undefined); return undefined;
+}
+
 static void cleanup_exclusive_create(int directory_fd, const char *name, const struct stat *created) {
   struct stat visible;
   if (fstatat(directory_fd, name, &visible, AT_SYMLINK_NOFOLLOW) == 0 && S_ISREG(visible.st_mode) &&
@@ -179,12 +196,57 @@ static napi_value secure_create_no_replace(napi_env env, napi_callback_info info
   return undefined;
 }
 
+static napi_value secure_write_file(napi_env env, napi_callback_info info) {
+  size_t argc = 5; napi_value argv[5]; napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+  int directory_fd; uint64_t directory_dev, directory_ino; char name[256]; void *content; size_t content_length;
+  if (argc != 5 || !get_fd(env, argv[0], &directory_fd) || !get_basename(env, argv[1], name, sizeof(name)) || !get_u64(env, argv[2], &directory_dev) || !get_u64(env, argv[3], &directory_ino) || napi_get_buffer_info(env, argv[4], &content, &content_length) != napi_ok) { napi_throw_type_error(env, "NATIVE_FS_INVALID_ARGUMENT", "native write requires a valid directory fd, identity, basename, and buffer"); return NULL; }
+  struct stat directory; if (fstat(directory_fd, &directory) != 0 || !S_ISDIR(directory.st_mode) || (uint64_t)directory.st_dev != directory_dev || (uint64_t)directory.st_ino != directory_ino) { errno = ESTALE; throw_errno(env, "directory identity validation"); return NULL; }
+  static _Atomic unsigned long counter = 0; unsigned long sequence = atomic_fetch_add(&counter, 1) + 1; char temporary[256]; int length = snprintf(temporary, sizeof(temporary), ".ag-%ld-%lu.tmp", (long)getpid(), sequence); if (length <= 0 || (size_t)length >= sizeof(temporary)) { errno = ENAMETOOLONG; throw_errno(env, "temporary basename generation"); return NULL; }
+  int output = openat(directory_fd, temporary, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0600); if (output < 0) { throw_errno(env, "exclusive temporary create"); return NULL; }
+  size_t written = 0; while (written < content_length) { ssize_t count = write(output, (const char *)content + written, content_length - written); if (count <= 0) { if (count == 0) errno = EIO; int saved = errno; close(output); unlinkat(directory_fd, temporary, 0); errno = saved; throw_errno(env, "directory-relative write"); return NULL; } written += (size_t)count; }
+  if (fsync(output) != 0) { int saved = errno; close(output); unlinkat(directory_fd, temporary, 0); errno = saved; throw_errno(env, "directory-relative file sync"); return NULL; }
+  if (close(output) != 0) { int saved = errno; unlinkat(directory_fd, temporary, 0); errno = saved; throw_errno(env, "directory-relative file close"); return NULL; }
+  if (renameat(directory_fd, temporary, directory_fd, name) != 0) { int saved = errno; unlinkat(directory_fd, temporary, 0); errno = saved; throw_errno(env, "directory-relative file replace"); return NULL; }
+  napi_value undefined; napi_get_undefined(env, &undefined); return undefined;
+}
+
+static napi_value secure_remove_file(napi_env env, napi_callback_info info) {
+  size_t argc = 4; napi_value argv[4]; napi_get_cb_info(env, info, &argc, argv, NULL, NULL); int directory_fd; uint64_t directory_dev, directory_ino; char name[256];
+  if (argc != 4 || !get_fd(env, argv[0], &directory_fd) || !get_basename(env, argv[1], name, sizeof(name)) || !get_u64(env, argv[2], &directory_dev) || !get_u64(env, argv[3], &directory_ino)) { napi_throw_type_error(env, "NATIVE_FS_INVALID_ARGUMENT", "native unlink requires a valid directory fd, identity, and basename"); return NULL; }
+  struct stat directory, object; if (fstat(directory_fd, &directory) != 0 || !S_ISDIR(directory.st_mode) || (uint64_t)directory.st_dev != directory_dev || (uint64_t)directory.st_ino != directory_ino || fstatat(directory_fd, name, &object, AT_SYMLINK_NOFOLLOW) != 0 || !S_ISREG(object.st_mode)) { errno = ESTALE; throw_errno(env, "unlink identity and type validation"); return NULL; }
+  if (unlinkat(directory_fd, name, 0) != 0) { throw_errno(env, "directory-relative unlink"); return NULL; } napi_value undefined; napi_get_undefined(env, &undefined); return undefined;
+}
+
+static napi_value secure_create_directory(napi_env env, napi_callback_info info) {
+  size_t argc = 4; napi_value argv[4]; napi_get_cb_info(env, info, &argc, argv, NULL, NULL); int directory_fd; uint64_t directory_dev, directory_ino; char name[256];
+  if (argc != 4 || !get_fd(env, argv[0], &directory_fd) || !get_basename(env, argv[1], name, sizeof(name)) || !get_u64(env, argv[2], &directory_dev) || !get_u64(env, argv[3], &directory_ino)) { napi_throw_type_error(env, "NATIVE_FS_INVALID_ARGUMENT", "native mkdir requires a valid parent fd, identity, and basename"); return NULL; }
+  struct stat directory; if (fstat(directory_fd, &directory) != 0 || !S_ISDIR(directory.st_mode) || (uint64_t)directory.st_dev != directory_dev || (uint64_t)directory.st_ino != directory_ino) { errno = ESTALE; throw_errno(env, "mkdir parent identity validation"); return NULL; }
+  if (mkdirat(directory_fd, name, 0700) != 0) { throw_errno(env, "exclusive directory-relative mkdir"); return NULL; } napi_value undefined; napi_get_undefined(env, &undefined); return undefined;
+}
+
+static napi_value secure_remove_directory(napi_env env, napi_callback_info info) {
+  size_t argc = 6; napi_value argv[6]; napi_get_cb_info(env, info, &argc, argv, NULL, NULL); int directory_fd; uint64_t directory_dev, directory_ino, object_dev, object_ino; char name[256];
+  if (argc != 6 || !get_fd(env, argv[0], &directory_fd) || !get_basename(env, argv[1], name, sizeof(name)) || !get_u64(env, argv[2], &directory_dev) || !get_u64(env, argv[3], &directory_ino) || !get_u64(env, argv[4], &object_dev) || !get_u64(env, argv[5], &object_ino)) { napi_throw_type_error(env, "NATIVE_FS_INVALID_ARGUMENT", "native rmdir requires a valid parent fd, parent identity, basename, and directory identity"); return NULL; }
+  struct stat directory, object; if (fstat(directory_fd, &directory) != 0 || !S_ISDIR(directory.st_mode) || (uint64_t)directory.st_dev != directory_dev || (uint64_t)directory.st_ino != directory_ino || fstatat(directory_fd, name, &object, AT_SYMLINK_NOFOLLOW) != 0 || !S_ISDIR(object.st_mode) || (uint64_t)object.st_dev != object_dev || (uint64_t)object.st_ino != object_ino) { errno = ESTALE; throw_errno(env, "rmdir identity and type validation"); return NULL; }
+  if (unlinkat(directory_fd, name, AT_REMOVEDIR) != 0) { throw_errno(env, "directory-relative rmdir"); return NULL; } napi_value undefined; napi_get_undefined(env, &undefined); return undefined;
+}
+
 static napi_value initialize(napi_env env, napi_value exports) {
   napi_value function;
   napi_create_function(env, "secureRenameNoReplace", NAPI_AUTO_LENGTH, secure_rename_no_replace, NULL, &function);
   napi_set_named_property(env, exports, "secureRenameNoReplace", function);
   napi_create_function(env, "secureCreateNoReplace", NAPI_AUTO_LENGTH, secure_create_no_replace, NULL, &function);
   napi_set_named_property(env, exports, "secureCreateNoReplace", function);
+  napi_create_function(env, "secureCreateDirectory", NAPI_AUTO_LENGTH, secure_create_directory, NULL, &function);
+  napi_set_named_property(env, exports, "secureCreateDirectory", function);
+  napi_create_function(env, "secureWriteFile", NAPI_AUTO_LENGTH, secure_write_file, NULL, &function);
+  napi_set_named_property(env, exports, "secureWriteFile", function);
+  napi_create_function(env, "secureRemoveFile", NAPI_AUTO_LENGTH, secure_remove_file, NULL, &function);
+  napi_set_named_property(env, exports, "secureRemoveFile", function);
+  napi_create_function(env, "secureRemoveDirectory", NAPI_AUTO_LENGTH, secure_remove_directory, NULL, &function);
+  napi_set_named_property(env, exports, "secureRemoveDirectory", function);
+  napi_create_function(env, "secureRenameDirectoryNoReplace", NAPI_AUTO_LENGTH, secure_rename_directory_no_replace, NULL, &function);
+  napi_set_named_property(env, exports, "secureRenameDirectoryNoReplace", function);
   return exports;
 }
 

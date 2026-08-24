@@ -43,9 +43,10 @@ Symlink-, Traversal-, Receipt-, Backup-, Collision- oder Recovery-Prüfungen nic
 - Das vollständige normative Bundle ist inventarisiert; Dateien, vollständiger Bundledigest,
   Größe und Typ sowie geschlossene Manifest-, Katalog- und Graphreferenzen werden vor Aktivierung geprüft.
 - Target-, Entry-Parent-, Entry-, Installation-, Binding-Root-, Releases-Root-, Release- und
-  Local-Rules-Parent-Identitäten werden erfasst, soweit vorhanden im Receipt persistiert und vor
-  der jeweiligen Mutation erneut geprüft. Symlinkbehaftete oder nichtkanonische Pfade scheitern
-  fail-closed.
+  Local-Rules-Parent- sowie Backup-Root-Identitäten werden erfasst, soweit vorhanden im Receipt
+  persistiert und vor der jeweiligen Mutation erneut geprüft. Current-, Local-Rules-, Receipt-,
+  Lock- und Cleanup-Mutationen verwenden danach offene identitätsgeprüfte Directory-Handles und
+  einzelne Basenames. Symlinkbehaftete oder nichtkanonische Pfade scheitern fail-closed.
 - Backup und Readback erfolgen vor der produktiven Entrymutation. Atomare Renames ersetzen nur
   reguläre Dateien im validierten Parent.
 - Der Rollback-Detach verwendet einen receipt-eindeutigen Sibling-Namen im bereits inspizierten
@@ -59,6 +60,10 @@ Symlink-, Traversal-, Receipt-, Backup-, Collision- oder Recovery-Prüfungen nic
   ursprünglichen I/O-Fehler. Die enge Final-Component-Grenze oben gilt auch für diesen letzten
   Vergleich. Die
   receipt-spezifische Detach-Evidenz wird nicht pathname-basiert entfernt.
+- Vor der ersten produktiven Mutation übt eine reale Capability-Probe den nativen exklusiven
+  Rename-Vertrag auf den tatsächlich betroffenen Dateisystemen aus und entfernt ihre exklusiv
+  erzeugten Probeobjekte wieder handle-relativ. Load-, Syscall-, Flag- oder Filesystemfehler
+  blockieren damit, bevor ein Receipt oder Nutzerzustand verändert wird.
 - Receipt-Schema, targetgebundene Binding-ID, UUID, Backuproot, direkter SemVer-Releasepfad und
   der exakt manifestbestimmte Local-Rules-Pfad sind geschlossen. Recovery verlangt zwei im stabilen Zustand
   bytegleiche Receiptkopien; ausschließlich write-order-konforme Statussplits mit identischen unveränderlichen
@@ -89,10 +94,11 @@ Symlink-, Traversal-, Receipt-, Backup-, Collision- oder Recovery-Prüfungen nic
   vor Restore oder Entfernung erneut geprüft; der atomare Dateiersatz bleibt im validierten Parent.
 - **Local Rules:** Der erwartete Local-Rules-Parent ist receiptgebunden und wird vor jeder
   Restore-Mutation erneut geprüft. Shared-State- und Postimage-Prüfungen bleiben zusätzlich aktiv.
-- **Release-Cleanup:** Releases-Root und konkreter Release-Container sind receiptgebunden und werden
-  vor rekursivem Cleanup erneut geprüft. Ein beobachtbarer Containeraustausch blockiert
-  fail-closed; nur das oben beschriebene nicht atomar entscheidbare finale Kernelfenster bleibt
-  außerhalb der Garantie.
+- **Release-Cleanup:** Releases-Root und konkreter Release-Container sind receiptgebunden. Ein nach
+  Aktivierung nicht mehr sicher rekursiv löschbarer neuer Release wird nicht pathname-basiert
+  entfernt; stattdessen bleibt ein verifizierter unveränderlicher Recoveryzustand erhalten. Ein beobachtbarer
+  Containeraustausch blockiert fail-closed; nur das oben beschriebene nicht atomar entscheidbare
+  finale Kernelfenster bleibt außerhalb der Garantie.
 
 ## Residual Risks
 

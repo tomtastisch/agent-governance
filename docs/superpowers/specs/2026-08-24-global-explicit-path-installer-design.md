@@ -73,8 +73,11 @@ catchable signals are serialized through one rollback. Repeated rollback, instal
 uninstall, and recovery are idempotent. `SIGKILL`, power loss, and filesystem failure cannot be
 made fully atomic; a verified prepared receipt enables explicit fail-closed recovery.
 Expected identities for the entry parent, installation root, binding root, releases root, and any
-release or local-rules parent involved in restore are persisted in the receipt and revalidated on
-later recovery.
+release, local-rules parent, or backup root involved in restore are persisted in the receipt and
+revalidated on later recovery. Native file replace/remove and directory activation remain relative
+to those bound parents. A real no-clobber rename probe runs on the affected filesystems before
+productive mutation. A newly activated verified release is retained unreferenced after rollback
+rather than recursively deleted through a re-resolved pathname.
 
 ## Local rules
 

@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import { access, mkdir, open, readFile, rename, symlink, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { spawnSync } from "node:child_process";
+import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { secureCreateNoReplace, secureRenameNoReplace } from "../../src/native-filesystem.ts";
+import { probeNativeFilesystemCapability, secureCreateDirectory, secureCreateNoReplace, secureRemoveFile, secureRenameDirectoryNoReplace, secureRenameNoReplace, secureWriteFile } from "../../src/native-filesystem.ts";
 import { captureIdentity } from "../../src/filesystem.ts";
 import { createTestRoot } from "../fixtures/installer/workspace.ts";
 
@@ -93,9 +94,30 @@ test("native create rejects a substituted directory before writing foreign bytes
   await assert.rejects(secureCreateNoReplace({ directory, name: "entry.md", directoryIdentity: identity }, Buffer.from("created\n")), /identity changed/); assert.equal(await readFile(join(directory, "foreign.md"), "utf8"), "foreign\n"); await assert.rejects(access(join(directory, "entry.md")));
 });
 
+test("native directory creation remains bound to the validated parent", async () => {
+  const root = await createTestRoot("agent-governance-native-mkdir-swap-"); const parent = join(root, "parent"); const retired = join(root, "retired"); await mkdir(parent); const identity = await captureIdentity(parent);
+  await secureCreateDirectory({ directory: parent, name: "reserved", directoryIdentity: identity, onDirectoryBound: async () => { renameSync(parent, retired); mkdirSync(parent); writeFileSync(join(parent, "foreign.md"), "foreign\n"); } });
+  await access(join(retired, "reserved")); await assert.rejects(access(join(parent, "reserved"))); assert.equal(await readFile(join(parent, "foreign.md"), "utf8"), "foreign\n");
+});
+
 test("native create removes its exclusive partial file after an injected write failure", async () => {
   const root = await createTestRoot("agent-governance-native-create-failure-"); const directory = join(root, "directory"); await mkdir(directory); const repository = join(dirname(fileURLToPath(import.meta.url)), "..", ".."); const output = join(root, "failure.node");
   const includeCandidates = [join(dirname(process.execPath), "..", "include", "node"), "/usr/local/include/node", "/opt/homebrew/include/node", "/usr/include/node"]; let include: string | undefined; for (const candidate of includeCandidates) { try { await access(join(candidate, "node_api.h")); include = candidate; break; } catch { /* next local header root */ } } assert.notEqual(include, undefined);
   const platformFlags = process.platform === "darwin" ? ["-bundle", "-undefined", "dynamic_lookup"] : ["-shared", "-fPIC"]; const build = spawnSync(process.env.CC ?? "cc", ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", ...platformFlags, `-I${include!}`, "-DNODE_GYP_MODULE_NAME=agent_governance_fs", "-DAGENT_GOVERNANCE_TEST_FAIL_AFTER_CREATE=1", join(repository, "native", "agent_governance_fs.c"), "-o", output]); assert.equal(build.status, 0, build.stderr.toString());
   const binding = createRequire(import.meta.url)(output) as NativeTestBinding; const handle = await open(directory, "r"); try { const identity = await handle.stat({ bigint: true }); assert.throws(() => binding.secureCreateNoReplace(handle.fd, "entry.md", identity.dev, identity.ino, Buffer.from("content\n")), /write|input\/output|I\/O/i); await assert.rejects(access(join(directory, "entry.md"))); } finally { await handle.close(); }
+});
+
+test("native replace and remove remain bound to the validated parent across pathname swaps", async () => {
+  const root = await createTestRoot("agent-governance-native-file-parent-swap-"); const parent = join(root, "parent"); const retired = join(root, "retired"); await mkdir(parent); await writeFile(join(parent, "entry.json"), "trusted old\n"); const identity = await captureIdentity(parent); let swapped = false;
+  await secureWriteFile({ directory: parent, name: "entry.json", directoryIdentity: identity, onDirectoryBound: async () => { renameSync(parent, retired); mkdirSync(parent); writeFileSync(join(parent, "entry.json"), "foreign\n"); swapped = true; } }, Buffer.from("trusted new\n")); assert.equal(swapped, true); assert.equal(await readFile(join(retired, "entry.json"), "utf8"), "trusted new\n"); assert.equal(await readFile(join(parent, "entry.json"), "utf8"), "foreign\n");
+  await secureRemoveFile({ directory: retired, name: "entry.json", directoryIdentity: identity }); await assert.rejects(access(join(retired, "entry.json"))); assert.equal(await readFile(join(parent, "entry.json"), "utf8"), "foreign\n");
+});
+
+test("native directory activation remains bound to validated source and destination parents", async () => {
+  const root = await createTestRoot("agent-governance-native-directory-parent-swap-"); const sourceParent = join(root, "source"); const destinationParent = join(root, "destination"); const retiredSource = join(root, "source-retired"); const retiredDestination = join(root, "destination-retired"); await mkdir(sourceParent); await mkdir(destinationParent); await mkdir(join(sourceParent, "release")); await writeFile(join(sourceParent, "release", "marker"), "trusted\n"); const sourceIdentity = await captureIdentity(sourceParent); const destinationIdentity = await captureIdentity(destinationParent); const releaseIdentity = await captureIdentity(join(sourceParent, "release"));
+  await secureRenameDirectoryNoReplace({ sourceDirectory: sourceParent, sourceName: "release", sourceDirectoryIdentity: sourceIdentity, sourceObjectIdentity: releaseIdentity, destinationDirectory: destinationParent, destinationName: "release", destinationDirectoryIdentity: destinationIdentity, onDirectoriesBound: async () => { renameSync(sourceParent, retiredSource); renameSync(destinationParent, retiredDestination); mkdirSync(sourceParent); mkdirSync(destinationParent); } }); assert.equal(await readFile(join(retiredDestination, "release", "marker"), "utf8"), "trusted\n"); await assert.rejects(access(join(destinationParent, "release")));
+});
+
+test("native capability probe exercises the actual rename contract and leaves no artifact", async () => {
+  const root = await createTestRoot("agent-governance-native-probe-"); const identity = await captureIdentity(root); await probeNativeFilesystemCapability(root, identity); assert.deepEqual(await import("node:fs/promises").then(({ readdir }) => readdir(root)), []);
 });

@@ -147,6 +147,9 @@ class InstallBoundaryContract(unittest.TestCase):
         self.assertIn("docs/installer-threat-model.md", README)
         self.assertIn("Same-UID-Final-Component-Co-Writer", README)
         self.assertIn("Same-UID-Final-Component-Co-Writer", INSTALL)
+        self.assertIn("reale Capability-Probe", threat)
+        self.assertIn("verifizierter unveränderlicher Recoveryzustand erhalten", threat)
+        self.assertIn("Directory-Handles", README)
         for absolute_claim in ("race-free", "TOCTOU-proof", "tamper-proof", "atomic against all concurrent writers"):
             self.assertNotIn(absolute_claim, "\n".join((README, INSTALL, threat, architecture)).lower())
 

@@ -35,6 +35,9 @@ identische unveränderliche Receiptfelder recoverbar.
 werden serialisiert behandelt (Exit 130 beziehungsweise 143); `SIGKILL`, Stromausfall und
 Dateisystemdefekte können nur durch den verifizierten Recoveryvertrag, nicht durch eine falsche
 Atomaritätsbehauptung adressiert werden.
+Vor der ersten produktiven Mutation führt der Installer auf Entry- und Installationsdateisystem
+eine rückstandsfreie native No-Clobber-Probe aus. Current-, Local-Rules-, Receipt-, Lock- und
+Release-Aktivierungsmutationen bleiben danach an identitätsgeprüfte Parent-dirfds gebunden.
 
 Der Managed Block beginnt mit `<!-- BEGIN AGENT_GOVERNANCE_MANAGED_V1 -->` und endet mit
 `<!-- END AGENT_GOVERNANCE_MANAGED_V1 -->`. Außenbytes und vorhandene LF-/CRLF-Zeilenenden bleiben

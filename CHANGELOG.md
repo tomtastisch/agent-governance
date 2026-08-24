@@ -35,6 +35,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Recovery- und Cleanup-Mutationen fail-closed blockieren.
 - Ein partiell fehlgeschlagenes natives Exclusive-Create entfernt seine weiterhin identisch
   beobachtete eigene Datei dirfd-relativ und bewahrt den ursprünglichen I/O-Fehler.
+- Current-, Local-Rules-, Receipt-, Lock- und Release-Aktivierungssinks mutieren ausschließlich
+  relativ zu geöffneten identitätsgeprüften Parent-dirfds; Backup-Root-Identität ist receiptgebunden.
+- Eine reale Rename-Capability-Probe läuft auf den betroffenen Dateisystemen vor der ersten
+  produktiven Mutation. Neue verifizierte Releases bleiben bei Rollback als harmlose
+  unreferenzierte Recoveryartefakte erhalten, statt rekursiv pathname-basiert gelöscht zu werden.
 - Update-Pläne weisen die tatsächlich in ein neues Release übernommenen lokalen Regeln aus.
 - Plan- und Dry-Run-Ausgaben benennen für explizite lokale Regeln die tatsächlich manifestgebundene
   Markdown-Datei statt nur deren übergeordnetes Verzeichnis.

@@ -287,6 +287,9 @@ Logs. Abwehr sind geschlossenes Inventar, Digest- und Typprüfung, kanonische ex
 Identity-Rechecks, Backup-Readback, atomare Dateiwechsel, dirfd-relative exklusive Native-Renames,
 geschlossene Receipts und fail-closed Zustände. Fehlt die Native-Capability auf einer mutierenden
 Plattform, bricht der Installer vor produktiver Mutation ab; es gibt keinen pathname-basierten Fallback.
+Produktive Current-, Local-Rules-, Receipt-, Lock- und Release-Aktivierungen binden ihre Parent-
+Directories über offene, identitätsgeprüfte Directory-Handles; eine reale Rename-Probe prüft den
+benötigten Syscall-/Filesystemvertrag vor der ersten produktiven Mutation.
 Der genaue In-Scope-Vertrag und seine einzige enge atomare Plattformgrenze sind im
 [Installer-Threat-Model](docs/installer-threat-model.md) beschrieben: Ein aktiv bösartiger
 Same-UID-Co-Writer, der mit eigener Namespace-Schreibberechtigung die finale Namenskomponente im
