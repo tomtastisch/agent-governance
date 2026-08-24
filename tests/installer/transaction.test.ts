@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { access, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { mkdirSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import test from "node:test";
 import { InstallerTransaction } from "../../src/transaction.ts";
 import { InstallerFailure, InterruptedFailure } from "../../src/errors.ts";
@@ -180,9 +180,9 @@ test("current and local-rules postimages are verified before commit", async () =
 
 test("entry, current, and local-rules postimages are jointly revalidated after both commit receipts", async () => {
   for (const resource of ["entry", "current", "local-rules"] as const) {
-    const f = await fixture(); const rules = join(f.root, `final-${resource}.md`); await writeFile(rules, "rules\n"); const concurrent = Buffer.from(`concurrent ${resource}\n`); let changedPath = "";
-    const tx = new InstallerTransaction({ ...f.request, localRules: rules, onCheckpoint: (checkpoint) => { if (checkpoint !== "afterCommitTopReceipt") return; const binding = readdirSync(join(f.installationRoot, "bindings"))[0]!; changedPath = resource === "entry" ? f.entry : resource === "current" ? join(f.installationRoot, "bindings", binding, "current.json") : join(f.installationRoot, "releases", "1.0.0-rc.1", "bundle", "agent-governance", "local", "user-rules.md"); writeFileSync(changedPath, concurrent); } });
-    await assert.rejects(tx.install(), (error: unknown) => error instanceof InstallerFailure && error.outcome === "ROLLBACK_FAILED"); assert.deepEqual(await readFile(changedPath), concurrent);
+    const f = await fixture(); const rules = join(f.root, `final-${resource}.md`); await writeFile(rules, "rules\n"); const concurrent = Buffer.from(`concurrent ${resource}\n`); let changedPath = ""; let applied = Buffer.alloc(0);
+    const tx = new InstallerTransaction({ ...f.request, localRules: rules, onCheckpoint: (checkpoint) => { if (checkpoint !== "afterCommitTopReceipt") return; const binding = readdirSync(join(f.installationRoot, "bindings"))[0]!; changedPath = resource === "entry" ? f.entry : resource === "current" ? join(f.installationRoot, "bindings", binding, "current.json") : join(f.installationRoot, "releases", "1.0.0-rc.1", "bundle", "agent-governance", "local", "user-rules.md"); applied = readFileSync(changedPath); writeFileSync(changedPath, concurrent); } });
+    await assert.rejects(tx.install(), (error: unknown) => error instanceof InstallerFailure && error.outcome === "ROLLBACK_FAILED"); assert.deepEqual(await readFile(changedPath), concurrent); assert.equal((await tx.status()).state, "RECOVERY_REQUIRED"); await writeFile(changedPath, applied); assert.equal((await tx.rollback()).state, "ABSENT");
   }
 });
 

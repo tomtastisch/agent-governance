@@ -148,6 +148,8 @@ write-order-konformen benachbarten Zustände und bei identischen unveränderlich
 akzeptiert. Receipts wechseln geschlossen zwischen `PREPARED`, `COMMITTED` und `ROLLED_BACK`. Ein
 `PREPARED`-Zustand blockiert weitere Mutationen bis zum expliziten Rollback. Mutationen desselben
 Installationsroots sind durch einen ownergebundenen fail-closed Root-Lock gegenseitig ausgeschlossen;
+eine nach beiden Commit-Receipt-Schreibvorgängen erkannte Endzustandsabweichung wird in sicherer
+Schreibreihenfolge wieder als `PREPARED` und damit persistent recovery-pflichtig markiert.
 Rollback darf einen geschlossen validierten Lock eines nachweislich nicht mehr lebenden Prozesses atomar übernehmen. Rollback entfernt
 keinen Release und setzt keine lokalen Regeln zurück, solange eine andere aktive Bindung diesen Shared
 State referenziert. Receiptgebundene Digests, kanonische Backup-Ahnen und vollständige Vorprüfung

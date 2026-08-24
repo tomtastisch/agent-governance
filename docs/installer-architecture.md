@@ -38,7 +38,9 @@ Regeln vor einem veralteten Rollback. Ein `PREPARED`-Receipt blockiert neue Muta
 bis Recovery ausgeführt wurde. Ein gemeinsamer Installationsroot verwaltet mehrere explizite
 Target-/Entry-Bindings unabhängig. Top-Level- und Backup-Receipt sind im stabilen Zustand bytegleich;
 write-order-konforme Zwischenzustände mit identischen unveränderlichen Feldern erzwingen Recovery und
-werden durch den idempotenten Rollback geschlossen.
+werden durch den idempotenten Rollback geschlossen. Eine erst nach beiden Commit-Schreibvorgängen
+erkannte gemeinsame Postimage-Abweichung demotiert zuerst das Backup- und danach das Top-Level-Receipt
+crash-sicher auf `PREPARED`, bevor ein Rollback versucht wird.
 
 ## Grenzen und Migration
 
