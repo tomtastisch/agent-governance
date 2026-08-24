@@ -52,6 +52,11 @@ harnessspezifischen Parser und keine Runtime-Abhängigkeiten. Die aktive Struktu
 └── backups/<binding-id>/<transaction-id>/
 ```
 
+Ein erfolgreicher Rollback behält zusätzlich neben der Entry-Datei die receipt-spezifische,
+zugriffsbeschränkte Recovery-Evidenz
+`.<entry>.agent-governance-<transaction-id>.restore/entry.bin`. Sie verhindert eine unsichere
+pathname-basierte Löschung und wird von späteren Operationen nicht implizit bereinigt.
+
 Die normative Einstiegskette im Bundle bleibt:
 
 ```text
@@ -152,7 +157,9 @@ eine nach beiden Commit-Receipt-Schreibvorgängen erkannte Endzustandsabweichung
 Schreibreihenfolge wieder als `PREPARED` und damit persistent recovery-pflichtig markiert.
 Rollback darf einen geschlossen validierten Lock eines nachweislich nicht mehr lebenden Prozesses atomar übernehmen. Rollback entfernt
 keinen Release und setzt keine lokalen Regeln zurück, solange eine andere aktive Bindung diesen Shared
-State referenziert. Receiptgebundene Digests, kanonische Backup-Ahnen und vollständige Vorprüfung
+State referenziert. Die receipt-spezifische Detach-Evidenz neben der Entry-Datei bleibt bewusst
+erhalten und kann bei wiederholten Rollbacks anwachsen; Cleanup ist eine explizite Betreiberentscheidung.
+Receiptgebundene Digests, kanonische Backup-Ahnen und vollständige Vorprüfung
 schützen Entry, Current-Metadaten und lokale Regeln vor partieller oder veralteter Wiederherstellung; jede Ressource
 wird unmittelbar vor und nach ihrem Restore erneut geprüft. Das erste von
 `SIGINT` oder `SIGTERM` wird gelatcht und führt zu genau einem Rollback. `SIGKILL`, Stromausfall

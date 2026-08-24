@@ -227,6 +227,12 @@ test("rollback never overwrites a detach-path collision", async () => {
   await assert.rejects(colliding.rollback()); assert.deepEqual(await readFile(join(dirname(f.entry), detached!)), foreign);
 });
 
+test("rollback never moves the entry through a substituted reserved detach root", async () => {
+  const f = await fixture(); const applied = Buffer.from("original\n"); await writeFile(f.entry, applied); await new InstallerTransaction(f.request).install(); const installed = await readFile(f.entry); let moved: string | undefined;
+  const substituted = new InstallerTransaction({ ...f.request, onCheckpoint: (checkpoint) => { if (checkpoint !== "beforeRollbackEntryDetachMove") return; const detached = readdirSync(dirname(f.entry)).find((name) => name.startsWith(`.${basename(f.entry)}.agent-governance-`) && name.endsWith(".restore")); assert.notEqual(detached, undefined); moved = `${detached}.moved`; renameSync(join(dirname(f.entry), detached!), join(dirname(f.entry), moved)); symlinkSync(join(dirname(f.entry), moved), join(dirname(f.entry), detached!)); } });
+  await assert.rejects(substituted.rollback()); assert.deepEqual(await readFile(f.entry), installed); assert.notEqual(moved, undefined); assert.deepEqual(readdirSync(join(dirname(f.entry), moved!)), []);
+});
+
 test("rollback never follows a substituted detach root during finalization", async () => {
   const f = await fixture(); await writeFile(f.entry, "original\n"); await new InstallerTransaction(f.request).install(); let moved: string | undefined;
   const substituted = new InstallerTransaction({ ...f.request, onCheckpoint: (checkpoint) => { if (checkpoint !== "beforeRollbackDetachFinalization") return; const detached = readdirSync(dirname(f.entry)).find((name) => name.startsWith(`.${basename(f.entry)}.agent-governance-`) && name.endsWith(".restore")); assert.notEqual(detached, undefined); moved = `${detached}.moved`; renameSync(join(dirname(f.entry), detached!), join(dirname(f.entry), moved)); symlinkSync(join(dirname(f.entry), moved), join(dirname(f.entry), detached!)); } });

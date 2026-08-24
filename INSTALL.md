@@ -33,7 +33,10 @@ Der Managed Block beginnt mit `<!-- BEGIN AGENT_GOVERNANCE_MANAGED_V1 -->` und e
 `<!-- END AGENT_GOVERNANCE_MANAGED_V1 -->`. Außenbytes und vorhandene LF-/CRLF-Zeilenenden bleiben
 erhalten; doppelte, unvollständige, fremde oder manipulierte Marker scheitern fail-closed. Update
 ersetzt, Uninstall entfernt ausschließlich diesen Block; Rollback stellt die vollständige vorherige
-Datei wieder her.
+Datei wieder her. Zur crash-sicheren, konkurrenzfesten Entry-Wiederherstellung reserviert Rollback
+neben der Entry-Datei ein receipt-spezifisches `.<entry>.agent-governance-<transaction-id>.restore/`
+mit Modus `0700`. Dessen identitätsgebundene `entry.bin` bleibt nach erfolgreichem Rollback als
+Recovery-Evidenz erhalten; sie wird weder von Uninstall noch durch spätere Transaktionen implizit gelöscht.
 
 Veröffentlichung erfolgt zuerst als `1.0.0-rc.N` unter `next`, nach öffentlichem Readback,
 Provenance- und Fresh-Install-Prüfung separat als `1.0.0` unter `latest`. Eine lokale produktive
