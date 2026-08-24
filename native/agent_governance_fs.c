@@ -130,9 +130,16 @@ static napi_value secure_rename_directory_no_replace(napi_env env, napi_callback
 static void cleanup_exclusive_create(int directory_fd, const char *name, const struct stat *created) {
   struct stat visible;
   if (fstatat(directory_fd, name, &visible, AT_SYMLINK_NOFOLLOW) == 0 && S_ISREG(visible.st_mode) &&
-      visible.st_dev == created->st_dev && visible.st_ino == created->st_ino && visible.st_mode == created->st_mode) {
+      visible.st_dev == created->st_dev && visible.st_ino == created->st_ino && visible.st_mode == created->st_mode &&
+      visible.st_size == created->st_size && stat_mtime_ns(&visible) == stat_mtime_ns(created) &&
+      stat_ctime_ns(&visible) == stat_ctime_ns(created)) {
     (void)unlinkat(directory_fd, name, 0);
   }
+}
+
+static void refresh_cleanup_snapshot(int output, struct stat *snapshot) {
+  struct stat current;
+  if (fstat(output, &current) == 0 && S_ISREG(current.st_mode)) *snapshot = current;
 }
 
 static napi_value secure_create_no_replace(napi_env env, napi_callback_info info) {
@@ -185,6 +192,7 @@ static napi_value secure_create_no_replace(napi_env env, napi_callback_info info
     if (count <= 0) {
       if (count == 0) errno = EIO;
       int saved = errno;
+      refresh_cleanup_snapshot(output, &created);
       cleanup_exclusive_create(directory_fd, name, &created);
       close(output);
       errno = saved;
@@ -195,15 +203,28 @@ static napi_value secure_create_no_replace(napi_env env, napi_callback_info info
   }
   if (fsync(output) != 0) {
     int saved = errno;
+    refresh_cleanup_snapshot(output, &created);
     cleanup_exclusive_create(directory_fd, name, &created);
     close(output);
     errno = saved;
     throw_errno(env, "directory-relative file sync");
     return NULL;
   }
+  if (fstat(output, &created) != 0 || !S_ISREG(created.st_mode)) {
+    int saved = errno == 0 ? ESTALE : errno;
+    close(output);
+    errno = saved;
+    throw_errno(env, "exclusive create final snapshot validation");
+    return NULL;
+  }
   int close_result = close(output);
 #ifdef AGENT_GOVERNANCE_TEST_FAIL_CREATE_CLOSE
   if (close_result == 0) { errno = EIO; close_result = -1; }
+#endif
+#ifdef AGENT_GOVERNANCE_TEST_MUTATE_CREATE_CLOSE
+  int foreign = openat(directory_fd, name, O_WRONLY | O_TRUNC | O_NOFOLLOW);
+  if (foreign >= 0) { (void)write(foreign, "foreign bytes\n", 14); (void)fsync(foreign); (void)close(foreign); }
+  errno = EIO;
 #endif
   if (close_result != 0) {
     int saved = errno;
