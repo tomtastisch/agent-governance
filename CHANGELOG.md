@@ -17,8 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Rollback validiert den Entry unmittelbar vor der Wiederherstellung erneut und überschreibt keine
-  zwischenzeitlich geänderten Nutzerbytes.
+- Rollback bindet die Entry-Wiederherstellung per atomarem Detach und No-Replace-Aktivierung an
+  das validierte Postimage und überschreibt keine zwischenzeitlich geänderten Nutzerbytes.
 - Plan- und Dry-Run-Ausgaben benennen für explizite lokale Regeln die tatsächlich manifestgebundene
   Markdown-Datei statt nur deren übergeordnetes Verzeichnis.
 
