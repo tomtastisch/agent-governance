@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 
 import { verifyRelease } from "../../src/release.ts";
+import { createTestRoot } from "../fixtures/installer/workspace.ts";
 
 async function fixture(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "agent-governance-release-"));
+  const root = await createTestRoot("agent-governance-release-");
   await mkdir(join(root, "bundle", "agent-governance"), { recursive: true });
   const files: Record<string, string> = {
     "VERSION": "0.6.0\n",

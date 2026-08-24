@@ -1,14 +1,19 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, symlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, realpath, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 
 import { validateAllowedPath } from "../../src/filesystem.ts";
+import { createTestRoot } from "../fixtures/installer/workspace.ts";
 
 async function root(): Promise<string> {
-  return mkdtemp(join(tmpdir(), "agent-governance-fs-"));
+  return createTestRoot("agent-governance-fs-");
 }
+
+test("installer test roots are canonical before production path validation", async () => {
+  const fixtureRoot = await root();
+  assert.equal(fixtureRoot, await realpath(fixtureRoot));
+});
 
 test("filesystem rejects relative paths and root escape", async () => {
   const allowed = await root();

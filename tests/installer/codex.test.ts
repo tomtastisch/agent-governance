@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 
 import { inspectCodex, classifyCodex } from "../../src/codex.ts";
+import { createTestRoot } from "../fixtures/installer/workspace.ts";
 
 async function home(): Promise<string> {
-  return mkdtemp(join(tmpdir(), "agent-governance-codex-"));
+  return createTestRoot("agent-governance-codex-");
 }
 
 test("Codex classifies empty home as FRESH", async () => {

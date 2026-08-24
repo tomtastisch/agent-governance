@@ -1,16 +1,17 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 
 import { runCli } from "../../src/cli.ts";
 import { InstallerFailure } from "../../src/errors.ts";
+import { InterruptedFailure } from "../../src/errors.ts";
 import { InstallerTransaction } from "../../src/transaction.ts";
+import { createTestRoot } from "../fixtures/installer/workspace.ts";
 
 async function roots(): Promise<{ allowed: string; home: string; release: string; install: string }> {
-  const allowed = await mkdtemp(join(tmpdir(), "agent-governance-cli-"));
+  const allowed = await createTestRoot("agent-governance-cli-");
   const home = join(allowed, "Codex Home With Spaces");
   const release = join(allowed, "release");
   const install = join(home, "governance");
@@ -83,6 +84,26 @@ test("CLI maps structured installer failures to their stable exit codes", async 
       code: "VERIFY",
       error: "failed",
     });
+  } finally {
+    InstallerTransaction.prototype.install = original;
+  }
+});
+
+test("CLI maps catchable signals to conventional deterministic exit codes", async () => {
+  const original = InstallerTransaction.prototype.install;
+  try {
+    for (const [signal, expected] of [["SIGINT", 130], ["SIGTERM", 143]] as const) {
+      InstallerTransaction.prototype.install = async () => {
+        throw new InterruptedFailure(signal, "activate", "SUCCEEDED");
+      };
+      const r = await roots();
+      const errors: string[] = [];
+      assert.equal(await runCli(args("install", r), () => {}, (value) => errors.push(value)), expected);
+      const payload = JSON.parse(errors[0]!) as Record<string, unknown>;
+      assert.equal(payload.outcome, "INTERRUPTED");
+      assert.equal(payload.signal, signal);
+      assert.equal(payload.rollbackStatus, "SUCCEEDED");
+    }
   } finally {
     InstallerTransaction.prototype.install = original;
   }
