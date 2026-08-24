@@ -159,8 +159,10 @@ fail-closed sichtbar.
 
 ## Lokale persönliche Regeln
 
-`--local-rules` erwartet eine explizite absolute, kanonische, reguläre Nicht-Symlink-Datei. Das
-Ziel wird ausschließlich aus `local_rules` in `bundle/agent-governance/manifest.toml` abgeleitet.
+`--local-rules` erwartet eine explizite absolute, kanonische, reguläre Markdown-Nicht-Symlink-Datei
+mit gültigem UTF-8; von rohen C0-/DEL-Kontrollzeichen sind nur TAB, LF und CR zulässig. Bereits
+installierte Regeln werden bei Status, Verify und Übernahme erneut gegen diesen Vertrag geprüft.
+Das Ziel wird ausschließlich aus `local_rules` in `bundle/agent-governance/manifest.toml` abgeleitet.
 Die private Quelldatei wird nicht committed und nicht in das öffentliche Releaseartefakt
 aufgenommen. Ausgaben enthalten weder Inhalt noch Fragmente, keine Hashes, Größen, Zeilenzahlen
 oder andere Fingerprints dieser Regeln.

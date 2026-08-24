@@ -70,9 +70,11 @@ made fully atomic; a verified prepared receipt enables explicit fail-closed reco
 ## Local rules
 
 `--local-rules` is optional and explicit. It is copied only into the installed bundle path declared
-by the manifest, must be a regular non-symlink file, and is never logged or included in output
-fingerprints. Absence is valid. Updates preserve the installed local-rules content unless a new
-explicit source is supplied.
+by the manifest, must be an absolute canonical regular non-symlink Markdown file, and is never
+logged or included in output fingerprints. It must be valid UTF-8 and may contain only TAB, LF,
+and CR from the raw C0/DEL controls. Installed rules are revalidated before status, verification,
+or update carry-forward. Absence is valid. Updates preserve the installed local-rules content unless
+a new explicit source is supplied.
 
 ## Evidence and compatibility
 

@@ -36,7 +36,9 @@ Dateisystemgrenzen ist nicht vollständig beherrschbar.
   Prozess-Liveness-Check. Vor Rollback werden Backup-Ahnen, Typen, receiptgebundene Digests, sämtliche
   Pre-/Postimages und andere aktive Bindungen geprüft; gemeinsam referenzierte Releases und lokale
   Regeln bleiben erhalten, und veraltete Zustände blockieren vor der ersten Restore-Mutation.
-- Private lokale Regeln werden nicht ausgegeben; Secret-Patterns werden im Tarball-Gate geprüft.
+- Private lokale Regeln werden nicht ausgegeben. Ihre explizite Quelle muss eine kanonische
+  Markdown-Datei sein und wird ebenso wie bereits installierte Regeln fatal auf UTF-8 und auf den
+  Kontrollzeichenvertrag geprüft; Secret-Patterns werden im Tarball-Gate geprüft.
 - Inventarisierte normative Markdown- und TOML-Quellen werden mit fataler UTF-8-Dekodierung geprüft;
   von den rohen C0-/DEL-Kontrollzeichen sind ausschließlich TAB, LF und CR zulässig. Manifestreferenzen
   akzeptieren nur `.toml` für Kataloge sowie `.md` für Module, Rollen und lokale Regeln; TOML wird

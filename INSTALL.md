@@ -14,7 +14,9 @@ keinen Adapter, keine Hook-/MCP-/Approvalmutation und keine Projektinstallation.
 Die Commands `inspect`, `plan`, `install`, `verify`, `status`, `update`, `uninstall` und `rollback`
 verwenden denselben expliziten Vertrag. `--dry-run` mutiert nichts, `--json` liefert Schema 1 und
 `--non-interactive` erlaubt vollständige Automation. `--local-rules` bezeichnet optional eine
-absolute kanonische reguläre Datei; ihr Inhalt erscheint weder in Ausgabe noch Evidenzfingerprints.
+absolute kanonische reguläre Markdown-Datei. Sie muss gültiges UTF-8 enthalten; von rohen
+C0-/DEL-Kontrollzeichen sind nur TAB, LF und CR zulässig. Ihr Inhalt erscheint weder in Ausgabe
+noch Evidenzfingerprints.
 
 Vor der Entry-Mutation erzeugt der Installer ein Backup und verifiziert es per Readback. Releases
 werden unter `<installation-root>/releases/<version>/bundle` vollständig inventar- und
