@@ -79,8 +79,10 @@ export function parseClosedToml(text: string, label: string): TomlTable {
       }
       const end = content.indexOf('"""');
       if (content.slice(end + 3).trim() !== "") throw new Error(`${label} contains trailing TOML content`);
-      if (content.slice(0, end).includes("\\")) throw new Error(`${label} contains unsupported or invalid TOML multiline escape syntax`);
-      table[key] = content.slice(0, end);
+      const multiline = content.slice(0, end);
+      if (multiline.includes("\\")) throw new Error(`${label} contains unsupported or invalid TOML multiline escape syntax`);
+      if (/[\u0000-\u0008\u000b-\u001f\u007f]/.test(multiline)) throw new Error(`${label} contains an invalid TOML control character`);
+      table[key] = multiline;
       continue;
     }
     if (raw.startsWith("[") && !raw.includes("]")) {
@@ -125,7 +127,7 @@ async function safeIndexedFile(root: string, path: string, inventory: ReadonlyMa
   const absolute = join(root, path);
   const stat = await lstat(absolute);
   if (stat.isSymbolicLink() || !stat.isFile() || await realpath(absolute) !== absolute) throw new Error(`${label} must be a canonical regular non-symlink file`);
-  return readFile(absolute, "utf8");
+  try { return new TextDecoder("utf-8", { fatal: true }).decode(await readFile(absolute)); } catch { throw new Error(`${label} contains invalid UTF-8 encoding`); }
 }
 
 function validateVocabulary(catalog: TomlTable, name: "triggers" | "policy_tags" | "scopes"): Set<string> {

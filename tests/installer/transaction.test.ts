@@ -224,6 +224,12 @@ test("rollback revalidates local rules immediately before restoring them", async
   const tx = new InstallerTransaction({ ...f.request, onCheckpoint: (checkpoint) => { if (checkpoint === "afterRollbackCurrent") writeFileSync(target, concurrent); } }); await assert.rejects(tx.rollback(), /local rules changed|stale shared state/); assert.deepEqual(await readFile(target), concurrent);
 });
 
+test("rollback keeps its receipt recoverable when a final joint postimage changes", async () => {
+  const f = await fixture(); await writeFile(f.entry, "original\n"); await new InstallerTransaction(f.request).install(); const stateRoot = await bindingStateRoot(f.installationRoot); const currentPath = join(stateRoot, "current.json"); const receiptPath = join(stateRoot, "last-transaction.json"); const concurrent = Buffer.from("late concurrent current\n");
+  const tx = new InstallerTransaction({ ...f.request, onCheckpoint: (checkpoint) => { if (checkpoint === "afterRollbackCurrent") writeFileSync(currentPath, concurrent); } }); await assert.rejects(tx.rollback(), /current metadata|postimage|rollback verification/); assert.deepEqual(await readFile(currentPath), concurrent); assert.equal(JSON.parse(await readFile(receiptPath, "utf8")).status, "COMMITTED");
+  await rm(currentPath); assert.equal((await new InstallerTransaction(f.request).rollback()).state, "FRESH"); assert.equal(await readFile(f.entry, "utf8"), "original\n");
+});
+
 test("rollback recovers a commit receipt split between adjacent statuses", async () => {
   const f = await fixture(); await writeFile(f.entry, "original\n"); let split = false; const tx = new InstallerTransaction({ ...f.request, faultDuringRollback: true, onCheckpoint: (checkpoint) => { if (checkpoint === "afterCommitTopReceipt") { split = true; throw new Error("injected commit receipt split"); } } });
   await assert.rejects(tx.install(), (error: unknown) => error instanceof InstallerFailure && error.outcome === "ROLLBACK_FAILED"); assert.equal(split, true); assert.equal((await new InstallerTransaction(f.request).status()).state, "RECOVERY_REQUIRED"); assert.equal((await new InstallerTransaction(f.request).rollback()).state, "FRESH"); assert.equal(await readFile(f.entry, "utf8"), "original\n");

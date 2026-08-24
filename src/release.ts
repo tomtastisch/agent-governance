@@ -92,7 +92,7 @@ export async function verifyRelease(releaseRoot: string): Promise<VerifiedReleas
   }
   await walk(join(releaseRoot, "bundle"));
   const expectedBundleFiles = [...entries.keys()].filter((path) => path.startsWith("bundle/")).sort();
-  const manifest = (await safeRegularFile(join(releaseRoot, "bundle", "agent-governance", "manifest.toml"))).toString("utf8");
+  let manifest: string; try { manifest = new TextDecoder("utf-8", { fatal: true }).decode(await safeRegularFile(join(releaseRoot, "bundle", "agent-governance", "manifest.toml"))); } catch { throw new Error("release manifest contains invalid UTF-8 encoding"); }
   const contract = await validateGovernanceContract(join(releaseRoot, "bundle", "agent-governance"), manifest, entries);
   const localRelative = contract.localRulesPath;
   const knownInventoryFiles = new Set([
