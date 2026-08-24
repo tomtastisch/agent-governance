@@ -20,9 +20,50 @@ permissions:
   id-token: write
 
 jobs:
+  native-prebuild:
+    name: Native prebuild (${{ matrix.target }})
+    if: github.ref == 'refs/heads/main'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, target: linux-x64 }
+          - { os: ubuntu-24.04-arm, target: linux-arm64 }
+          - { os: macos-15-intel, target: darwin-x64 }
+          - { os: macos-15, target: darwin-arm64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: refs/heads/main
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.11"
+      - name: Verify signed tag and build its native artifact
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          python3 tools/release_check.py tag "$RELEASE_TAG"
+          git checkout --detach "$RELEASE_TAG"
+          npm ci --ignore-scripts
+          npm run build:native
+          test "$(node -p 'process.platform+"-"+process.arch')" = "${{ matrix.target }}"
+          node --experimental-strip-types --test tests/installer/native-filesystem.test.ts
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ matrix.target }}
+          path: prebuilds/${{ matrix.target }}/agent_governance_fs.node
+          if-no-files-found: error
+
   publish:
     name: Verify signed tag and publish with npm OIDC
     if: github.ref == 'refs/heads/main'
+    needs: native-prebuild
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -37,6 +78,9 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.11"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: prebuilds
       - name: Install exact OIDC-capable npm CLI
         run: npm install --global npm@12.0.2 --ignore-scripts
       - name: Verify signed tag from trusted main and select immutable source
@@ -58,13 +102,14 @@ jobs:
           npm run typecheck
           npm run lint
           npm test
-          npm run build
+          node -e "require('node:fs').rmSync('dist',{recursive:true,force:true})"
+          ./node_modules/.bin/tsc -p tsconfig.build.json
           python3 -m unittest discover -s tests -v
           python3 tools/release_manifest.py check
           python3 tools/release_check.py tree
           npm audit --audit-level=high
           npm run license:check
-          npm run pack:check
+          REQUIRE_ALL_NATIVE_PREBUILDS=1 npm run pack:check
           npm run test:package
           tests/e2e/run_installer_fixture.sh
           tests/e2e/run_neutral_harness.sh

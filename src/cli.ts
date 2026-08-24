@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
+import { realpathSync } from "node:fs";
 import { dirname } from "node:path";
 import { COMMANDS, EXIT_CODES, exitCodeFor, type InstallerCommand, type InstallerRequest } from "./contracts.ts";
 import { InstallerFailure, InterruptedFailure } from "./errors.ts";
@@ -22,4 +23,4 @@ export async function runCli(argv: readonly string[], out: Writer = console.log,
   try { const transaction = new InstallerTransaction(parsed.request); const result = parsed.command === "inspect" ? await transaction.inspect() : parsed.command === "status" ? await transaction.status() : parsed.command === "plan" ? await transaction.plan() : parsed.command === "verify" ? await transaction.verify() : parsed.command === "install" ? await transaction.install() : parsed.command === "update" ? await transaction.update() : parsed.command === "uninstall" ? await transaction.uninstall() : await transaction.rollback(); out(parsed.json ? JSON.stringify(result) : `${result.outcome}: ${result.state} (${result.phase})`); return exitCodeFor(result.outcome); }
   catch (cause) { if (cause instanceof InterruptedFailure) { error(JSON.stringify({ schemaVersion: 1, outcome: cause.outcome, phase: cause.phase, resourceId: cause.resourceId, rollbackStatus: cause.rollbackStatus, code: cause.code, signal: cause.signal, error: cause.message })); return cause.exitCode; } if (cause instanceof InstallerFailure) { error(JSON.stringify({ schemaVersion: 1, outcome: cause.outcome, phase: cause.phase, resourceId: cause.resourceId, rollbackStatus: cause.rollbackStatus, code: cause.code, error: cause.message })); return exitCodeFor(cause.outcome); } error(JSON.stringify({ schemaVersion: 1, outcome: "UNSAFE_STATE", error: (cause as Error).message })); return EXIT_CODES.UNSAFE_STATE; }
 }
-if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) process.exitCode = await runCli(process.argv.slice(2));
+if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) process.exitCode = await runCli(process.argv.slice(2));

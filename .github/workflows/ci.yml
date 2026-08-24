@@ -15,6 +15,65 @@ permissions:
   contents: read
 
 jobs:
+  native-platform:
+    name: Native filesystem (${{ matrix.target }}, Node ${{ matrix.node }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, target: linux-x64, node: "24" }
+          - { os: ubuntu-24.04-arm, target: linux-arm64, node: "24" }
+          - { os: macos-15-intel, target: darwin-x64, node: "24" }
+          - { os: macos-15, target: darwin-arm64, node: "24" }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: ${{ matrix.node }}
+          package-manager-cache: false
+      - name: Build and exercise the native security primitive
+        run: |
+          npm ci --ignore-scripts
+          npm run build:native
+          test "$(node -p 'process.platform+"-"+process.arch')" = "${{ matrix.target }}"
+          node --experimental-strip-types --test tests/installer/native-filesystem.test.ts
+          file "prebuilds/${{ matrix.target }}/agent_governance_fs.node"
+          if test "$(uname -s)" = Darwin; then
+            nm -gU "prebuilds/${{ matrix.target }}/agent_governance_fs.node"
+            otool -L "prebuilds/${{ matrix.target }}/agent_governance_fs.node"
+          else
+            nm -gD "prebuilds/${{ matrix.target }}/agent_governance_fs.node"
+            readelf -h -d "prebuilds/${{ matrix.target }}/agent_governance_fs.node"
+            ldd "prebuilds/${{ matrix.target }}/agent_governance_fs.node"
+          fi
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ matrix.target }}
+          path: prebuilds/${{ matrix.target }}/agent_governance_fs.node
+          if-no-files-found: error
+
+  native-package:
+    name: Package all native platforms
+    needs: native-platform
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: prebuilds
+      - name: Assemble and consume the complete native package
+        run: |
+          npm ci --ignore-scripts
+          ./node_modules/.bin/tsc -p tsconfig.build.json
+          file prebuilds/*/agent_governance_fs.node
+          REQUIRE_ALL_NATIVE_PREBUILDS=1 npm run pack:check
+          npm run test:package
+
   installer-package:
     name: Installer package (${{ matrix.os }})
     strategy:

@@ -9,17 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Keine.
+- Eine repo-eigene Node-API-C-Primitive mit nativen Darwin-/Linux-Prebuilds für arm64 und x64.
 
 ### Changed
 
-- Keine.
+- Mutierende Installeroperationen prüfen die native Capability vor produktiver Mutation; ein
+  fehlendes oder nicht unterstütztes Binary besitzt keinen unsicheren Pathname-Fallback.
 
 ### Fixed
 
 - Rollback bindet die Entry-Wiederherstellung per exklusiv reserviertem, recoveryfähigem
   Same-Filesystem-Detach an das validierte Postimage und behält dessen receipt-spezifische
   Evidenz bei; zwischenzeitlich geänderte Nutzerbytes werden nicht überschrieben oder gelöscht.
+- Der Entry-Detach verwendet offene Directory-Handles und atomaren No-Replace-Rename
+  (`renameat2/RENAME_NOREPLACE` beziehungsweise `renameatx_np/RENAME_EXCL`), sodass ein Austausch
+  des sichtbaren Reservation-Pfads weder fremde Ersatzbytes beschreibt noch löscht.
 - Plan- und Dry-Run-Ausgaben benennen für explizite lokale Regeln die tatsächlich manifestgebundene
   Markdown-Datei statt nur deren übergeordnetes Verzeichnis.
 

@@ -26,6 +26,12 @@ Dateisystemgrenzen ist nicht vollständig beherrschbar.
   erneut geprüft. Symlinkbehaftete oder nichtkanonische Pfade scheitern fail-closed.
 - Backup und Readback erfolgen vor der produktiven Entrymutation. Atomare Renames ersetzen nur
   reguläre Dateien im validierten Parent.
+- Der Rollback-Detach bindet beide Verzeichnisse an offene `O_DIRECTORY|O_NOFOLLOW`-Handles und
+  übergibt ausschließlich validierte einzelne Basenames an eine schmale Node-API-C-Primitive.
+  Linux `RENAME_NOREPLACE` beziehungsweise Darwin `RENAME_EXCL` macht No-Clobber zum Bestandteil
+  desselben dirfd-relativen Syscalls. Loader-, Plattform-, Handle-, Syscall- und Filesystemfehler
+  haben keinen unsicheren JavaScript-Fallback. Der receipt-spezifische Detach wird nicht über einen
+  später erneut aufgelösten Containerpfad gelöscht.
 - Receipt-Schema, targetgebundene Binding-ID, UUID, Backuproot, direkter SemVer-Releasepfad und
   der exakt manifestbestimmte Local-Rules-Pfad sind geschlossen. Recovery verlangt zwei im stabilen Zustand
   bytegleiche Receiptkopien; ausschließlich write-order-konforme Statussplits mit identischen unveränderlichen
@@ -50,9 +56,10 @@ Dateisystemgrenzen ist nicht vollständig beherrschbar.
 
 ## Residual Risks
 
-Node-Dateisystemaufrufe bieten keinen vollständigen offenen Handle-Vertrag über alle Plattformen;
-ein privilegierter Angreifer kann zwischen Identity-Recheck und Rename weiterhin ein enges
-TOCTOU-Fenster ausnutzen. `SIGKILL`, Stromausfall und Hardwarefehler sind nicht kooperativ
+Die handle-gebundene Native-Primitive wird nur für Darwin/Linux auf arm64/x64 ausgeliefert;
+andere Plattformen können read-only inspizieren, aber nicht mutieren. Ein bereits privilegierter
+Prozess kann offene Handles oder den Prozess selbst angreifen und liegt außerhalb dieses Vertrags.
+`SIGKILL`, Stromausfall und Hardwarefehler sind nicht kooperativ
 abfangbar. Das `PREPARED`-Receipt macht diese Zustände sichtbar und erzwingt Recovery, beweist aber
 keine vollständige Crash-Atomarität. Die Markdownbindung beeinflusst Instruktionskontext und ist
 kein universelles technisches Enforcement.

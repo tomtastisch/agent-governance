@@ -5,7 +5,10 @@
 
 ## Eigene Paketabhängigkeiten
 
-Der Installer besitzt keine Runtime-Abhängigkeiten. Exakt gelockte Entwicklungsabhängigkeiten sind
+Der Installer besitzt keine Third-Party-Runtime-Abhängigkeiten. Die schmale repository-eigene
+Node-API-C-Komponente nutzt ausschließlich OS- und stabile Node-API-Symbole; sie wird für
+Darwin/Linux auf arm64/x64 im Releaseworkflow gebaut und als vier Prebuilds im gleichen
+provenance-gebundenen npm-Tarball ausgeliefert. Exakt gelockte Entwicklungsabhängigkeiten sind
 TypeScript `5.9.2` und `@types/node` `24.3.0`; npm löst insgesamt vier Pakete auf. Der lokale
 `npm audit --audit-level=high` meldete bei der Einführung null bekannte Schwachstellen. Beide
 Pakete stammen aus der npm-Registry, ihre Integritätswerte stehen in `package-lock.json`; sie werden

@@ -272,8 +272,10 @@ tests/e2e/run_installer_fixture.sh
 git diff --check
 ```
 
-CI führt Paketgates mit Node 24 und 26 auf macOS und Linux aus. Das Paket besitzt keine
-Runtime-Abhängigkeiten; Tarball-Allowlist, lokale Tarballinstallation, `npx`, `pnpm dlx`, Audit,
+CI führt Paketgates mit Node 24 und 26 auf macOS und Linux sowie die native Primitive auf
+Darwin/Linux für arm64 und x64 aus. Das Paket besitzt keine Third-Party-Runtime-Abhängigkeiten;
+vier im Releaseworkflow aus dem repository-eigenen C-Quelltext gebaute Node-API-Prebuilds gehören
+zum selben provenance-gebundenen Tarball. Tarball-Allowlist, lokale Tarballinstallation, `npx`, `pnpm dlx`, Audit,
 Lizenz- und Secretprüfungen gehören vor Veröffentlichung zur Releaseevidenz. Unabhängige
 read-only QA- und Security-Reviews müssen denselben Exact Head bewerten.
 
@@ -282,8 +284,9 @@ read-only QA- und Security-Reviews müssen denselben Exact Head bewerten.
 Bedrohungsmodell sind manipulierte Bundles, Traversal, Symlinkumleitung, Rootaustausch zwischen
 Inspektion und Mutation, beschädigte Marker, unterbrochene Transaktionen und private Daten in
 Logs. Abwehr sind geschlossenes Inventar, Digest- und Typprüfung, kanonische explizite Pfade,
-Identity-Rechecks, Backup-Readback, atomare Dateiwechsel, geschlossene Receipts und fail-closed
-Zustände.
+Identity-Rechecks, Backup-Readback, atomare Dateiwechsel, dirfd-relative exklusive Native-Renames,
+geschlossene Receipts und fail-closed Zustände. Fehlt die Native-Capability auf einer mutierenden
+Plattform, bricht der Installer vor produktiver Mutation ab; es gibt keinen pathname-basierten Fallback.
 
 Der Installer ist kein Paketmanager für andere Software, kein Credential Service, keine Control
 Plane und kein Enforcementprovider. Er nimmt keine Secrets als CLI-Argumente an. Authentifizierung

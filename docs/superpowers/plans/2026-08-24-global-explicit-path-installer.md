@@ -6,7 +6,7 @@
 
 **Goal:** Deliver and release a deterministic transactional global explicit-path governance installer.
 
-**Architecture:** A zero-runtime-dependency TypeScript CLI validates an explicit target and a closed release bundle, stages a versioned installation, and atomically maintains one Markdown managed block. Closed receipts and verified byte backups provide rollback without any harness-specific runtime knowledge.
+**Architecture:** A TypeScript CLI without third-party runtime dependencies validates an explicit target and a closed release bundle, stages a versioned installation, and atomically maintains one Markdown managed block. A repository-owned Node-API C primitive binds security-critical rollback renames to directory handles. Closed receipts and verified byte backups provide rollback without any harness-specific runtime knowledge.
 
 **Tech Stack:** Node.js 24+, TypeScript 5.9, node:test, Python unittest release checks, GitHub Actions, npm public registry.
 
@@ -16,7 +16,7 @@
 
 - Architecture identifier: `GLOBAL_EXPLICIT_PATH_MANAGED_BLOCK`.
 - Package: `@tomtastisch/agent-governance`; first candidate `1.0.0-rc.1` under `next`.
-- No runtime dependencies, harness IDs, adapters, hooks, MCP mutation, approvals, implicit target, or cwd fallback.
+- No third-party runtime dependencies, harness IDs, adapters, hooks, MCP mutation, approvals, implicit target, or cwd fallback.
 - Production symlink and containment boundaries remain fail-closed on macOS and Linux.
 - Every behavior change follows a witnessed RED/GREEN cycle and every release claim uses fresh exact-head evidence.
 

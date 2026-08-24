@@ -12,7 +12,8 @@ installer materializes a reproducible projection that points to the installed bu
 
 ## Scope
 
-The package provides a global, non-interactive, zero-runtime-dependency Node.js CLI. Every target
+The package provides a global, non-interactive Node.js CLI without third-party runtime dependencies.
+A repository-owned Node-API C primitive supplies handle-bound exclusive rename on supported platforms. Every target
 is explicit: an absolute canonical `--target-root`, a relative Markdown `--entry-file`, global
 `--scope`, and an absolute canonical `--installation-root`. The runtime contains no harness names,
 presets, detection, adapters, hooks, MCP mutation, approval logic, or harness-specific parsers.

@@ -228,9 +228,9 @@ test("rollback never overwrites a detach-path collision", async () => {
 });
 
 test("rollback never moves the entry through a substituted reserved detach root", async () => {
-  const f = await fixture(); const applied = Buffer.from("original\n"); await writeFile(f.entry, applied); await new InstallerTransaction(f.request).install(); const installed = await readFile(f.entry); let moved: string | undefined;
-  const substituted = new InstallerTransaction({ ...f.request, onCheckpoint: (checkpoint) => { if (checkpoint !== "beforeRollbackEntryDetachMove") return; const detached = readdirSync(dirname(f.entry)).find((name) => name.startsWith(`.${basename(f.entry)}.agent-governance-`) && name.endsWith(".restore")); assert.notEqual(detached, undefined); moved = `${detached}.moved`; renameSync(join(dirname(f.entry), detached!), join(dirname(f.entry), moved)); symlinkSync(join(dirname(f.entry), moved), join(dirname(f.entry), detached!)); } });
-  await assert.rejects(substituted.rollback()); assert.deepEqual(await readFile(f.entry), installed); assert.notEqual(moved, undefined); assert.deepEqual(readdirSync(join(dirname(f.entry), moved!)), []);
+  const f = await fixture(); const applied = Buffer.from("original\n"); await writeFile(f.entry, applied); await new InstallerTransaction(f.request).install(); const installed = await readFile(f.entry); const foreign = join(f.targetRoot, "foreign-detach"); await mkdir(foreign); await writeFile(join(foreign, "foreign.bin"), "foreign\n"); let moved: string | undefined;
+  const substituted = new InstallerTransaction({ ...f.request, onCheckpoint: (checkpoint) => { if (checkpoint !== "afterRollbackNativeDirectoriesBound") return; const detached = readdirSync(dirname(f.entry)).find((name) => name.startsWith(`.${basename(f.entry)}.agent-governance-`) && name.endsWith(".restore")); assert.notEqual(detached, undefined); moved = `${detached}.moved`; renameSync(join(dirname(f.entry), detached!), join(dirname(f.entry), moved)); symlinkSync(foreign, join(dirname(f.entry), detached!)); } });
+  await assert.rejects(substituted.rollback()); assert.deepEqual(await readFile(f.entry), installed); assert.notEqual(moved, undefined); assert.deepEqual(await readFile(join(dirname(f.entry), moved!, "entry.bin")), installed); assert.deepEqual(readdirSync(foreign), ["foreign.bin"]); assert.equal(await readFile(join(foreign, "foreign.bin"), "utf8"), "foreign\n");
 });
 
 test("rollback never follows a substituted detach root during finalization", async () => {
