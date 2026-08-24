@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { access, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import test from "node:test";
 import { InstallerTransaction } from "../../src/transaction.ts";
@@ -206,6 +206,13 @@ test("rollback never overwrites an entry changed after its final validation", as
   const f = await fixture(); await writeFile(f.entry, "original\n"); await new InstallerTransaction(f.request).install(); const concurrent = Buffer.from("concurrent entry after validation\n");
   const tx = new InstallerTransaction({ ...f.request, onCheckpoint: (checkpoint) => { if (checkpoint === "afterRollbackEntryValidation") writeFileSync(f.entry, concurrent); } });
   await assert.rejects(tx.rollback(), /entry changed|stale rollback state/); assert.deepEqual(await readFile(f.entry), concurrent);
+});
+
+test("rollback resumes a deterministic same-filesystem entry detach after interruption", async () => {
+  const f = await fixture(); const original = Buffer.from("original\n"); await writeFile(f.entry, original); await new InstallerTransaction(f.request).install(); let detached: string | undefined;
+  const interrupted = new InstallerTransaction({ ...f.request, onCheckpoint: (checkpoint) => { if (checkpoint !== "afterRollbackEntryDetach") return; detached = readdirSync(dirname(f.entry)).find((name) => name.startsWith(`.${basename(f.entry)}.agent-governance-`) && name.endsWith(".restore")); assert.notEqual(detached, undefined); assert.equal(statSync(join(dirname(f.entry), detached!)).dev, statSync(dirname(f.entry)).dev); throw new Error("injected interruption after entry detach"); } });
+  await assert.rejects(interrupted.rollback(), /interruption after entry detach/); await assert.rejects(access(f.entry)); assert.notEqual(detached, undefined);
+  assert.equal((await new InstallerTransaction(f.request).rollback()).state, "FRESH"); assert.deepEqual(await readFile(f.entry), original); await assert.rejects(access(join(dirname(f.entry), detached!)));
 });
 
 test("stale local-rules rollback fails before restoring entry or current", async () => {
