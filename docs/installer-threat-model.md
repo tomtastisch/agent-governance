@@ -39,8 +39,9 @@ Dateisystemgrenzen ist nicht vollständig beherrschbar.
 - Private lokale Regeln werden nicht ausgegeben. Ihre explizite Quelle muss eine kanonische
   Markdown-Datei sein und wird ebenso wie bereits installierte Regeln fatal auf UTF-8 und auf den
   Kontrollzeichenvertrag geprüft. Quelle, Lesevorgang und Pfadidentität werden über einen
-  `O_NOFOLLOW`-Filehandle mit Vor-/Nachprüfung gebunden; Shared State wird vor Mutation und Commit
-  revalidiert. Secret-Patterns werden im Tarball-Gate geprüft.
+  `O_NOFOLLOW`-Filehandle mit Vor-/Nachprüfung gebunden; Carry-forward bindet Bytes und Existenz an
+  den Inspektionssnapshot. Entry, Current und Shared Local Rules werden nach beiden Commit-Receipt-
+  Schreibvorgängen gemeinsam revalidiert. Secret-Patterns werden im Tarball-Gate geprüft.
 - Inventarisierte normative Markdown- und TOML-Quellen werden mit fataler UTF-8-Dekodierung geprüft;
   von den rohen C0-/DEL-Kontrollzeichen sind ausschließlich TAB, LF und CR zulässig. Manifestreferenzen
   akzeptieren nur `.toml` für Kataloge sowie `.md` für Module, Rollen und lokale Regeln; TOML wird
