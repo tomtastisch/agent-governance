@@ -196,6 +196,12 @@ test("explicit rollback rejects a changed applied entry without partial restore"
   await assert.rejects(tx.rollback(), /entry changed|stale/); assert.equal(await readFile(f.entry, "utf8"), "newer user entry\n"); assert.deepEqual(await readFile(join(await bindingStateRoot(f.installationRoot), "current.json")), currentBefore);
 });
 
+test("rollback revalidates the entry immediately before restoring it", async () => {
+  const f = await fixture(); await writeFile(f.entry, "original\n"); await new InstallerTransaction(f.request).install(); const concurrent = Buffer.from("concurrent entry\n");
+  const tx = new InstallerTransaction({ ...f.request, onCheckpoint: (checkpoint) => { if (checkpoint === "beforeRollbackEntry") writeFileSync(f.entry, concurrent); } });
+  await assert.rejects(tx.rollback(), /entry changed|stale rollback state/); assert.deepEqual(await readFile(f.entry), concurrent);
+});
+
 test("stale local-rules rollback fails before restoring entry or current", async () => {
   const f = await fixture(); const rules = join(f.root, "rules-atomic.md"); await writeFile(f.entry, "original\n"); await writeFile(rules, "installed\n"); const tx = new InstallerTransaction({ ...f.request, localRules: rules }); await tx.install(); const entryBefore = await readFile(f.entry); const currentPath = join(await bindingStateRoot(f.installationRoot), "current.json"); const currentBefore = await readFile(currentPath); const target = join(f.installationRoot, "releases", "1.0.0-rc.1", "bundle", "agent-governance", "local", "user-rules.md"); await writeFile(target, "newer rules\n");
   await assert.rejects(tx.rollback(), /local rules changed|stale shared state/); assert.deepEqual(await readFile(f.entry), entryBefore); assert.deepEqual(await readFile(currentPath), currentBefore);

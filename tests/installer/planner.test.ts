@@ -15,6 +15,7 @@ test("uninstall plan preserves releases while removing only active metadata and 
   assert.deepEqual(Object.fromEntries(plan.resources.map((resource) => [resource.id, resource.operation])), { release: "preserve", "current-metadata": "remove", "entry-file": "remove", backup: "create", receipt: "replace" });
 });
 test("update plan replaces an outdated binding and an explicitly supplied local-rules file", () => {
-  const plan = planInstallation({ command: "update", state: "OUTDATED", entryPath: "/target/A.md", installationRoot: "/install", version: "1.0.0", localRules: true });
+  const plan = planInstallation({ command: "update", state: "OUTDATED", entryPath: "/target/A.md", installationRoot: "/install", version: "1.0.0", localRules: true, localRulesPath: "local/custom-rules.md" });
   assert.deepEqual(Object.fromEntries(plan.resources.map((resource) => [resource.id, resource.operation])), { release: "create", "current-metadata": "replace", "entry-file": "replace", backup: "create", receipt: "replace", "local-rules": "replace" });
+  assert.equal(plan.resources.find((resource) => resource.id === "local-rules")?.target, "/install/releases/1.0.0/bundle/agent-governance/local/custom-rules.md");
 });
