@@ -10,6 +10,7 @@ import { createTestRoot } from "../fixtures/installer/workspace.ts";
 import { createReleaseFixture, writeInventory } from "../fixtures/installer/release.ts";
 
 class TestSignals implements SignalSource { private readonly values = new Map<CatchableSignal, Set<() => void>>(); on(signal: CatchableSignal, listener: () => void): void { const set = this.values.get(signal) ?? new Set(); set.add(listener); this.values.set(signal, set); } off(signal: CatchableSignal, listener: () => void): void { this.values.get(signal)?.delete(listener); } emit(signal: CatchableSignal): void { for (const listener of this.values.get(signal) ?? []) listener(); } count(): number { return [...this.values.values()].reduce((sum, set) => sum + set.size, 0); } }
+class StartInterruptedSignals implements SignalSource { private readonly values = new Map<CatchableSignal, Set<() => void>>(); on(signal: CatchableSignal, listener: () => void): void { const set = this.values.get(signal) ?? new Set(); set.add(listener); this.values.set(signal, set); if (signal === "SIGTERM") listener(); } off(signal: CatchableSignal, listener: () => void): void { this.values.get(signal)?.delete(listener); } count(): number { return [...this.values.values()].reduce((sum, set) => sum + set.size, 0); } }
 
 async function fixture() {
   const root = await createTestRoot("agent-governance-generic-"); const targetRoot = join(root, "target"); const releaseRoot = join(root, "package"); const installationRoot = join(root, "installation"); await mkdir(targetRoot); await createReleaseFixture(releaseRoot);
@@ -202,10 +203,35 @@ test("explicit rollback latches a signal and finishes restoration before reporti
   await assert.rejects(tx.rollback(), (error: unknown) => error instanceof InterruptedFailure && error.signal === "SIGTERM" && error.rollbackStatus === "SUCCEEDED"); assert.deepEqual(await readFile(f.entry), original); await assert.rejects(access(join(await bindingStateRoot(f.installationRoot), "current.json"))); assert.equal(signals.count(), 0);
 });
 
+test("explicit rollback never reports successful restoration when interrupted before restore", async () => {
+  const f = await fixture(); await new InstallerTransaction(f.request).install(); const signals = new StartInterruptedSignals(); const tx = new InstallerTransaction({ ...f.request, signalSource: signals });
+  await assert.rejects(tx.rollback(), (error: unknown) => error instanceof InterruptedFailure && error.signal === "SIGTERM" && error.rollbackStatus === "NOT_REQUIRED"); assert.equal((await new InstallerTransaction(f.request).status()).state, "CURRENT"); assert.equal(signals.count(), 0);
+});
+
 test("explicit rollback resumes after entry was already restored", async () => {
   const f = await fixture(); const original = Buffer.from("original\n"); await writeFile(f.entry, original); const installed = new InstallerTransaction(f.request); await installed.install(); let failed = false;
   const interrupted = new InstallerTransaction({ ...f.request, onCheckpoint: (checkpoint) => { if (!failed && checkpoint === "afterRollbackEntry") { failed = true; throw new Error("injected partial restore failure"); } } });
   await assert.rejects(interrupted.rollback(), /partial restore/); assert.deepEqual(await readFile(f.entry), original); assert.equal((await installed.rollback()).state, "FRESH"); assert.deepEqual(await readFile(f.entry), original);
+});
+
+test("rollback revalidates current immediately before restoring it", async () => {
+  const f = await fixture(); await writeFile(f.entry, "original\n"); await new InstallerTransaction(f.request).install(); const stateRoot = await bindingStateRoot(f.installationRoot); const currentPath = join(stateRoot, "current.json"); const concurrent = Buffer.from("concurrent current during restore\n");
+  const tx = new InstallerTransaction({ ...f.request, onCheckpoint: (checkpoint) => { if (checkpoint === "afterRollbackEntry") writeFileSync(currentPath, concurrent); } }); await assert.rejects(tx.rollback(), /current metadata changed|stale rollback state/); assert.deepEqual(await readFile(currentPath), concurrent); assert.equal(await readFile(f.entry, "utf8"), "original\n");
+});
+
+test("rollback revalidates local rules immediately before restoring them", async () => {
+  const f = await fixture(); const original = join(f.root, "restore-original.md"); const replacement = join(f.root, "restore-replacement.md"); await writeFile(original, "original rules\n"); await writeFile(replacement, "replacement rules\n"); await new InstallerTransaction({ ...f.request, localRules: original }).install(); await new InstallerTransaction({ ...f.request, localRules: replacement }).update(); const target = join(f.installationRoot, "releases", "1.0.0-rc.1", "bundle", "agent-governance", "local", "user-rules.md"); const concurrent = Buffer.from("concurrent local rules during restore\n");
+  const tx = new InstallerTransaction({ ...f.request, onCheckpoint: (checkpoint) => { if (checkpoint === "afterRollbackCurrent") writeFileSync(target, concurrent); } }); await assert.rejects(tx.rollback(), /local rules changed|stale shared state/); assert.deepEqual(await readFile(target), concurrent);
+});
+
+test("rollback recovers a commit receipt split between adjacent statuses", async () => {
+  const f = await fixture(); await writeFile(f.entry, "original\n"); let split = false; const tx = new InstallerTransaction({ ...f.request, faultDuringRollback: true, onCheckpoint: (checkpoint) => { if (checkpoint === "afterCommitTopReceipt") { split = true; throw new Error("injected commit receipt split"); } } });
+  await assert.rejects(tx.install(), (error: unknown) => error instanceof InstallerFailure && error.outcome === "ROLLBACK_FAILED"); assert.equal(split, true); assert.equal((await new InstallerTransaction(f.request).status()).state, "RECOVERY_REQUIRED"); assert.equal((await new InstallerTransaction(f.request).rollback()).state, "FRESH"); assert.equal(await readFile(f.entry, "utf8"), "original\n");
+});
+
+test("rollback recovers a rolled-back receipt split between adjacent statuses", async () => {
+  const f = await fixture(); await writeFile(f.entry, "original\n"); await new InstallerTransaction(f.request).install(); let split = false; const tx = new InstallerTransaction({ ...f.request, onCheckpoint: (checkpoint) => { if (checkpoint === "afterRollbackBackupReceipt") { split = true; throw new Error("injected rollback receipt split"); } } });
+  await assert.rejects(tx.rollback(), /rollback receipt split/); assert.equal(split, true); assert.equal((await new InstallerTransaction(f.request).status()).state, "RECOVERY_REQUIRED"); assert.equal((await new InstallerTransaction(f.request).rollback()).state, "FRESH"); assert.equal(await readFile(f.entry, "utf8"), "original\n");
 });
 
 test("tampered backup payload and symlinked backup root fail before restore mutation", async () => {

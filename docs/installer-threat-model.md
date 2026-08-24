@@ -27,8 +27,10 @@ Dateisystemgrenzen ist nicht vollständig beherrschbar.
 - Backup und Readback erfolgen vor der produktiven Entrymutation. Atomare Renames ersetzen nur
   reguläre Dateien im validierten Parent.
 - Receipt-Schema, targetgebundene Binding-ID, UUID, Backuproot, direkter SemVer-Releasepfad und
-  der exakt manifestbestimmte Local-Rules-Pfad sind geschlossen. Recovery verlangt zwei
-  bytegleiche Receiptkopien und revalidiert den expliziten Zielpfad.
+  der exakt manifestbestimmte Local-Rules-Pfad sind geschlossen. Recovery verlangt zwei im stabilen Zustand
+  bytegleiche Receiptkopien; ausschließlich write-order-konforme Statussplits mit identischen unveränderlichen
+  Feldern sind recoverbar. Der explizite Zielpfad und jede Restore-Ressource werden unmittelbar vor ihrer Mutation
+  sowie über ihr erwartetes Postimage revalidiert.
 - Ein kanonischer ownergebundener Lock pro Installationsroot verhindert überlappende Shared-State-
   Mutationen. Recovery übernimmt ihn nur nach geschlossen validierter Owner-Evidenz und negativem
   Prozess-Liveness-Check. Vor Rollback werden Backup-Ahnen, Typen, receiptgebundene Digests, sämtliche

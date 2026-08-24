@@ -21,7 +21,7 @@ function parseString(raw: string, label: string): string {
     for (let index = 1; index < raw.length - 1; index += 1) {
       if (raw[index] !== "\\") continue;
       const escape = raw[index + 1];
-      if (escape === "u" && /^[0-9A-Fa-f]{4}$/.test(raw.slice(index + 2, index + 6)) && !/^d[89ab][0-9a-f]{2}$/i.test(raw.slice(index + 2, index + 6))) { index += 5; continue; }
+      if (escape === "u" && /^[0-9A-Fa-f]{4}$/.test(raw.slice(index + 2, index + 6)) && !/^d[89a-f][0-9a-f]{2}$/i.test(raw.slice(index + 2, index + 6))) { index += 5; continue; }
       if (escape !== undefined && '"\\btnfr'.includes(escape)) { index += 1; continue; }
       throw new Error();
     }
@@ -79,6 +79,7 @@ export function parseClosedToml(text: string, label: string): TomlTable {
       }
       const end = content.indexOf('"""');
       if (content.slice(end + 3).trim() !== "") throw new Error(`${label} contains trailing TOML content`);
+      if (content.slice(0, end).includes("\\")) throw new Error(`${label} contains unsupported or invalid TOML multiline escape syntax`);
       table[key] = content.slice(0, end);
       continue;
     }

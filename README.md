@@ -143,13 +143,16 @@ dem letzten verifizierten Receipt wieder her.
 
 Jedes explizite Paar aus Target-Root und Entry-Datei erhält eine deterministische Binding-ID und
 damit unabhängige Current-/Receipt-Metadaten im gemeinsamen Installationsroot. Beide Receiptkopien
-müssen bytegleich sein. Receipts wechseln geschlossen zwischen `PREPARED`, `COMMITTED` und `ROLLED_BACK`. Ein
+sind im stabilen Zustand bytegleich. Ein Write-Abbruch zwischen den beiden atomaren Statuswechseln wird nur für die
+write-order-konformen benachbarten Zustände und bei identischen unveränderlichen Feldern als `RECOVERY_REQUIRED`
+akzeptiert. Receipts wechseln geschlossen zwischen `PREPARED`, `COMMITTED` und `ROLLED_BACK`. Ein
 `PREPARED`-Zustand blockiert weitere Mutationen bis zum expliziten Rollback. Mutationen desselben
 Installationsroots sind durch einen ownergebundenen fail-closed Root-Lock gegenseitig ausgeschlossen;
 Rollback darf einen geschlossen validierten Lock eines nachweislich nicht mehr lebenden Prozesses atomar übernehmen. Rollback entfernt
 keinen Release und setzt keine lokalen Regeln zurück, solange eine andere aktive Bindung diesen Shared
 State referenziert. Receiptgebundene Digests, kanonische Backup-Ahnen und vollständige Vorprüfung
-schützen Entry, Current-Metadaten und lokale Regeln vor partieller oder veralteter Wiederherstellung. Das erste von
+schützen Entry, Current-Metadaten und lokale Regeln vor partieller oder veralteter Wiederherstellung; jede Ressource
+wird unmittelbar vor und nach ihrem Restore erneut geprüft. Das erste von
 `SIGINT` oder `SIGTERM` wird gelatcht und führt zu genau einem Rollback. `SIGKILL`, Stromausfall
 und Dateisystemdefekte sind nicht vollständig atomar abfangbar; dafür bleibt der Recoveryzustand
 fail-closed sichtbar.

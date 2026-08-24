@@ -36,7 +36,9 @@ Owner atomar übernommen werden. Digestgebundene Pre-/Postimages und vollständi
 verhindern Teilmutationen; aktive Fremdbindungen schützen gemeinsam referenzierte Releases und lokale
 Regeln vor einem veralteten Rollback. Ein `PREPARED`-Receipt blockiert neue Mutationen,
 bis Recovery ausgeführt wurde. Ein gemeinsamer Installationsroot verwaltet mehrere explizite
-Target-/Entry-Bindings unabhängig; Top-Level- und Backup-Receipt müssen bytegleich sein.
+Target-/Entry-Bindings unabhängig. Top-Level- und Backup-Receipt sind im stabilen Zustand bytegleich;
+write-order-konforme Zwischenzustände mit identischen unveränderlichen Feldern erzwingen Recovery und
+werden durch den idempotenten Rollback geschlossen.
 
 ## Grenzen und Migration
 
