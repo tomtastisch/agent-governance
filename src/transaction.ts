@@ -1,338 +1,119 @@
 import { randomUUID } from "node:crypto";
-import {
-  access,
-  cp,
-  lstat,
-  mkdir,
-  mkdtemp,
-  readFile,
-  rename,
-  rm,
-  writeFile,
-} from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { access, cp, lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, normalize, relative, sep } from "node:path";
+import type { InstallPhase, InstallResult, InstallerCommand, InstallerRequest } from "./contracts.ts";
+import { InstallerFailure, InterruptedFailure } from "./errors.ts";
+import { assertIdentity, captureIdentity } from "./filesystem.ts";
+import { installManagedBlock, removeManagedBlock, verifyManagedBlock, type GovernanceBinding } from "./managed-block.ts";
+import { planInstallation } from "./planner.ts";
+import { verifyRelease, type VerifiedRelease } from "./release.ts";
+import { SignalCoordinator, SignalInterruption, type SignalSource } from "./signals.ts";
+import { inspectTarget, type TargetInspection } from "./target.ts";
 
-import { classifyCodex, inspectCodex } from "./codex.ts";
-import type { InstallPhase, InstallResult, InstallerRequest } from "./contracts.ts";
-import { InstallerFailure } from "./errors.ts";
-import { captureIdentity, assertIdentity, validateAllowedPath, type PathIdentity } from "./filesystem.ts";
-import { mergeGovernanceHook } from "./hooks.ts";
-import { planCodex } from "./planner.ts";
-import { verifyRelease } from "./release.ts";
+export type TransactionCheckpoint = "beforeMutation" | "afterReceipt" | "afterEntry" | "afterCurrent" | "beforeVerification" | "duringRollback";
+export interface TransactionRequest extends InstallerRequest { readonly faultAfter?: InstallPhase; readonly faultDuringRollback?: boolean; readonly signalSource?: SignalSource; readonly onCheckpoint?: (checkpoint: TransactionCheckpoint) => void; }
+interface CurrentMetadata extends GovernanceBinding { readonly schemaVersion: 1; readonly targetRoot: string; readonly entryFile: string; }
+interface Receipt { readonly schemaVersion: 1; readonly id: string; readonly status: "PREPARED" | "COMMITTED" | "ROLLED_BACK"; readonly operation: "install" | "update" | "uninstall"; readonly backupRoot: string; readonly entryPath: string; readonly entryExisted: boolean; readonly currentExisted: boolean; readonly releasePath: string; readonly releaseExisted: boolean; readonly localRulesPath: string | null; readonly localRulesExisted: boolean; }
+interface LocalRulesMutation { readonly targetPath: string; readonly source?: Buffer; readonly previous?: Buffer; }
 
-export interface TransactionRequest extends InstallerRequest {
-  readonly faultAfter?: InstallPhase;
-}
-
-interface ActivationEntry {
-  readonly target: string;
-  readonly staged: string;
-  readonly retired: string;
-  existed: boolean;
-  activated: boolean;
-}
-
-interface RollbackReceipt {
-  readonly schemaVersion: 1;
-  readonly backupRoot: string;
-  readonly rolledBack: boolean;
-  readonly resources: readonly { readonly target: string; readonly existed: boolean; readonly index: number }[];
-}
-
-async function exists(path: string): Promise<boolean> {
-  try {
-    await access(path);
-    return true;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
-    throw error;
+const architecture = "GLOBAL_EXPLICIT_PATH_MANAGED_BLOCK" as const;
+const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
+async function exists(path: string): Promise<boolean> { try { await access(path); return true; } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return false; throw error; } }
+async function optionalBytes(path: string): Promise<Buffer | undefined> { try { const stat = await lstat(path); if (stat.isSymbolicLink() || !stat.isFile()) throw new Error(`unsafe regular file: ${path}`); return await readFile(path); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined; throw error; } }
+async function ensureSafeDirectory(path: string, mode = 0o700): Promise<void> { try { await mkdir(path, { mode }); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; } const stat = await lstat(path); if (stat.isSymbolicLink() || !stat.isDirectory() || (await realpath(path)) !== path) throw new Error(`unsafe symlink or non-canonical directory: ${path}`); }
+async function atomicWrite(path: string, value: Buffer | string): Promise<void> { await mkdir(dirname(path), { recursive: true }); const temporary = `${path}.${randomUUID()}.tmp`; await writeFile(temporary, value, { mode: 0o600, flag: "wx" }); await rename(temporary, path); const expected = Buffer.isBuffer(value) ? value : Buffer.from(value); if (!(await readFile(path)).equals(expected)) throw new Error("atomic write readback failed"); }
+function parseObject<T>(bytes: Buffer, keys: readonly string[], label: string): T { let value: unknown; try { value = JSON.parse(bytes.toString("utf8")); } catch { throw new Error(`${label} is invalid JSON`); } if (typeof value !== "object" || value === null || Array.isArray(value) || Object.keys(value).sort().join("\0") !== [...keys].sort().join("\0")) throw new Error(`${label} has invalid schema`); return value as T; }
+function compareSemver(left: string, right: string): number {
+  const a = SEMVER.exec(left); const b = SEMVER.exec(right);
+  if (a === null || b === null) throw new Error("invalid release version in current metadata");
+  for (let index = 1; index <= 3; index += 1) { const difference = Number(a[index]) - Number(b[index]); if (difference !== 0) return Math.sign(difference); }
+  const leftPre = a[4]; const rightPre = b[4];
+  if (leftPre === undefined) return rightPre === undefined ? 0 : 1;
+  if (rightPre === undefined) return -1;
+  const leftParts = leftPre.split("."); const rightParts = rightPre.split(".");
+  for (let index = 0; index < Math.max(leftParts.length, rightParts.length); index += 1) {
+    const x = leftParts[index]; const y = rightParts[index]; if (x === undefined) return -1; if (y === undefined) return 1;
+    if (x === y) continue; const xNumeric = /^\d+$/.test(x); const yNumeric = /^\d+$/.test(y);
+    if (xNumeric && yNumeric) return Number(x) < Number(y) ? -1 : 1;
+    if (xNumeric !== yNumeric) return xNumeric ? -1 : 1;
+    return x < y ? -1 : 1;
   }
-}
-
-async function copySafe(source: string, target: string): Promise<void> {
-  const stat = await lstat(source);
-  if (stat.isSymbolicLink()) throw new Error("backup source is a symlink");
-  await cp(source, target, { recursive: stat.isDirectory(), dereference: false, errorOnExist: true });
-}
-
-async function sameTree(left: string, right: string): Promise<boolean> {
-  const [leftStat, rightStat] = await Promise.all([lstat(left), lstat(right)]);
-  if (leftStat.isSymbolicLink() || rightStat.isSymbolicLink()) return false;
-  if (leftStat.isFile() && rightStat.isFile()) {
-    const [a, b] = await Promise.all([readFile(left), readFile(right)]);
-    return a.equals(b) && (leftStat.mode & 0o777) === (rightStat.mode & 0o777);
-  }
-  if (leftStat.isDirectory() && rightStat.isDirectory()) {
-    const { readdir } = await import("node:fs/promises");
-    const [a, b] = await Promise.all([readdir(left), readdir(right)]);
-    a.sort(); b.sort();
-    if (a.join("\0") !== b.join("\0")) return false;
-    for (const name of a) if (!(await sameTree(join(left, name), join(right, name)))) return false;
-    return true;
-  }
-  return false;
+  return 0;
 }
 
 export class InstallerTransaction {
   private readonly request: TransactionRequest;
-
-  constructor(request: TransactionRequest) {
-    this.request = request;
+  constructor(request: TransactionRequest) { this.request = request; }
+  private fault(phase: InstallPhase): void { if (this.request.faultAfter === phase) throw new Error(`injected failure after ${phase}`); }
+  private result(command: InstallerCommand, state: InstallResult["state"], phase: InstallPhase, rollbackStatus: InstallResult["rollbackStatus"], plan?: InstallResult["plan"]): InstallResult {
+    const capabilities: InstallResult["capabilities"][number][] = [];
+    if (["CURRENT", "OUTDATED", "DOWNGRADE_BLOCKED"].includes(state)) capabilities.push("FILESYSTEM_INSTALLED", "BINDING_MATERIALIZED", "DIGEST_VERIFIED", "ROLLBACK_AVAILABLE");
+    return { schemaVersion: 1, architecture, command, outcome: "SUCCESS", state, phase, rollbackStatus, capabilities, ...(plan === undefined ? {} : { plan }) };
   }
-
-  private fault(phase: InstallPhase): void {
-    if (this.request.faultAfter === phase) throw new Error(`injected failure after ${phase}`);
-  }
-
-  async inspect(): Promise<InstallResult> {
-    await validateAllowedPath(this.request.home, this.request.allowedRoot, "directory");
-    await verifyRelease(this.request.releaseRoot);
-    if (this.request.harness !== "codex") throw new Error(`unsupported harness: ${this.request.harness}`);
-    const state = classifyCodex(await inspectCodex(this.request.home, this.request.installRoot));
-    return { outcome: "SUCCESS", state, phase: "classify", rollbackStatus: "NOT_REQUIRED" };
-  }
-
-  async plan(): Promise<InstallResult> {
-    return new InstallerTransaction({ ...this.request, dryRun: true }).install();
-  }
-
-  async verify(): Promise<InstallResult> {
-    const result = await this.inspect();
-    if (result.state !== "CURRENT") throw new Error(`verification failed: ${result.state}`);
-    return { ...result, phase: "verify" };
-  }
-
-  async status(): Promise<InstallResult> {
-    return this.inspect();
-  }
-
-  async rollback(): Promise<InstallResult> {
-    const receiptPath = join(this.request.home, ".agent-governance-rollback.json");
-    await validateAllowedPath(receiptPath, this.request.allowedRoot, "file");
-    const raw = await readFile(receiptPath, "utf8");
-    const receipt = this.parseReceipt(raw);
-    await validateAllowedPath(receipt.backupRoot, this.request.allowedRoot, "directory");
-    if (this.request.dryRun) {
-      return { outcome: "SUCCESS", state: "CURRENT", phase: "plan", rollbackStatus: "NOT_REQUIRED" };
-    }
-    if (receipt.rolledBack) {
-      return { outcome: "SUCCESS", state: "FRESH", phase: "rollback", rollbackStatus: "SUCCEEDED" };
-    }
-    for (const resource of [...receipt.resources].reverse()) {
-      await validateAllowedPath(resource.target, this.request.allowedRoot, (await exists(resource.target)) ? "any" : "missing");
-      if (await exists(resource.target)) await rm(resource.target, { recursive: true, force: true });
-      if (resource.existed) {
-        const backup = join(receipt.backupRoot, String(resource.index));
-        await validateAllowedPath(backup, this.request.allowedRoot, "any");
-        await copySafe(backup, resource.target);
-        if (!(await sameTree(backup, resource.target))) throw new Error("rollback readback failed");
-      } else if (await exists(resource.target)) {
-        throw new Error("rollback absence readback failed");
-      }
-    }
-    await this.writeReceipt(receiptPath, { ...receipt, rolledBack: true });
-    return { outcome: "SUCCESS", state: "FRESH", phase: "rollback", rollbackStatus: "SUCCEEDED" };
-  }
-
-  private parseReceipt(raw: string): RollbackReceipt {
-    let value: unknown;
-    try { value = JSON.parse(raw); } catch { throw new Error("rollback receipt is invalid JSON"); }
-    const candidate = value as Partial<RollbackReceipt>;
-    if (candidate.schemaVersion !== 1 || typeof candidate.backupRoot !== "string" ||
-        typeof candidate.rolledBack !== "boolean" || !Array.isArray(candidate.resources)) {
-      throw new Error("rollback receipt has invalid schema");
-    }
-    if (!candidate.backupRoot.startsWith(`${this.request.allowedRoot}/`)) throw new Error("rollback backup escapes allowed root");
-    const expectedTargets = [
-      join(this.request.home, "AGENTS.md"),
-      join(this.request.home, "hooks.json"),
-      this.request.installRoot,
-    ];
-    if (candidate.resources.length !== expectedTargets.length) throw new Error("rollback receipt resource count is invalid");
-    for (const resource of candidate.resources) {
-      if (typeof resource !== "object" || resource === null || typeof resource.target !== "string" ||
-          typeof resource.existed !== "boolean" || !Number.isInteger(resource.index)) {
-        throw new Error("rollback receipt resource is invalid");
-      }
-      if (resource.index < 0 || resource.index >= expectedTargets.length ||
-          resource.target !== expectedTargets[resource.index]) {
-        throw new Error("rollback receipt resource target is invalid");
-      }
-    }
-    return candidate as RollbackReceipt;
-  }
-
-  async install(): Promise<InstallResult> {
-    const request = this.request;
-    if (request.harness !== "codex") throw new Error(`unsupported harness: ${request.harness}`);
-    await validateAllowedPath(request.home, request.allowedRoot, "directory");
-    await validateAllowedPath(request.installRoot, request.allowedRoot, (await exists(request.installRoot)) ? "directory" : "missing");
-    await verifyRelease(request.releaseRoot);
-    const inventory = await inspectCodex(request.home, request.installRoot);
-    const state = classifyCodex(inventory);
-    this.fault("inspect");
-    if (state === "UNKNOWN" || state === "UNSUPPORTED") throw new Error(`unsafe install state: ${state}`);
-    this.fault("classify");
-    const plan = planCodex({ harness: "codex", state, home: request.home, installRoot: request.installRoot });
-    this.fault("plan");
-    if (state === "CURRENT") {
-      return { outcome: "SUCCESS", state, phase: "verify", rollbackStatus: "NOT_REQUIRED", plan };
-    }
-    if (request.dryRun) {
-      return { outcome: "SUCCESS", state, phase: "plan", rollbackStatus: "NOT_REQUIRED", plan };
-    }
-
-    const transactionId = randomUUID();
-    const backupParent = join(request.allowedRoot, ".agent-governance-backups");
-    const receiptPath = join(request.home, ".agent-governance-rollback.json");
-    await validateAllowedPath(receiptPath, request.allowedRoot, "missing");
-    const backupParentExists = await exists(backupParent);
-    await validateAllowedPath(backupParent, request.allowedRoot, backupParentExists ? "directory" : "missing");
-    if (!backupParentExists) await mkdir(backupParent, { mode: 0o700 });
-    const backupRoot = join(backupParent, transactionId);
-    const stageRoot = await mkdtemp(join(request.allowedRoot, ".agent-governance-stage-"));
-    const retiredRoot = join(request.allowedRoot, `.agent-governance-retired-${transactionId}`);
-    await mkdir(backupRoot, { mode: 0o700 });
-    await mkdir(retiredRoot, { mode: 0o700 });
-    const targets = [join(request.home, "AGENTS.md"), join(request.home, "hooks.json"), request.installRoot];
-    const parentIdentities = new Map<string, PathIdentity>();
-    for (const target of targets) {
-      const parent = dirname(target);
-      if (!parentIdentities.has(parent)) parentIdentities.set(parent, await captureIdentity(parent));
-    }
-
-    const backupPresence: boolean[] = [];
-    for (const [index, target] of targets.entries()) {
-      const present = await exists(target);
-      backupPresence.push(present);
-      if (present) {
-        const backup = join(backupRoot, String(index));
-        await copySafe(target, backup);
-        if (!(await sameTree(target, backup))) throw new Error("backup readback failed");
-      } else {
-        await writeFile(join(backupRoot, `${index}.absent`), "absent\n", { mode: 0o600 });
-      }
-    }
-    this.fault("backup");
-
-    const stagedInstall = join(stageRoot, "installation");
-    await this.materializeRelease(stagedInstall);
-    if (state === "LEGACY" && inventory.agents !== undefined) {
-      const personalRules = inventory.agents
-        .split(/(?<=\n)/)
-        .filter((line) => {
-          const normalized = line.replace(/\r?\n$/, "");
-          return normalized !== "@~/agent-governance/adapters/AGENTS.md" &&
-            normalized !== "@~/agent-governance/adapters/codex.md";
-        })
-        .join("");
-      if (personalRules !== "") {
-        const manifest = await readFile(
-          join(stagedInstall, "bundle", "agent-governance", "manifest.toml"),
-          "utf8",
-        );
-        const match = /^local_rules\s*=\s*"([^"\\]+)"\s*$/m.exec(manifest);
-        if (match?.[1] === undefined || match[1].split("/").includes("..")) {
-          throw new Error("manifest local_rules path is ambiguous");
-        }
-        const localRules = join(stagedInstall, "bundle", "agent-governance", match[1]);
-        await mkdir(dirname(localRules), { recursive: true });
-        await writeFile(localRules, personalRules, { mode: 0o600 });
-      }
-    }
-    const governance = await readFile(join(stagedInstall, "bundle", "GOVERNANCE.md"));
-    const stagedAgents = join(stageRoot, "AGENTS.md");
-    await writeFile(stagedAgents, governance, { mode: 0o600 });
-    const oldHooks = inventory.hooksPresent ? await readFile(join(request.home, "hooks.json"), "utf8") : undefined;
-    const stagedHooks = join(stageRoot, "hooks.json");
-    await writeFile(
-      stagedHooks,
-      mergeGovernanceHook(oldHooks, join(request.installRoot, "integrations", "microsoft-agent-governance-toolkit", "bridge", "codex-hook.mjs")),
-      { mode: 0o600 },
-    );
-    this.fault("stage");
-
-    for (const [parent, identity] of parentIdentities) await assertIdentity(parent, identity);
-    const entries: ActivationEntry[] = [
-      { target: targets[0]!, staged: stagedAgents, retired: join(retiredRoot, "0"), existed: backupPresence[0]!, activated: false },
-      { target: targets[1]!, staged: stagedHooks, retired: join(retiredRoot, "1"), existed: backupPresence[1]!, activated: false },
-      { target: targets[2]!, staged: stagedInstall, retired: join(retiredRoot, "2"), existed: backupPresence[2]!, activated: false },
-    ];
-    let activePhase: InstallPhase = "activate";
+  private binding(release: VerifiedRelease): GovernanceBinding { const base = join(this.request.installationRoot, "releases", release.version, "bundle"); return { version: release.version, installationRoot: this.request.installationRoot, governancePath: join(base, "GOVERNANCE.md"), manifestPath: join(base, "agent-governance", "manifest.toml"), governanceDigest: release.governanceDigest, manifestDigest: release.manifestDigest }; }
+  private async context(): Promise<{ target: TargetInspection; release: VerifiedRelease; binding: GovernanceBinding; current?: CurrentMetadata; entry: Buffer; state: InstallResult["state"] }> {
+    const target = await inspectTarget(this.request.targetRoot, this.request.entryFile, this.request.installationRoot);
+    const release = await verifyRelease(this.request.releaseRoot);
+    const binding = this.binding(release);
+    const entry = (await optionalBytes(target.entryPath)) ?? Buffer.alloc(0);
+    const currentBytes = await optionalBytes(join(this.request.installationRoot, "current.json"));
+    const receiptBytes = await optionalBytes(join(this.request.installationRoot, "last-transaction.json"));
+    if (receiptBytes !== undefined) { const receipt = this.parseReceipt(receiptBytes); if (receipt.status === "PREPARED") return { target, release, binding, entry, ...(currentBytes === undefined ? {} : { current: this.parseCurrent(currentBytes) }), state: "RECOVERY_REQUIRED" }; }
+    if (currentBytes === undefined) { const hasMarker = entry.includes(Buffer.from("AGENT_GOVERNANCE_MANAGED_")); return { target, release, binding, entry, state: hasMarker ? "TAMPERED" : target.entryExists ? "FRESH" : "ABSENT" }; }
+    let current: CurrentMetadata;
+    try { current = this.parseCurrent(currentBytes); }
+    catch { return { target, release, binding, entry, state: "TAMPERED" }; }
     try {
-      for (const entry of entries) {
-        if (entry.existed) await rename(entry.target, entry.retired);
-        await rename(entry.staged, entry.target);
-        entry.activated = true;
-      }
-      this.fault("activate");
-      activePhase = "verify";
-      const activeGovernance = await readFile(join(request.installRoot, "bundle", "GOVERNANCE.md"));
-      const activeAgents = await readFile(join(request.home, "AGENTS.md"));
-      if (!activeGovernance.equals(activeAgents)) throw new Error("instruction readback mismatch");
-      await verifyRelease(request.installRoot);
-      this.fault("verify");
-      const receipt: RollbackReceipt = {
-        schemaVersion: 1,
-        backupRoot,
-        rolledBack: false,
-        resources: targets.map((target, index) => ({ target, existed: backupPresence[index]!, index })),
-      };
-      await this.writeReceipt(receiptPath, receipt);
-      await rm(retiredRoot, { recursive: true, force: true });
-      await rm(stageRoot, { recursive: true, force: true });
-      return { outcome: "SUCCESS", state, phase: "verify", rollbackStatus: "NOT_REQUIRED", plan };
-    } catch (error) {
-      try {
-        await this.rollbackEntries(entries);
-        await rm(stageRoot, { recursive: true, force: true });
-      } catch (rollbackError) {
-        throw new InstallerFailure(
-          "ROLLBACK_FAILED",
-          activePhase,
-          "installation",
-          "ROLLBACK_FAILED",
-          `${(error as Error).message}; rollback failed: ${(rollbackError as Error).message}`,
-          "FAILED",
-        );
-      }
-      throw new InstallerFailure(
-        "VERIFICATION_ROLLED_BACK",
-        activePhase,
-        "installation",
-        "VERIFICATION_ROLLED_BACK",
-        (error as Error).message,
-        "SUCCEEDED",
-      );
-    }
+      if (current.schemaVersion !== 1 || current.installationRoot !== this.request.installationRoot || current.targetRoot !== this.request.targetRoot || current.entryFile !== this.request.entryFile || !SEMVER.test(current.version)) throw new Error("current metadata mismatch");
+      const installed = await verifyRelease(join(this.request.installationRoot, "releases", current.version));
+      const installedBinding = this.binding(installed);
+      const expectedCurrent: CurrentMetadata = { schemaVersion: 1, ...installedBinding, targetRoot: this.request.targetRoot, entryFile: this.request.entryFile };
+      for (const key of Object.keys(expectedCurrent) as (keyof CurrentMetadata)[]) if (current[key] !== expectedCurrent[key]) throw new Error("current metadata mismatch");
+      verifyManagedBlock(entry, installedBinding);
+      const comparison = compareSemver(release.version, installed.version);
+      if (comparison === 0 && (release.governanceDigest !== installed.governanceDigest || release.manifestDigest !== installed.manifestDigest)) throw new Error("release content changed without a version change");
+      const state: InstallResult["state"] = comparison === 0 ? "CURRENT" : comparison > 0 ? "OUTDATED" : "DOWNGRADE_BLOCKED";
+      return { target, release, binding, current, entry, state };
+    } catch { return { target, release, binding, current, entry, state: "TAMPERED" }; }
   }
-
-  private async materializeRelease(destination: string): Promise<void> {
-    await mkdir(destination, { recursive: true });
-    const inventory = await readFile(join(this.request.releaseRoot, "release.files.sha256"), "utf8");
-    for (const line of inventory.trimEnd().split("\n")) {
-      const path = line.slice(66);
-      const target = join(destination, path);
-      await mkdir(dirname(target), { recursive: true });
-      await copySafe(join(this.request.releaseRoot, path), target);
-    }
-    await copySafe(join(this.request.releaseRoot, "release.files.sha256"), join(destination, "release.files.sha256"));
+  private parseCurrent(bytes: Buffer): CurrentMetadata { return parseObject<CurrentMetadata>(bytes, ["schemaVersion", "version", "installationRoot", "governancePath", "manifestPath", "governanceDigest", "manifestDigest", "targetRoot", "entryFile"], "current metadata"); }
+  private parseReceipt(bytes: Buffer): Receipt { const receipt = parseObject<Receipt>(bytes, ["schemaVersion", "id", "status", "operation", "backupRoot", "entryPath", "entryExisted", "currentExisted", "releasePath", "releaseExisted", "localRulesPath", "localRulesExisted"], "transaction receipt"); const backupBase = join(this.request.installationRoot, "backups"); const releaseRoot = join(this.request.installationRoot, "releases"); const localRelative = typeof receipt.localRulesPath === "string" ? relative(receipt.releasePath, receipt.localRulesPath) : undefined; const scalarTypesValid = typeof receipt.id === "string" && typeof receipt.backupRoot === "string" && typeof receipt.entryPath === "string" && typeof receipt.entryExisted === "boolean" && typeof receipt.currentExisted === "boolean" && typeof receipt.releasePath === "string" && typeof receipt.releaseExisted === "boolean" && typeof receipt.localRulesExisted === "boolean" && (receipt.localRulesPath === null || typeof receipt.localRulesPath === "string"); if (!scalarTypesValid || receipt.schemaVersion !== 1 || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(receipt.id) || !["PREPARED", "COMMITTED", "ROLLED_BACK"].includes(receipt.status) || !["install", "update", "uninstall"].includes(receipt.operation) || receipt.entryPath !== join(this.request.targetRoot, this.request.entryFile) || receipt.backupRoot !== join(backupBase, receipt.id) || dirname(receipt.releasePath) !== releaseRoot || !SEMVER.test(basename(receipt.releasePath)) || (localRelative !== undefined && (!localRelative.startsWith(`bundle${sep}agent-governance${sep}`) || !/\.md$/i.test(localRelative) || localRelative.startsWith(`..${sep}`) || isAbsolute(localRelative))) || (receipt.localRulesPath === null && receipt.localRulesExisted)) throw new Error("transaction receipt has invalid values"); return receipt; }
+  async inspect(command: "inspect" | "status" = "inspect"): Promise<InstallResult> { const context = await this.context(); return this.result(command, context.state, "inspect", ["CURRENT", "OUTDATED", "DOWNGRADE_BLOCKED"].includes(context.state) ? "AVAILABLE" : "NOT_REQUIRED"); }
+  async status(): Promise<InstallResult> { return this.inspect("status"); }
+  async plan(command: InstallerCommand = "plan"): Promise<InstallResult> { const context = await this.context(); const plannedCommand = command === "plan" ? "install" : command; const plan = planInstallation({ command: plannedCommand, state: context.state, entryPath: context.target.entryPath, installationRoot: this.request.installationRoot, version: context.release.version, localRules: this.request.localRules !== undefined }); return this.result("plan", context.state, "plan", "NOT_REQUIRED", plan); }
+  async verify(): Promise<InstallResult> { const context = await this.context(); if (context.state !== "CURRENT") throw new Error(`verification failed: ${context.state}`); return this.result("verify", "CURRENT", "verify", "AVAILABLE"); }
+  async install(): Promise<InstallResult> { return this.mutate("install"); }
+  async update(): Promise<InstallResult> { return this.mutate("update"); }
+  async uninstall(): Promise<InstallResult> { return this.mutate("uninstall"); }
+  private async mutate(operation: "install" | "update" | "uninstall"): Promise<InstallResult> {
+    const coordinator = new SignalCoordinator(this.request.signalSource); coordinator.start();
+    try { const context = await this.context(); if (["TAMPERED", "RECOVERY_REQUIRED", "DOWNGRADE_BLOCKED"].includes(context.state)) throw new Error(`unsafe install state: ${context.state}`); if (operation === "install" && context.state === "OUTDATED") throw new Error("unsafe install state: OUTDATED; use update"); const plan = planInstallation({ command: operation, state: context.state, entryPath: context.target.entryPath, installationRoot: this.request.installationRoot, version: context.release.version, localRules: this.request.localRules !== undefined }); if (this.request.dryRun) return this.result(operation, context.state, "plan", "NOT_REQUIRED", plan); if (operation === "install" && context.state === "CURRENT") return this.result(operation, "CURRENT", "verify", "AVAILABLE", plan); if (operation === "update" && context.state === "CURRENT" && this.request.localRules === undefined) return this.result(operation, "CURRENT", "verify", "AVAILABLE", plan); if (operation === "uninstall" && (context.state === "ABSENT" || context.state === "FRESH")) return this.result(operation, "ABSENT", "verify", "NOT_REQUIRED", plan); coordinator.checkpoint("plan"); this.request.onCheckpoint?.("beforeMutation"); coordinator.checkpoint("plan"); await this.performMutation(operation, context, coordinator); return this.result(operation, operation === "uninstall" ? "ABSENT" : "CURRENT", "verify", "AVAILABLE", plan); }
+    catch (error) { if (error instanceof SignalInterruption) throw new InterruptedFailure(error.signal, error.phase, "NOT_REQUIRED"); throw error; } finally { coordinator.dispose(); }
   }
-
-  private async rollbackEntries(entries: ActivationEntry[]): Promise<void> {
-    for (const entry of [...entries].reverse()) {
-      if (entry.activated && (await exists(entry.target))) await rm(entry.target, { recursive: true, force: true });
-      if (entry.existed && (await exists(entry.retired))) await rename(entry.retired, entry.target);
-    }
+  private async performMutation(operation: "install" | "update" | "uninstall", context: Awaited<ReturnType<InstallerTransaction["context"]>>, coordinator: SignalCoordinator): Promise<void> {
+    const root = this.request.installationRoot; const id = randomUUID(); const backupRoot = join(root, "backups", id); const currentPath = join(root, "current.json"); const receiptPath = join(root, "last-transaction.json");
+    const releasePath = join(root, "releases", context.release.version); const releaseExisted = await exists(releasePath); const localRules = operation === "uninstall" ? undefined : await this.localRulesMutation(context);
+    await assertIdentity(context.target.installationAncestorPath, context.target.installationAncestorIdentity); await mkdir(root, { recursive: true, mode: 0o700 }); await ensureSafeDirectory(root); const installationIdentity = await captureIdentity(root); await ensureSafeDirectory(join(root, "backups")); await ensureSafeDirectory(join(root, "releases")); await mkdir(backupRoot, { mode: 0o700 });
+    const current = await optionalBytes(currentPath); if (context.target.entryExists) await writeFile(join(backupRoot, "entry.bin"), context.entry, { flag: "wx", mode: 0o600 }); else await writeFile(join(backupRoot, "entry.absent"), "absent\n", { flag: "wx", mode: 0o600 });
+    if (current !== undefined) await writeFile(join(backupRoot, "current.json"), current, { flag: "wx", mode: 0o600 }); else await writeFile(join(backupRoot, "current.absent"), "absent\n", { flag: "wx", mode: 0o600 });
+    if (localRules?.previous !== undefined) await writeFile(join(backupRoot, "local-rules.bin"), localRules.previous, { flag: "wx", mode: 0o600 });
+    if (context.target.entryExists && !(await readFile(join(backupRoot, "entry.bin"))).equals(context.entry)) throw new Error("backup readback failed"); if (current !== undefined && !(await readFile(join(backupRoot, "current.json"))).equals(current)) throw new Error("backup readback failed");
+    const receipt: Receipt = { schemaVersion: 1, id, status: "PREPARED", operation, backupRoot, entryPath: context.target.entryPath, entryExisted: context.target.entryExists, currentExisted: current !== undefined, releasePath, releaseExisted, localRulesPath: localRules?.targetPath ?? null, localRulesExisted: localRules?.previous !== undefined }; await atomicWrite(join(backupRoot, "receipt.json"), `${JSON.stringify(receipt)}\n`); await atomicWrite(receiptPath, `${JSON.stringify(receipt)}\n`); this.request.onCheckpoint?.("afterReceipt"); await assertIdentity(root, installationIdentity); if (context.target.entryIdentity !== undefined) await assertIdentity(context.target.entryPath, context.target.entryIdentity); coordinator.checkpoint("backup"); this.fault("backup");
+    try {
+      await assertIdentity(this.request.targetRoot, context.target.targetIdentity);
+      await assertIdentity(dirname(context.target.entryPath), context.target.entryParentIdentity);
+      if (operation === "uninstall") { await atomicWrite(context.target.entryPath, removeManagedBlock(context.entry)); await rm(currentPath, { force: true }); }
+      else { await this.activateRelease(context.release); if (localRules?.source !== undefined) await atomicWrite(localRules.targetPath, localRules.source); this.fault("stage"); const metadata: CurrentMetadata = { schemaVersion: 1, ...context.binding, targetRoot: this.request.targetRoot, entryFile: this.request.entryFile }; await atomicWrite(currentPath, `${JSON.stringify(metadata, null, 2)}\n`); this.request.onCheckpoint?.("afterCurrent"); coordinator.checkpoint("activate"); await atomicWrite(context.target.entryPath, installManagedBlock(context.entry, context.binding)); }
+      this.request.onCheckpoint?.("afterEntry"); coordinator.checkpoint("activate"); this.fault("activate"); this.request.onCheckpoint?.("beforeVerification"); if (operation === "uninstall") { if (!removeManagedBlock(await readFile(context.target.entryPath)).equals(await readFile(context.target.entryPath))) throw new Error("managed block remains after uninstall"); } else { verifyManagedBlock(await readFile(context.target.entryPath), context.binding); await verifyRelease(join(root, "releases", context.release.version)); } this.fault("verify");
+      await atomicWrite(receiptPath, `${JSON.stringify({ ...receipt, status: "COMMITTED" })}\n`); await atomicWrite(join(backupRoot, "receipt.json"), `${JSON.stringify({ ...receipt, status: "COMMITTED" })}\n`);
+    } catch (error) { try { this.request.onCheckpoint?.("duringRollback"); if (this.request.faultDuringRollback) throw new Error("injected rollback failure"); await this.restore(receipt); } catch (rollbackError) { throw new InstallerFailure("ROLLBACK_FAILED", "rollback", "installation", "ROLLBACK_FAILED", `${(error as Error).message}; rollback failed: ${(rollbackError as Error).message}`, "FAILED"); } if (error instanceof SignalInterruption) throw new InterruptedFailure(error.signal, error.phase, "SUCCEEDED"); throw new InstallerFailure("VERIFICATION_ROLLED_BACK", "verify", "installation", "VERIFICATION_ROLLED_BACK", (error as Error).message, "SUCCEEDED"); }
   }
-
-  private async writeReceipt(receiptPath: string, receipt: RollbackReceipt): Promise<void> {
-    const temporary = `${receiptPath}.${randomUUID()}.tmp`;
-    await validateAllowedPath(temporary, this.request.allowedRoot, "missing");
-    await writeFile(temporary, `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o600, flag: "wx" });
-    await rename(temporary, receiptPath);
-    await validateAllowedPath(receiptPath, this.request.allowedRoot, "file");
-    const readback = this.parseReceipt(await readFile(receiptPath, "utf8"));
-    if (JSON.stringify(readback) !== JSON.stringify(receipt)) throw new Error("rollback receipt readback failed");
-  }
+  private async localRulesPath(releaseRoot: string): Promise<string> { const manifest = await readFile(join(releaseRoot, "bundle", "agent-governance", "manifest.toml"), "utf8"); const value = /^local_rules\s*=\s*"([^"\\]+)"\s*$/m.exec(manifest)?.[1]; if (value === undefined || value === "" || normalize(value) !== value || isAbsolute(value) || value.split("/").includes("..")) throw new Error("manifest local rules path is invalid"); return join(releaseRoot, "bundle", "agent-governance", value); }
+  private async localRulesMutation(context: Awaited<ReturnType<InstallerTransaction["context"]>>): Promise<LocalRulesMutation> { const releasePath = join(this.request.installationRoot, "releases", context.release.version); const targetPath = await this.localRulesPath(this.request.releaseRoot); const relativePath = relative(this.request.releaseRoot, targetPath); const installedTarget = join(releasePath, relativePath); let source: Buffer | undefined;
+    if (this.request.localRules !== undefined) { const stat = await lstat(this.request.localRules); if (!isAbsolute(this.request.localRules) || (await realpath(this.request.localRules)) !== this.request.localRules || stat.isSymbolicLink() || !stat.isFile()) throw new Error("local rules must be an absolute canonical regular non-symlink file"); source = await readFile(this.request.localRules); }
+    else if (context.current !== undefined) { const previousRoot = join(this.request.installationRoot, "releases", context.current.version); source = await optionalBytes(await this.localRulesPath(previousRoot)); }
+    const previous = await optionalBytes(installedTarget); return { targetPath: installedTarget, ...(source === undefined ? {} : { source }), ...(previous === undefined ? {} : { previous }) }; }
+  private async activateRelease(release: VerifiedRelease): Promise<void> { const destination = join(this.request.installationRoot, "releases", release.version); if (await exists(destination)) { await verifyRelease(destination); return; } const stage = await mkdtemp(join(this.request.installationRoot, ".stage-")); await cp(join(this.request.releaseRoot, "bundle"), join(stage, "bundle"), { recursive: true, dereference: false, errorOnExist: true }); await cp(join(this.request.releaseRoot, "VERSION"), join(stage, "VERSION"), { errorOnExist: true }); await cp(join(this.request.releaseRoot, "release.files.sha256"), join(stage, "release.files.sha256"), { errorOnExist: true }); await verifyRelease(stage); await rename(stage, destination); }
+  private async restore(receipt: Receipt): Promise<void> { const entryBackup = join(receipt.backupRoot, "entry.bin"); const currentBackup = join(receipt.backupRoot, "current.json"); if (receipt.entryExisted) await atomicWrite(receipt.entryPath, await readFile(entryBackup)); else await rm(receipt.entryPath, { force: true }); const currentPath = join(this.request.installationRoot, "current.json"); if (receipt.currentExisted) await atomicWrite(currentPath, await readFile(currentBackup)); else await rm(currentPath, { force: true }); if (receipt.localRulesPath !== null) { if (receipt.localRulesExisted) await atomicWrite(receipt.localRulesPath, await readFile(join(receipt.backupRoot, "local-rules.bin"))); else await rm(receipt.localRulesPath, { force: true }); } if (!receipt.releaseExisted) await rm(receipt.releasePath, { recursive: true, force: true }); const rolled = { ...receipt, status: "ROLLED_BACK" as const }; await atomicWrite(join(receipt.backupRoot, "receipt.json"), `${JSON.stringify(rolled)}\n`); await atomicWrite(join(this.request.installationRoot, "last-transaction.json"), `${JSON.stringify(rolled)}\n`); }
+  async rollback(): Promise<InstallResult> { const target = await inspectTarget(this.request.targetRoot, this.request.entryFile, this.request.installationRoot); const bytes = await optionalBytes(join(this.request.installationRoot, "last-transaction.json")); if (bytes === undefined) throw new Error("rollback receipt is missing"); const receipt = this.parseReceipt(bytes); if (this.request.dryRun) return this.result("rollback", "RECOVERY_REQUIRED", "plan", "AVAILABLE"); if (receipt.status !== "ROLLED_BACK") { await assertIdentity(target.targetRoot, target.targetIdentity); await assertIdentity(dirname(target.entryPath), target.entryParentIdentity); await assertIdentity(target.installationAncestorPath, target.installationAncestorIdentity); if (target.entryIdentity !== undefined) await assertIdentity(target.entryPath, target.entryIdentity); await this.restore(receipt); } const restored = await this.context(); return this.result("rollback", restored.state, "rollback", "SUCCEEDED"); }
 }

@@ -1,7 +1,7 @@
 {
-  "name": "agent-governance",
-  "version": "0.6.0",
-  "description": "Transactional installer for the agent-governance bundle",
+  "name": "@tomtastisch/agent-governance",
+  "version": "1.0.0-rc.1",
+  "description": "Global explicit-path transactional installer for Agent Governance",
   "type": "module",
   "bin": {
     "agent-governance": "dist/cli.js"
@@ -9,8 +9,8 @@
   "files": [
     "dist",
     "bundle",
-    "integrations",
-    "Installation.bootstrap.prompt.md",
+    "INSTALL.md",
+    "CHANGELOG.md",
     "LICENSE",
     "README.md",
     "release.files.sha256",
@@ -20,14 +20,27 @@
     "node": ">=24"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
     "test": "node --experimental-strip-types --test tests/installer/*.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "tsc -p tsconfig.json --noEmit && git diff --check"
+    "lint": "tsc -p tsconfig.json --noEmit && git diff --check",
+    "pack:check": "npm pack --dry-run --json | node tools/verify-pack.mjs",
+    "test:package": "tests/e2e/run_package_consumers.sh",
+    "license:check": "node tools/verify-licenses.mjs"
   },
   "devDependencies": {
     "@types/node": "24.3.0",
     "typescript": "5.9.2"
   },
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tomtastisch/agent-governance.git"
+  },
+  "homepage": "https://github.com/tomtastisch/agent-governance#readme",
+  "bugs": "https://github.com/tomtastisch/agent-governance/issues",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
 }

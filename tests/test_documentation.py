@@ -21,17 +21,15 @@ class EmployeeReadmeContract(unittest.TestCase):
             "## Was ist agent-governance?",
             "## Welches Problem löst es?",
             "## Architektur",
-            "## Governance und Enforcement",
             "## Schnellstart",
-            "## Installation und erster Start",
-            "## Fresh, Current und Legacy",
-            "## Nutzung",
-            "## Routing und Rollen",
+            "## CLI- und Managed-Block-Vertrag",
+            "## Transaktion, Update und Recovery",
             "## Lokale persönliche Regeln",
-            "## Module und Rollen erweitern",
-            "## Microsoft-AGT-Integration",
+            "## Dokumentierte Harnessrezepte",
+            "## Capability- und Kompatibilitätsstatus",
+            "## Migration von v0.5.0",
+            "## Releaseprozess",
             "## Verifikation und Tests",
-            "## Versionierung",
             "## Security- und Betriebsgrenzen",
             "## Bekannte Einschränkungen",
         )
@@ -39,34 +37,31 @@ class EmployeeReadmeContract(unittest.TestCase):
             self.assertIn(heading, README)
         self.assertLessEqual(README.count("```mermaid"), 3)
 
-    def test_quickstart_is_short_and_points_to_executable_contract(self):
+    def test_quickstart_is_short_and_uses_the_explicit_path_contract(self):
         section = README.split("## Schnellstart", 1)[1].split("\n## ", 1)[0]
         for step in (
-            "veröffentlichten",
-            "Installation.bootstrap.prompt.md",
-            "Harness",
-            "Installationszustand",
-            "Verifikationsstatus",
-            "neue Agentensitzung",
+            "@tomtastisch/agent-governance",
+            "--scope global",
+            "--installation-root",
+            "--target-root",
+            "--entry-file",
+            "--non-interactive",
         ):
             self.assertIn(step, section)
-        self.assertLessEqual(len(re.findall(r"(?m)^\d+\. ", section)), 5)
+        self.assertNotIn("--harness", section)
 
-    def test_microsoft_boundary_and_verified_support_are_precise(self):
+    def test_adapterless_boundary_and_verified_support_are_precise(self):
         for term in (
-            "v4.1.0",
-            "0de71ca6c95cf8b9b975ac96f48eaa7826bbe258",
-            "Public Preview",
-            "Enforcement-Provider",
-            "keine Governance-Quelle",
-            "kein offizieller Codex-Adapter",
-            "Codex CLI 0.147.0",
-            "danger-full-access",
-            "Standard-Seccomp",
+            "GLOBAL_EXPLICIT_PATH_MANAGED_BLOCK",
+            "keine Harnesserkennung",
+            "keine Harnessadapter",
+            "keine Runtime-Abhängigkeiten",
+            "HARNESS_E2E_VERIFIED",
+            "Fresh Session",
         ):
             self.assertIn(term, README)
-        self.assertNotRegex(README, r"(?i)Microsoft-(?:certified|approved)")
-        self.assertNotRegex(README, r"(?i)Microsoft AGT (?:ist )?GA")
+        self.assertNotIn("PreToolUse-Bridge", README)
+        self.assertNotIn("eigene Bridge", README)
 
     def test_private_rules_and_runtime_evidence_boundary_are_explicit(self):
         for term in (
@@ -74,11 +69,10 @@ class EmployeeReadmeContract(unittest.TestCase):
             "manifest.toml",
             "nicht committed",
             "keine Hashes",
-            "codex exec",
-            "codex debug prompt-input",
+            "--local-rules",
+            "explizite",
         ):
             self.assertIn(term, README)
-        self.assertRegex(README, r"(?is)codex debug prompt-input.+nicht ausreichend")
 
     def test_governance_diagrams_are_local_non_normative_explanations(self):
         image_names = (
@@ -109,15 +103,51 @@ class EmployeeReadmeContract(unittest.TestCase):
 class InstallBoundaryContract(unittest.TestCase):
     def test_install_is_boundary_not_second_executable_guide(self):
         self.assertIn("Boundary- und Verantwortungsdokument", INSTALL)
-        self.assertIn("Installation.bootstrap.prompt.md", INSTALL)
-        self.assertIn("einzige ausführbare Installationsvertrag", INSTALL)
+        self.assertIn("öffentliche CLI", INSTALL)
+        self.assertIn("GLOBAL_EXPLICIT_PATH_MANAGED_BLOCK", INSTALL)
         self.assertNotRegex(INSTALL, r"(?m)^\d+\. ")
         self.assertIn("[`VERSION`](VERSION)", INSTALL)
 
+    def test_harness_recipes_are_source_linked_and_runtime_neutral(self):
+        for term in (
+            "$HOME/.codex", "$HOME/.claude", "$HOME/.config/opencode",
+            "$HOME/.openclaw/workspace", "AGENTS.md", "CLAUDE.md",
+            "developers.openai.com/codex/guides/agents-md",
+            "code.claude.com/docs/en/memory",
+            "opencode.ai/v2/docs/instructions",
+            "docs.openclaw.ai/concepts/agent-workspace",
+        ):
+            self.assertIn(term, README)
+        self.assertRegex(README, r"(?is)Rezepte.+Dokumentation.+nicht.+Runtime")
+
+    def test_threat_model_schema_and_adapter_decision_are_durable(self):
+        threat = (ROOT / "docs" / "installer-threat-model.md").read_text(encoding="utf-8")
+        schemas = (ROOT / "docs" / "installer-json-schemas.md").read_text(encoding="utf-8")
+        audit = (ROOT / "docs" / "adapter-audit.md").read_text(encoding="utf-8")
+        for term in ("Trust Boundaries", "Symlink", "TOCTOU", "Receipt", "Residual"):
+            self.assertIn(term, threat)
+        for term in ("schemaVersion", "OUTDATED", "DOWNGRADE_BLOCKED", "Exitcodes"):
+            self.assertIn(term, schemas)
+        for term in ("NO_GO", "rulesync", "uri-templates", "keine Runtime-Abhängigkeit"):
+            self.assertIn(term, audit)
+
+    def test_catchable_and_uncatchable_interruption_boundaries_are_explicit(self):
+        for term in (
+            "SIGINT",
+            "SIGTERM",
+            "PREPARED",
+            "130",
+            "143",
+            "SIGKILL",
+            "Stromausfall",
+        ):
+            self.assertIn(term, README)
+        self.assertNotIn("registriert keine Signalhandler", README)
+
 
 class ReleaseMetadataContract(unittest.TestCase):
-    def test_installer_minor_release_is_consistent(self):
-        self.assertEqual(VERSION, "0.6.0")
+    def test_installer_release_candidate_is_consistent(self):
+        self.assertEqual(VERSION, "1.0.0-rc.1")
         badge_line = README.splitlines()[2]
         self.assertIn(
             "[![Version](https://img.shields.io/github/v/release/"
@@ -139,16 +169,17 @@ class ReleaseMetadataContract(unittest.TestCase):
             "coffee_colour=ffffff)](https://buymeacoffee.com/tomtastisch)",
             README,
         )
-        self.assertIn("## [0.6.0] — 2026-08-23", CHANGELOG)
+        self.assertIn("## [1.0.0-rc.1] — 2026-08-24", CHANGELOG)
         current = CHANGELOG.split(f"## [{VERSION}]", 1)[1].split("\n## [", 1)[0]
         for term in (
-            "transaktionalen Installer",
-            "Codex",
+            "transaktionalem Explicit-Path-Installer",
+            "adapterlosem",
             "Rollback",
-            "keine MCP-Auto-Approval",
+            "keine Harnessadapter",
+            "macOS-Testfixtures",
         ):
             self.assertIn(term, current)
-        self.assertIn("**Breaking changes:** none", current)
+        self.assertIn("**Breaking changes:** present", current)
         recovery_patch = CHANGELOG.split("## [0.4.1]", 1)[1].split("\n## [", 1)[0]
         self.assertIn("**Breaking changes:** none", recovery_patch)
         historical = CHANGELOG.split("## [0.4.0]", 1)[1].split("\n## [", 1)[0]

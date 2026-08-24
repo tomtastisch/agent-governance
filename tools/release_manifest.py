@@ -11,8 +11,8 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "release.files.sha256"
-TOP_LEVEL = ("VERSION", "LICENSE", "Installation.bootstrap.prompt.md")
-TREES = ("bundle", "integrations")
+TOP_LEVEL = ("VERSION",)
+TREES = ("bundle",)
 EXCLUDED = {"bundle/agent-governance/local/user-rules.md"}
 
 

@@ -1,110 +1,16 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
-
 import { runCli } from "../../src/cli.ts";
-import { InstallerFailure } from "../../src/errors.ts";
-import { InterruptedFailure } from "../../src/errors.ts";
+import { InstallerFailure, InterruptedFailure } from "../../src/errors.ts";
 import { InstallerTransaction } from "../../src/transaction.ts";
+import type { InstallResult } from "../../src/contracts.ts";
 import { createTestRoot } from "../fixtures/installer/workspace.ts";
 
-async function roots(): Promise<{ allowed: string; home: string; release: string; install: string }> {
-  const allowed = await createTestRoot("agent-governance-cli-");
-  const home = join(allowed, "Codex Home With Spaces");
-  const release = join(allowed, "release");
-  const install = join(home, "governance");
-  await mkdir(home);
-  await mkdir(join(release, "bundle", "agent-governance"), { recursive: true });
-  const files: Record<string, string> = {
-    VERSION: "0.6.0\n",
-    "bundle/GOVERNANCE.md": "governance\n",
-    "bundle/agent-governance/manifest.toml": 'schema_version = 2\nlocal_rules = "local/user-rules.md"\n',
-  };
-  for (const [path, value] of Object.entries(files)) await writeFile(join(release, path), value);
-  await writeFile(join(release, "release.files.sha256"), `${Object.entries(files).sort(([a],[b]) => a.localeCompare(b)).map(
-    ([path, value]) => `${createHash("sha256").update(value).digest("hex")}  ${path}`,
-  ).join("\n")}\n`);
-  return { allowed, home, release, install };
-}
+async function args(command: string): Promise<string[]> { const target = await createTestRoot("agent-governance-cli-"); return [command, "--scope", "global", "--target-root", target, "--entry-file", "AGENTS.md", "--installation-root", join(target, ".agent-governance"), "--non-interactive", "--json"]; }
+function result(command: InstallResult["command"]): InstallResult { return { schemaVersion: 1, architecture: "GLOBAL_EXPLICIT_PATH_MANAGED_BLOCK", command, outcome: "SUCCESS", state: "FRESH", phase: "inspect", rollbackStatus: "NOT_REQUIRED", capabilities: [] }; }
 
-function args(command: string, r: Awaited<ReturnType<typeof roots>>): string[] {
-  return [command, "--harness", "codex", "--home", r.home, "--allowed-root", r.allowed,
-    "--release-root", r.release, "--install-root", r.install, "--json"];
-}
-
-test("CLI inspect and plan emit deterministic JSON without mutation", async () => {
-  const r = await roots();
-  const output: string[] = [];
-  assert.equal(await runCli(args("inspect", r), (value) => output.push(value)), 0);
-  assert.equal(JSON.parse(output.at(-1)!).state, "FRESH");
-  assert.equal(await runCli(args("plan", r), (value) => output.push(value)), 0);
-  const plan = JSON.parse(output.at(-1)!);
-  assert.equal(plan.plan.mcpMutation, false);
-  assert.equal(plan.plan.approvalExpansion, false);
-});
-
-test("CLI install, verify, status, and rollback operate in isolated home", async () => {
-  const r = await roots();
-  const output: string[] = [];
-  for (const command of ["install", "verify", "status", "rollback"]) {
-    assert.equal(await runCli(args(command, r), (value) => output.push(value)), 0, command);
-  }
-  assert.equal(JSON.parse(output.at(-1)!).rollbackStatus, "SUCCEEDED");
-  assert.equal(await runCli(args("rollback", r), (value) => output.push(value)), 0);
-});
-
-test("CLI rejects unsupported harness and incomplete invocation", async () => {
-  const r = await roots();
-  const errors: string[] = [];
-  const unsupported = args("inspect", r);
-  unsupported[unsupported.indexOf("codex")] = "opencode";
-  assert.equal(await runCli(unsupported, () => {}, (value) => errors.push(value)), 3);
-  assert.equal(await runCli(["install", "--json"], () => {}, (value) => errors.push(value)), 2);
-  assert.equal(await runCli([...args("inspect", r), "--unknown", "value"], () => {}, (value) => errors.push(value)), 2);
-  assert.equal(await runCli([...args("inspect", r), "--home", r.home], () => {}, (value) => errors.push(value)), 2);
-  assert.equal(errors.some((value) => value.includes("token")), false);
-});
-
-test("CLI maps structured installer failures to their stable exit codes", async () => {
-  const original = InstallerTransaction.prototype.install;
-  InstallerTransaction.prototype.install = async () => {
-    throw new InstallerFailure("VERIFY", "verify", "installation", "VERIFICATION_ROLLED_BACK", "failed", "SUCCEEDED");
-  };
-  try {
-    const r = await roots();
-    const errors: string[] = [];
-    assert.equal(await runCli(args("install", r), () => {}, (value) => errors.push(value)), 5);
-    assert.deepEqual(JSON.parse(errors[0]!), {
-      outcome: "VERIFICATION_ROLLED_BACK",
-      phase: "verify",
-      resourceId: "installation",
-      rollbackStatus: "SUCCEEDED",
-      code: "VERIFY",
-      error: "failed",
-    });
-  } finally {
-    InstallerTransaction.prototype.install = original;
-  }
-});
-
-test("CLI maps catchable signals to conventional deterministic exit codes", async () => {
-  const original = InstallerTransaction.prototype.install;
-  try {
-    for (const [signal, expected] of [["SIGINT", 130], ["SIGTERM", 143]] as const) {
-      InstallerTransaction.prototype.install = async () => {
-        throw new InterruptedFailure(signal, "activate", "SUCCEEDED");
-      };
-      const r = await roots();
-      const errors: string[] = [];
-      assert.equal(await runCli(args("install", r), () => {}, (value) => errors.push(value)), expected);
-      const payload = JSON.parse(errors[0]!) as Record<string, unknown>;
-      assert.equal(payload.outcome, "INTERRUPTED");
-      assert.equal(payload.signal, signal);
-      assert.equal(payload.rollbackStatus, "SUCCEEDED");
-    }
-  } finally {
-    InstallerTransaction.prototype.install = original;
-  }
-});
+test("CLI inspect and plan emit deterministic versioned JSON without mutation", async () => { const output: string[] = []; assert.equal(await runCli(await args("inspect"), (value) => output.push(value)), 0); assert.equal(JSON.parse(output.at(-1)!).schemaVersion, 1); assert.equal(await runCli(await args("plan"), (value) => output.push(value)), 0); const plan = JSON.parse(output.at(-1)!).plan; assert.equal(plan.harnessSpecificMutation, false); assert.equal(plan.hookMutation, false); });
+test("CLI exposes all generic commands through one explicit path contract", async () => { const originals = new Map<string, unknown>(); for (const command of ["install", "verify", "status", "update", "uninstall", "rollback"] as const) { originals.set(command, InstallerTransaction.prototype[command]); InstallerTransaction.prototype[command] = async () => result(command) as never; } try { for (const command of originals.keys()) assert.equal(await runCli(await args(command), () => {}), 0, command); } finally { for (const [command, original] of originals) Object.assign(InstallerTransaction.prototype, { [command]: original }); } });
+test("CLI rejects implicit, duplicate, unknown, non-global, and harness-specific arguments", async () => { for (const argv of [[], ["install", "--json"], [...await args("install"), "--target-root", "/duplicate"], [...await args("install"), "--scope", "project"], [...await args("install"), "--harness", "codex"]]) assert.equal(await runCli(argv, () => {}, () => {}), 2); });
+test("CLI maps structured failures and catchable signals without secret content", async () => { const original = InstallerTransaction.prototype.install; try { InstallerTransaction.prototype.install = async () => { throw new InstallerFailure("VERIFY", "verify", "entry-file", "VERIFICATION_ROLLED_BACK", "failed", "SUCCEEDED"); }; const errors: string[] = []; assert.equal(await runCli(await args("install"), () => {}, (value) => errors.push(value)), 5); assert.equal(JSON.parse(errors.at(-1)!).outcome, "VERIFICATION_ROLLED_BACK"); for (const [signal, code] of [["SIGINT", 130], ["SIGTERM", 143]] as const) { InstallerTransaction.prototype.install = async () => { throw new InterruptedFailure(signal, "activate", "SUCCEEDED"); }; assert.equal(await runCli(await args("install"), () => {}, (value) => errors.push(value)), code); assert.equal(JSON.parse(errors.at(-1)!).signal, signal); } assert.equal(errors.some((value) => /token|secret/i.test(value)), false); } finally { InstallerTransaction.prototype.install = original; } });

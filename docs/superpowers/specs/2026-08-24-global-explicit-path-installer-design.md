@@ -1,5 +1,8 @@
 # Global Explicit-Path Installer Design
 
+> Historische Evidenz - nicht normativ. Maßgeblich sind das veröffentlichte Bundle und der
+> implementierte, getestete Installervertrag.
+
 ## Status and decision
 
 This specification records the user-approved `GLOBAL_EXPLICIT_PATH_MANAGED_BLOCK` architecture

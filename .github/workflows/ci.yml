@@ -21,6 +21,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
+        node: ["24", "26"]
     runs-on: ${{ matrix.os }}
     env:
       npm_config_cache: ${{ runner.temp }}/npm-cache
@@ -28,7 +29,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: "24"
+          node-version: ${{ matrix.node }}
           package-manager-cache: false
       - name: Install exact package toolchain
         run: npm ci --ignore-scripts
@@ -39,7 +40,9 @@ jobs:
           npm run build
           python3 tools/release_manifest.py check
           npm audit --audit-level=high
-          npm pack --dry-run --json
+          npm run license:check
+          npm run pack:check
+          npm run test:package
       - name: Run isolated installer fixture
         run: tests/e2e/run_installer_fixture.sh
 

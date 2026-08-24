@@ -25,38 +25,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Breaking changes:** none
 
-## [0.6.0] — 2026-08-23
+## [1.0.0-rc.1] — 2026-08-24
 
 ### Added
 
-- Einen strikt typisierten, transaktionalen Installer mit den Phasen Inspektion,
-  Klassifikation, Plan, Backup, Staging, Aktivierung, Verifikation und Rollback.
-- Eine nichtinteraktive CLI mit `inspect`, `plan`, `install`, `verify`, `rollback` und `status`
-  sowie strukturierter JSON-Ausgabe, Dry-Run und expliziten isolierten Zielwurzeln.
-- Den produktiven Codex-Adapter für globale `AGENTS.md`-Instruktionen und den synchronen
-  `agent_governance__execute`-Hook; andere Harnesses werden erkannt, aber nicht unterstützt.
-- Linux- und macOS-Fixture-Gates für Paket, Migration, Rollback, Manipulation und Idempotenz.
+- Das öffentliche Paket `@tomtastisch/agent-governance` mit globalem, adapterlosem,
+  transaktionalem Explicit-Path-Installer und den Commands `inspect`, `plan`, `install`, `verify`,
+  `status`, `update`, `uninstall` und `rollback`.
+- Einen deterministischen Managed Block, geschlossene JSON-Schemas, verifizierte Backups,
+  Releaseinventar, Digestprüfung, Signal-Rollback und explizite lokale Regeln.
 
 ### Changed
 
-- `Installation.bootstrap.prompt.md` bleibt der einzige normative Installationsvertrag; die CLI
-  führt ihn als schmaler Distributionsconsumer deterministisch aus.
-- Der Installationspayload besitzt ein vollständiges SHA-256-Dateimanifest. `VERSION` bleibt die
-  einzige SemVer-Quelle; `package.json` und Lockfile müssen exakt damit übereinstimmen.
+- Die Installationsarchitektur ist `GLOBAL_EXPLICIT_PATH_MANAGED_BLOCK`; Zielroot,
+  Markdown-Einstieg und Installationsroot sind vollständig explizit.
+- Das npm-Artefakt enthält keine Harnessadapter, Hooks, MCP-Mutationen, Auto-Approvals,
+  Fremdadapter oder Runtime-Abhängigkeiten.
 
 ### Fixed
 
-- Legacy-Codex-Bindings werden nur bei eindeutiger Zuordnung migriert; persönliche Regeln werden
-  am manifestdefinierten `local_rules`-Pfad erhalten.
-- Verifikationsfehler lösen ein getestetes Rollback aus, ohne partielle Installation als Erfolg zu
-  melden.
+- macOS-Testfixtures kanonisieren den temporären Root, ohne die produktive Symlinkgrenze
+  abzuschwächen.
 
 ### Removed
 
-- Keine. Insbesondere erfolgt keine MCP-Auto-Approval-Erweiterung und kein stilles Binding anderer
-  Harnesses.
+- Der unveröffentlichte Codex-only-Installerentwurf mit Harness-ID, festen Codexpfaden und
+  Hookmutation wurde aus Runtime und öffentlichem Paket entfernt.
 
-**Breaking changes:** none
+**Breaking changes:** present
+
+- **BREAKING:** Gegenüber dem manuellen v0.5.0-Bootstrap verlangt der Installer explizite globale
+  Zielparameter und verwaltet ausschließlich seinen markierten Markdown-Block.
 
 ## [0.5.0] — 2026-08-22
 

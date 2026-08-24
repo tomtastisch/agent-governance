@@ -1,44 +1,41 @@
-# Installerarchitektur 0.6.0
+# Installerarchitektur 1.0
 
-> Historische Evidenz - nicht normativ. Der normative Installationsvertrag bleibt
-> [`Installation.bootstrap.prompt.md`](../Installation.bootstrap.prompt.md).
+> Historische Evidenz - nicht normativ. Maßgeblich bleiben das Bundle und der getestete
+> öffentliche CLI-Vertrag.
 
-## Verantwortungsgrenzen
+## Architektur
 
-Der Installer ist ein Distributionsconsumer außerhalb des normativen Bundles. Er validiert den
-veröffentlichten Payload, inventarisiert ausschließlich explizite Ziele unter einer absoluten
-erlaubten Wurzel und erzeugt vor der ersten Mutation einen maschinenlesbaren Plan. Nur Codex ist in
-0.6.0 produktiv unterstützt. OpenCode, Claude Code und andere Harnesses enden vor jeder Mutation mit
-`UNSUPPORTED_HARNESS`.
+`GLOBAL_EXPLICIT_PATH_MANAGED_BLOCK` trennt drei Verantwortungen: Der Releaseverifier akzeptiert
+nur ein geschlossenes, digestgebundenes Bundle; der Targetvalidator akzeptiert nur explizite
+kanonische Pfade ohne Symlinks oder Escape; die Transaktion aktiviert Release-Metadaten und genau
+einen generischen Markdown-Block. Keine Schicht kennt Harnessnamen oder produktspezifische Dateien.
 
-## Transaktion
+Die aktive Installation verwendet `releases/<version>/bundle`, eine atomar ersetzte
+`current.json` und `backups/<transaction-id>`. Der symlinkfreie Current-Vertrag vermeidet eine
+zweite Link-Vertrauensklasse. Vor jedem produktiven Rename werden Identitäten erneut geprüft;
+Backup, Staging, Aktivierung, Verifikation und Rollback haben geschlossene Zustände.
 
-Der Ablauf ist `inspect → classify → plan → backup → stage → activate → verify`; jeder Fehler nach
-einem verifizierten Backup wechselt in `rollback`. Backups unterscheiden vorhandene Objekte und
-explizite Abwesenheit. Staging liegt unter derselben erlaubten Dateisystemgrenze. Unmittelbar vor
-der Aktivierung werden Elternidentitäten erneut geprüft. Jede Aktivierung verwendet einen Rename
-innerhalb eines Dateisystems; Erfolg wird erst nach Readback und Payload-Verifikation gemeldet.
+## Managed Block und JSON
 
-Der CLI-Kern registriert in 0.6.0 keine eigenen Signalhandler. `SIGTERM`, `SIGINT`, `SIGKILL`,
-Stromausfall und Dateisystemdefekte können deshalb eine laufende Aktivierung unterbrechen. Das
-private Recovery-Receipt entsteht erst nach erfolgreicher Verifikation; bei einem früheren harten
-Abbruch müssen Backup- und Retired-Verzeichnisse manuell geprüft werden. Für erfolgreich
-abgeschlossene Installationen ist wiederholtes explizites Rollback idempotent.
+Der V1-Block enthält Version, kanonischen Installationsroot, normative Bootstrap-/Manifestpfade,
+beide erwarteten SHA-256-Digests, die Pre-Response-Ladepflicht, die Trennung lokaler Regeln und
+Fail-closed-Verhalten. JSON-Schema 1 nennt Architektur, Command, Outcome, Zustand, Phase,
+Rollbackstatus, Capability-Liste und optional einen Ressourcenplan. Exitcodes sind 0 (Erfolg),
+2 (ungültiger Aufruf), 4 (unsicherer Zustand), 5 (Fehler mit erfolgreichem Rollback), 6
+(Rollbackfehler) sowie 130/143 für SIGINT/SIGTERM.
 
-## Codex-Adapter
+## Update, Uninstall und Recovery
 
-Der Adapter verwendet den expliziten Codex-Home-Pfad, globale `AGENTS.md`-Instruktionen und
-`hooks.json`. `AGENTS.override.md`, parallele Inline-Hooks, doppelte Governance-Hooks,
-unbekannte Legacyimporte oder beschädigte Konfigurationen werden nicht geraten, sondern als
-`UNKNOWN` abgelehnt. Die globale Instruktion ist byte-identisch mit `bundle/GOVERNANCE.md`.
+Update ersetzt nur den eigenen Block und Current-Metadaten nach vollständig verifiziertem Staging.
+Uninstall entfernt nur Block und aktive Metadaten; versionierte Releases und Backups bleiben für
+Rollback erhalten. Rollback liest ausschließlich das geschlossene letzte Receipt und stellt
+Entry- und Current-Bytes idempotent wieder her. Ein `PREPARED`-Receipt blockiert neue Mutationen,
+bis Recovery ausgeführt wurde.
 
-Der Adapter bindet nur `agent_governance__execute` an `PreToolUse`. Er ändert `config.toml` und MCP
-nicht, erweitert keine Toolfreigabe und behauptet keine universelle Interception. Andere
-Toolwirkungen außerhalb des expliziten Hooks bleiben außerhalb der synchron garantierten Wirkung.
+## Grenzen und Migration
 
-## CLI
-
-Das Paket stellt `agent-governance inspect|plan|install|verify|rollback|status` bereit. Alle
-produktiven Pfade verlangen `--harness`, `--home`, `--allowed-root`, `--release-root` und
-`--install-root`. `--dry-run` erzeugt keine produktiven Nebenwirkungen; `--json` liefert den
-strukturierten Vertrag. Tests verwenden ausschließlich temporäre Homes.
+Der unveröffentlichte 0.6.0-Codex-Entwurf mit `--harness`, festen Homepfaden, `hooks.json` und
+PreToolUse-Bridge ist entfernt. Fremdadapter wurden nach Supply-Chain- und Capability-Audit
+verworfen. Die v0.5.0-Migration besteht aus explizitem Inventar und Backup, Installer-Dry-Run,
+Managed-Block-Installation und Fresh-Session-Verifikation; sie erfolgt lokal erst aus öffentlichem
+Stable. Dateisystemerfolg allein begründet niemals `HARNESS_E2E_VERIFIED`.

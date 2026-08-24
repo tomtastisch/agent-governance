@@ -1,5 +1,7 @@
 # Global Explicit-Path Installer Implementation Plan
 
+> Historische Evidenz - nicht normativ. Dieses Arbeitsartefakt definiert keine Governance-Regel.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Deliver and release a deterministic transactional global explicit-path governance installer.

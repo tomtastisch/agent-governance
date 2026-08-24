@@ -1,329 +1,56 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { access, lstat, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { mkdirSync, renameSync, symlinkSync, writeFileSync } from "node:fs";
 import test from "node:test";
-
 import { InstallerTransaction } from "../../src/transaction.ts";
-import { InstallerFailure } from "../../src/errors.ts";
-import { InterruptedFailure } from "../../src/errors.ts";
+import { InstallerFailure, InterruptedFailure } from "../../src/errors.ts";
 import type { CatchableSignal, SignalSource } from "../../src/signals.ts";
 import { createTestRoot } from "../fixtures/installer/workspace.ts";
 
-class TransactionSignals implements SignalSource {
-  private readonly listeners = new Map<CatchableSignal, Set<() => void>>();
+class TestSignals implements SignalSource { private readonly values = new Map<CatchableSignal, Set<() => void>>(); on(signal: CatchableSignal, listener: () => void): void { const set = this.values.get(signal) ?? new Set(); set.add(listener); this.values.set(signal, set); } off(signal: CatchableSignal, listener: () => void): void { this.values.get(signal)?.delete(listener); } emit(signal: CatchableSignal): void { for (const listener of this.values.get(signal) ?? []) listener(); } count(): number { return [...this.values.values()].reduce((sum, set) => sum + set.size, 0); } }
 
-  on(signal: CatchableSignal, listener: () => void): void {
-    const current = this.listeners.get(signal) ?? new Set();
-    current.add(listener);
-    this.listeners.set(signal, current);
-  }
-
-  off(signal: CatchableSignal, listener: () => void): void {
-    this.listeners.get(signal)?.delete(listener);
-  }
-
-  emit(signal: CatchableSignal): void {
-    for (const listener of this.listeners.get(signal) ?? []) listener();
-  }
-
-  count(): number {
-    return [...this.listeners.values()].reduce((total, listeners) => total + listeners.size, 0);
-  }
+async function fixture() {
+  const root = await createTestRoot("agent-governance-generic-"); const targetRoot = join(root, "target"); const releaseRoot = join(root, "package"); const installationRoot = join(root, "installation"); await mkdir(targetRoot); await mkdir(join(releaseRoot, "bundle", "agent-governance"), { recursive: true });
+  const files: Record<string, string> = { VERSION: "1.0.0-rc.1\n", "bundle/GOVERNANCE.md": "canonical governance\n", "bundle/agent-governance/manifest.toml": 'schema_version = 2\nlocal_rules = "local/user-rules.md"\n' };
+  for (const [path, value] of Object.entries(files)) await writeFile(join(releaseRoot, path), value);
+  await writeFile(join(releaseRoot, "release.files.sha256"), `${Object.entries(files).sort(([a],[b]) => a.localeCompare(b)).map(([path,value]) => `${createHash("sha256").update(value).digest("hex")}  ${path}`).join("\n")}\n`);
+  const request = { targetRoot, entryFile: "AGENTS.md", scope: "global" as const, installationRoot, releaseRoot, dryRun: false, nonInteractive: true };
+  return { root, targetRoot, releaseRoot, installationRoot, request, entry: join(targetRoot, "AGENTS.md") };
 }
 
-async function fixture(): Promise<{ allowed: string; home: string; release: string; install: string }> {
-  const allowed = await createTestRoot("agent-governance-transaction-");
-  const home = join(allowed, "codex");
-  const release = join(allowed, "release");
-  const install = join(home, "governance");
-  await mkdir(join(release, "bundle", "agent-governance"), { recursive: true });
-  await mkdir(home);
-  const files: Record<string, string> = {
-    VERSION: "0.6.0\n",
-    "bundle/GOVERNANCE.md": "canonical governance\n",
-    "bundle/agent-governance/manifest.toml": 'schema_version = 2\nlocal_rules = "local/user-rules.md"\n',
-  };
-  for (const [path, content] of Object.entries(files)) await writeFile(join(release, path), content);
-  const inventory = Object.entries(files)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([path, content]) => `${createHash("sha256").update(content).digest("hex")}  ${path}`)
-    .join("\n");
-  await writeFile(join(release, "release.files.sha256"), `${inventory}\n`);
-  return { allowed, home, release, install };
+async function releaseFixture(root: string, version: string): Promise<string> {
+  const releaseRoot = join(root, `package-${version}`);
+  await mkdir(join(releaseRoot, "bundle", "agent-governance"), { recursive: true });
+  const files: Record<string, string> = { VERSION: `${version}\n`, "bundle/GOVERNANCE.md": `canonical governance ${version}\n`, "bundle/agent-governance/manifest.toml": 'schema_version = 2\nlocal_rules = "local/user-rules.md"\n' };
+  for (const [path, value] of Object.entries(files)) await writeFile(join(releaseRoot, path), value);
+  await writeFile(join(releaseRoot, "release.files.sha256"), `${Object.entries(files).sort(([a],[b]) => a.localeCompare(b)).map(([path,value]) => `${createHash("sha256").update(value).digest("hex")}  ${path}`).join("\n")}\n`);
+  return releaseRoot;
 }
 
-test("fresh transaction backs up absences, stages, activates, and verifies", async () => {
-  const f = await fixture();
-  const transaction = new InstallerTransaction({
-    harness: "codex",
-    home: f.home,
-    allowedRoot: f.allowed,
-    releaseRoot: f.release,
-    installRoot: f.install,
-    dryRun: false,
-  });
-  const result = await transaction.install();
-  assert.equal(result.outcome, "SUCCESS");
-  assert.equal(result.state, "FRESH");
-  assert.equal(await readFile(join(f.home, "AGENTS.md"), "utf8"), "canonical governance\n");
-  assert.match(await readFile(join(f.home, "hooks.json"), "utf8"), /agent_governance__execute/);
-  await access(join(f.install, "bundle", "agent-governance", "manifest.toml"));
-});
-
-test("dry run returns plan without productive side effects", async () => {
-  const f = await fixture();
-  const transaction = new InstallerTransaction({
-    harness: "codex", home: f.home, allowedRoot: f.allowed, releaseRoot: f.release,
-    installRoot: f.install, dryRun: true,
-  });
-  const result = await transaction.install();
-  assert.equal(result.outcome, "SUCCESS");
-  await assert.rejects(access(join(f.home, "AGENTS.md")));
-  await assert.rejects(access(f.install));
-});
-
-test("verification fault rolls back all previously absent targets", async () => {
-  const f = await fixture();
-  const transaction = new InstallerTransaction({
-    harness: "codex", home: f.home, allowedRoot: f.allowed, releaseRoot: f.release,
-    installRoot: f.install, dryRun: false, faultAfter: "activate",
-  });
-  await assert.rejects(transaction.install(), (error: unknown) => {
-    assert.equal(error instanceof InstallerFailure, true);
-    const failure = error as InstallerFailure;
-    assert.equal(failure.outcome, "VERIFICATION_ROLLED_BACK");
-    assert.equal(failure.rollbackStatus, "SUCCEEDED");
-    assert.equal(failure.phase, "activate");
-    return true;
-  });
-  await assert.rejects(access(join(f.home, "AGENTS.md")));
-  await assert.rejects(access(join(f.home, "hooks.json")));
-  await assert.rejects(access(f.install));
-});
-
-test("second unchanged install is idempotent", async () => {
-  const f = await fixture();
-  const request = { harness: "codex" as const, home: f.home, allowedRoot: f.allowed,
-    releaseRoot: f.release, installRoot: f.install, dryRun: false };
-  await new InstallerTransaction(request).install();
-  const before = await readFile(join(f.home, "hooks.json"), "utf8");
-  const second = await new InstallerTransaction(request).install();
-  assert.equal(second.state, "CURRENT");
-  assert.equal(await readFile(join(f.home, "hooks.json"), "utf8"), before);
-});
-
-test("legacy migration preserves personal rules at manifest path", async () => {
-  const f = await fixture();
-  const personal = "Always preserve this personal rule.\n";
-  await writeFile(
-    join(f.home, "AGENTS.md"),
-    `@~/agent-governance/adapters/AGENTS.md\n${personal}`,
-  );
-  const result = await new InstallerTransaction({
-    harness: "codex", home: f.home, allowedRoot: f.allowed, releaseRoot: f.release,
-    installRoot: f.install, dryRun: false,
-  }).install();
-  assert.equal(result.state, "LEGACY");
-  assert.equal(
-    await readFile(join(f.install, "bundle", "agent-governance", "local", "user-rules.md"), "utf8"),
-    personal,
-  );
-});
-
-test("tampered current binding fails closed instead of reporting CURRENT", async () => {
-  const f = await fixture();
-  const request = { harness: "codex" as const, home: f.home, allowedRoot: f.allowed,
-    releaseRoot: f.release, installRoot: f.install, dryRun: false };
-  await new InstallerTransaction(request).install();
-  await writeFile(join(f.home, "AGENTS.md"), "tampered\n");
-  await assert.rejects(new InstallerTransaction(request).install(), /unsafe install state/);
-});
-
-test("preexisting symlink backup directory prevents every productive mutation", async () => {
-  const f = await fixture();
-  const outside = await createTestRoot("agent-governance-outside-");
-  await symlink(outside, join(f.allowed, ".agent-governance-backups"));
-  const transaction = new InstallerTransaction({
-    harness: "codex", home: f.home, allowedRoot: f.allowed, releaseRoot: f.release,
-    installRoot: f.install, dryRun: false,
-  });
-  await assert.rejects(transaction.install(), /symlink/);
-  await assert.rejects(access(join(f.home, "AGENTS.md")));
-  await assert.rejects(access(f.install));
-});
-
-test("preexisting symlink rollback receipt prevents every productive mutation", async () => {
-  const f = await fixture();
-  const outside = join(await createTestRoot("agent-governance-outside-"), "receipt.json");
-  await writeFile(outside, "private\n");
-  await symlink(outside, join(f.home, ".agent-governance-rollback.json"));
-  const transaction = new InstallerTransaction({
-    harness: "codex", home: f.home, allowedRoot: f.allowed, releaseRoot: f.release,
-    installRoot: f.install, dryRun: false,
-  });
-  await assert.rejects(transaction.install(), /symlink|receipt/);
-  assert.equal(await readFile(outside, "utf8"), "private\n");
-  await assert.rejects(access(join(f.home, "AGENTS.md")));
-});
-
-test("rollback dry run never mutates installed resources or receipt", async () => {
-  const f = await fixture();
-  const base = { harness: "codex" as const, home: f.home, allowedRoot: f.allowed,
-    releaseRoot: f.release, installRoot: f.install };
-  await new InstallerTransaction({ ...base, dryRun: false }).install();
-  const receipt = await readFile(join(f.home, ".agent-governance-rollback.json"));
-  const result = await new InstallerTransaction({ ...base, dryRun: true }).rollback();
-  assert.equal(result.phase, "plan");
-  assert.equal(await readFile(join(f.home, "AGENTS.md"), "utf8"), "canonical governance\n");
-  assert.deepEqual(await readFile(join(f.home, ".agent-governance-rollback.json")), receipt);
-});
-
-test("rollback validates receipt targets and backup tree before mutation", async () => {
-  const f = await fixture();
-  const receipt = join(f.home, ".agent-governance-rollback.json");
-  await writeFile(receipt, JSON.stringify({
-    schemaVersion: 2,
-    backupRoot: join(f.allowed, ".agent-governance-backups", "forged"),
-    status: "PREPARED",
-    resources: [{ target: join(f.allowed, "unrelated"), existed: false, index: 0 }],
-  }));
-  await assert.rejects(new InstallerTransaction({
-    harness: "codex", home: f.home, allowedRoot: f.allowed, releaseRoot: f.release,
-    installRoot: f.install, dryRun: false,
-  }).rollback(), /receipt resource|backup/);
-  assert.equal((await lstat(receipt)).isFile(), true);
-});
-
-for (const [signal, exitCode] of [["SIGINT", 130], ["SIGTERM", 143]] as const) {
-  test(`${signal} before the first productive mutation exits without active state`, async () => {
-    const f = await fixture();
-    const signals = new TransactionSignals();
-    const transaction = new InstallerTransaction({
-      harness: "codex", home: f.home, allowedRoot: f.allowed, releaseRoot: f.release,
-      installRoot: f.install, dryRun: false, signalSource: signals,
-      onCheckpoint: (checkpoint) => {
-        if (checkpoint === "beforeMutation") signals.emit(signal);
-      },
-    });
-    await assert.rejects(transaction.install(), (error: unknown) => {
-      assert.equal(error instanceof InterruptedFailure, true);
-      assert.equal((error as InterruptedFailure).signal, signal);
-      assert.equal((error as InterruptedFailure).exitCode, exitCode);
-      assert.equal((error as InterruptedFailure).rollbackStatus, "NOT_REQUIRED");
-      return true;
-    });
-    assert.equal(signals.count(), 0);
-    await assert.rejects(access(join(f.home, "AGENTS.md")));
-    await assert.rejects(access(join(f.home, ".agent-governance-rollback.json")));
-  });
-}
-
-for (const checkpoint of ["afterInstructionBinding", "beforeVerification", "afterCommitReceipt"] as const) {
-  test(`SIGTERM at ${checkpoint} performs one rollback and persists recovery evidence`, async () => {
-    const f = await fixture();
-    const signals = new TransactionSignals();
-    let emitted = false;
-    const transaction = new InstallerTransaction({
-      harness: "codex", home: f.home, allowedRoot: f.allowed, releaseRoot: f.release,
-      installRoot: f.install, dryRun: false, signalSource: signals,
-      onCheckpoint: (current) => {
-        if (!emitted && current === checkpoint) {
-          emitted = true;
-          signals.emit("SIGTERM");
-          signals.emit("SIGINT");
-        }
-      },
-    });
-    await assert.rejects(transaction.install(), (error: unknown) => {
-      assert.equal(error instanceof InterruptedFailure, true);
-      assert.equal((error as InterruptedFailure).signal, "SIGTERM");
-      assert.equal((error as InterruptedFailure).exitCode, 143);
-      assert.equal((error as InterruptedFailure).rollbackStatus, "SUCCEEDED");
-      return true;
-    });
-    assert.equal(signals.count(), 0);
-    await assert.rejects(access(join(f.home, "AGENTS.md")));
-    await assert.rejects(access(join(f.home, "hooks.json")));
-    await assert.rejects(access(f.install));
-    const receipt = JSON.parse(await readFile(join(f.home, ".agent-governance-rollback.json"), "utf8")) as {
-      schemaVersion: number; status: string;
-    };
-    assert.deepEqual({ schemaVersion: receipt.schemaVersion, status: receipt.status }, {
-      schemaVersion: 2, status: "ROLLED_BACK",
-    });
-  });
-}
-
-test("a signal received during rollback never starts a competing rollback", async () => {
-  const f = await fixture();
-  const signals = new TransactionSignals();
-  let rollbackCheckpoints = 0;
-  const transaction = new InstallerTransaction({
-    harness: "codex", home: f.home, allowedRoot: f.allowed, releaseRoot: f.release,
-    installRoot: f.install, dryRun: false, signalSource: signals, faultAfter: "activate",
-    onCheckpoint: (checkpoint) => {
-      if (checkpoint === "duringRollback") {
-        rollbackCheckpoints += 1;
-        signals.emit("SIGINT");
-        signals.emit("SIGTERM");
-      }
-    },
-  });
-  await assert.rejects(transaction.install(), (error: unknown) => {
-    assert.equal(error instanceof InstallerFailure, true);
-    assert.equal((error as InstallerFailure).outcome, "VERIFICATION_ROLLED_BACK");
-    return true;
-  });
-  assert.equal(rollbackCheckpoints, 1);
-  assert.equal(signals.count(), 0);
-});
-
-test("rollback failure after a signal leaves PREPARED receipt for later idempotent recovery", async () => {
-  const f = await fixture();
-  const signals = new TransactionSignals();
-  let emitted = false;
-  const base = {
-    harness: "codex" as const, home: f.home, allowedRoot: f.allowed, releaseRoot: f.release,
-    installRoot: f.install, dryRun: false,
-  };
-  await assert.rejects(new InstallerTransaction({
-    ...base, signalSource: signals, faultDuringRollback: true,
-    onCheckpoint: (checkpoint) => {
-      if (!emitted && checkpoint === "afterInstructionBinding") {
-        emitted = true;
-        signals.emit("SIGINT");
-      }
-    },
-  }).install(), (error: unknown) => {
-    assert.equal(error instanceof InstallerFailure, true);
-    assert.equal((error as InstallerFailure).outcome, "ROLLBACK_FAILED");
-    assert.equal((error as InstallerFailure).rollbackStatus, "FAILED");
-    return true;
-  });
-  const prepared = JSON.parse(await readFile(join(f.home, ".agent-governance-rollback.json"), "utf8")) as {
-    status: string;
-  };
-  assert.equal(prepared.status, "PREPARED");
-  assert.equal((await new InstallerTransaction(base).rollback()).rollbackStatus, "SUCCEEDED");
-  assert.equal((await new InstallerTransaction(base).rollback()).rollbackStatus, "SUCCEEDED");
-  assert.equal((await new InstallerTransaction(base).install()).outcome, "SUCCESS");
-});
-
-test("rollback receipt rejects duplicate resources and unknown fields", async () => {
-  const f = await fixture();
-  const backupRoot = join(f.allowed, ".agent-governance-backups", "forged");
-  await mkdir(backupRoot, { recursive: true });
-  const resources = [0, 0, 2].map((index) => ({
-    target: index === 0 ? join(f.home, "AGENTS.md") : f.install,
-    existed: false,
-    index,
-  }));
-  await writeFile(join(f.home, ".agent-governance-rollback.json"), JSON.stringify({
-    schemaVersion: 2, backupRoot, status: "PREPARED", resources, injected: true,
-  }));
-  await assert.rejects(new InstallerTransaction({
-    harness: "codex", home: f.home, allowedRoot: f.allowed, releaseRoot: f.release,
-    installRoot: f.install, dryRun: false,
-  }).rollback(), /unknown field|resource index/);
-});
+test("dry-run plans without filesystem mutation", async () => { const f = await fixture(); const result = await new InstallerTransaction({ ...f.request, dryRun: true }).install(); assert.equal(result.phase, "plan"); await assert.rejects(access(f.entry)); await assert.rejects(access(f.installationRoot)); });
+test("install preserves user bytes, materializes binding, verifies, and is idempotent", async () => { const f = await fixture(); const user = Buffer.from("personal prefix without newline", "utf8"); await writeFile(f.entry, user); const tx = new InstallerTransaction(f.request); const result = await tx.install(); assert.equal(result.state, "CURRENT"); assert.equal((await readFile(f.entry)).subarray(0, user.length).equals(user), true); assert.equal((await tx.verify()).state, "CURRENT"); const before = await readFile(f.entry); assert.equal((await tx.install()).state, "CURRENT"); assert.deepEqual(await readFile(f.entry), before); });
+test("uninstall removes only the managed block and rollback restores the complete previous file", async () => { const f = await fixture(); const original = Buffer.from("before\r\nafter\r\n", "utf8"); await writeFile(f.entry, original); const tx = new InstallerTransaction(f.request); await tx.install(); await tx.uninstall(); assert.deepEqual(await readFile(f.entry), original); assert.equal((await tx.rollback()).state, "CURRENT"); assert.equal((await readFile(f.entry)).includes(Buffer.from("AGENT_GOVERNANCE_MANAGED_V1")), true); assert.equal((await tx.rollback()).state, "CURRENT"); });
+test("update recognizes a valid older release and atomically installs the newer release", async () => { const f = await fixture(); const first = await releaseFixture(f.root, "1.0.0-rc.1"); const second = await releaseFixture(f.root, "1.0.0-rc.2"); await new InstallerTransaction({ ...f.request, releaseRoot: first }).install(); const update = new InstallerTransaction({ ...f.request, releaseRoot: second }); const outdated = await update.status(); assert.equal(outdated.state, "OUTDATED"); assert.deepEqual(outdated.capabilities, ["FILESYSTEM_INSTALLED", "BINDING_MATERIALIZED", "DIGEST_VERIFIED", "ROLLBACK_AVAILABLE"]); assert.equal(outdated.rollbackStatus, "AVAILABLE"); assert.equal((await update.update()).state, "CURRENT"); assert.match(await readFile(f.entry, "utf8"), /Governance version: 1\.0\.0-rc\.2/); assert.equal((await update.verify()).state, "CURRENT"); });
+test("downgrade remains blocked without an explicit downgrade contract", async () => { const f = await fixture(); const older = await releaseFixture(f.root, "1.0.0-rc.1"); const newer = await releaseFixture(f.root, "1.0.0-rc.2"); await new InstallerTransaction({ ...f.request, releaseRoot: newer }).install(); const downgrade = new InstallerTransaction({ ...f.request, releaseRoot: older }); assert.equal((await downgrade.status()).state, "DOWNGRADE_BLOCKED"); await assert.rejects(downgrade.update(), /unsafe install state: DOWNGRADE_BLOCKED/); assert.match(await readFile(f.entry, "utf8"), /Governance version: 1\.0\.0-rc\.2/); });
+test("tampered managed binding fails closed without replacing user bytes", async () => { const f = await fixture(); const tx = new InstallerTransaction(f.request); await tx.install(); await writeFile(f.entry, (await readFile(f.entry, "utf8")).replace("Expected manifest SHA-256", "Tampered manifest SHA-256")); const before = await readFile(f.entry); await assert.rejects(tx.update(), /unsafe install state/); assert.deepEqual(await readFile(f.entry), before); });
+test("signal after receipt performs one rollback and removes listeners", async () => { const f = await fixture(); const signals = new TestSignals(); let emitted = false; const tx = new InstallerTransaction({ ...f.request, signalSource: signals, onCheckpoint: (checkpoint) => { if (!emitted && checkpoint === "afterReceipt") { emitted = true; signals.emit("SIGTERM"); signals.emit("SIGINT"); } } }); await assert.rejects(tx.install(), (error: unknown) => { assert.equal(error instanceof InterruptedFailure, true); assert.equal((error as InterruptedFailure).signal, "SIGTERM"); return true; }); assert.equal(signals.count(), 0); await assert.rejects(access(f.entry)); });
+test("signal before mutation leaves both target and installation root absent", async () => { const f = await fixture(); const signals = new TestSignals(); const tx = new InstallerTransaction({ ...f.request, signalSource: signals, onCheckpoint: (checkpoint) => { if (checkpoint === "beforeMutation") signals.emit("SIGINT"); } }); await assert.rejects(tx.install(), (error: unknown) => error instanceof InterruptedFailure && error.signal === "SIGINT"); await assert.rejects(access(f.entry)); await assert.rejects(access(f.installationRoot)); });
+test("signal during mutation rolls back once and ignores a repeated signal during rollback", async () => { const f = await fixture(); const signals = new TestSignals(); const original = Buffer.from("original\n"); await writeFile(f.entry, original); let emitted = false; const tx = new InstallerTransaction({ ...f.request, signalSource: signals, onCheckpoint: (checkpoint) => { if (!emitted && checkpoint === "afterEntry") { emitted = true; signals.emit("SIGTERM"); } else if (checkpoint === "duringRollback") signals.emit("SIGINT"); } }); await assert.rejects(tx.install(), (error: unknown) => error instanceof InterruptedFailure && error.signal === "SIGTERM" && error.rollbackStatus === "SUCCEEDED"); assert.deepEqual(await readFile(f.entry), original); assert.equal(signals.count(), 0); });
+test("rollback failure leaves a recoverable prepared receipt and explicit recovery restores prior bytes", async () => { const f = await fixture(); const original = Buffer.from("recover me\n"); await writeFile(f.entry, original); const failed = new InstallerTransaction({ ...f.request, faultAfter: "activate", faultDuringRollback: true }); await assert.rejects(failed.install(), (error: unknown) => error instanceof InstallerFailure && error.outcome === "ROLLBACK_FAILED"); assert.equal((await new InstallerTransaction(f.request).status()).state, "RECOVERY_REQUIRED"); assert.equal((await new InstallerTransaction(f.request).rollback()).state, "FRESH"); assert.deepEqual(await readFile(f.entry), original); });
+test("rollback rejects receipt traversal and non-direct release or local-rules targets", async () => { for (const mutation of [
+  (receipt: Record<string, unknown>, f: Awaited<ReturnType<typeof fixture>>) => { receipt.backupRoot = join(f.installationRoot, "backups", "..", "escape"); },
+  (receipt: Record<string, unknown>) => { receipt.releasePath = join(String(receipt.releasePath), "nested"); },
+  (receipt: Record<string, unknown>) => { receipt.localRulesPath = join(String(receipt.releasePath), "VERSION.md"); },
+]) { const f = await fixture(); const tx = new InstallerTransaction(f.request); await tx.install(); const receiptPath = join(f.installationRoot, "last-transaction.json"); const receipt = JSON.parse(await readFile(receiptPath, "utf8")) as Record<string, unknown>; mutation(receipt, f); await writeFile(receiptPath, `${JSON.stringify(receipt)}\n`); await assert.rejects(tx.rollback(), /receipt has invalid values/); assert.equal((await readFile(f.entry, "utf8")).includes("AGENT_GOVERNANCE_MANAGED_V1"), true); } });
+test("rollback revalidates the explicit target before restoring bytes", async () => { const f = await fixture(); await writeFile(f.entry, "original\n"); const tx = new InstallerTransaction(f.request); await tx.install(); const retired = `${f.targetRoot}-retired`; const outside = join(f.root, "rollback-outside"); await mkdir(outside); renameSync(f.targetRoot, retired); symlinkSync(outside, f.targetRoot); await assert.rejects(tx.rollback(), /symlink|canonical/); await assert.rejects(access(join(outside, "AGENTS.md"))); });
+test("explicit local rules are installed at the manifest path without entering output metadata", async () => { const f = await fixture(); const localRules = join(f.root, "private-rules.md"); await writeFile(localRules, "synthetic private rule\n"); const result = await new InstallerTransaction({ ...f.request, localRules }).install(); assert.equal(result.state, "CURRENT"); assert.equal(await readFile(join(f.installationRoot, "releases", "1.0.0-rc.1", "bundle", "agent-governance", "local", "user-rules.md"), "utf8"), "synthetic private rule\n"); assert.equal(JSON.stringify(result).includes("synthetic private rule"), false); });
+test("update preserves installed local rules when no new source is supplied", async () => { const f = await fixture(); const first = await releaseFixture(f.root, "1.0.0-rc.1"); const second = await releaseFixture(f.root, "1.0.0-rc.2"); const localRules = join(f.root, "private-rules.md"); await writeFile(localRules, "preserve this private rule\n"); await new InstallerTransaction({ ...f.request, releaseRoot: first, localRules }).install(); await new InstallerTransaction({ ...f.request, releaseRoot: second }).update(); assert.equal(await readFile(join(f.installationRoot, "releases", "1.0.0-rc.2", "bundle", "agent-governance", "local", "user-rules.md"), "utf8"), "preserve this private rule\n"); });
+test("update replaces local rules only from a new explicit source and rollback restores them", async () => { const f = await fixture(); const original = join(f.root, "original-rules.md"); const replacement = join(f.root, "replacement-rules.md"); await writeFile(original, "original private rule\n"); await writeFile(replacement, "replacement private rule\n"); const target = join(f.installationRoot, "releases", "1.0.0-rc.1", "bundle", "agent-governance", "local", "user-rules.md"); await new InstallerTransaction({ ...f.request, localRules: original }).install(); const update = new InstallerTransaction({ ...f.request, localRules: replacement }); await update.update(); assert.equal(await readFile(target, "utf8"), "replacement private rule\n"); assert.equal((await update.rollback()).state, "CURRENT"); assert.equal(await readFile(target, "utf8"), "original private rule\n"); });
+for (const phase of ["backup", "stage", "activate", "verify"] as const) test(`failure after ${phase} restores the complete previous entry`, async () => { const f = await fixture(); const original = Buffer.from("user bytes\r\n"); await writeFile(f.entry, original); await assert.rejects(new InstallerTransaction({ ...f.request, faultAfter: phase }).install(), /rolled back|injected|verification/i); assert.deepEqual(await readFile(f.entry), original); });
+test("target root replacement between backup and mutation fails closed", async () => { const f = await fixture(); const retired = `${f.targetRoot}-retired`; let replaced = false; const tx = new InstallerTransaction({ ...f.request, onCheckpoint: (checkpoint) => { if (!replaced && checkpoint === "afterReceipt") { replaced = true; renameSync(f.targetRoot, retired); mkdirSync(f.targetRoot); } } }); await assert.rejects(tx.install(), /identity changed|rolled back/); await assert.rejects(access(f.entry)); });
+test("entry parent replacement between backup and mutation fails closed", async () => { const f = await fixture(); const parent = join(f.targetRoot, "nested"); const outside = join(f.root, "outside"); await mkdir(parent); await mkdir(outside); const request = { ...f.request, entryFile: "nested/AGENTS.md" }; let replaced = false; const tx = new InstallerTransaction({ ...request, onCheckpoint: (checkpoint) => { if (!replaced && checkpoint === "afterReceipt") { replaced = true; renameSync(parent, `${parent}-retired`); symlinkSync(outside, parent); } } }); await assert.rejects(tx.install(), /identity changed|symlink|rolled back/); await assert.rejects(access(join(outside, "AGENTS.md"))); });
+test("entry replacement between backup and mutation fails closed without overwriting the replacement", async () => { const f = await fixture(); await writeFile(f.entry, "original user bytes\n"); let replaced = false; const tx = new InstallerTransaction({ ...f.request, onCheckpoint: (checkpoint) => { if (!replaced && checkpoint === "afterReceipt") { replaced = true; renameSync(f.entry, `${f.entry}-retired`); writeFileSync(f.entry, "concurrent replacement\n"); } } }); await assert.rejects(tx.install(), /identity changed|rolled back/); assert.equal(await readFile(f.entry, "utf8"), "concurrent replacement\n"); });
+test("installation root replacement after backup fails closed before activation", async () => { const f = await fixture(); const outside = join(f.root, "outside-installation"); await mkdir(outside); let replaced = false; const tx = new InstallerTransaction({ ...f.request, onCheckpoint: (checkpoint) => { if (!replaced && checkpoint === "afterReceipt") { replaced = true; renameSync(f.installationRoot, `${f.installationRoot}-retired`); symlinkSync(outside, f.installationRoot); } } }); await assert.rejects(tx.install(), /identity changed|symlink|rolled back/); await assert.rejects(access(join(outside, "current.json"))); await assert.rejects(access(f.entry)); });
+test("symlinked internal backup or release directories are rejected without writing outside", async () => { for (const internal of ["backups", "releases"]) { const f = await fixture(); const outside = join(f.root, `outside-${internal}`); await mkdir(f.installationRoot); await mkdir(outside); symlinkSync(outside, join(f.installationRoot, internal)); await assert.rejects(new InstallerTransaction(f.request).install(), /symlink|canonical/); assert.deepEqual(await readFile(f.entry).catch(() => Buffer.alloc(0)), Buffer.alloc(0)); assert.deepEqual(await import("node:fs/promises").then(({ readdir }) => readdir(outside)), []); } });

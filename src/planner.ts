@@ -1,29 +1,17 @@
 import { join } from "node:path";
-
-import { INSTALL_PHASES, type InstallPlan } from "./contracts.ts";
-
-export interface CodexPlanInput {
-  readonly harness: "codex";
-  readonly state: "FRESH" | "CURRENT" | "LEGACY" | "UNKNOWN";
-  readonly home: string;
-  readonly installRoot: string;
-}
-
-export function planCodex(input: CodexPlanInput): InstallPlan {
-  if (input.state === "UNKNOWN") throw new Error("cannot plan unknown Codex state");
-  const operation = input.state === "FRESH" ? "create" : input.state === "CURRENT" ? "preserve" : "replace";
-  return {
-    schemaVersion: 1,
-    harness: "codex",
-    state: input.state,
-    phases: INSTALL_PHASES,
-    resources: [
-      { id: "codex-global-instructions", target: join(input.home, "AGENTS.md"), operation },
-      { id: "codex-hooks", target: join(input.home, "hooks.json"), operation },
-      { id: "governance-installation", target: input.installRoot, operation },
-      { id: "transaction-receipt", target: join(input.home, ".agent-governance-rollback.json"), operation },
-    ],
-    mcpMutation: false,
-    approvalExpansion: false,
-  };
+import type { InstallPlan, InstallerCommand, InstallState, PlannedResource } from "./contracts.ts";
+export function planInstallation(input: { command: InstallerCommand; state: InstallState; entryPath: string; installationRoot: string; version: string; localRules: boolean; }): InstallPlan {
+  if (["TAMPERED", "RECOVERY_REQUIRED", "DOWNGRADE_BLOCKED"].includes(input.state)) throw new Error(`cannot plan unsafe state: ${input.state}`);
+  const mutating = ["install", "update", "uninstall", "rollback"].includes(input.command);
+  const activeOperation: PlannedResource["operation"] = !mutating ? "verify" : input.command === "uninstall" ? "remove" : input.state === "CURRENT" ? "preserve" : input.state === "OUTDATED" ? "replace" : "create";
+  const releaseOperation: PlannedResource["operation"] = !mutating ? "verify" : input.command === "uninstall" || input.state === "CURRENT" ? "preserve" : "create";
+  const resources: PlannedResource[] = [
+    { id: "release", target: join(input.installationRoot, "releases", input.version), operation: releaseOperation },
+    { id: "current-metadata", target: join(input.installationRoot, "current.json"), operation: activeOperation },
+    { id: "entry-file", target: input.entryPath, operation: activeOperation },
+    { id: "backup", target: join(input.installationRoot, "backups"), operation: mutating ? "create" : "verify" },
+    { id: "receipt", target: join(input.installationRoot, "last-transaction.json"), operation: mutating ? "replace" : "verify" },
+  ];
+  if (input.localRules) resources.push({ id: "local-rules", target: join(input.installationRoot, "releases", input.version, "bundle", "agent-governance", "local"), operation: input.command === "update" ? "replace" : activeOperation });
+  return { schemaVersion: 1, architecture: "GLOBAL_EXPLICIT_PATH_MANAGED_BLOCK", command: input.command, state: input.state, resources, harnessSpecificMutation: false, mcpMutation: false, hookMutation: false, approvalExpansion: false };
 }
