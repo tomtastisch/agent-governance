@@ -150,3 +150,35 @@ test("local-rules changes after their snapshot are not overwritten", async () =>
   const update = new InstallerTransaction({ ...f.request, localRules: replacement, onCheckpoint: (checkpoint) => { if (checkpoint === "afterReceipt") writeFileSync(target, "concurrent local rules\n"); } });
   await assert.rejects(update.update(), /local rules changed/); assert.equal(await readFile(target, "utf8"), "concurrent local rules\n");
 });
+
+test("entry changes after current activation are detected and preserved", async () => {
+  const f = await fixture(); await writeFile(f.entry, "original\n"); let changed = false; const tx = new InstallerTransaction({ ...f.request, onCheckpoint: (checkpoint) => { if (!changed && checkpoint === "afterCurrent") { changed = true; writeFileSync(f.entry, "late concurrent entry\n"); } } });
+  await assert.rejects(tx.install(), /entry changed|rolled back/); assert.equal(await readFile(f.entry, "utf8"), "late concurrent entry\n");
+});
+
+test("explicit rollback rejects a changed applied entry without partial restore", async () => {
+  const f = await fixture(); await writeFile(f.entry, "original\n"); const tx = new InstallerTransaction(f.request); await tx.install(); await writeFile(f.entry, "newer user entry\n"); const currentBefore = await readFile(join(await bindingStateRoot(f.installationRoot), "current.json"));
+  await assert.rejects(tx.rollback(), /entry changed|stale/); assert.equal(await readFile(f.entry, "utf8"), "newer user entry\n"); assert.deepEqual(await readFile(join(await bindingStateRoot(f.installationRoot), "current.json")), currentBefore);
+});
+
+test("stale local-rules rollback fails before restoring entry or current", async () => {
+  const f = await fixture(); const rules = join(f.root, "rules-atomic.md"); await writeFile(f.entry, "original\n"); await writeFile(rules, "installed\n"); const tx = new InstallerTransaction({ ...f.request, localRules: rules }); await tx.install(); const entryBefore = await readFile(f.entry); const currentPath = join(await bindingStateRoot(f.installationRoot), "current.json"); const currentBefore = await readFile(currentPath); const target = join(f.installationRoot, "releases", "1.0.0-rc.1", "bundle", "agent-governance", "local", "user-rules.md"); await writeFile(target, "newer rules\n");
+  await assert.rejects(tx.rollback(), /local rules changed|stale shared state/); assert.deepEqual(await readFile(f.entry), entryBefore); assert.deepEqual(await readFile(currentPath), currentBefore);
+});
+
+test("rollback reclaims a well-formed stale dead-owner lock", async () => {
+  const f = await fixture(); const tx = new InstallerTransaction(f.request); await tx.install(); const lock = join(f.installationRoot, ".transaction.lock"); await mkdir(lock); await writeFile(join(lock, "owner.json"), `${JSON.stringify({ schemaVersion: 1, pid: 2147483647, token: "a".repeat(64) })}\n`);
+  assert.equal((await tx.rollback()).state, "ABSENT"); await assert.rejects(access(lock));
+});
+
+test("a first signal during rollback is reported after successful restoration", async () => {
+  const f = await fixture(); const signals = new TestSignals(); const original = Buffer.from("original\n"); await writeFile(f.entry, original); let emitted = false; const tx = new InstallerTransaction({ ...f.request, faultAfter: "activate", signalSource: signals, onCheckpoint: (checkpoint) => { if (!emitted && checkpoint === "duringRollback") { emitted = true; signals.emit("SIGTERM"); } } });
+  await assert.rejects(tx.install(), (error: unknown) => error instanceof InterruptedFailure && error.signal === "SIGTERM" && error.rollbackStatus === "SUCCEEDED"); assert.deepEqual(await readFile(f.entry), original);
+});
+
+test("tampered backup payload and symlinked backup root fail before restore mutation", async () => {
+  for (const tamper of ["payload", "ancestor"] as const) { const f = await fixture(); await writeFile(f.entry, "original\n"); const tx = new InstallerTransaction(f.request); await tx.install(); const stateRoot = await bindingStateRoot(f.installationRoot); const receipt = JSON.parse(await readFile(join(stateRoot, "last-transaction.json"), "utf8")) as { backupRoot: string }; const entryBefore = await readFile(f.entry);
+    if (tamper === "payload") await writeFile(join(receipt.backupRoot, "entry.bin"), "tampered backup\n"); else { const moved = `${receipt.backupRoot}-moved`; renameSync(receipt.backupRoot, moved); symlinkSync(moved, receipt.backupRoot); }
+    await assert.rejects(tx.rollback(), /backup|symlink|digest|canonical/i); assert.deepEqual(await readFile(f.entry), entryBefore);
+  }
+});

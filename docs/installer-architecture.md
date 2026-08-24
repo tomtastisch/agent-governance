@@ -30,8 +30,10 @@ Rollbackstatus, Capability-Liste und optional einen Ressourcenplan. Exitcodes si
 Update ersetzt nur den eigenen Block und Current-Metadaten nach vollständig verifiziertem Staging.
 Uninstall entfernt nur Block und aktive Metadaten; versionierte Releases und Backups bleiben für
 Rollback erhalten. Rollback liest ausschließlich das geschlossene letzte Receipt und stellt
-Entry- und Current-Bytes idempotent wieder her. Ein installationsrootweiter Lock schließt parallele
-Mutationen fail-closed aus; aktive Fremdbindungen schützen gemeinsam referenzierte Releases und lokale
+Entry- und Current-Bytes idempotent wieder her. Ein ownergebundener installationsrootweiter Lock schließt
+parallele Mutationen fail-closed aus und kann bei Recovery nur für einen nachweislich nicht lebenden
+Owner atomar übernommen werden. Digestgebundene Pre-/Postimages und vollständige Restore-Vorprüfung
+verhindern Teilmutationen; aktive Fremdbindungen schützen gemeinsam referenzierte Releases und lokale
 Regeln vor einem veralteten Rollback. Ein `PREPARED`-Receipt blockiert neue Mutationen,
 bis Recovery ausgeführt wurde. Ein gemeinsamer Installationsroot verwaltet mehrere explizite
 Target-/Entry-Bindings unabhängig; Top-Level- und Backup-Receipt müssen bytegleich sein.

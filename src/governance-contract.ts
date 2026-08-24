@@ -26,7 +26,7 @@ function parseString(raw: string, label: string): string {
 
 function parseValue(raw: string, label: string): TomlValue {
   const value = raw.trim();
-  if (/^\d+$/.test(value)) return Number(value);
+  if (/^(?:0|[1-9]\d*)$/.test(value)) return Number(value);
   if (value.startsWith('"') && value.endsWith('"')) return parseString(value, label);
   if (value.startsWith("[") && value.endsWith("]")) {
     const inside = value.slice(1, -1).trim();
@@ -39,6 +39,7 @@ function parseValue(raw: string, label: string): TomlValue {
 
 export function parseClosedToml(text: string, label: string): TomlTable {
   const root: TomlTable = {};
+  const explicitTables = new Set<string>();
   let table = root;
   const lines = text.split(/\r?\n/);
   for (let index = 0; index < lines.length; index += 1) {
@@ -46,6 +47,8 @@ export function parseClosedToml(text: string, label: string): TomlTable {
     if (trimmed === "" || trimmed.startsWith("#")) continue;
     const header = /^\[([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*)\]$/.exec(trimmed);
     if (header !== null) {
+      if (explicitTables.has(header[1]!)) throw new Error(`${label} contains a duplicate TOML table`);
+      explicitTables.add(header[1]!);
       table = root;
       for (const part of header[1]!.split(".")) {
         const existing = table[part];

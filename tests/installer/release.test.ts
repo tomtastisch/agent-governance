@@ -92,3 +92,13 @@ test("release verifier rejects symlinked release and bundle roots", async () => 
     await assert.rejects(verifyRelease(linked), /symlink|canonical/i);
   }
 });
+
+test("release verifier rejects TOML forms rejected by conforming parsers", async () => {
+  for (const mutate of [
+    (text: string) => text.replace("schema_version = 2", "schema_version = 02"),
+    (text: string) => `${text}\n[catalogs]\n`,
+  ]) {
+    const root = await fixture(); const manifestPath = join(root, "bundle", "agent-governance", "manifest.toml"); await writeFile(manifestPath, mutate(await readFile(manifestPath, "utf8"))); await writeInventory(root);
+    await assert.rejects(verifyRelease(root), /TOML|manifest|duplicate|table/i);
+  }
+});
