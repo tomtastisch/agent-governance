@@ -11,7 +11,11 @@ CI_WORKFLOW = (ROOT / ".github" / "workflows" / "ci.yml").read_text(
     encoding="utf-8"
 )
 TAG_GATE_PATH = ROOT / ".github" / "workflows" / "release-tag-verify.yml"
+PUBLISH_PATH = ROOT / ".github" / "workflows" / "npm-publish.yml"
 CHECKOUT_SHA = "de0fac2e4500dabe0009e67214ff5f5447ce83dd"
+CHECKOUT_V7_SHA = "3d3c42e5aac5ba805825da76410c181273ba90b1"
+SETUP_NODE_V7_SHA = "820762786026740c76f36085b0efc47a31fe5020"
+SETUP_PYTHON_V7_SHA = "5fda3b95a4ea91299a34e894583c3862153e4b97"
 
 
 def _job_block(workflow: str, job_name: str) -> str:
@@ -139,22 +143,56 @@ class ReleaseWorkflowSecurityContract(unittest.TestCase):
         metadata = _job_block(CI_WORKFLOW, "release-metadata")
         release = _job_block(CI_WORKFLOW, "release-validate")
 
-        self.assertIn("actions/checkout@v7", consistency)
-        self.assertIn("actions/setup-python@v7", consistency)
-        self.assertIn("actions/setup-node@v7", consistency)
+        self.assertIn(f"actions/checkout@{CHECKOUT_V7_SHA} # v7", consistency)
+        self.assertIn(f"actions/setup-python@{SETUP_PYTHON_V7_SHA} # v7", consistency)
+        self.assertIn(f"actions/setup-node@{SETUP_NODE_V7_SHA} # v7", consistency)
         self.assertIn('node-version: "24"', consistency)
         self.assertIn("package-manager-cache: false", consistency)
 
-        self.assertIn("actions/checkout@v7", metadata)
-        self.assertIn("actions/setup-python@v7", metadata)
+        self.assertIn(f"actions/checkout@{CHECKOUT_V7_SHA} # v7", metadata)
+        self.assertIn(f"actions/setup-python@{SETUP_PYTHON_V7_SHA} # v7", metadata)
 
-        self.assertIn("actions/setup-python@v7", release)
-        self.assertIn("actions/setup-python@v7", trusted)
+        self.assertIn(f"actions/setup-python@{SETUP_PYTHON_V7_SHA} # v7", release)
+        self.assertIn(f"actions/setup-python@{SETUP_PYTHON_V7_SHA} # v7", trusted)
 
         self.assertNotIn("actions/checkout@v4", CI_WORKFLOW)
         self.assertNotIn("actions/setup-python@v5", CI_WORKFLOW + trusted)
         self.assertNotIn("actions/setup-node@v4", CI_WORKFLOW)
         self.assertNotIn('node-version: "20"', CI_WORKFLOW)
+
+    def test_all_repository_actions_are_pinned_to_full_commit_shas(self):
+        for path in (ROOT / ".github" / "workflows").glob("*.yml"):
+            workflow = path.read_text(encoding="utf-8")
+            for target in re.findall(r"(?m)^\s*- uses:\s+([^\s#]+)", workflow):
+                self.assertRegex(target, r"^[^@]+@[0-9a-f]{40}$", f"unpinned action in {path.name}: {target}")
+
+    def test_npm_publish_is_main_controlled_oidc_and_fail_closed(self):
+        self.assertTrue(PUBLISH_PATH.is_file(), "npm publish workflow is missing")
+        workflow = PUBLISH_PATH.read_text(encoding="utf-8")
+        for value in (
+            "workflow_dispatch:",
+            "id-token: write",
+            "contents: read",
+            "ref: refs/heads/main",
+            'node-version: "26"',
+            "registry-url: https://registry.npmjs.org",
+            "npm@12.0.2",
+            'python3 tools/release_check.py tag "$RELEASE_TAG"',
+            'git checkout --detach "$RELEASE_TAG"',
+            "npm ci --ignore-scripts",
+            "npm run typecheck",
+            "npm test",
+            "npm run build",
+            "npm run pack:check",
+            'npm publish --access public --tag "$NPM_DIST_TAG"',
+            "npm audit signatures",
+        ):
+            self.assertIn(value, workflow)
+        self.assertNotIn("NODE_AUTH_TOKEN", workflow)
+        self.assertIn("1.0.0-rc.*:next", workflow)
+        self.assertIn("1.0.0:latest", workflow)
+        for run_block in _run_blocks(_job_block(workflow, "publish")):
+            self.assertNotIn("${{", run_block)
 
 
 if __name__ == "__main__":

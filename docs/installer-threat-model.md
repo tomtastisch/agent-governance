@@ -20,14 +20,15 @@ Dateisystemgrenzen ist nicht vollständig beherrschbar.
 
 ## Kontrollen
 
-- Das vollständige normative Bundle ist inventarisiert; Dateien, Digests, Größe, Typ und
-  Manifestreferenzen werden vor Aktivierung geprüft.
+- Das vollständige normative Bundle ist inventarisiert; Dateien, vollständiger Bundledigest,
+  Größe und Typ sowie geschlossene Manifest-, Katalog- und Graphreferenzen werden vor Aktivierung geprüft.
 - Target-, Entry-Parent-, Entry- und Installation-Identitäten werden erfasst und vor Mutation
   erneut geprüft. Symlinkbehaftete oder nichtkanonische Pfade scheitern fail-closed.
 - Backup und Readback erfolgen vor der produktiven Entrymutation. Atomare Renames ersetzen nur
   reguläre Dateien im validierten Parent.
-- Receipt-Schema, UUID, Backuproot, direkter SemVer-Releasepfad und Local-Rules-Containment sind
-  geschlossen. Recovery revalidiert den expliziten Zielpfad.
+- Receipt-Schema, targetgebundene Binding-ID, UUID, Backuproot, direkter SemVer-Releasepfad und
+  der exakt manifestbestimmte Local-Rules-Pfad sind geschlossen. Recovery verlangt zwei
+  bytegleiche Receiptkopien und revalidiert den expliziten Zielpfad.
 - Private lokale Regeln werden nicht ausgegeben; Secret-Patterns werden im Tarball-Gate geprüft.
 
 ## Residual Risks

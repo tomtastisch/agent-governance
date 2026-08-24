@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
-import { lstat, readFile, readdir } from "node:fs/promises";
+import { lstat, readFile, readdir, realpath } from "node:fs/promises";
 import { isAbsolute, join, normalize, relative, sep } from "node:path";
+import { validateGovernanceContract } from "./governance-contract.ts";
 
 const REQUIRED = [
   "VERSION",
@@ -14,6 +15,8 @@ export interface VerifiedRelease {
   readonly fileCount: number;
   readonly governanceDigest: string;
   readonly manifestDigest: string;
+  readonly bundleDigest: string;
+  readonly localRulesPath: string;
   readonly inventory: ReadonlyMap<string, string>;
 }
 
@@ -31,25 +34,6 @@ function validateInventoryPath(path: string): void {
   }
 }
 
-function validateManifest(manifest: string, entries: ReadonlyMap<string, string>): string | undefined {
-  const schemas = [...manifest.matchAll(/^schema_version\s*=\s*(\d+)\s*$/gm)];
-  if (schemas.length !== 1 || schemas[0]?.[1] !== "2") throw new Error("release manifest schema is invalid");
-  const locals = [...manifest.matchAll(/^local_rules\s*=\s*"([^"\\]+)"\s*$/gm)];
-  if (locals.length > 1) throw new Error("release manifest local rules declaration is ambiguous");
-  const local = locals[0]?.[1];
-  if (local !== undefined) {
-    try { validateInventoryPath(local); } catch { throw new Error("release manifest local rules path is invalid"); }
-    if (!/\.md$/i.test(local)) throw new Error("release manifest local rules path is invalid");
-  } else if (/^local_rules\s*=/m.test(manifest)) throw new Error("release manifest local rules path is invalid");
-  for (const match of manifest.matchAll(/^(?:triggers|policy_tags|scopes|tools|path)\s*=\s*"([^"\\]+)"\s*$/gm)) {
-    const value = match[1]!;
-    try { validateInventoryPath(value); } catch { throw new Error("release manifest reference path is invalid"); }
-    const inventoryPath = `bundle/agent-governance/${value}`;
-    if (!entries.has(inventoryPath)) throw new Error(`release manifest reference is missing from inventory: ${value}`);
-  }
-  return local;
-}
-
 async function safeRegularFile(path: string): Promise<Buffer> {
   const stat = await lstat(path);
   if (stat.isSymbolicLink() || !stat.isFile()) {
@@ -64,6 +48,12 @@ async function safeRegularFile(path: string): Promise<Buffer> {
 export async function verifyRelease(releaseRoot: string): Promise<VerifiedRelease> {
   if (!isAbsolute(releaseRoot)) {
     throw new Error("release root must be absolute");
+  }
+  const rootStat = await lstat(releaseRoot);
+  if (rootStat.isSymbolicLink() || !rootStat.isDirectory() || await realpath(releaseRoot) !== releaseRoot) throw new Error("release root must be a canonical non-symlink directory");
+  for (const directory of [join(releaseRoot, "bundle"), join(releaseRoot, "bundle", "agent-governance")]) {
+    const stat = await lstat(directory);
+    if (stat.isSymbolicLink() || !stat.isDirectory() || await realpath(directory) !== directory) throw new Error("release bundle root must be a canonical non-symlink directory");
   }
   const inventoryText = (await safeRegularFile(join(releaseRoot, "release.files.sha256"))).toString(
     "utf8",
@@ -103,8 +93,16 @@ export async function verifyRelease(releaseRoot: string): Promise<VerifiedReleas
   await walk(join(releaseRoot, "bundle"));
   const expectedBundleFiles = [...entries.keys()].filter((path) => path.startsWith("bundle/")).sort();
   const manifest = (await safeRegularFile(join(releaseRoot, "bundle", "agent-governance", "manifest.toml"))).toString("utf8");
-  const localRelative = validateManifest(manifest, entries);
-  const allowedLocal = localRelative === undefined ? undefined : `bundle/agent-governance/${localRelative}`;
+  const contract = await validateGovernanceContract(join(releaseRoot, "bundle", "agent-governance"), manifest, entries);
+  const localRelative = contract.localRulesPath;
+  const knownInventoryFiles = new Set([
+    "bundle/GOVERNANCE.md",
+    "bundle/agent-governance/manifest.toml",
+    ...[...contract.referencedPaths].map((path) => `bundle/agent-governance/${path}`),
+    `bundle/agent-governance/${localRelative.replace(/\.md$/i, ".example.md")}`,
+  ]);
+  for (const path of entries.keys()) if (path.startsWith("bundle/") && !knownInventoryFiles.has(path)) throw new Error(`release contains an unknown or unreferenced normative file: ${path}`);
+  const allowedLocal = `bundle/agent-governance/${localRelative}`;
   const normativeBundleFiles = actualBundleFiles.filter((path) => path !== allowedLocal).sort();
   if (normativeBundleFiles.join("\0") !== expectedBundleFiles.join("\0")) {
     throw new Error("release bundle contains additional or unlisted inventory files");
@@ -118,6 +116,8 @@ export async function verifyRelease(releaseRoot: string): Promise<VerifiedReleas
     fileCount: entries.size,
     governanceDigest: entries.get("bundle/GOVERNANCE.md")!,
     manifestDigest: entries.get("bundle/agent-governance/manifest.toml")!,
+    bundleDigest: createHash("sha256").update([...entries].sort(([left], [right]) => left.localeCompare(right)).map(([path, digest]) => `${digest}  ${path}\n`).join("")).digest("hex"),
+    localRulesPath: localRelative,
     inventory: entries,
   };
 }

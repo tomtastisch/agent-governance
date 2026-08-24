@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { dirname } from "node:path";
 import { COMMANDS, EXIT_CODES, exitCodeFor, type InstallerCommand, type InstallerRequest } from "./contracts.ts";
 import { InstallerFailure, InterruptedFailure } from "./errors.ts";
 import { InstallerTransaction } from "./transaction.ts";
@@ -12,7 +13,7 @@ function parse(argv: readonly string[]): { command: InstallerCommand; request: I
   for (let index = 1; index < argv.length; index += 1) { const option = argv[index]; if (option === "--json") { if (json) throw new Error("duplicate option --json"); json = true; continue; } if (option === "--dry-run") { if (dryRun) throw new Error("duplicate option --dry-run"); dryRun = true; continue; } if (option === "--non-interactive") { if (nonInteractive) throw new Error("duplicate option --non-interactive"); nonInteractive = true; continue; } if (option === undefined || !VALUE_OPTIONS.has(option)) throw new Error(`unknown option ${String(option)}`); if (values.has(option)) throw new Error(`duplicate option ${option}`); const value = argv[++index]; if (value === undefined || value.startsWith("--") || /[\0\r\n]/.test(value)) throw new Error(`missing or unsafe value for ${option}`); values.set(option, value); }
   for (const required of ["--target-root", "--entry-file", "--scope", "--installation-root"]) if (!values.has(required)) throw new Error(`missing required option ${required}`);
   if (values.get("--scope") !== "global") throw new Error("scope must be global");
-  const releaseRoot = fileURLToPath(new URL("..", import.meta.url));
+  const releaseRoot = dirname(dirname(fileURLToPath(import.meta.url)));
   return { command: command as InstallerCommand, json, request: { targetRoot: values.get("--target-root")!, entryFile: values.get("--entry-file")!, scope: "global", installationRoot: values.get("--installation-root")!, ...(values.has("--local-rules") ? { localRules: values.get("--local-rules")! } : {}), dryRun: dryRun || command === "plan", nonInteractive, releaseRoot } };
 }
 

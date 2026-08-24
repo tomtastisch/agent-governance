@@ -1,36 +1,22 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
-import { mkdir, rm, symlink, truncate, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, symlink, truncate, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 
 import { verifyRelease } from "../../src/release.ts";
 import { createTestRoot } from "../fixtures/installer/workspace.ts";
+import { createReleaseFixture, writeInventory } from "../fixtures/installer/release.ts";
 
 async function fixture(): Promise<string> {
   const root = await createTestRoot("agent-governance-release-");
-  await mkdir(join(root, "bundle", "agent-governance"), { recursive: true });
-  const files: Record<string, string> = {
-    "VERSION": "1.0.0-rc.1\n",
-    "bundle/GOVERNANCE.md": "governance\n",
-    "bundle/agent-governance/manifest.toml": "schema_version = 2\n",
-  };
-  for (const [path, content] of Object.entries(files)) {
-    await writeFile(join(root, path), content);
-  }
-  const inventory = Object.entries(files)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([path, content]) => `${createHash("sha256").update(content).digest("hex")}  ${path}`)
-    .join("\n");
-  await writeFile(join(root, "release.files.sha256"), `${inventory}\n`);
-  return root;
+  return createReleaseFixture(root);
 }
 
 test("release verifier accepts complete digest-bound fixture", async () => {
   const root = await fixture();
   const result = await verifyRelease(root);
   assert.equal(result.version, "1.0.0-rc.1");
-  assert.equal(result.fileCount, 3);
+  assert.equal(result.fileCount > 3, true);
   assert.match(result.governanceDigest, /^[0-9a-f]{64}$/);
   assert.match(result.manifestDigest, /^[0-9a-f]{64}$/);
 });
@@ -71,8 +57,38 @@ test("release verifier rejects actual symlinks and structurally manipulated mani
   await symlink(join(linked, "VERSION"), join(linked, "bundle", "linked.md"));
   await assert.rejects(verifyRelease(linked), /symlink/);
   const manipulated = await fixture();
-  const files: Record<string, string> = { VERSION: "1.0.0-rc.1\n", "bundle/GOVERNANCE.md": "governance\n", "bundle/agent-governance/manifest.toml": 'schema_version = 2\nlocal_rules = "../escape.md"\n' };
-  for (const [path, content] of Object.entries(files)) await writeFile(join(manipulated, path), content);
-  await writeFile(join(manipulated, "release.files.sha256"), `${Object.entries(files).sort(([a],[b]) => a.localeCompare(b)).map(([path,content]) => `${createHash("sha256").update(content).digest("hex")}  ${path}`).join("\n")}\n`);
+  const manifestPath = join(manipulated, "bundle", "agent-governance", "manifest.toml");
+  await writeFile(manifestPath, (await readFile(manifestPath, "utf8")).replace('local_rules = "local/user-rules.md"', 'local_rules = "../escape.md"'));
+  await writeInventory(manipulated);
   await assert.rejects(verifyRelease(manipulated), /manifest|local rules/);
+});
+
+test("release verifier rejects unknown manifest fields even when inventory digests match", async () => {
+  const root = await fixture();
+  const manifestPath = join(root, "bundle", "agent-governance", "manifest.toml");
+  await writeFile(manifestPath, `${await readFile(manifestPath, "utf8")}unknown_normative_source = "shadow.md"\n`);
+  await writeInventory(root);
+  await assert.rejects(verifyRelease(root), /manifest|unknown/i);
+});
+
+test("release verifier rejects listed but unreferenced normative bundle files", async () => {
+  const root = await fixture();
+  await writeFile(join(root, "bundle", "agent-governance", "modules", "shadow.md"), "unreferenced normative source\n");
+  await writeInventory(root);
+  await assert.rejects(verifyRelease(root), /unknown|unreferenced|normative/i);
+});
+
+test("release verifier rejects symlinked release and bundle roots", async () => {
+  for (const component of ["release", "bundle"] as const) {
+    const physical = await fixture();
+    const parent = await createTestRoot(`agent-governance-${component}-link-`);
+    const linked = component === "release" ? join(parent, "linked-release") : join(parent, "release");
+    if (component === "release") await symlink(physical, linked);
+    else {
+      await mkdir(linked);
+      await symlink(join(physical, "bundle"), join(linked, "bundle"));
+      for (const name of ["VERSION", "release.files.sha256"]) await writeFile(join(linked, name), await readFile(join(physical, name)));
+    }
+    await assert.rejects(verifyRelease(linked), /symlink|canonical/i);
+  }
 });

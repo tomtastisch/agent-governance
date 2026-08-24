@@ -7,6 +7,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class InstallerPackageContract(unittest.TestCase):
+    def test_active_codex_only_bootstrap_was_removed(self):
+        self.assertFalse((ROOT / "Installation.bootstrap.prompt.md").exists())
+
     def test_package_is_node24_strict_and_zero_runtime_dependency(self):
         package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
         self.assertEqual(package["name"], "@tomtastisch/agent-governance")

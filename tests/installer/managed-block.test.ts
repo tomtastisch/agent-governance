@@ -15,6 +15,7 @@ const binding: GovernanceBinding = {
   manifestPath: "/safe/.agent-governance/releases/1.0.0-rc.1/bundle/agent-governance/manifest.toml",
   governanceDigest: "a".repeat(64),
   manifestDigest: "b".repeat(64),
+  bundleDigest: "e".repeat(64),
 };
 
 const begin = "<!-- BEGIN AGENT_GOVERNANCE_MANAGED_V1 -->";
@@ -30,7 +31,7 @@ test("managed block creates a deterministic UTF-8 LF entry and verifies it", () 
   for (const value of [
     begin, end, "generated projection", binding.version, binding.installationRoot,
     binding.governancePath, binding.manifestPath, binding.governanceDigest,
-    binding.manifestDigest, "personal local rules", "fail closed",
+    binding.manifestDigest, binding.bundleDigest, "personal local rules", "fail closed",
   ]) assert.equal(text.includes(value), true, value);
   assert.match(text, /before every response/i);
   assert.doesNotThrow(() => verifyManagedBlock(first, binding));

@@ -18,7 +18,8 @@ absolute kanonische reguläre Datei; ihr Inhalt erscheint weder in Ausgabe noch 
 
 Vor der Entry-Mutation erzeugt der Installer ein Backup und verifiziert es per Readback. Releases
 werden unter `<installation-root>/releases/<version>/bundle` vollständig inventar- und
-digestgeprüft; `current.json` wird atomar ersetzt, `backups` enthält geschlossene Receipts.
+digestgeprüft; `bindings/<binding-id>/current.json` wird atomar ersetzt, und
+`backups/<binding-id>/<transaction-id>` enthält eine zweite bytegleich gebundene Receiptkopie.
 `PREPARED`, `COMMITTED` und `ROLLED_BACK` unterscheiden Recoveryzustände. `SIGINT` und `SIGTERM`
 werden serialisiert behandelt (Exit 130 beziehungsweise 143); `SIGKILL`, Stromausfall und
 Dateisystemdefekte können nur durch den verifizierten Recoveryvertrag, nicht durch eine falsche

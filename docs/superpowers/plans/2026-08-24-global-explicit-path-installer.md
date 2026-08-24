@@ -55,7 +55,7 @@
 
 **Files:** Modify `src/release.ts`, `src/filesystem.ts`, `tools/release_manifest.py`; create or modify release/filesystem tests.
 
-**Interfaces:** `verifyRelease(root)` returns version and bootstrap/manifest/bundle digests plus inventory; `stageRelease` creates `releases/<version>/bundle`; `current.json` is the atomic active pointer.
+**Interfaces:** `verifyRelease(root)` returns version and bootstrap/manifest/bundle digests plus inventory; `stageRelease` creates `releases/<version>/bundle`; `bindings/<binding-id>/current.json` is the atomic target-bound active pointer.
 
 - [ ] Add RED cases for absent/extra normative files, digest/manifest manipulation, traversal, links, types, size, local rules, update, and explicit downgrade policy.
 - [ ] Implement closed inventory enumeration, manifest reference validation, bounded reads, staging readback, and atomic metadata activation; run focused suites GREEN.

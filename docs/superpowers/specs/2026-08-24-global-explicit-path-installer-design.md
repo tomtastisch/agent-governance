@@ -26,7 +26,8 @@ identity changes fail closed before productive mutation.
 ## Installed layout and release integrity
 
 `<installation-root>/releases/<version>/bundle` contains the verified release bundle,
-`<installation-root>/current.json` atomically identifies the active version and digests, and
+`<installation-root>/bindings/<binding-id>/current.json` atomically identifies the active version
+and digests for one explicit target/entry pair, and
 `<installation-root>/backups` contains immutable per-transaction backups and receipts. A metadata
 file is preferred over a `current` symlink so trusted internal links and untrusted target links do
 not share one validation path.

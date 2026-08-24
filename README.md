@@ -47,9 +47,9 @@ harnessspezifischen Parser und keine Runtime-Abhängigkeiten. Die aktive Struktu
 ```text
 <installation-root>/
 ├── releases/<version>/bundle/
-├── current.json
-├── backups/<transaction-id>/
-└── last-transaction.json
+├── bindings/<binding-id>/current.json
+├── bindings/<binding-id>/last-transaction.json
+└── backups/<binding-id>/<transaction-id>/
 ```
 
 Die normative Einstiegskette im Bundle bleibt:
@@ -118,7 +118,7 @@ Der Installer verwaltet exakt einen Block:
 Außenbytes bleiben bytegetreu erhalten. Vorhandene LF- oder CRLF-Zeilenenden werden beibehalten;
 eine neue Datei entsteht als UTF-8 mit LF. Doppelte, unvollständige, fremde und manipulierte
 Marker scheitern fail-closed. Der Block nennt Version, absoluten Installationsroot, normativen
-Einstieg, Manifest, beide erwarteten SHA-256-Digests, Ladepflicht, Trennung lokaler Regeln und
+Einstieg, Manifest, Governance-, Manifest- und vollständigen Bundledigest, Ladepflicht, Trennung lokaler Regeln und
 Fail-closed-Verhalten. Er ist eine reproduzierbare Projektion, kein normativer Vertrag.
 
 JSON verwendet Schema 1 mit geschlossenem Command-, Outcome-, State-, Phasen-, Rollback- und
@@ -134,13 +134,16 @@ per Readback. Er inventarisiert das komplette normative Bundle, prüft Digests, 
 Dateitypen, Traversal und Symlinks und aktiviert erst nach erfolgreichem Staging. Ziel-,
 Entry-Parent- und Installationsroot-Identitäten werden vor kritischen Mutationen erneut geprüft.
 
-Update akzeptiert nur einen gültigen älteren Stand (`OUTDATED`). Ein Downgrade bleibt ohne
+Update akzeptiert einen gültigen älteren Stand (`OUTDATED`) sowie bei `CURRENT` ausschließlich
+den expliziten Austausch lokaler Regeln; auf `FRESH` oder `ABSENT` installiert `update` nicht. Ein Downgrade bleibt ohne
 separaten expliziten Vertrag `DOWNGRADE_BLOCKED`. Lokale Regeln werden beim Versionswechsel
 erhalten oder nur aus einer neu angegebenen Quelle ersetzt. Uninstall entfernt ausschließlich den
-eigenen Block und `current.json`. Rollback stellt Entry, Metadaten und betroffene lokale Regeln aus
+eigenen Block und die targetgebundene `current.json`. Rollback stellt Entry, Metadaten und betroffene lokale Regeln aus
 dem letzten verifizierten Receipt wieder her.
 
-Receipts wechseln geschlossen zwischen `PREPARED`, `COMMITTED` und `ROLLED_BACK`. Ein
+Jedes explizite Paar aus Target-Root und Entry-Datei erhält eine deterministische Binding-ID und
+damit unabhängige Current-/Receipt-Metadaten im gemeinsamen Installationsroot. Beide Receiptkopien
+müssen bytegleich sein. Receipts wechseln geschlossen zwischen `PREPARED`, `COMMITTED` und `ROLLED_BACK`. Ein
 `PREPARED`-Zustand blockiert weitere Mutationen bis zum expliziten Rollback. Das erste von
 `SIGINT` oder `SIGTERM` wird gelatcht und führt zu genau einem Rollback. `SIGKILL`, Stromausfall
 und Dateisystemdefekte sind nicht vollständig atomar abfangbar; dafür bleibt der Recoveryzustand
@@ -225,8 +228,11 @@ QA-/Security-Review kann ein separater Promotion-PR `1.0.0` unter `latest` freig
 notwendige öffentliche Vertragsänderung erzeugt stattdessen einen weiteren RC.
 
 Tags und Releases müssen auf dem geprüften Exact Head liegen und repositorykonform signiert sein.
-npm-Provenance oder Trusted Publishing wird verwendet, soweit die Registry- und Repositorykonfiguration
-dies am Publish-Zeitpunkt nachweislich erlaubt. Ein lokaler Branch ist kein Release.
+Der main-kontrollierte Workflow `.github/workflows/npm-publish.yml` verifiziert zuerst Tag,
+Signatur, Version und Dist-Tag, baut am signierten Tag neu und veröffentlicht über npm Trusted
+Publishing mit OIDC. Danach prüft er Registry-Metadaten, Dist-Tag, SLSA-Provenance und
+Paketsignaturen. Fehlt die externe npm-Trust-Konfiguration, bleibt der Publishschritt blockiert.
+Ein lokaler Branch ist kein Release.
 
 ## Verifikation und Tests
 
@@ -270,8 +276,8 @@ gelangen.
 - Atomare Renames beseitigen nicht alle Host-Dateisystem- oder privilegierten Angreiferrennen.
 - Rollback arbeitet auf dem letzten geschlossenen Receipt; ältere Backups werden nicht implizit
   ausgewählt.
-- `current.json` ist die symlinkfreie Aktivierungsmetadatei; ein `current`-Symlink wird nicht
-  erzeugt.
+- `bindings/<binding-id>/current.json` ist die symlinkfreie, explizit targetgebundene
+  Aktivierungsmetadatei; ein `current`-Symlink wird nicht erzeugt.
 - Unbekannte Dateiformate, Projektinstallation und implizite globale Ziele sind nicht unterstützt.
 - Eine dokumentierte Rezeptdatei ohne reale Fresh Session begründet keine Harnesskompatibilität.
 

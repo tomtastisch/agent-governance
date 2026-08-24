@@ -5,6 +5,7 @@ export interface GovernanceBinding {
   readonly manifestPath: string;
   readonly governanceDigest: string;
   readonly manifestDigest: string;
+  readonly bundleDigest: string;
 }
 
 const BEGIN = "<!-- BEGIN AGENT_GOVERNANCE_MANAGED_V1 -->";
@@ -75,6 +76,7 @@ function projection(
     `Normative manifest: ${binding.manifestPath}`,
     `Expected governance SHA-256: ${binding.governanceDigest}`,
     `Expected manifest SHA-256: ${binding.manifestDigest}`,
+    `Expected bundle SHA-256: ${binding.bundleDigest}`,
     "Before every response, load the normative governance entry and manifest from these exact paths.",
     "Keep personal local rules separate and resolve them only through the installed manifest.",
     "If governance is missing, changed, ambiguous, or conflicts with another normative source, fail closed.",

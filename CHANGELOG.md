@@ -33,7 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   transaktionalem Explicit-Path-Installer und den Commands `inspect`, `plan`, `install`, `verify`,
   `status`, `update`, `uninstall` und `rollback`.
 - Einen deterministischen Managed Block, geschlossene JSON-Schemas, verifizierte Backups,
-  Releaseinventar, Digestprüfung, Signal-Rollback und explizite lokale Regeln.
+  Releaseinventar, vollständige Bundle- und Manifestprüfung, Signal-Rollback und explizite lokale Regeln.
+- Targetgebundene Binding-/Receipt-Metadaten für mehrere globale Einstiegsdateien unter einem
+  gemeinsamen Installationsroot sowie einen OIDC-basierten npm-Publishworkflow.
 
 ### Changed
 
