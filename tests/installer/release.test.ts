@@ -101,4 +101,5 @@ test("release verifier rejects TOML forms rejected by conforming parsers", async
     const root = await fixture(); const manifestPath = join(root, "bundle", "agent-governance", "manifest.toml"); await writeFile(manifestPath, mutate(await readFile(manifestPath, "utf8"))); await writeInventory(root);
     await assert.rejects(verifyRelease(root), /TOML|manifest|duplicate|table/i);
   }
+  for (const replacement of ['label = "Analysis\\/invalid"', 'label = "\\ud800"']) { const escaped = await fixture(); const catalogPath = join(escaped, "bundle", "agent-governance", "catalogs", "triggers.toml"); const catalog = await readFile(catalogPath, "utf8"); const changed = catalog.replace('label = "Analysis"', replacement); assert.notEqual(changed, catalog); await writeFile(catalogPath, changed); await writeInventory(escaped); await assert.rejects(verifyRelease(escaped), /TOML|invalid/i); }
 });

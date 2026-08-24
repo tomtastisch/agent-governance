@@ -18,6 +18,13 @@ function exact(table: TomlTable, expected: readonly string[], label: string): vo
 
 function parseString(raw: string, label: string): string {
   try {
+    for (let index = 1; index < raw.length - 1; index += 1) {
+      if (raw[index] !== "\\") continue;
+      const escape = raw[index + 1];
+      if (escape === "u" && /^[0-9A-Fa-f]{4}$/.test(raw.slice(index + 2, index + 6)) && !/^d[89ab][0-9a-f]{2}$/i.test(raw.slice(index + 2, index + 6))) { index += 5; continue; }
+      if (escape !== undefined && '"\\btnfr'.includes(escape)) { index += 1; continue; }
+      throw new Error();
+    }
     const value: unknown = JSON.parse(raw);
     if (typeof value !== "string") throw new Error();
     return value;

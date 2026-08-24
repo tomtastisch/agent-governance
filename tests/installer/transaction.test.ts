@@ -151,6 +151,26 @@ test("local-rules changes after their snapshot are not overwritten", async () =>
   await assert.rejects(update.update(), /local rules changed/); assert.equal(await readFile(target, "utf8"), "concurrent local rules\n");
 });
 
+test("current metadata created after an absent snapshot is never overwritten", async () => {
+  const f = await fixture(); const concurrent = Buffer.from("concurrent current metadata\n");
+  const tx = new InstallerTransaction({ ...f.request, onCheckpoint: (checkpoint) => { if (checkpoint === "afterReceipt") { const binding = readdirSync(join(f.installationRoot, "bindings"))[0]!; writeFileSync(join(f.installationRoot, "bindings", binding, "current.json"), concurrent, { flag: "wx" }); } } });
+  await assert.rejects(tx.install(), /current metadata changed|rolled back/); const currentPath = join(await bindingStateRoot(f.installationRoot), "current.json"); assert.deepEqual(await readFile(currentPath), concurrent); await assert.rejects(access(f.entry));
+});
+
+test("existing current metadata changed after its snapshot is never overwritten", async () => {
+  const f = await fixture(); const first = await releaseFixture(f.root, "1.0.0-rc.1"); const second = await releaseFixture(f.root, "1.0.0-rc.2"); await new InstallerTransaction({ ...f.request, releaseRoot: first }).install(); const concurrent = Buffer.from("concurrent existing current metadata\n");
+  const tx = new InstallerTransaction({ ...f.request, releaseRoot: second, onCheckpoint: (checkpoint) => { if (checkpoint === "afterReceipt") { const binding = readdirSync(join(f.installationRoot, "bindings"))[0]!; writeFileSync(join(f.installationRoot, "bindings", binding, "current.json"), concurrent); } } });
+  await assert.rejects(tx.update(), /current metadata changed/); assert.deepEqual(await readFile(join(await bindingStateRoot(f.installationRoot), "current.json")), concurrent); assert.match(await readFile(f.entry, "utf8"), /Governance version: 1\.0\.0-rc\.1/);
+});
+
+test("current and local-rules postimages are verified before commit", async () => {
+  for (const resource of ["current", "local-rules"] as const) {
+    const f = await fixture(); const rules = join(f.root, "postimage-rules.md"); await writeFile(rules, "expected rules\n"); const concurrent = Buffer.from(`concurrent ${resource}\n`);
+    const tx = new InstallerTransaction({ ...f.request, localRules: rules, onCheckpoint: (checkpoint) => { if (checkpoint !== "afterCurrent") return; const binding = readdirSync(join(f.installationRoot, "bindings"))[0]!; const path = resource === "current" ? join(f.installationRoot, "bindings", binding, "current.json") : join(f.installationRoot, "releases", "1.0.0-rc.1", "bundle", "agent-governance", "local", "user-rules.md"); writeFileSync(path, concurrent); } });
+    await assert.rejects(tx.install(), /ROLLBACK_FAILED|postimage|changed/); const path = resource === "current" ? join(await bindingStateRoot(f.installationRoot), "current.json") : join(f.installationRoot, "releases", "1.0.0-rc.1", "bundle", "agent-governance", "local", "user-rules.md"); assert.deepEqual(await readFile(path), concurrent);
+  }
+});
+
 test("entry changes after current activation are detected and preserved", async () => {
   const f = await fixture(); await writeFile(f.entry, "original\n"); let changed = false; const tx = new InstallerTransaction({ ...f.request, onCheckpoint: (checkpoint) => { if (!changed && checkpoint === "afterCurrent") { changed = true; writeFileSync(f.entry, "late concurrent entry\n"); } } });
   await assert.rejects(tx.install(), /entry changed|rolled back/); assert.equal(await readFile(f.entry, "utf8"), "late concurrent entry\n");
@@ -174,6 +194,18 @@ test("rollback reclaims a well-formed stale dead-owner lock", async () => {
 test("a first signal during rollback is reported after successful restoration", async () => {
   const f = await fixture(); const signals = new TestSignals(); const original = Buffer.from("original\n"); await writeFile(f.entry, original); let emitted = false; const tx = new InstallerTransaction({ ...f.request, faultAfter: "activate", signalSource: signals, onCheckpoint: (checkpoint) => { if (!emitted && checkpoint === "duringRollback") { emitted = true; signals.emit("SIGTERM"); } } });
   await assert.rejects(tx.install(), (error: unknown) => error instanceof InterruptedFailure && error.signal === "SIGTERM" && error.rollbackStatus === "SUCCEEDED"); assert.deepEqual(await readFile(f.entry), original);
+});
+
+test("explicit rollback latches a signal and finishes restoration before reporting interruption", async () => {
+  const f = await fixture(); const signals = new TestSignals(); const original = Buffer.from("original\n"); await writeFile(f.entry, original); await new InstallerTransaction(f.request).install(); let emitted = false;
+  const tx = new InstallerTransaction({ ...f.request, signalSource: signals, onCheckpoint: (checkpoint) => { if (!emitted && checkpoint === "afterRollbackEntry") { emitted = true; signals.emit("SIGTERM"); signals.emit("SIGINT"); } } });
+  await assert.rejects(tx.rollback(), (error: unknown) => error instanceof InterruptedFailure && error.signal === "SIGTERM" && error.rollbackStatus === "SUCCEEDED"); assert.deepEqual(await readFile(f.entry), original); await assert.rejects(access(join(await bindingStateRoot(f.installationRoot), "current.json"))); assert.equal(signals.count(), 0);
+});
+
+test("explicit rollback resumes after entry was already restored", async () => {
+  const f = await fixture(); const original = Buffer.from("original\n"); await writeFile(f.entry, original); const installed = new InstallerTransaction(f.request); await installed.install(); let failed = false;
+  const interrupted = new InstallerTransaction({ ...f.request, onCheckpoint: (checkpoint) => { if (!failed && checkpoint === "afterRollbackEntry") { failed = true; throw new Error("injected partial restore failure"); } } });
+  await assert.rejects(interrupted.rollback(), /partial restore/); assert.deepEqual(await readFile(f.entry), original); assert.equal((await installed.rollback()).state, "FRESH"); assert.deepEqual(await readFile(f.entry), original);
 });
 
 test("tampered backup payload and symlinked backup root fail before restore mutation", async () => {
