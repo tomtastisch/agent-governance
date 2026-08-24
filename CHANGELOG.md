@@ -18,8 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Rollback bindet die Entry-Wiederherstellung per exklusiv reserviertem, recoveryfähigem
-  Same-Filesystem-Detach und identitätsgeprüftem Cleanup an das validierte Postimage;
-  zwischenzeitlich geänderte Nutzerbytes werden nicht überschrieben oder gelöscht.
+  Same-Filesystem-Detach an das validierte Postimage und behält dessen receipt-spezifische
+  Evidenz bei; zwischenzeitlich geänderte Nutzerbytes werden nicht überschrieben oder gelöscht.
 - Plan- und Dry-Run-Ausgaben benennen für explizite lokale Regeln die tatsächlich manifestgebundene
   Markdown-Datei statt nur deren übergeordnetes Verzeichnis.
 

@@ -209,10 +209,16 @@ test("rollback never overwrites an entry changed after its final validation", as
 });
 
 test("rollback resumes a deterministic same-filesystem entry detach after interruption", async () => {
-  const f = await fixture(); const original = Buffer.from("original\n"); await writeFile(f.entry, original); await new InstallerTransaction(f.request).install(); let detached: string | undefined;
+  const f = await fixture(); const original = Buffer.from("original\n"); await writeFile(f.entry, original); await new InstallerTransaction(f.request).install(); const applied = await readFile(f.entry); let detached: string | undefined;
   const interrupted = new InstallerTransaction({ ...f.request, onCheckpoint: (checkpoint) => { if (checkpoint !== "afterRollbackEntryDetach") return; detached = readdirSync(dirname(f.entry)).find((name) => name.startsWith(`.${basename(f.entry)}.agent-governance-`) && name.endsWith(".restore")); assert.notEqual(detached, undefined); assert.equal(statSync(join(dirname(f.entry), detached!, "entry.bin")).dev, statSync(dirname(f.entry)).dev); throw new Error("injected interruption after entry detach"); } });
   await assert.rejects(interrupted.rollback(), /interruption after entry detach/); await assert.rejects(access(f.entry)); assert.notEqual(detached, undefined);
-  assert.equal((await new InstallerTransaction(f.request).rollback()).state, "FRESH"); assert.deepEqual(await readFile(f.entry), original); await assert.rejects(access(join(dirname(f.entry), detached!)));
+  assert.equal((await new InstallerTransaction(f.request).rollback()).state, "FRESH"); assert.deepEqual(await readFile(f.entry), original); assert.deepEqual(await readFile(join(dirname(f.entry), detached!, "entry.bin")), applied);
+});
+
+test("rollback resumes after interruption immediately after detach reservation", async () => {
+  const f = await fixture(); const original = Buffer.from("original\n"); await writeFile(f.entry, original); await new InstallerTransaction(f.request).install(); let interrupted = false;
+  const reserving = new InstallerTransaction({ ...f.request, onCheckpoint: (checkpoint) => { if (checkpoint !== "afterRollbackEntryDetachReservation") return; interrupted = true; throw new Error("injected interruption after detach reservation"); } });
+  await assert.rejects(reserving.rollback(), /interruption after detach reservation/); assert.equal(interrupted, true); assert.equal((await new InstallerTransaction(f.request).rollback()).state, "FRESH"); assert.deepEqual(await readFile(f.entry), original);
 });
 
 test("rollback never overwrites a detach-path collision", async () => {
@@ -221,10 +227,10 @@ test("rollback never overwrites a detach-path collision", async () => {
   await assert.rejects(colliding.rollback()); assert.deepEqual(await readFile(join(dirname(f.entry), detached!)), foreign);
 });
 
-test("rollback never deletes a detach path substituted before cleanup", async () => {
-  const f = await fixture(); await writeFile(f.entry, "original\n"); await new InstallerTransaction(f.request).install(); const foreign = Buffer.from("replacement detach bytes\n"); let detached: string | undefined;
-  const substituted = new InstallerTransaction({ ...f.request, onCheckpoint: (checkpoint) => { if (checkpoint === "afterRollbackEntryDetach") detached = readdirSync(dirname(f.entry)).find((name) => name.startsWith(`.${basename(f.entry)}.agent-governance-`) && name.endsWith(".restore")); if (checkpoint !== "beforeRollbackDetachCleanup") return; assert.notEqual(detached, undefined); rmSync(join(dirname(f.entry), detached!, "entry.bin")); writeFileSync(join(dirname(f.entry), detached!, "entry.bin"), foreign); } });
-  await assert.rejects(substituted.rollback()); assert.deepEqual(await readFile(join(dirname(f.entry), detached!, "entry.bin")), foreign);
+test("rollback never follows a substituted detach root during finalization", async () => {
+  const f = await fixture(); await writeFile(f.entry, "original\n"); await new InstallerTransaction(f.request).install(); let moved: string | undefined;
+  const substituted = new InstallerTransaction({ ...f.request, onCheckpoint: (checkpoint) => { if (checkpoint !== "beforeRollbackDetachFinalization") return; const detached = readdirSync(dirname(f.entry)).find((name) => name.startsWith(`.${basename(f.entry)}.agent-governance-`) && name.endsWith(".restore")); assert.notEqual(detached, undefined); moved = `${detached}.moved`; renameSync(join(dirname(f.entry), detached!), join(dirname(f.entry), moved)); symlinkSync(join(dirname(f.entry), moved), join(dirname(f.entry), detached!)); } });
+  await assert.rejects(substituted.rollback(), /identity changed|symlink/); assert.notEqual(moved, undefined); await access(join(dirname(f.entry), moved!, "entry.bin"));
 });
 
 test("stale local-rules rollback fails before restoring entry or current", async () => {
