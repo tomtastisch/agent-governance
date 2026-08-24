@@ -45,6 +45,12 @@ async function safeRegularFile(path: string): Promise<Buffer> {
   return readFile(path);
 }
 
+function validateNormativeText(content: Buffer, path: string): void {
+  let text: string;
+  try { text = new TextDecoder("utf-8", { fatal: true }).decode(content); } catch { throw new Error(`normative text contains invalid UTF-8 encoding: ${path}`); }
+  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(text)) throw new Error(`normative text contains a raw control character: ${path}`);
+}
+
 export async function verifyRelease(releaseRoot: string): Promise<VerifiedRelease> {
   if (!isAbsolute(releaseRoot)) {
     throw new Error("release root must be absolute");
@@ -77,6 +83,7 @@ export async function verifyRelease(releaseRoot: string): Promise<VerifiedReleas
     const content = await safeRegularFile(join(releaseRoot, path));
     const actual = createHash("sha256").update(content).digest("hex");
     if (actual !== expected) throw new Error(`release digest mismatch: ${path}`);
+    if (path.startsWith("bundle/") && /\.(?:md|toml)$/i.test(path)) validateNormativeText(content, path);
   }
   const actualBundleFiles: string[] = [];
   async function walk(directory: string): Promise<void> {

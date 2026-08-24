@@ -106,3 +106,15 @@ test("release verifier rejects TOML forms rejected by conforming parsers", async
   const nul = await fixture(); const nulPath = join(nul, "bundle", "agent-governance", "catalogs", "triggers.toml"); await writeFile(nulPath, (await readFile(nulPath, "utf8")).replace('description = """', 'description = """\0')); await writeInventory(nul); await assert.rejects(verifyRelease(nul), /TOML|control|invalid/i);
   const malformed = await fixture(); const malformedPath = join(malformed, "bundle", "agent-governance", "catalogs", "triggers.toml"); const malformedBytes = await readFile(malformedPath); const label = malformedBytes.indexOf(Buffer.from("Analysis")); assert.notEqual(label, -1); malformedBytes[label] = 0xff; await writeFile(malformedPath, malformedBytes); await writeInventory(malformed); await assert.rejects(verifyRelease(malformed), /UTF-8|encoding|TOML|invalid/i);
 });
+
+test("release verifier rejects invalid UTF-8 and raw controls in normative text files", async () => {
+  for (const [relative, mutation] of [
+    ["bundle/GOVERNANCE.md", "malformed"],
+    ["bundle/GOVERNANCE.md", "nul"],
+    ["bundle/agent-governance/modules/invariants.md", "nul"],
+    ["bundle/agent-governance/roles/security-review.md", "nul"],
+  ] as const) {
+    const root = await fixture(); const path = join(root, relative); const bytes = await readFile(path); if (mutation === "malformed") { const index = bytes.indexOf(0x47); assert.notEqual(index, -1); bytes[index] = 0xff; await writeFile(path, bytes); } else await writeFile(path, Buffer.concat([bytes, Buffer.from([0])])); await writeInventory(root);
+    await assert.rejects(verifyRelease(root), /UTF-8|control|normative|text/i);
+  }
+});
