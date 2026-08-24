@@ -223,7 +223,7 @@ static napi_value secure_create_no_replace(napi_env env, napi_callback_info info
 #endif
 #ifdef AGENT_GOVERNANCE_TEST_MUTATE_CREATE_CLOSE
   int foreign = openat(directory_fd, name, O_WRONLY | O_TRUNC | O_NOFOLLOW);
-  if (foreign >= 0) { (void)write(foreign, "foreign bytes\n", 14); (void)fsync(foreign); (void)close(foreign); }
+  if (foreign >= 0) { ssize_t foreign_written = write(foreign, "foreign bytes\n", 14); (void)foreign_written; (void)fsync(foreign); (void)close(foreign); }
   errno = EIO;
 #endif
   if (close_result != 0) {
