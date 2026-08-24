@@ -79,6 +79,15 @@ class SemVerCmp(unittest.TestCase):
         self.assertEqual(_semver_cmp("0.1.0", "0.1.0"), 0)
         self.assertLess(_semver_cmp("0.1.0", "0.2.0"), 0)
 
+    def test_prerelease_precedence(self):
+        self.assertGreater(_semver_cmp("1.0.0-rc.2", "1.0.0-rc.1"), 0)
+        self.assertGreater(_semver_cmp("1.0.0-rc.10", "1.0.0-rc.2"), 0)
+        self.assertGreater(_semver_cmp("1.0.0", "1.0.0-rc.2"), 0)
+        self.assertLess(_semver_cmp("1.0.0-rc.2", "1.0.0"), 0)
+        self.assertLess(_semver_cmp("1.0.0-1", "1.0.0-alpha"), 0)
+        self.assertLess(_semver_cmp("1.0.0-alpha", "1.0.0-alpha.1"), 0)
+        self.assertEqual(_semver_cmp("1.0.0+build.1", "1.0.0+build.2"), 0)
+
 
 # ═══════════════════════════════════════════════════════════════════════
 # Cluster D: VERSION

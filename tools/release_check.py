@@ -456,12 +456,33 @@ def _check_changelog_sections(root, version, r):
 def _semver_cmp(a, b):
     """Vergleicht zwei SemVer-Strings. >0 wenn a > b, 0 wenn gleich, <0 wenn a < b."""
     def parts(v):
-        core = v.split("-")[0]
-        return tuple(int(x) for x in core.split("."))
-    pa, pb = parts(a), parts(b)
-    if pa > pb: return 1
-    if pa < pb: return -1
-    return 0
+        without_build = v.split("+", 1)[0]
+        core, separator, prerelease = without_build.partition("-")
+        return tuple(int(x) for x in core.split(".")), (
+            prerelease.split(".") if separator else None
+        )
+
+    (core_a, pre_a), (core_b, pre_b) = parts(a), parts(b)
+    if core_a != core_b:
+        return 1 if core_a > core_b else -1
+    if pre_a is None or pre_b is None:
+        if pre_a is None and pre_b is None:
+            return 0
+        return 1 if pre_a is None else -1
+
+    for identifier_a, identifier_b in zip(pre_a, pre_b):
+        if identifier_a == identifier_b:
+            continue
+        numeric_a, numeric_b = identifier_a.isdigit(), identifier_b.isdigit()
+        if numeric_a and numeric_b:
+            return 1 if int(identifier_a) > int(identifier_b) else -1
+        if numeric_a != numeric_b:
+            return -1 if numeric_a else 1
+        return 1 if identifier_a > identifier_b else -1
+
+    if len(pre_a) == len(pre_b):
+        return 0
+    return 1 if len(pre_a) > len(pre_b) else -1
 
 
 def _check_readme_version(root, version, r):

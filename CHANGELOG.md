@@ -9,10 +9,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Keine.
+
+### Changed
+
+- Keine.
+
+### Fixed
+
+- Keine.
+
+### Removed
+
+- Keine.
+
+**Breaking changes:** none
+
+## [1.0.0-rc.2] — 2026-08-24
+
+### Added
+
+- Das öffentliche Paket `@tomtastisch/agent-governance` mit globalem, adapterlosem,
+  transaktionalem Explicit-Path-Installer und den Commands `inspect`, `plan`, `install`, `verify`,
+  `status`, `update`, `uninstall` und `rollback`.
+- Einen deterministischen Managed Block, geschlossene JSON-Schemas, verifizierte Backups,
+  Releaseinventar, vollständige Bundle- und Manifestprüfung, Signal-Rollback und explizite lokale Regeln.
+- Targetgebundene Binding-/Receipt-Metadaten für mehrere globale Einstiegsdateien unter einem
+  gemeinsamen Installationsroot sowie einen OIDC-basierten npm-Publishworkflow.
 - Eine repo-eigene Node-API-C-Primitive mit nativen Darwin-/Linux-Prebuilds für arm64 und x64.
 
 ### Changed
 
+- Die Installationsarchitektur ist `GLOBAL_EXPLICIT_PATH_MANAGED_BLOCK`; Zielroot,
+  Markdown-Einstieg und Installationsroot sind vollständig explizit.
+- Das npm-Artefakt enthält keine Harnessadapter, Hooks, MCP-Mutationen, Auto-Approvals,
+  Fremdadapter oder Runtime-Abhängigkeiten.
 - Mutierende Installeroperationen prüfen die native Capability vor produktiver Mutation; ein
   fehlendes oder nicht unterstütztes Binary besitzt keinen unsicheren Pathname-Fallback.
 - Der Sicherheitsvertrag grenzt ausschließlich den nicht atomar entscheidbaren bösartigen
@@ -21,6 +52,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- macOS-Testfixtures kanonisieren den temporären Root, ohne die produktive Symlinkgrenze
+  abzuschwächen.
 - Rollback bindet die Entry-Wiederherstellung per exklusiv reserviertem, recoveryfähigem
   Same-Filesystem-Detach an das validierte Postimage und behält dessen receipt-spezifische
   Evidenz bei; zwischenzeitlich geänderte Nutzerbytes werden nicht überschrieben oder gelöscht.
@@ -45,12 +78,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Update-Pläne weisen die tatsächlich in ein neues Release übernommenen lokalen Regeln aus.
 - Plan- und Dry-Run-Ausgaben benennen für explizite lokale Regeln die tatsächlich manifestgebundene
   Markdown-Datei statt nur deren übergeordnetes Verzeichnis.
+- Die Tarball-Allowlist normalisiert sowohl das Arrayformat von npm 11 als auch das
+  paketnamengebundene Objektformat von npm 12, ohne Pfad-, Secret- oder Native-Prüfungen zu lockern.
 
 ### Removed
 
-- Keine.
+- Der unveröffentlichte Codex-only-Installerentwurf mit Harness-ID, festen Codexpfaden und
+  Hookmutation wurde aus Runtime und öffentlichem Paket entfernt.
 
-**Breaking changes:** none
+**Breaking changes:** present
+
+- **BREAKING:** Gegenüber dem manuellen v0.5.0-Bootstrap verlangt der Installer explizite globale
+  Zielparameter und verwaltet ausschließlich seinen markierten Markdown-Block.
 
 ## [1.0.0-rc.1] — 2026-08-24
 
