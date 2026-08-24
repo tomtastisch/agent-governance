@@ -287,6 +287,12 @@ Logs. Abwehr sind geschlossenes Inventar, Digest- und Typprüfung, kanonische ex
 Identity-Rechecks, Backup-Readback, atomare Dateiwechsel, dirfd-relative exklusive Native-Renames,
 geschlossene Receipts und fail-closed Zustände. Fehlt die Native-Capability auf einer mutierenden
 Plattform, bricht der Installer vor produktiver Mutation ab; es gibt keinen pathname-basierten Fallback.
+Der genaue In-Scope-Vertrag und seine einzige enge atomare Plattformgrenze sind im
+[Installer-Threat-Model](docs/installer-threat-model.md) beschrieben: Ein aktiv bösartiger
+Same-UID-Co-Writer, der mit eigener Namespace-Schreibberechtigung die finale Namenskomponente im
+nicht eliminierbaren Beobachtung-zu-Syscall-Fenster austauscht, ist keine atomare Inode-CAS-
+Garantie. Dafür wird kein privilegierter Broker eingeführt; alle beobachtbaren Parent-, Root-,
+Symlink-, Receipt-, Backup- und Collision-Abweichungen bleiben fail-closed geschützt.
 
 Der Installer ist kein Paketmanager für andere Software, kein Credential Service, keine Control
 Plane und kein Enforcementprovider. Er nimmt keine Secrets als CLI-Argumente an. Authentifizierung
@@ -297,6 +303,8 @@ gelangen.
 
 - Die Markdownbindung ist Instruktionskontext, keine technische Erzwingung jeder Toolwirkung.
 - Atomare Renames beseitigen nicht alle Host-Dateisystem- oder privilegierten Angreiferrennen.
+- Gegen den eng definierten bösartigen Same-UID-Final-Component-Co-Writer besteht kein atomarer
+  Inode-CAS-Vertrag; dies ist keine allgemeine Ausnahme für Same-UID-Manipulationen.
 - Rollback arbeitet auf dem letzten geschlossenen Receipt; ältere Backups werden nicht implizit
   ausgewählt.
 - `bindings/<binding-id>/current.json` ist die symlinkfreie, explizit targetgebundene

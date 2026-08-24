@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Mutierende Installeroperationen prüfen die native Capability vor produktiver Mutation; ein
   fehlendes oder nicht unterstütztes Binary besitzt keinen unsicheren Pathname-Fallback.
+- Der Sicherheitsvertrag grenzt ausschließlich den nicht atomar entscheidbaren bösartigen
+  Same-UID-Final-Component-Swap aus; beobachtbare Container- und Persistenzabweichungen bleiben
+  fail-closed, und es wird kein privilegierter Broker eingeführt.
 
 ### Fixed
 
@@ -27,6 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Der Detach liegt als receipt-eindeutiger Sibling im vorab identifizierten Entry-Parent; auch die
   Wiederanlage bindet sich nativ an diesen Parent, statt eine nach `mkdir` erneut aufgelöste
   Verzeichnisidentität zu autorisieren.
+- Receipts persistieren die erwarteten Identitäten von Entry-Parent, Installation, Binding-Root,
+  Releases-Root, Release und Local-Rules-Parent, damit später beobachtbare Containerwechsel vor
+  Recovery- und Cleanup-Mutationen fail-closed blockieren.
+- Ein partiell fehlgeschlagenes natives Exclusive-Create entfernt seine weiterhin identisch
+  beobachtete eigene Datei dirfd-relativ und bewahrt den ursprünglichen I/O-Fehler.
 - Update-Pläne weisen die tatsächlich in ein neues Release übernommenen lokalen Regeln aus.
 - Plan- und Dry-Run-Ausgaben benennen für explizite lokale Regeln die tatsächlich manifestgebundene
   Markdown-Datei statt nur deren übergeordnetes Verzeichnis.

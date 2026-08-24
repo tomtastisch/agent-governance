@@ -39,6 +39,11 @@ oversized files, duplicate paths, unsupported manifest shape, and digest mismatc
 the destination filesystem. Activation uses write-with-exclusive-create, readback, atomic rename,
 directory identity revalidation, and a durable receipt; no active pointer or entry file changes
 before the staged release and backup have both been verified.
+The native operations bind parent directories and provide atomic no-clobber, but Linux and Darwin
+do not provide an expected-inode compare-and-rename predicate for a malicious same-UID writer that
+swaps the final component in the last observation-to-syscall window. This narrow limitation does
+not remove fail-closed checks for observable root, parent, symlink, receipt, backup, or collision
+changes, and the product introduces no privileged broker.
 
 ## Managed block
 
@@ -67,6 +72,9 @@ uses closed schemas and transitions through `PREPARED`, `COMMITTED`, or `ROLLED_
 catchable signals are serialized through one rollback. Repeated rollback, install, update,
 uninstall, and recovery are idempotent. `SIGKILL`, power loss, and filesystem failure cannot be
 made fully atomic; a verified prepared receipt enables explicit fail-closed recovery.
+Expected identities for the entry parent, installation root, binding root, releases root, and any
+release or local-rules parent involved in restore are persisted in the receipt and revalidated on
+later recovery.
 
 ## Local rules
 

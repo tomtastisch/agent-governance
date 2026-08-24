@@ -94,6 +94,14 @@ static napi_value secure_rename_no_replace(napi_env env, napi_callback_info info
   return undefined;
 }
 
+static void cleanup_exclusive_create(int directory_fd, const char *name, const struct stat *created) {
+  struct stat visible;
+  if (fstatat(directory_fd, name, &visible, AT_SYMLINK_NOFOLLOW) == 0 && S_ISREG(visible.st_mode) &&
+      visible.st_dev == created->st_dev && visible.st_ino == created->st_ino && visible.st_mode == created->st_mode) {
+    (void)unlinkat(directory_fd, name, 0);
+  }
+}
+
 static napi_value secure_create_no_replace(napi_env env, napi_callback_info info) {
   size_t argc = 5;
   napi_value argv[5];
@@ -121,12 +129,30 @@ static napi_value secure_create_no_replace(napi_env env, napi_callback_info info
     throw_errno(env, "exclusive directory-relative create");
     return NULL;
   }
+  struct stat created;
+  if (fstat(output, &created) != 0 || !S_ISREG(created.st_mode)) {
+    int saved = errno == 0 ? ESTALE : errno;
+    close(output);
+    errno = saved;
+    throw_errno(env, "exclusive create identity validation");
+    return NULL;
+  }
+#ifdef AGENT_GOVERNANCE_TEST_FAIL_AFTER_CREATE
+  errno = EIO;
+  int injected = errno;
+  cleanup_exclusive_create(directory_fd, name, &created);
+  close(output);
+  errno = injected;
+  throw_errno(env, "directory-relative write");
+  return NULL;
+#endif
   size_t written = 0;
   while (written < content_length) {
     ssize_t count = write(output, (const char *)content + written, content_length - written);
     if (count <= 0) {
       if (count == 0) errno = EIO;
       int saved = errno;
+      cleanup_exclusive_create(directory_fd, name, &created);
       close(output);
       errno = saved;
       throw_errno(env, "directory-relative write");
@@ -136,6 +162,7 @@ static napi_value secure_create_no_replace(napi_env env, napi_callback_info info
   }
   if (fsync(output) != 0) {
     int saved = errno;
+    cleanup_exclusive_create(directory_fd, name, &created);
     close(output);
     errno = saved;
     throw_errno(env, "directory-relative file sync");

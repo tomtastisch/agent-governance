@@ -20,7 +20,11 @@ Handle gegen die vorher erfasste Identität ab und führt ausschließlich validi
 Basenames aus: Linux verwendet
 `renameat2(..., RENAME_NOREPLACE)`, Darwin `renameatx_np(..., RENAME_EXCL)`. Es existiert kein
 pathname-basierter Fallback; fehlende Plattform-, Binary-, Syscall- oder Dateisystemfähigkeit
-blockiert produktive Mutation fail-closed. Vor jedem weiteren produktiven Rename werden Identitäten erneut geprüft;
+blockiert produktive Mutation fail-closed. Diese Primitive ist No-Clobber und parentgebunden,
+aber kein Inode-Compare-and-Rename gegen einen bösartigen Same-UID-Final-Component-Swap im
+letzten Kernel-Race-Fenster; die enge Grenze ist im
+[Threat Model](installer-threat-model.md#out-of-atomic-guarantee) definiert. Vor jedem weiteren
+produktiven Rename werden beobachtbare Identitäten erneut geprüft;
 Backup, Staging, Aktivierung, Verifikation und Rollback haben geschlossene Zustände.
 
 ## Managed Block und JSON
@@ -48,6 +52,9 @@ write-order-konforme Zwischenzustände mit identischen unveränderlichen Feldern
 werden durch den idempotenten Rollback geschlossen. Eine erst nach beiden Commit-Schreibvorgängen
 erkannte gemeinsame Postimage-Abweichung demotiert zuerst das Backup- und danach das Top-Level-Receipt
 crash-sicher auf `PREPARED`, bevor ein Rollback versucht wird.
+Das Receipt bindet zusätzlich die erwarteten Identitäten von Entry-Parent, Installationsroot,
+Binding-Root, Releases-Root sowie den gegebenenfalls vorhandenen Release- und Local-Rules-Parent.
+Ein später beobachtbarer Austausch eines dieser Container blockiert Recovery vor dessen Mutation.
 Die receipt-spezifische Sibling-Detach-Datei bleibt als Recoveryevidenz erhalten. Der Installer
 entfernt sie nicht pathname-basiert und löscht dadurch bei einem späteren Namensaustausch keine
 fremden Bytes. Auch die Wiederanlage des gewünschten Entry-Postimages erfolgt exklusiv über den

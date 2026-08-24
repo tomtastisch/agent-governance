@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { access, mkdir, open, readFile, rename, symlink, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
@@ -11,6 +12,7 @@ import { createTestRoot } from "../fixtures/installer/workspace.ts";
 
 interface NativeTestBinding {
   secureRenameNoReplace(sourceFd: number, sourceName: string, sourceDev: bigint, sourceIno: bigint, destinationFd: number, destinationName: string, destinationDev: bigint, destinationIno: bigint): void;
+  secureCreateNoReplace(directoryFd: number, name: string, directoryDev: bigint, directoryIno: bigint, content: Buffer): void;
 }
 
 function nativeBinding(): NativeTestBinding {
@@ -36,6 +38,13 @@ test("native rename remains bound to opened directory handles across pathname sw
   assert.equal(await readFile(join(movedDestination, "entry.bin"), "utf8"), "trusted bytes\n");
   assert.equal(await readFile(join(replacementDestination, "foreign.md"), "utf8"), "foreign bytes\n");
   await assert.rejects(access(join(replacementDestination, "entry.bin")));
+});
+
+test("platform characterization: same-UID final-component swaps are not an inode-CAS guarantee", async () => {
+  const root = await createTestRoot("agent-governance-native-final-swap-"); const source = join(root, "source"); const destination = join(root, "destination"); const retired = join(source, "trusted-retired.md");
+  await mkdir(source); await mkdir(destination); await writeFile(join(source, "entry.md"), "trusted bytes\n");
+  await renameBound({ sourceDirectory: source, sourceName: "entry.md", destinationDirectory: destination, destinationName: "entry.bin", onDirectoriesBound: async () => { await rename(join(source, "entry.md"), retired); await writeFile(join(source, "entry.md"), "foreign bytes\n"); } });
+  assert.equal(await readFile(retired, "utf8"), "trusted bytes\n"); await assert.rejects(access(join(source, "entry.md"))); assert.equal(await readFile(join(destination, "entry.bin"), "utf8"), "foreign bytes\n");
 });
 
 test("native rename atomically refuses an existing destination", async () => {
@@ -82,4 +91,11 @@ test("native create is handle-bound and atomically refuses collisions", async ()
 test("native create rejects a substituted directory before writing foreign bytes", async () => {
   const root = await createTestRoot("agent-governance-native-create-swap-"); const directory = join(root, "directory"); const retired = join(root, "retired"); await mkdir(directory); const identity = await captureIdentity(directory); await rename(directory, retired); await mkdir(directory); await writeFile(join(directory, "foreign.md"), "foreign\n");
   await assert.rejects(secureCreateNoReplace({ directory, name: "entry.md", directoryIdentity: identity }, Buffer.from("created\n")), /identity changed/); assert.equal(await readFile(join(directory, "foreign.md"), "utf8"), "foreign\n"); await assert.rejects(access(join(directory, "entry.md")));
+});
+
+test("native create removes its exclusive partial file after an injected write failure", async () => {
+  const root = await createTestRoot("agent-governance-native-create-failure-"); const directory = join(root, "directory"); await mkdir(directory); const repository = join(dirname(fileURLToPath(import.meta.url)), "..", ".."); const output = join(root, "failure.node");
+  const includeCandidates = [join(dirname(process.execPath), "..", "include", "node"), "/usr/local/include/node", "/opt/homebrew/include/node", "/usr/include/node"]; let include: string | undefined; for (const candidate of includeCandidates) { try { await access(join(candidate, "node_api.h")); include = candidate; break; } catch { /* next local header root */ } } assert.notEqual(include, undefined);
+  const platformFlags = process.platform === "darwin" ? ["-bundle", "-undefined", "dynamic_lookup"] : ["-shared", "-fPIC"]; const build = spawnSync(process.env.CC ?? "cc", ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", ...platformFlags, `-I${include!}`, "-DNODE_GYP_MODULE_NAME=agent_governance_fs", "-DAGENT_GOVERNANCE_TEST_FAIL_AFTER_CREATE=1", join(repository, "native", "agent_governance_fs.c"), "-o", output]); assert.equal(build.status, 0, build.stderr.toString());
+  const binding = createRequire(import.meta.url)(output) as NativeTestBinding; const handle = await open(directory, "r"); try { const identity = await handle.stat({ bigint: true }); assert.throws(() => binding.secureCreateNoReplace(handle.fd, "entry.md", identity.dev, identity.ino, Buffer.from("content\n")), /write|input\/output|I\/O/i); await assert.rejects(access(join(directory, "entry.md"))); } finally { await handle.close(); }
 });

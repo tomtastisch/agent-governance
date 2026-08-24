@@ -18,6 +18,13 @@ absolute kanonische reguläre Markdown-Datei. Sie muss gültiges UTF-8 enthalten
 C0-/DEL-Kontrollzeichen sind nur TAB, LF und CR zulässig. Ihr Inhalt erscheint weder in Ausgabe
 noch Evidenzfingerprints.
 
+Die atomare Garantie hat eine enge Plattformgrenze: Linux und Darwin bieten keinen atomaren
+Inode-CAS-Vertrag gegen einen bösartigen Same-UID-Final-Component-Co-Writer, der mit eigener
+Schreibberechtigung die finale Namenskomponente genau zwischen Beobachtung und Namespace-Syscall
+austauscht. Die Architekturentscheidung lautet: kein privilegierter Broker. Beobachtbare Root-,
+Parent-, Symlink-, Receipt-, Backup- und Collision-Abweichungen bleiben fail-closed Bestandteil
+des Sicherheitsvertrags.
+
 Vor der Entry-Mutation erzeugt der Installer ein Backup und verifiziert es per Readback. Releases
 werden unter `<installation-root>/releases/<version>/bundle` vollständig inventar- und
 digestgeprüft; `bindings/<binding-id>/current.json` wird atomar ersetzt, und

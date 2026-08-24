@@ -131,6 +131,25 @@ class InstallBoundaryContract(unittest.TestCase):
         for term in ("NO_GO", "rulesync", "uri-templates", "keine Runtime-Abhängigkeit"):
             self.assertIn(term, audit)
 
+    def test_installer_security_contract_has_one_narrow_atomicity_boundary(self):
+        threat = (ROOT / "docs" / "installer-threat-model.md").read_text(encoding="utf-8")
+        architecture = (ROOT / "docs" / "installer-architecture.md").read_text(encoding="utf-8")
+        for term in (
+            "## In Scope",
+            "## Out of Atomic Guarantee",
+            "Same-UID-Final-Component-Co-Writer",
+            "kein atomarer Inode-CAS-Vertrag",
+            "kein privilegierter Broker",
+            "RENAME_NOREPLACE",
+            "RENAME_EXCL",
+        ):
+            self.assertIn(term, threat)
+        self.assertIn("docs/installer-threat-model.md", README)
+        self.assertIn("Same-UID-Final-Component-Co-Writer", README)
+        self.assertIn("Same-UID-Final-Component-Co-Writer", INSTALL)
+        for absolute_claim in ("race-free", "TOCTOU-proof", "tamper-proof", "atomic against all concurrent writers"):
+            self.assertNotIn(absolute_claim, "\n".join((README, INSTALL, threat, architecture)).lower())
+
     def test_catchable_and_uncatchable_interruption_boundaries_are_explicit(self):
         for term in (
             "SIGINT",
