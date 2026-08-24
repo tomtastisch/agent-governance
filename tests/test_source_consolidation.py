@@ -214,7 +214,7 @@ class ReleaseMetadataContract(unittest.TestCase):
         changelog = read(ROOT / "CHANGELOG.md")
         version = read(ROOT / "VERSION").strip()
         current = changelog.split(f"## [{version}]", 1)[1].split("\n## [", 1)[0]
-        self.assertEqual(version, "1.0.0-rc.1")
+        self.assertEqual(version, "1.0.0-rc.2")
         self.assertIn("transaktionalem Explicit-Path-Installer", current)
         self.assertIn("GLOBAL_EXPLICIT_PATH_MANAGED_BLOCK", current)
         self.assertIn("keine Harnessadapter", current)

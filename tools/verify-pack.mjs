@@ -2,8 +2,22 @@ import { readFile } from "node:fs/promises";
 
 const chunks = [];
 for await (const chunk of process.stdin) chunks.push(chunk);
-const report = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-if (!Array.isArray(report) || report.length !== 1 || !Array.isArray(report[0]?.files)) {
+const rawReport = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+const expectedPackageName = "@tomtastisch/agent-governance";
+let report;
+if (Array.isArray(rawReport)) {
+  report = rawReport;
+} else if (typeof rawReport === "object" && rawReport !== null) {
+  const entries = Object.entries(rawReport);
+  report = entries.length === 1
+    && entries[0][0] === expectedPackageName
+    && entries[0][1]?.name === expectedPackageName
+    ? [entries[0][1]]
+    : [];
+} else {
+  report = [];
+}
+if (report.length !== 1 || report[0]?.name !== expectedPackageName || !Array.isArray(report[0]?.files)) {
   throw new Error("npm pack report has an unexpected schema");
 }
 const paths = report[0].files.map((entry) => entry.path);

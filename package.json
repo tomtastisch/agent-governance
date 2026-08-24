@@ -1,6 +1,6 @@
 {
   "name": "@tomtastisch/agent-governance",
-  "version": "1.0.0-rc.1",
+  "version": "1.0.0-rc.2",
   "description": "Global explicit-path transactional installer for Agent Governance",
   "type": "module",
   "bin": {
