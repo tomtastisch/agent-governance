@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Der Entry-Detach verwendet offene Directory-Handles und atomaren No-Replace-Rename
   (`renameat2/RENAME_NOREPLACE` beziehungsweise `renameatx_np/RENAME_EXCL`), sodass ein Austausch
   des sichtbaren Reservation-Pfads weder fremde Ersatzbytes beschreibt noch löscht.
+- Der Detach liegt als receipt-eindeutiger Sibling im vorab identifizierten Entry-Parent; auch die
+  Wiederanlage bindet sich nativ an diesen Parent, statt eine nach `mkdir` erneut aufgelöste
+  Verzeichnisidentität zu autorisieren.
+- Update-Pläne weisen die tatsächlich in ein neues Release übernommenen lokalen Regeln aus.
 - Plan- und Dry-Run-Ausgaben benennen für explizite lokale Regeln die tatsächlich manifestgebundene
   Markdown-Datei statt nur deren übergeordnetes Verzeichnis.
 

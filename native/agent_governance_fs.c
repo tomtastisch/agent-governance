@@ -94,10 +94,70 @@ static napi_value secure_rename_no_replace(napi_env env, napi_callback_info info
   return undefined;
 }
 
+static napi_value secure_create_no_replace(napi_env env, napi_callback_info info) {
+  size_t argc = 5;
+  napi_value argv[5];
+  napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+  int directory_fd;
+  uint64_t directory_dev, directory_ino;
+  char name[256];
+  void *content;
+  size_t content_length;
+  if (argc != 5 || !get_fd(env, argv[0], &directory_fd) || !get_basename(env, argv[1], name, sizeof(name)) ||
+      !get_u64(env, argv[2], &directory_dev) || !get_u64(env, argv[3], &directory_ino) ||
+      napi_get_buffer_info(env, argv[4], &content, &content_length) != napi_ok) {
+    napi_throw_type_error(env, "NATIVE_FS_INVALID_ARGUMENT", "native create requires a valid directory fd, identity, basename, and buffer");
+    return NULL;
+  }
+  struct stat directory;
+  if (fstat(directory_fd, &directory) != 0 || !S_ISDIR(directory.st_mode) ||
+      (uint64_t)directory.st_dev != directory_dev || (uint64_t)directory.st_ino != directory_ino) {
+    errno = ESTALE;
+    throw_errno(env, "directory identity validation");
+    return NULL;
+  }
+  int output = openat(directory_fd, name, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0600);
+  if (output < 0) {
+    throw_errno(env, "exclusive directory-relative create");
+    return NULL;
+  }
+  size_t written = 0;
+  while (written < content_length) {
+    ssize_t count = write(output, (const char *)content + written, content_length - written);
+    if (count <= 0) {
+      if (count == 0) errno = EIO;
+      int saved = errno;
+      close(output);
+      errno = saved;
+      throw_errno(env, "directory-relative write");
+      return NULL;
+    }
+    written += (size_t)count;
+  }
+  if (fsync(output) != 0) {
+    int saved = errno;
+    close(output);
+    errno = saved;
+    throw_errno(env, "directory-relative file sync");
+    return NULL;
+  }
+  if (close(output) != 0) {
+    int saved = errno;
+    errno = saved;
+    throw_errno(env, "directory-relative file close");
+    return NULL;
+  }
+  napi_value undefined;
+  napi_get_undefined(env, &undefined);
+  return undefined;
+}
+
 static napi_value initialize(napi_env env, napi_value exports) {
   napi_value function;
   napi_create_function(env, "secureRenameNoReplace", NAPI_AUTO_LENGTH, secure_rename_no_replace, NULL, &function);
   napi_set_named_property(env, exports, "secureRenameNoReplace", function);
+  napi_create_function(env, "secureCreateNoReplace", NAPI_AUTO_LENGTH, secure_create_no_replace, NULL, &function);
+  napi_set_named_property(env, exports, "secureCreateNoReplace", function);
   return exports;
 }
 

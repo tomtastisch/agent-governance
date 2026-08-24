@@ -5,7 +5,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { secureRenameNoReplace } from "../../src/native-filesystem.ts";
+import { secureCreateNoReplace, secureRenameNoReplace } from "../../src/native-filesystem.ts";
+import { captureIdentity } from "../../src/filesystem.ts";
 import { createTestRoot } from "../fixtures/installer/workspace.ts";
 
 interface NativeTestBinding {
@@ -17,6 +18,10 @@ function nativeBinding(): NativeTestBinding {
   return createRequire(import.meta.url)(join(root, "prebuilds", `${process.platform}-${process.arch}`, "agent_governance_fs.node")) as NativeTestBinding;
 }
 
+async function renameBound(request: Omit<Parameters<typeof secureRenameNoReplace>[0], "sourceDirectoryIdentity" | "destinationDirectoryIdentity">): Promise<void> {
+  await secureRenameNoReplace({ ...request, sourceDirectoryIdentity: await captureIdentity(request.sourceDirectory), destinationDirectoryIdentity: await captureIdentity(request.destinationDirectory) });
+}
+
 test("native rename remains bound to opened directory handles across pathname swaps", async () => {
   const root = await createTestRoot("agent-governance-native-swap-");
   const source = join(root, "source"); const destination = join(root, "destination");
@@ -24,7 +29,7 @@ test("native rename remains bound to opened directory handles across pathname sw
   const replacementSource = join(root, "source-replacement"); const replacementDestination = join(root, "destination-replacement");
   await mkdir(source); await mkdir(destination); await mkdir(replacementSource); await mkdir(replacementDestination);
   await writeFile(join(source, "entry.md"), "trusted bytes\n"); await writeFile(join(replacementDestination, "foreign.md"), "foreign bytes\n");
-  await secureRenameNoReplace({ sourceDirectory: source, sourceName: "entry.md", destinationDirectory: destination, destinationName: "entry.bin", onDirectoriesBound: async () => {
+  await renameBound({ sourceDirectory: source, sourceName: "entry.md", destinationDirectory: destination, destinationName: "entry.bin", onDirectoriesBound: async () => {
     await rename(source, movedSource); await symlink(replacementSource, source);
     await rename(destination, movedDestination); await symlink(replacementDestination, destination);
   } });
@@ -36,7 +41,7 @@ test("native rename remains bound to opened directory handles across pathname sw
 test("native rename atomically refuses an existing destination", async () => {
   const root = await createTestRoot("agent-governance-native-collision-"); const source = join(root, "source"); const destination = join(root, "destination");
   await mkdir(source); await mkdir(destination); await writeFile(join(source, "entry.md"), "source\n"); await writeFile(join(destination, "entry.bin"), "foreign\n");
-  await assert.rejects(secureRenameNoReplace({ sourceDirectory: source, sourceName: "entry.md", destinationDirectory: destination, destinationName: "entry.bin" }), /exist|collision/i);
+  await assert.rejects(renameBound({ sourceDirectory: source, sourceName: "entry.md", destinationDirectory: destination, destinationName: "entry.bin" }), /exist|collision/i);
   assert.equal(await readFile(join(source, "entry.md"), "utf8"), "source\n"); assert.equal(await readFile(join(destination, "entry.bin"), "utf8"), "foreign\n");
 });
 
@@ -44,7 +49,7 @@ test("native rename rejects unsafe basenames before mutation", async () => {
   const root = await createTestRoot("agent-governance-native-name-"); const source = join(root, "source"); const destination = join(root, "destination");
   await mkdir(source); await mkdir(destination); await writeFile(join(source, "entry.md"), "source\n");
   for (const name of ["", ".", "..", "nested/entry", "/absolute", "nested\\entry", "nul\0name"]) {
-    await assert.rejects(secureRenameNoReplace({ sourceDirectory: source, sourceName: name, destinationDirectory: destination, destinationName: "entry.bin" }), /basename|invalid/i);
+    await assert.rejects(renameBound({ sourceDirectory: source, sourceName: name, destinationDirectory: destination, destinationName: "entry.bin" }), /basename|invalid/i);
   }
   assert.equal(await readFile(join(source, "entry.md"), "utf8"), "source\n");
 });
@@ -52,7 +57,7 @@ test("native rename rejects unsafe basenames before mutation", async () => {
 test("native rename rejects non-regular source objects", async () => {
   const root = await createTestRoot("agent-governance-native-type-"); const source = join(root, "source"); const destination = join(root, "destination"); const outside = join(root, "outside");
   await mkdir(source); await mkdir(destination); await writeFile(outside, "outside\n"); await symlink(outside, join(source, "entry.md"));
-  await assert.rejects(secureRenameNoReplace({ sourceDirectory: source, sourceName: "entry.md", destinationDirectory: destination, destinationName: "entry.bin" }), /regular|type|symbolic/i);
+  await assert.rejects(renameBound({ sourceDirectory: source, sourceName: "entry.md", destinationDirectory: destination, destinationName: "entry.bin" }), /regular|type|symbolic/i);
   assert.equal(await readFile(outside, "utf8"), "outside\n"); await assert.rejects(access(join(destination, "entry.bin")));
 });
 
@@ -66,4 +71,15 @@ test("native boundary rejects invalid directory descriptors and stale identities
     assert.throws(() => binding.secureRenameNoReplace(sourceHandle.fd, "entry.md", sourceIdentity.dev, sourceIdentity.ino + 1n, destinationHandle.fd, "entry.bin", destinationIdentity.dev, destinationIdentity.ino), /identity|stale/i);
   } finally { await destinationHandle.close(); await sourceHandle.close(); }
   assert.equal(await readFile(join(source, "entry.md"), "utf8"), "source\n"); await assert.rejects(access(join(destination, "entry.bin")));
+});
+
+test("native create is handle-bound and atomically refuses collisions", async () => {
+  const root = await createTestRoot("agent-governance-native-create-"); const directory = join(root, "directory"); await mkdir(directory); const identity = await captureIdentity(directory);
+  await secureCreateNoReplace({ directory, name: "entry.md", directoryIdentity: identity }, Buffer.from("created\n")); assert.equal(await readFile(join(directory, "entry.md"), "utf8"), "created\n");
+  await assert.rejects(secureCreateNoReplace({ directory, name: "entry.md", directoryIdentity: identity }, Buffer.from("replacement\n")), /exist/i); assert.equal(await readFile(join(directory, "entry.md"), "utf8"), "created\n");
+});
+
+test("native create rejects a substituted directory before writing foreign bytes", async () => {
+  const root = await createTestRoot("agent-governance-native-create-swap-"); const directory = join(root, "directory"); const retired = join(root, "retired"); await mkdir(directory); const identity = await captureIdentity(directory); await rename(directory, retired); await mkdir(directory); await writeFile(join(directory, "foreign.md"), "foreign\n");
+  await assert.rejects(secureCreateNoReplace({ directory, name: "entry.md", directoryIdentity: identity }, Buffer.from("created\n")), /identity changed/); assert.equal(await readFile(join(directory, "foreign.md"), "utf8"), "foreign\n"); await assert.rejects(access(join(directory, "entry.md")));
 });

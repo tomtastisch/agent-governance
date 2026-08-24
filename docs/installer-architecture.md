@@ -13,9 +13,11 @@ einen generischen Markdown-Block. Keine Schicht kennt Harnessnamen oder produkts
 Die aktive Installation verwendet `releases/<version>/bundle`, pro explizitem Ziel eine atomar
 ersetzte `bindings/<binding-id>/current.json` und `backups/<binding-id>/<transaction-id>`. Der
 symlinkfreie Current-Vertrag vermeidet eine
-zweite Link-Vertrauensklasse. Der sicherheitskritische Entry-Detach öffnet Quell- und Zielcontainer
-mit `O_DIRECTORY|O_NOFOLLOW`, bindet deren Identitäten und führt ausschließlich einen einzelnen
-validierten Basename über eine repo-eigene Node-API-Primitive aus: Linux verwendet
+zweite Link-Vertrauensklasse. Der sicherheitskritische Entry-Detach verwendet einen
+receipt-eindeutigen Sibling-Basename im bereits autoritativ identifizierten Entry-Parent. Die
+repo-eigene Node-API-Primitive öffnet diesen Parent mit `O_DIRECTORY|O_NOFOLLOW`, gleicht den
+Handle gegen die vorher erfasste Identität ab und führt ausschließlich validierte einzelne
+Basenames aus: Linux verwendet
 `renameat2(..., RENAME_NOREPLACE)`, Darwin `renameatx_np(..., RENAME_EXCL)`. Es existiert kein
 pathname-basierter Fallback; fehlende Plattform-, Binary-, Syscall- oder Dateisystemfähigkeit
 blockiert produktive Mutation fail-closed. Vor jedem weiteren produktiven Rename werden Identitäten erneut geprüft;
@@ -46,9 +48,10 @@ write-order-konforme Zwischenzustände mit identischen unveränderlichen Feldern
 werden durch den idempotenten Rollback geschlossen. Eine erst nach beiden Commit-Schreibvorgängen
 erkannte gemeinsame Postimage-Abweichung demotiert zuerst das Backup- und danach das Top-Level-Receipt
 crash-sicher auf `PREPARED`, bevor ein Rollback versucht wird.
-Die receipt-spezifische Detach-Datei bleibt als Recoveryevidenz erhalten. Der Installer entfernt
-den leeren oder belegten Detach-Container nicht pathname-basiert und löscht dadurch bei einem
-späteren Namensaustausch keine fremden Bytes.
+Die receipt-spezifische Sibling-Detach-Datei bleibt als Recoveryevidenz erhalten. Der Installer
+entfernt sie nicht pathname-basiert und löscht dadurch bei einem späteren Namensaustausch keine
+fremden Bytes. Auch die Wiederanlage des gewünschten Entry-Postimages erfolgt exklusiv über den
+identitätsgebundenen Parent-dirfd.
 
 ## Grenzen und Migration
 

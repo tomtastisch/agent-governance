@@ -3,9 +3,11 @@ import { open } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { PathIdentity } from "./filesystem.ts";
 
 interface NativeBinding {
   secureRenameNoReplace(sourceFd: number, sourceName: string, sourceDev: bigint, sourceIno: bigint, destinationFd: number, destinationName: string, destinationDev: bigint, destinationIno: bigint): void;
+  secureCreateNoReplace(directoryFd: number, name: string, directoryDev: bigint, directoryIno: bigint, content: Buffer): void;
 }
 
 export interface SecureRenameRequest {
@@ -13,7 +15,15 @@ export interface SecureRenameRequest {
   readonly sourceName: string;
   readonly destinationDirectory: string;
   readonly destinationName: string;
+  readonly sourceDirectoryIdentity: PathIdentity;
+  readonly destinationDirectoryIdentity: PathIdentity;
   readonly onDirectoriesBound?: () => void | Promise<void>;
+}
+
+export interface SecureCreateRequest {
+  readonly directory: string;
+  readonly name: string;
+  readonly directoryIdentity: PathIdentity;
 }
 
 function basename(value: string): void {
@@ -40,11 +50,17 @@ export async function secureRenameNoReplace(request: SecureRenameRequest): Promi
     source = await open(request.sourceDirectory, flags);
     destination = await open(request.destinationDirectory, flags);
     const sourceIdentity = await source.stat({ bigint: true }); const destinationIdentity = await destination.stat({ bigint: true });
-    if (!sourceIdentity.isDirectory() || !destinationIdentity.isDirectory()) throw new Error("native filesystem handles must identify directories");
+    if (!sourceIdentity.isDirectory() || sourceIdentity.dev !== request.sourceDirectoryIdentity.device || sourceIdentity.ino !== request.sourceDirectoryIdentity.inode || Number(sourceIdentity.mode) !== request.sourceDirectoryIdentity.mode || !destinationIdentity.isDirectory() || destinationIdentity.dev !== request.destinationDirectoryIdentity.device || destinationIdentity.ino !== request.destinationDirectoryIdentity.inode || Number(destinationIdentity.mode) !== request.destinationDirectoryIdentity.mode) throw new Error("native filesystem directory identity changed");
     await request.onDirectoriesBound?.();
     binding.secureRenameNoReplace(source.fd, request.sourceName, sourceIdentity.dev, sourceIdentity.ino, destination.fd, request.destinationName, destinationIdentity.dev, destinationIdentity.ino);
   } finally {
     await destination?.close();
     await source?.close();
   }
+}
+
+export async function secureCreateNoReplace(request: SecureCreateRequest, content: Buffer): Promise<void> {
+  basename(request.name); const binding = loadBinding(); const flags = constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW; const directory = await open(request.directory, flags);
+  try { const identity = await directory.stat({ bigint: true }); if (!identity.isDirectory() || identity.dev !== request.directoryIdentity.device || identity.ino !== request.directoryIdentity.inode || Number(identity.mode) !== request.directoryIdentity.mode) throw new Error("native filesystem directory identity changed"); binding.secureCreateNoReplace(directory.fd, request.name, identity.dev, identity.ino, content); }
+  finally { await directory.close(); }
 }

@@ -26,12 +26,14 @@ Dateisystemgrenzen ist nicht vollständig beherrschbar.
   erneut geprüft. Symlinkbehaftete oder nichtkanonische Pfade scheitern fail-closed.
 - Backup und Readback erfolgen vor der produktiven Entrymutation. Atomare Renames ersetzen nur
   reguläre Dateien im validierten Parent.
-- Der Rollback-Detach bindet beide Verzeichnisse an offene `O_DIRECTORY|O_NOFOLLOW`-Handles und
-  übergibt ausschließlich validierte einzelne Basenames an eine schmale Node-API-C-Primitive.
+- Der Rollback-Detach verwendet einen receipt-eindeutigen Sibling-Namen im bereits inspizierten
+  Entry-Parent. Die schmale Node-API-C-Primitive bindet dessen vorher erfasste Identität an einen
+  offenen `O_DIRECTORY|O_NOFOLLOW`-Handle und akzeptiert ausschließlich einzelne Basenames.
   Linux `RENAME_NOREPLACE` beziehungsweise Darwin `RENAME_EXCL` macht No-Clobber zum Bestandteil
   desselben dirfd-relativen Syscalls. Loader-, Plattform-, Handle-, Syscall- und Filesystemfehler
-  haben keinen unsicheren JavaScript-Fallback. Der receipt-spezifische Detach wird nicht über einen
-  später erneut aufgelösten Containerpfad gelöscht.
+  haben keinen unsicheren JavaScript-Fallback. Auch die exklusive Wiederanlage läuft über den
+  gebundenen Parent-dirfd; Fehlercleanup löscht keinen erneut aufgelösten Namen. Die
+  receipt-spezifische Detach-Evidenz wird nicht pathname-basiert entfernt.
 - Receipt-Schema, targetgebundene Binding-ID, UUID, Backuproot, direkter SemVer-Releasepfad und
   der exakt manifestbestimmte Local-Rules-Pfad sind geschlossen. Recovery verlangt zwei im stabilen Zustand
   bytegleiche Receiptkopien; ausschließlich write-order-konforme Statussplits mit identischen unveränderlichen
