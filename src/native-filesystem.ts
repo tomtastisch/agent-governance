@@ -1,10 +1,10 @@
 import { constants } from "node:fs";
-import { lstat, open } from "node:fs/promises";
+import { open } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { PathIdentity } from "./filesystem.ts";
+import { captureIdentity, type PathIdentity } from "./filesystem.ts";
 
 interface NativeBinding {
   secureRenameNoReplace(sourceFd: number, sourceName: string, sourceDev: bigint, sourceIno: bigint, destinationFd: number, destinationName: string, destinationDev: bigint, destinationIno: bigint): void;
@@ -32,7 +32,7 @@ export interface SecureCreateRequest {
   readonly directoryIdentity: PathIdentity;
 }
 
-export interface SecureFileRequest extends SecureCreateRequest { readonly onDirectoryBound?: () => void | Promise<void>; }
+export interface SecureFileRequest extends SecureCreateRequest { readonly objectIdentity: PathIdentity; readonly onDirectoryBound?: () => void | Promise<void>; }
 export interface SecureDirectoryRenameRequest extends SecureRenameRequest { readonly sourceObjectIdentity: PathIdentity; }
 
 function basename(value: string): void {
@@ -70,21 +70,21 @@ export async function secureCreateNoReplace(request: SecureCreateRequest, conten
   finally { await directory.close(); }
 }
 
-export async function secureCreateDirectory(request: SecureFileRequest): Promise<void> {
+export async function secureCreateDirectory(request: SecureCreateRequest & { readonly onDirectoryBound?: () => void | Promise<void> }): Promise<void> {
   basename(request.name); const binding = loadBinding(); const directory = await open(request.directory, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
   try { const identity = await directory.stat({ bigint: true }); if (!identity.isDirectory() || identity.dev !== request.directoryIdentity.device || identity.ino !== request.directoryIdentity.inode || Number(identity.mode) !== request.directoryIdentity.mode) throw new Error("native filesystem directory identity changed"); await request.onDirectoryBound?.(); binding.secureCreateDirectory(directory.fd, request.name, identity.dev, identity.ino); }
   finally { await directory.close(); }
 }
 
 export async function secureWriteFile(request: SecureFileRequest, content: Buffer): Promise<void> {
-  basename(request.name); const object = await lstat(join(request.directory, request.name), { bigint: true }); if (object.isSymbolicLink() || !object.isFile()) throw new Error("native filesystem object must be a regular non-symlink file"); const binding = loadBinding(); const directory = await open(request.directory, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
-  try { const identity = await directory.stat({ bigint: true }); if (!identity.isDirectory() || identity.dev !== request.directoryIdentity.device || identity.ino !== request.directoryIdentity.inode || Number(identity.mode) !== request.directoryIdentity.mode) throw new Error("native filesystem directory identity changed"); await request.onDirectoryBound?.(); binding.secureWriteFile(directory.fd, request.name, identity.dev, identity.ino, object.dev, object.ino, object.mode, content); }
+  basename(request.name); const binding = loadBinding(); const directory = await open(request.directory, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+  try { const identity = await directory.stat({ bigint: true }); if (!identity.isDirectory() || identity.dev !== request.directoryIdentity.device || identity.ino !== request.directoryIdentity.inode || Number(identity.mode) !== request.directoryIdentity.mode) throw new Error("native filesystem directory identity changed"); await request.onDirectoryBound?.(); binding.secureWriteFile(directory.fd, request.name, identity.dev, identity.ino, request.objectIdentity.device, request.objectIdentity.inode, BigInt(request.objectIdentity.mode), content); }
   finally { await directory.close(); }
 }
 
 export async function secureRemoveFile(request: SecureFileRequest): Promise<void> {
-  basename(request.name); const object = await lstat(join(request.directory, request.name), { bigint: true }); if (object.isSymbolicLink() || !object.isFile()) throw new Error("native filesystem object must be a regular non-symlink file"); const binding = loadBinding(); const directory = await open(request.directory, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
-  try { const identity = await directory.stat({ bigint: true }); if (!identity.isDirectory() || identity.dev !== request.directoryIdentity.device || identity.ino !== request.directoryIdentity.inode || Number(identity.mode) !== request.directoryIdentity.mode) throw new Error("native filesystem directory identity changed"); await request.onDirectoryBound?.(); binding.secureRemoveFile(directory.fd, request.name, identity.dev, identity.ino, object.dev, object.ino, object.mode); }
+  basename(request.name); const binding = loadBinding(); const directory = await open(request.directory, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+  try { const identity = await directory.stat({ bigint: true }); if (!identity.isDirectory() || identity.dev !== request.directoryIdentity.device || identity.ino !== request.directoryIdentity.inode || Number(identity.mode) !== request.directoryIdentity.mode) throw new Error("native filesystem directory identity changed"); await request.onDirectoryBound?.(); binding.secureRemoveFile(directory.fd, request.name, identity.dev, identity.ino, request.objectIdentity.device, request.objectIdentity.inode, BigInt(request.objectIdentity.mode)); }
   finally { await directory.close(); }
 }
 
@@ -103,6 +103,6 @@ export async function secureRenameDirectoryNoReplace(request: SecureDirectoryRen
 export async function probeNativeFilesystemCapability(directory: string, directoryIdentity: PathIdentity): Promise<void> {
   const token = randomUUID(); const sourceName = `.agent-governance-probe-${token}.source`; const destinationName = `.agent-governance-probe-${token}.destination`;
   await secureCreateNoReplace({ directory, name: sourceName, directoryIdentity }, Buffer.from("probe\n"));
-  try { await secureRenameNoReplace({ sourceDirectory: directory, sourceName, sourceDirectoryIdentity: directoryIdentity, destinationDirectory: directory, destinationName, destinationDirectoryIdentity: directoryIdentity }); await secureRemoveFile({ directory, name: destinationName, directoryIdentity }); }
-  catch (error) { try { await secureRemoveFile({ directory, name: sourceName, directoryIdentity }); } catch { /* Preserve the capability failure. */ } try { await secureRemoveFile({ directory, name: destinationName, directoryIdentity }); } catch { /* Preserve the capability failure. */ } throw error; }
+  try { await secureRenameNoReplace({ sourceDirectory: directory, sourceName, sourceDirectoryIdentity: directoryIdentity, destinationDirectory: directory, destinationName, destinationDirectoryIdentity: directoryIdentity }); await secureRemoveFile({ directory, name: destinationName, directoryIdentity, objectIdentity: await captureIdentity(join(directory, destinationName)) }); }
+  catch (error) { for (const name of [sourceName, destinationName]) { try { await secureRemoveFile({ directory, name, directoryIdentity, objectIdentity: await captureIdentity(join(directory, name)) }); } catch { /* Preserve the capability failure. */ } } throw error; }
 }
