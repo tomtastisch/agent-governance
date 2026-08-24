@@ -29,6 +29,9 @@ Dateisystemgrenzen ist nicht vollständig beherrschbar.
 - Receipt-Schema, targetgebundene Binding-ID, UUID, Backuproot, direkter SemVer-Releasepfad und
   der exakt manifestbestimmte Local-Rules-Pfad sind geschlossen. Recovery verlangt zwei
   bytegleiche Receiptkopien und revalidiert den expliziten Zielpfad.
+- Ein kanonischer Lock pro Installationsroot verhindert überlappende Shared-State-Mutationen. Vor
+  Rollback werden andere aktive Bindungen geprüft; gemeinsam referenzierte Releases und lokale Regeln
+  bleiben erhalten, und veraltete Entry-/Local-Rules-Snapshots blockieren fail-closed.
 - Private lokale Regeln werden nicht ausgegeben; Secret-Patterns werden im Tarball-Gate geprüft.
 
 ## Residual Risks

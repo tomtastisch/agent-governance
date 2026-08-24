@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { mkdirSync, readdirSync, renameSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import test from "node:test";
@@ -60,6 +60,8 @@ for (const phase of ["backup", "stage", "activate", "verify"] as const) test(`fa
 test("target root replacement between backup and mutation fails closed", async () => { const f = await fixture(); const retired = `${f.targetRoot}-retired`; let replaced = false; const tx = new InstallerTransaction({ ...f.request, onCheckpoint: (checkpoint) => { if (!replaced && checkpoint === "afterReceipt") { replaced = true; renameSync(f.targetRoot, retired); mkdirSync(f.targetRoot); } } }); await assert.rejects(tx.install(), /identity changed|rolled back/); await assert.rejects(access(f.entry)); });
 test("entry parent replacement between backup and mutation fails closed", async () => { const f = await fixture(); const parent = join(f.targetRoot, "nested"); const outside = join(f.root, "outside"); await mkdir(parent); await mkdir(outside); const request = { ...f.request, entryFile: "nested/AGENTS.md" }; let replaced = false; const tx = new InstallerTransaction({ ...request, onCheckpoint: (checkpoint) => { if (!replaced && checkpoint === "afterReceipt") { replaced = true; renameSync(parent, `${parent}-retired`); symlinkSync(outside, parent); } } }); await assert.rejects(tx.install(), /identity changed|symlink|rolled back/); await assert.rejects(access(join(outside, "AGENTS.md"))); });
 test("entry replacement between backup and mutation fails closed without overwriting the replacement", async () => { const f = await fixture(); await writeFile(f.entry, "original user bytes\n"); let replaced = false; const tx = new InstallerTransaction({ ...f.request, onCheckpoint: (checkpoint) => { if (!replaced && checkpoint === "afterReceipt") { replaced = true; renameSync(f.entry, `${f.entry}-retired`); writeFileSync(f.entry, "concurrent replacement\n"); } } }); await assert.rejects(tx.install(), /identity changed|rolled back/); assert.equal(await readFile(f.entry, "utf8"), "concurrent replacement\n"); });
+test("an entry created after an absent snapshot is never overwritten", async () => { const f = await fixture(); const concurrent = Buffer.from("concurrent user bytes\n"); const tx = new InstallerTransaction({ ...f.request, onCheckpoint: (checkpoint) => { if (checkpoint === "afterReceipt") writeFileSync(f.entry, concurrent, { flag: "wx" }); } }); await assert.rejects(tx.install(), /entry changed|no longer absent|rolled back/); assert.deepEqual(await readFile(f.entry), concurrent); });
+test("same-inode entry changes after backup are detected before mutation", async () => { const f = await fixture(); await writeFile(f.entry, "original user bytes\n"); const tx = new InstallerTransaction({ ...f.request, onCheckpoint: (checkpoint) => { if (checkpoint === "afterReceipt") writeFileSync(f.entry, "same inode concurrent bytes\n"); } }); await assert.rejects(tx.install(), /entry changed|rolled back/); assert.equal(await readFile(f.entry, "utf8"), "same inode concurrent bytes\n"); });
 test("installation root replacement after backup fails closed before activation", async () => { const f = await fixture(); const outside = join(f.root, "outside-installation"); await mkdir(outside); let replaced = false; const tx = new InstallerTransaction({ ...f.request, onCheckpoint: (checkpoint) => { if (!replaced && checkpoint === "afterReceipt") { replaced = true; renameSync(f.installationRoot, `${f.installationRoot}-retired`); symlinkSync(outside, f.installationRoot); } } }); await assert.rejects(tx.install(), /identity changed|symlink|rolled back/); await assert.rejects(access(join(outside, "current.json"))); await assert.rejects(access(f.entry)); });
 test("symlinked internal backup or release directories are rejected without writing outside", async () => { for (const internal of ["backups", "releases"]) { const f = await fixture(); const outside = join(f.root, `outside-${internal}`); await mkdir(f.installationRoot); await mkdir(outside); symlinkSync(outside, join(f.installationRoot, internal)); await assert.rejects(new InstallerTransaction(f.request).install(), /symlink|canonical/); assert.deepEqual(await readFile(f.entry).catch(() => Buffer.alloc(0)), Buffer.alloc(0)); assert.deepEqual(await import("node:fs/promises").then(({ readdir }) => readdir(outside)), []); } });
 
@@ -109,4 +111,42 @@ test("a later target update preserves already updated shared local rules", async
 test("absent backup sentinels are read back before productive mutation", async () => {
   const f = await fixture(); let corrupted = false; const tx = new InstallerTransaction({ ...f.request, onCheckpoint: (checkpoint) => { if (checkpoint === "afterBackupWrites") { const marker = findNamed(join(f.installationRoot, "backups"), "entry.absent"); assert.notEqual(marker, undefined); writeFileSync(marker!, "corrupt\n"); corrupted = true; } } });
   await assert.rejects(tx.install(), /backup readback failed/); assert.equal(corrupted, true); await assert.rejects(access(f.entry));
+});
+
+test("a signal at the verification boundary rolls back and reports interruption", async () => {
+  const f = await fixture(); const signals = new TestSignals(); const original = Buffer.from("original\n"); await writeFile(f.entry, original); let emitted = false;
+  const tx = new InstallerTransaction({ ...f.request, signalSource: signals, onCheckpoint: (checkpoint) => { if (!emitted && checkpoint === "beforeVerification") { emitted = true; signals.emit("SIGTERM"); } } });
+  await assert.rejects(tx.install(), (error: unknown) => error instanceof InterruptedFailure && error.signal === "SIGTERM" && error.rollbackStatus === "SUCCEEDED");
+  assert.deepEqual(await readFile(f.entry), original); assert.equal(signals.count(), 0);
+});
+
+test("missing receipt evidence makes installed state tampered without rollback capability", async () => {
+  const f = await fixture(); const tx = new InstallerTransaction(f.request); await tx.install(); const stateRoot = await bindingStateRoot(f.installationRoot); await rm(join(stateRoot, "last-transaction.json"));
+  const status = await tx.status(); assert.equal(status.state, "TAMPERED"); assert.equal(status.rollbackStatus, "NOT_REQUIRED"); assert.deepEqual(status.capabilities, []);
+  await assert.rejects(tx.verify(), /TAMPERED/); await assert.rejects(tx.rollback(), /receipt is missing/);
+});
+
+test("rollback of one binding preserves a shared release and local rules used by another binding", async () => {
+  const f = await fixture(); const secondTarget = join(f.root, "second-target"); await mkdir(secondTarget); const localRules = join(f.root, "private.md"); await writeFile(localRules, "shared private rule\n");
+  const first = new InstallerTransaction({ ...f.request, localRules }); const second = new InstallerTransaction({ ...f.request, targetRoot: secondTarget });
+  await first.install(); await second.install(); await first.rollback();
+  assert.equal((await second.verify()).state, "CURRENT");
+  assert.equal(await readFile(join(f.installationRoot, "releases", "1.0.0-rc.1", "bundle", "agent-governance", "local", "user-rules.md"), "utf8"), "shared private rule\n");
+});
+
+test("rollback rejects a stale local-rules snapshot instead of overwriting newer bytes", async () => {
+  const f = await fixture(); const first = join(f.root, "first.md"); const second = join(f.root, "second.md"); await writeFile(first, "first\n"); await writeFile(second, "second\n"); const tx = new InstallerTransaction({ ...f.request, localRules: first }); await tx.install();
+  const target = join(f.installationRoot, "releases", "1.0.0-rc.1", "bundle", "agent-governance", "local", "user-rules.md"); await writeFile(target, "newer external bytes\n");
+  await assert.rejects(tx.rollback(), /local rules changed|stale shared state/); assert.equal(await readFile(target, "utf8"), "newer external bytes\n");
+});
+
+test("a pre-existing installation-root transaction lock fails closed without target mutation", async () => {
+  const f = await fixture(); await mkdir(f.installationRoot); await mkdir(join(f.installationRoot, ".transaction.lock"));
+  await assert.rejects(new InstallerTransaction(f.request).install(), /transaction lock/); await assert.rejects(access(f.entry));
+});
+
+test("local-rules changes after their snapshot are not overwritten", async () => {
+  const f = await fixture(); const original = join(f.root, "original-lock.md"); const replacement = join(f.root, "replacement-lock.md"); await writeFile(original, "original\n"); await writeFile(replacement, "replacement\n"); await new InstallerTransaction({ ...f.request, localRules: original }).install(); const target = join(f.installationRoot, "releases", "1.0.0-rc.1", "bundle", "agent-governance", "local", "user-rules.md");
+  const update = new InstallerTransaction({ ...f.request, localRules: replacement, onCheckpoint: (checkpoint) => { if (checkpoint === "afterReceipt") writeFileSync(target, "concurrent local rules\n"); } });
+  await assert.rejects(update.update(), /local rules changed/); assert.equal(await readFile(target, "utf8"), "concurrent local rules\n");
 });

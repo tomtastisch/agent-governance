@@ -49,6 +49,18 @@ test("managed block preserves every user byte around one block with LF or CRLF",
   }
 });
 
+test("managed block preserves a UTF-8 BOM and all surrounding user bytes", () => {
+  const original = Buffer.concat([
+    Buffer.from([0xef, 0xbb, 0xbf]),
+    Buffer.from("before\r\nafter without final newline", "utf8"),
+  ]);
+  const installed = installManagedBlock(original, binding);
+  assert.deepEqual(installed.subarray(0, 3), Buffer.from([0xef, 0xbb, 0xbf]));
+  assert.doesNotThrow(() => verifyManagedBlock(installed, binding));
+  assert.deepEqual(removeManagedBlock(installed), original);
+  assert.deepEqual(installManagedBlock(installed, binding), installed);
+});
+
 test("managed block update changes only its own bytes and reinstall is idempotent", () => {
   const outside = Buffer.from("user prefix\n", "utf8");
   const first = installManagedBlock(outside, binding);

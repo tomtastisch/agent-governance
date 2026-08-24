@@ -115,8 +115,8 @@ Der Installer verwaltet exakt einen Block:
 <!-- END AGENT_GOVERNANCE_MANAGED_V1 -->
 ```
 
-Außenbytes bleiben bytegetreu erhalten. Vorhandene LF- oder CRLF-Zeilenenden werden beibehalten;
-eine neue Datei entsteht als UTF-8 mit LF. Doppelte, unvollständige, fremde und manipulierte
+Außenbytes bleiben einschließlich eines vorhandenen UTF-8-BOM bytegetreu erhalten. Vorhandene LF-
+oder CRLF-Zeilenenden werden beibehalten; eine neue Datei entsteht als UTF-8 ohne BOM mit LF. Doppelte, unvollständige, fremde und manipulierte
 Marker scheitern fail-closed. Der Block nennt Version, absoluten Installationsroot, normativen
 Einstieg, Manifest, Governance-, Manifest- und vollständigen Bundledigest, Ladepflicht, Trennung lokaler Regeln und
 Fail-closed-Verhalten. Er ist eine reproduzierbare Projektion, kein normativer Vertrag.
@@ -144,7 +144,10 @@ dem letzten verifizierten Receipt wieder her.
 Jedes explizite Paar aus Target-Root und Entry-Datei erhält eine deterministische Binding-ID und
 damit unabhängige Current-/Receipt-Metadaten im gemeinsamen Installationsroot. Beide Receiptkopien
 müssen bytegleich sein. Receipts wechseln geschlossen zwischen `PREPARED`, `COMMITTED` und `ROLLED_BACK`. Ein
-`PREPARED`-Zustand blockiert weitere Mutationen bis zum expliziten Rollback. Das erste von
+`PREPARED`-Zustand blockiert weitere Mutationen bis zum expliziten Rollback. Mutationen desselben
+Installationsroots sind durch einen fail-closed Root-Lock gegenseitig ausgeschlossen. Rollback entfernt
+keinen Release und setzt keine lokalen Regeln zurück, solange eine andere aktive Bindung diesen Shared
+State referenziert; veraltete Entry- oder Local-Rules-Snapshots werden abgelehnt. Das erste von
 `SIGINT` oder `SIGTERM` wird gelatcht und führt zu genau einem Rollback. `SIGKILL`, Stromausfall
 und Dateisystemdefekte sind nicht vollständig atomar abfangbar; dafür bleibt der Recoveryzustand
 fail-closed sichtbar.
