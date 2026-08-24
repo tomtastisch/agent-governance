@@ -47,6 +47,9 @@ Symlink-, Traversal-, Receipt-, Backup-, Collision- oder Recovery-Prüfungen nic
   persistiert und vor der jeweiligen Mutation erneut geprüft. Current-, Local-Rules-, Receipt-,
   Lock- und Cleanup-Mutationen verwenden danach offene identitätsgeprüfte Directory-Handles und
   einzelne Basenames. Symlinkbehaftete oder nichtkanonische Pfade scheitern fail-closed.
+- Replace und Remove tragen die zuvor beobachtete finale Objektidentität bis zur nativen Grenze.
+  Unmittelbar vor `renameat` beziehungsweise `unlinkat` wird sie erneut verglichen; beim Replace
+  gilt derselbe Vergleich auch für den sichtbaren temporären Quellnamen und dessen geöffneten FD.
 - Backup und Readback erfolgen vor der produktiven Entrymutation. Atomare Renames ersetzen nur
   reguläre Dateien im validierten Parent.
 - Der Rollback-Detach verwendet einen receipt-eindeutigen Sibling-Namen im bereits inspizierten
