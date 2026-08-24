@@ -201,8 +201,13 @@ static napi_value secure_create_no_replace(napi_env env, napi_callback_info info
     throw_errno(env, "directory-relative file sync");
     return NULL;
   }
-  if (close(output) != 0) {
+  int close_result = close(output);
+#ifdef AGENT_GOVERNANCE_TEST_FAIL_CREATE_CLOSE
+  if (close_result == 0) { errno = EIO; close_result = -1; }
+#endif
+  if (close_result != 0) {
     int saved = errno;
+    cleanup_exclusive_create(directory_fd, name, &created);
     errno = saved;
     throw_errno(env, "directory-relative file close");
     return NULL;
