@@ -127,7 +127,10 @@ async function safeIndexedFile(root: string, path: string, inventory: ReadonlyMa
   const absolute = join(root, path);
   const stat = await lstat(absolute);
   if (stat.isSymbolicLink() || !stat.isFile() || await realpath(absolute) !== absolute) throw new Error(`${label} must be a canonical regular non-symlink file`);
-  try { return new TextDecoder("utf-8", { fatal: true }).decode(await readFile(absolute)); } catch { throw new Error(`${label} contains invalid UTF-8 encoding`); }
+  let content: string;
+  try { content = new TextDecoder("utf-8", { fatal: true }).decode(await readFile(absolute)); } catch { throw new Error(`${label} contains invalid UTF-8 encoding`); }
+  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(content)) throw new Error(`${label} contains a raw control character`);
+  return content;
 }
 
 function validateVocabulary(catalog: TomlTable, name: "triggers" | "policy_tags" | "scopes"): Set<string> {
@@ -161,6 +164,7 @@ export async function validateGovernanceContract(manifestRoot: string, manifestT
   const referencedPaths = new Set<string>();
   for (const name of CATALOGS) {
     const path = safeIndexPath(catalogs[name], `release manifest ${name} catalog`);
+    if (!/\.toml$/i.test(path)) throw new Error(`release manifest ${name} catalog has an invalid format`);
     referencedPaths.add(path);
     parsed.set(name, parseClosedToml(await safeIndexedFile(manifestRoot, path, inventory, `${name} catalog`), `${name} catalog`));
   }
@@ -192,7 +196,7 @@ export async function validateGovernanceContract(manifestRoot: string, manifestT
   for (const [id, raw] of Object.entries(modules)) {
     if (!ID.test(id)) throw new Error("release manifest contains an invalid module ID");
     const module = table(raw, `modules.${id}`); exact(module, MODULE_FIELDS, `modules.${id}`);
-    const path = safeIndexPath(module.path, `modules.${id}.path`); referencedPaths.add(path); await safeIndexedFile(manifestRoot, path, inventory, `module ${id}`);
+    const path = safeIndexPath(module.path, `modules.${id}.path`); if (!/\.md$/i.test(path)) throw new Error(`modules.${id}.path has an invalid format`); referencedPaths.add(path); await safeIndexedFile(manifestRoot, path, inventory, `module ${id}`);
     known(idList(module.triggers, `modules.${id}.triggers`, true), triggers, `modules.${id}.triggers`);
     dependencies.set(id, idList(module.dependencies, `modules.${id}.dependencies`));
   }
@@ -210,7 +214,7 @@ export async function validateGovernanceContract(manifestRoot: string, manifestT
   for (const [id, raw] of Object.entries(roles)) {
     if (!ID.test(id)) throw new Error("release manifest contains an invalid role ID");
     const role = table(raw, `roles.${id}`); exact(role, ROLE_FIELDS, `roles.${id}`);
-    const path = safeIndexPath(role.path, `roles.${id}.path`); referencedPaths.add(path); await safeIndexedFile(manifestRoot, path, inventory, `role ${id}`);
+    const path = safeIndexPath(role.path, `roles.${id}.path`); if (!/\.md$/i.test(path)) throw new Error(`roles.${id}.path has an invalid format`); referencedPaths.add(path); await safeIndexedFile(manifestRoot, path, inventory, `role ${id}`);
     known(idList(role.triggers, `roles.${id}.triggers`, true), triggers, `roles.${id}.triggers`);
     known(idList(role.modules, `roles.${id}.modules`, true), moduleIds, `roles.${id}.modules`);
   }

@@ -37,9 +37,11 @@ Dateisystemgrenzen ist nicht vollständig beherrschbar.
   Pre-/Postimages und andere aktive Bindungen geprüft; gemeinsam referenzierte Releases und lokale
   Regeln bleiben erhalten, und veraltete Zustände blockieren vor der ersten Restore-Mutation.
 - Private lokale Regeln werden nicht ausgegeben; Secret-Patterns werden im Tarball-Gate geprüft.
-- Inventarisierte normative Markdown- und TOML-Quellen werden mit fataler UTF-8-Dekodierung und
-  ohne rohe C0-/DEL-Kontrollzeichen geprüft. TOML wird zusätzlich gegen ein geschlossenes
-  Syntax-Subset validiert; Parserdivergenzen werden fail-closed abgelehnt.
+- Inventarisierte normative Markdown- und TOML-Quellen werden mit fataler UTF-8-Dekodierung geprüft;
+  von den rohen C0-/DEL-Kontrollzeichen sind ausschließlich TAB, LF und CR zulässig. Manifestreferenzen
+  akzeptieren nur `.toml` für Kataloge sowie `.md` für Module, Rollen und lokale Regeln; TOML wird
+  zusätzlich gegen ein geschlossenes Syntax-Subset validiert. Parserdivergenzen und unbekannte
+  normative Dateiformate werden fail-closed abgelehnt.
 
 ## Residual Risks
 

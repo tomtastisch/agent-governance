@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, readFile, rm, symlink, truncate, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, symlink, truncate, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 
@@ -117,4 +117,20 @@ test("release verifier rejects invalid UTF-8 and raw controls in normative text 
     const root = await fixture(); const path = join(root, relative); const bytes = await readFile(path); if (mutation === "malformed") { const index = bytes.indexOf(0x47); assert.notEqual(index, -1); bytes[index] = 0xff; await writeFile(path, bytes); } else await writeFile(path, Buffer.concat([bytes, Buffer.from([0])])); await writeInventory(root);
     await assert.rejects(verifyRelease(root), /UTF-8|control|normative|text/i);
   }
+});
+
+test("release verifier rejects unknown formats for manifest-referenced sources", async () => {
+  for (const [from, to, mutation] of [
+    ["catalogs/triggers.toml", "catalogs/triggers.txt", "plain"],
+    ["modules/invariants.md", "modules/invariants.txt", "nul"],
+    ["roles/security-review.md", "roles/security-review.txt", "malformed"],
+  ] as const) {
+    const root = await fixture(); const manifestPath = join(root, "bundle", "agent-governance", "manifest.toml"); const manifest = await readFile(manifestPath, "utf8"); await writeFile(manifestPath, manifest.replace(from, to)); const source = join(root, "bundle", "agent-governance", from); const target = join(root, "bundle", "agent-governance", to); await rename(source, target); const bytes = await readFile(target); if (mutation === "nul") await writeFile(target, Buffer.concat([bytes, Buffer.from([0])])); else if (mutation === "malformed") await writeFile(target, Buffer.concat([bytes, Buffer.from([0xff])])); await writeInventory(root);
+    await assert.rejects(verifyRelease(root), /format|extension|catalog|module|role|manifest/i);
+  }
+});
+
+test("release verifier permits only tab, LF, and CR from the raw C0 controls", async () => {
+  const root = await fixture(); const path = join(root, "bundle", "GOVERNANCE.md"); await writeFile(path, Buffer.concat([await readFile(path), Buffer.from("\t\r\n")])); await writeInventory(root);
+  await assert.doesNotReject(verifyRelease(root));
 });
