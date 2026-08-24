@@ -38,6 +38,12 @@ def _run_blocks(job_body: str) -> list[str]:
 
 
 class ReleaseWorkflowSecurityContract(unittest.TestCase):
+    def test_installer_job_does_not_use_step_only_contexts_in_job_env(self):
+        block = _job_block(CI_WORKFLOW, "installer-package")
+        job_configuration = block.split("    steps:\n", 1)[0]
+
+        self.assertNotIn("${{ runner.", job_configuration)
+
     def test_release_validate_preserves_pinned_main_checkout(self):
         block = _job_block(CI_WORKFLOW, "release-validate")
         checkout_line = (
