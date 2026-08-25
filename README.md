@@ -102,8 +102,10 @@ npx @tomtastisch/agent-governance@next install \
   --non-interactive --json
 ```
 
-Vor einem veröffentlichten RC sind diese Befehle nur der vorgesehene Vertrag, keine Behauptung
-einer bereits erfolgreichen Registry-Ausführung.
+Der öffentliche Release Candidate wird über den Dist-Tag `next` aus der npm Registry bezogen.
+
+Die [Installer-CLI-Referenz](docs/installer-cli-reference.md) erklärt die einzelnen Commands,
+Pfade und Optionen.
 
 ## CLI- und Managed-Block-Vertrag
 
