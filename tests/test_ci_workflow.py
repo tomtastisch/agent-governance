@@ -2,6 +2,7 @@
 """Regression contracts for release-critical GitHub Actions jobs."""
 
 from pathlib import Path
+import json
 import os
 import re
 import subprocess
@@ -40,6 +41,48 @@ def _run_blocks(job_body: str) -> list[str]:
         r"((?:          [^\n]*(?:\n|$))*)",
         job_body,
     )
+
+
+def _run_npm_publish_admission(
+    package_version: str,
+    repository_version: str,
+    release_tag: str,
+    dist_tag: str,
+) -> subprocess.CompletedProcess[str]:
+    workflow = PUBLISH_PATH.read_text(encoding="utf-8")
+    publish = _job_block(workflow, "publish")
+    admission_step = publish.split(
+        "      - name: Verify signed tag from trusted main and select immutable source\n",
+        1,
+    )[1].split("      - name:", 1)[0]
+    script = textwrap.dedent(_run_blocks(admission_step)[0])
+
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        (root / "package.json").write_text(
+            json.dumps({"version": package_version}) + "\n",
+            encoding="utf-8",
+        )
+        (root / "VERSION").write_text(f"{repository_version}\n", encoding="utf-8")
+        commands = root / "commands"
+        commands.mkdir()
+        for name in ("git", "python3"):
+            command = commands / name
+            command.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            command.chmod(0o700)
+        return subprocess.run(
+            ["/bin/sh", "-eu", "-c", script],
+            cwd=root,
+            env={
+                **os.environ,
+                "RELEASE_TAG": release_tag,
+                "NPM_DIST_TAG": dist_tag,
+                "PATH": f"{commands}:{os.environ['PATH']}",
+            },
+            capture_output=True,
+            text=True,
+            check=False,
+        )
 
 
 def _run_registry_retry_with_failed_reads(readback: str) -> int:
@@ -245,10 +288,58 @@ class ReleaseWorkflowSecurityContract(unittest.TestCase):
         ):
             self.assertIn(value, workflow)
         self.assertNotIn("NODE_AUTH_TOKEN", workflow)
-        self.assertIn("1.0.0-rc.*:next", workflow)
-        self.assertIn("1.0.0:latest", workflow)
+        self.assertNotIn("1.0.0-rc.*:next", workflow)
+        self.assertNotIn("1.0.0:latest", workflow)
         for run_block in _run_blocks(_job_block(workflow, "publish")):
             self.assertNotIn("${{", run_block)
+
+    def test_npm_publish_pairs_stable_with_latest_and_prerelease_with_next(self):
+        cases = (
+            ("1.0.1", "latest", True),
+            ("1.0.1", "next", False),
+            ("1.0.1-beta.1", "next", True),
+            ("1.0.1-beta.1", "latest", False),
+            ("not-semver", "latest", False),
+        )
+        for version, dist_tag, accepted in cases:
+            with self.subTest(version=version, dist_tag=dist_tag):
+                result = _run_npm_publish_admission(
+                    version,
+                    version,
+                    f"v{version}",
+                    dist_tag,
+                )
+                self.assertEqual(result.returncode == 0, accepted, result.stderr)
+
+    def test_npm_publish_requires_package_version_to_equal_repository_version(self):
+        result = _run_npm_publish_admission(
+            "1.0.0",
+            "1.0.1",
+            "v1.0.0",
+            "latest",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_npm_publish_rejects_multiline_repository_version(self):
+        result = _run_npm_publish_admission(
+            "1.0.1",
+            "1.0.\n1",
+            "v1.0.1",
+            "latest",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_npm_publish_requires_tag_to_equal_repository_version(self):
+        result = _run_npm_publish_admission(
+            "1.0.1",
+            "1.0.1",
+            "v1.0.0",
+            "latest",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
 
     def test_trusted_publish_retries_complete_registry_metadata(self):
         workflow = PUBLISH_PATH.read_text(encoding="utf-8")
