@@ -3,7 +3,7 @@
 
 Drei Modi — alle read-only:
   tree     Repository-/Tree-Konsistenz (VERSION ↔ CHANGELOG ↔ README ↔ INSTALL)
-  tag      Tag-Konsistenz (benötigt Git-Historie und einen Tag-Ref)
+  tag      Tag-Konsistenz (benötigt Git-Historie, Tag-Ref und optional erwarteten Commit)
   release  GitHub-Release-Konsistenz (benötigt Netzwerk und gh CLI)
 
 Kein Modus erstellt Tags, Releases oder verändert das Repository.
@@ -675,7 +675,7 @@ def _resolve_target_commitish(target, root):
 def main():
     if len(sys.argv) < 2:
         print("usage: python3 tools/release_check.py tree", file=sys.stderr)
-        print("       python3 tools/release_check.py tag [TAG_NAME]", file=sys.stderr)
+        print("       python3 tools/release_check.py tag [TAG_NAME] [EXPECTED_COMMIT]", file=sys.stderr)
         print("       python3 tools/release_check.py release [TAG_NAME]", file=sys.stderr)
         return STATUS_FAIL
 
@@ -684,7 +684,8 @@ def main():
         result = check_tree()
     elif mode == "tag":
         tag_ref = sys.argv[2] if len(sys.argv) > 2 else None
-        result = check_tag(tag_ref=tag_ref)
+        expected_commit = sys.argv[3] if len(sys.argv) > 3 else None
+        result = check_tag(tag_ref=tag_ref, expected_commit=expected_commit)
     elif mode == "release":
         tag_ref = sys.argv[2] if len(sys.argv) > 2 else None
         result = check_release(tag_ref=tag_ref)
