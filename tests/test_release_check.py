@@ -1266,6 +1266,67 @@ class ReleaseTargetCommitishTests(TagConsistencyBase):
         self.assertFalse(r.ok)
         self.assertTrue(any("Draft" in e for e in r.errors))
 
+    def _assert_release_metadata_error(self, relative, content, expected_error):
+        self._init_git("0.1.0")
+        _write(os.path.join(self.root, relative), content)
+        r = check_release(
+            root=self.root,
+            tag_ref="v0.1.0",
+            gh=FakeGhRunner(error="must not mask metadata failure"),
+            verifier=self.mock_verifier,
+        )
+        self.assertFalse(r.ok)
+        self.assertTrue(any(expected_error in error for error in r.errors), r.errors)
+
+    def test_release_rejects_malformed_version_before_github(self):
+        self._assert_release_metadata_error("VERSION", "not-semver\n", "SemVer")
+
+    def test_release_rejects_multiple_version_lines_before_github(self):
+        self._assert_release_metadata_error("VERSION", "0.1.0\n\n", "SemVer")
+
+    def test_release_rejects_crlf_version_before_github(self):
+        self._assert_release_metadata_error("VERSION", "0.1.0\r\n", "SemVer")
+
+    def test_release_rejects_package_projection_drift(self):
+        self._assert_release_metadata_error(
+            "package.json", json.dumps({"version": "9.9.9"}), "package.json-Version"
+        )
+
+    def test_release_rejects_lock_root_projection_drift(self):
+        self._assert_release_metadata_error(
+            "package-lock.json",
+            json.dumps({"version": "0.1.0", "packages": {"": {"version": "9.9.9"}}}),
+            "Root-Paketversion",
+        )
+
+    def test_release_rejects_changelog_drift(self):
+        self._assert_release_metadata_error("CHANGELOG.md", "## [Unreleased]\n", "CHANGELOG")
+
+    def _assert_release_prerelease_mismatch(self, version, is_prerelease):
+        self._init_git(version)
+        self._tag(self.root, f"v{version}")
+        head = self._git("rev-parse", "HEAD")
+        gh = FakeGhRunner(data={
+            "tagName": f"v{version}",
+            "targetCommitish": head,
+            "isDraft": False,
+            "isPrerelease": is_prerelease,
+        })
+        r = check_release(
+            root=self.root,
+            tag_ref=f"v{version}",
+            gh=gh,
+            verifier=self.mock_verifier,
+        )
+        self.assertFalse(r.ok)
+        self.assertTrue(any("Prerelease" in error for error in r.errors), r.errors)
+
+    def test_stable_release_rejects_prerelease_flag(self):
+        self._assert_release_prerelease_mismatch("0.1.0", True)
+
+    def test_prerelease_rejects_stable_flag(self):
+        self._assert_release_prerelease_mismatch("0.1.0-rc.1", False)
+
     def test_annotated_release_tag_is_ok(self):
         """Greptile-Finding #4: Annotierter Tag + Release mit korrektem SHA."""
         self._init_git("0.1.0")

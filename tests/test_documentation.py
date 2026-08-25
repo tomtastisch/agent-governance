@@ -113,6 +113,19 @@ class ReadmeEntryContract(unittest.TestCase):
         ):
             self.assertNotIn(stale, "\n".join((README, architecture_doc)))
 
+    def test_overview_graphic_belongs_to_how_it_works(self):
+        """Catches the sole overview drifting into the problem or benefit narrative."""
+        overview = f"{self.RAW_MAIN}/assets/diagrams/governance-overview.png"
+        how = README.split("## Wie funktioniert es?", 1)[1].split("\n## ", 1)[0]
+        self.assertEqual(how.count(overview), 1)
+
+    def test_why_section_has_three_to_five_compact_benefits(self):
+        """Catches a prose-only why section that does not expose the approved benefits."""
+        why = README.split("## Warum Agent Governance?", 1)[1].split("\n## ", 1)[0]
+        benefits = re.findall(r"(?m)^- \S.+$", why)
+        self.assertGreaterEqual(len(benefits), 3)
+        self.assertLessEqual(len(benefits), 5)
+
     def test_readme_drops_retired_entry_points_and_keeps_support(self):
         """Catches retired RC guidance or the accidental loss of the intended support destination."""
         for stale in ("@next", "Release Candidate", "RC", "INSTALL.md"):

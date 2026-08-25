@@ -787,11 +787,9 @@ def check_release(root=None, tag_ref=None, gh=None, verifier=None):
         root = ROOT
     r = CheckResult()
 
-    if not _exists("VERSION", root):
-        r.add_error("VERSION fehlt — Release-Prüfung ohne Version nicht möglich")
+    version = _check_version_release_metadata(root, r)
+    if version is None or not r.ok:
         return r
-
-    version = _read("VERSION", root).strip().splitlines()[0].strip()
     expected_tag = f"v{version}"
 
     if tag_ref is None:
@@ -817,6 +815,13 @@ def check_release(root=None, tag_ref=None, gh=None, verifier=None):
     # ── Draft ──
     if data.get("isDraft", False):
         r.add_error(f"GitHub-Release '{tag_ref}' ist ein Draft — muss published sein")
+
+    expected_prerelease = SEMVER_RE.match(version).group(4) is not None
+    if data.get("isPrerelease") is not expected_prerelease:
+        r.add_error(
+            f"GitHub-Release '{tag_ref}' Prerelease-Flag "
+            f"({data.get('isPrerelease')}) entspricht nicht VERSION ({version})"
+        )
 
     # ── Commit-Vergleich (Greptile-Finding #4) ──
     # Peeling: lokalen Tag auf Commit auflösen

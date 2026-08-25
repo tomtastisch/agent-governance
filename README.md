@@ -18,7 +18,10 @@ Agent-Harnesses unterscheiden sich in ihren globalen Einstiegspunkten. Der Insta
 Verantwortung deshalb bei expliziten Pfaden und einem einheitlichen, überprüfbaren Bundle statt
 bei Harness-Erkennung, Adaptern oder impliziten Zielannahmen.
 
-![Übersicht: Agent Governance verbindet klare Regeln, Toolwahl, Grenzen und nachvollziehbare Ergebnisse.](https://raw.githubusercontent.com/tomtastisch/agent-governance/main/assets/diagrams/governance-overview.png)
+- Konsistente Regeln über mehrere Harnesses hinweg
+- Weniger Konfigurationsdrift durch einen zentralen Governance-Bestand
+- Nachvollziehbare, verifizierbare und reversible Installation
+- Keine stillen Harness-Mutationen oder impliziten Zielpfade
 
 ## Schnellstart
 
@@ -54,6 +57,8 @@ npx @tomtastisch/agent-governance@latest verify \
 Der Installer prüft ein geschlossenes, versioniertes Bundle, sichert den bestehenden Einstieg und
 verwaltet genau seinen eigenen Markdownblock. Die Details zu Commands, Lifecycle, Recovery,
 Sicherheitsgrenzen und Datenstrukturen liegen jeweils bei ihrer zuständigen Referenz.
+
+![Übersicht: Agent Governance verbindet klare Regeln, Toolwahl, Grenzen und nachvollziehbare Ergebnisse.](https://raw.githubusercontent.com/tomtastisch/agent-governance/main/assets/diagrams/governance-overview.png)
 
 ## Dokumentation
 
