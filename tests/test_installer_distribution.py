@@ -13,7 +13,7 @@ class InstallerPackageContract(unittest.TestCase):
     def test_package_is_node24_strict_and_zero_runtime_dependency(self):
         package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
         self.assertEqual(package["name"], "@tomtastisch/agent-governance")
-        self.assertEqual(package["version"], "1.0.0-rc.3")
+        self.assertEqual(package["version"], "1.0.0")
         self.assertEqual(package["engines"]["node"], ">=24")
         self.assertNotIn("dependencies", package)
         self.assertEqual(package["devDependencies"]["typescript"], "5.9.2")

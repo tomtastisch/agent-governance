@@ -25,6 +25,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Breaking changes:** none
 
+## [1.0.0] — 2026-08-25
+
+### Added
+
+- Das globale Paket mit transaktionalem Explicit-Path-Installer und adapterlosem Kern sowie den Commands
+  `inspect`, `plan`, `install`, `verify`, `status`, `update`, `uninstall` und `rollback`.
+- Eine repo-eigene Node-API-C-Sicherheitsprimitive mit nativen Darwin-/Linux-Prebuilds für arm64
+  und x64 sowie atomarem No-Clobber-Rename.
+- Eine nicht normative Installer-CLI-Referenz für sämtliche öffentlichen Commands, Pfade und Optionen.
+
+### Changed
+
+- Die Architektur `GLOBAL_EXPLICIT_PATH_MANAGED_BLOCK` verlangt explizite globale Zielparameter
+  und enthält keine Harnessadapter, Zielerkennung, Hooks, MCP-Mutationen oder Auto-Approvals.
+- Mutierende Operationen prüfen Native-Capability, Releaseinventar, Receipts, Backups und
+  Postimages fail-closed; ein unsicherer Pathname-Fallback existiert nicht.
+- Der Sicherheitsvertrag grenzt ausschließlich den nicht atomar entscheidbaren bösartigen
+  Same-UID-Final-Component-Swap aus und führt keinen privilegierten Broker ein.
+
+### Fixed
+
+- Recovery und Rollback binden Parent-, Release-, Binding-, Backup- und Local-Rules-Identitäten
+  persistent und bewahren konkurrierend geänderte oder fremde Bytes.
+- Native Replace-, Remove-, Create-, Detach- und Aktivierungsoperationen verwenden validierte
+  Directory-Handles, kontrollierte Basenames und atomare Kollisionsgrenzen.
+- Release-, Packaging- und Dokumentationsprüfungen binden alle vier Native-Prebuilds sowie die
+  öffentliche CLI-Referenz deterministisch an das npm-Artefakt.
+- macOS-Testfixtures kanonisieren temporäre Roots, ohne die produktive Symlinkgrenze zu lockern.
+
+### Removed
+
+- Den unveröffentlichten Codex-spezifischen Installerentwurf mit Harness-ID, festen Zielpfaden
+  und Hookmutation.
+
+**Breaking changes:** present
+
+- **BREAKING:** Gegenüber dem manuellen v0.5.0-Bootstrap verlangt der Installer explizite globale
+  Zielparameter und verwaltet ausschließlich seinen markierten Markdown-Block.
+
 ## [1.0.0-rc.3] — 2026-08-25
 
 ### Added

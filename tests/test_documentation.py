@@ -200,7 +200,7 @@ class InstallerCliReferenceContract(unittest.TestCase):
 
 class ReleaseMetadataContract(unittest.TestCase):
     def test_installer_release_candidate_is_consistent(self):
-        self.assertEqual(VERSION, "1.0.0-rc.3")
+        self.assertEqual(VERSION, "1.0.0")
         badge_line = README.splitlines()[2]
         self.assertIn(
             "[![Version](https://img.shields.io/github/v/release/"
