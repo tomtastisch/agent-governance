@@ -1,4 +1,4 @@
-# JSON- und Exitcode-Vertrag
+# JSON-Schema-Vertrag
 
 > Nicht normative JSON-Referenz. Maßgeblich ist das geschlossene TypeScript-Schema.
 
@@ -34,12 +34,5 @@ Entry- oder Regelinhalt und daraus abgeleitete Fingerprints erscheinen nie im Sc
 - `plan` ist nur bei geplanten Operationen vorhanden und beschreibt Ressourcen sowie die festen
   Negativfelder für Harness-, MCP-, Hook- und Approvalmutationen.
 
-## Exitcodes
-
-- `0`: Erfolg
-- `2`: `INVALID_INVOCATION`
-- `4`: `UNSAFE_STATE`
-- `5`: `VERIFICATION_ROLLED_BACK`
-- `6`: `ROLLBACK_FAILED`
-- `130`: Unterbrechung durch `SIGINT`
-- `143`: Unterbrechung durch `SIGTERM`
+Das Exitverhalten der öffentlichen Commands steht in der
+[Installer-CLI-Referenz](installer-cli-reference.md#exitverhalten).

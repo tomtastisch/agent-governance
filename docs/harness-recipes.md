@@ -17,7 +17,7 @@ nennt `${CODEX_HOME:-$HOME/.codex}/AGENTS.md` als globalen Ort, sofern kein vorr
 `AGENTS.override.md` aktiv ist. Nach dieser Prüfung lautet ein Beispiel:
 
 ```sh
-npx @tomtastisch/agent-governance@1.0.1 install --scope global \
+npx @tomtastisch/agent-governance@latest install --scope global \
   --installation-root "$HOME/.agent-governance" \
   --target-root "$HOME/.codex" --entry-file AGENTS.md --non-interactive
 ```
@@ -32,7 +32,7 @@ Die [Claude-Code-Dokumentation zu Memory](https://code.claude.com/docs/en/memory
 aktiven Pfads:
 
 ```sh
-npx @tomtastisch/agent-governance@1.0.1 install --scope global \
+npx @tomtastisch/agent-governance@latest install --scope global \
   --installation-root "$HOME/.agent-governance" \
   --target-root "$HOME/.claude" --entry-file CLAUDE.md --non-interactive
 ```
@@ -45,7 +45,7 @@ Die [OpenCode-V2-Instruktionsdokumentation](https://opencode.ai/v2/docs/instruct
 roots, beispielsweise:
 
 ```sh
-npx @tomtastisch/agent-governance@1.0.1 install --scope global \
+npx @tomtastisch/agent-governance@latest install --scope global \
   --installation-root "$HOME/.agent-governance" \
   --target-root "$HOME/.config/opencode" --entry-file AGENTS.md --non-interactive
 ```
@@ -58,7 +58,7 @@ verwendet `AGENTS.md` im tatsächlich aktiven Agent-Workspace. Der Default
 abweichen. Nur wenn dieser Default nachweislich aktiv ist, ist dieses Beispiel passend:
 
 ```sh
-npx @tomtastisch/agent-governance@1.0.1 install --scope global \
+npx @tomtastisch/agent-governance@latest install --scope global \
   --installation-root "$HOME/.agent-governance" \
   --target-root "$HOME/.openclaw/workspace" --entry-file AGENTS.md --non-interactive
 ```

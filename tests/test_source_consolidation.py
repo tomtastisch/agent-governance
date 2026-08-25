@@ -63,6 +63,23 @@ CURRENT_REFERENCE_FILES = (
     ROOT / "docs" / "installer-json-schemas.md",
 )
 
+HISTORICAL_EVIDENCE_FILES = (
+    ROOT / "docs" / "adapter-audit.md",
+    ROOT / "docs" / "audits" / "2026-07-30-source-migration.md",
+    ROOT / "docs" / "decisions" / "0001-branch-tags-statt-agenten-praefix.md",
+    ROOT / "docs" / "decisions" / "0002-vorgang-sub-pr-in-haupt-pr-branch.md",
+    ROOT / "docs" / "decisions" / "0003-canonical-governance-bundle.md",
+    ROOT / "docs" / "dependency-evidence.md",
+    ROOT / "docs" / "superpowers" / "plans" / "2026-08-12-generic-bootstrap-enforcement.md",
+    ROOT / "docs" / "superpowers" / "plans" / "2026-08-17-typed-routing-catalogs.md",
+    ROOT / "docs" / "superpowers" / "plans" / "2026-08-19-copilot-qa-binding.md",
+    ROOT / "docs" / "superpowers" / "plans" / "2026-08-24-global-explicit-path-installer.md",
+    ROOT / "docs" / "superpowers" / "plans" / "2026-08-24-installer-security-contract-boundary.md",
+    ROOT / "docs" / "superpowers" / "specs" / "2026-08-12-generic-bootstrap-enforcement-design.md",
+    ROOT / "docs" / "superpowers" / "specs" / "2026-08-19-copilot-qa-binding-design.md",
+    ROOT / "docs" / "superpowers" / "specs" / "2026-08-24-global-explicit-path-installer-design.md",
+)
+
 RULE_DEFINITION_RE = re.compile(r"(?m)^### [A-Z][A-Z0-9-]*-\d{3} — ")
 AUTHORITY_DECLARATION_RE = re.compile(
     r"(?i)(?:einzige\s+autoritative\s+quelle|prim(?:a|ä)re\s+governance|"
@@ -229,6 +246,21 @@ class HistoricalEvidenceContract(unittest.TestCase):
             if HISTORICAL_MARKER in "\n".join(read(path).splitlines()[:10])
         ]
         self.assertEqual(mislabeled, [])
+
+    def test_historical_evidence_inventory_keeps_its_non_normative_marker(self):
+        """Catches genuine historical evidence being reclassified as a current reference."""
+        missing = [
+            path.relative_to(ROOT).as_posix()
+            for path in HISTORICAL_EVIDENCE_FILES
+            if not path.is_file()
+        ]
+        self.assertEqual(missing, [])
+        unmarked = [
+            path.relative_to(ROOT).as_posix()
+            for path in HISTORICAL_EVIDENCE_FILES
+            if HISTORICAL_MARKER not in "\n".join(read(path).splitlines()[:10])
+        ]
+        self.assertEqual(unmarked, [])
 
 class ReleaseMetadataContract(unittest.TestCase):
     def test_current_version_declares_global_installer_release_candidate(self):

@@ -207,6 +207,16 @@ Alle Commands verlangen denselben expliziten Pfadvertrag.
 - **Beispiel:** `--non-interactive`.
 - **Fehlanwendung:** Den Schalter als Erlaubnis für implizite Pfade verstehen.
 
+## Exitverhalten
+
+- `0`: Erfolg.
+- `2`: `INVALID_INVOCATION` für einen ungültigen Aufruf.
+- `4`: `UNSAFE_STATE` für einen nicht sicher klassifizierbaren Zustand.
+- `5`: `VERIFICATION_ROLLED_BACK` für einen Fehler mit erfolgreichem Rollback.
+- `6`: `ROLLBACK_FAILED` für einen fehlgeschlagenen Rollback.
+- `130`: serialisierte Unterbrechung durch `SIGINT`.
+- `143`: serialisierte Unterbrechung durch `SIGTERM`.
+
 ## Generischer Ablauf
 
 Alle Schritte verwenden exakt dieselben expliziten Pfade:

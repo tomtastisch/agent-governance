@@ -43,18 +43,28 @@ Vor der Entry-Mutation erstellt der Installer ein Backup und verifiziert es per 
 Release unter `releases/<version>/bundle` wird vollständig gegen Inventar und Digests geprüft. Im
 stabilen Zustand sind `bindings/<binding-id>/current.json` und die gebundene Receiptkopie unter
 `backups/<binding-id>/<transaction-id>` bytegleich. `PREPARED`, `COMMITTED` und `ROLLED_BACK`
-klassifizieren Recoveryzustände. `SIGINT` und `SIGTERM` werden serialisiert behandelt (Exit 130
-beziehungsweise 143); bei `SIGKILL`, Stromausfall oder Dateisystemdefekten entscheidet allein der
-verifizierte Recoveryvertrag.
+klassifizieren Recoveryzustände. `SIGINT` und `SIGTERM` werden serialisiert behandelt; bei
+`SIGKILL`, Stromausfall oder Dateisystemdefekten entscheidet allein der verifizierte
+Recoveryvertrag. Das zugehörige Exitverhalten gehört zur
+[Installer-CLI-Referenz](installer-cli-reference.md#exitverhalten).
 
-## Managed Block und JSON
+## Managed Block
 
 Der V1-Block enthält Version, kanonischen Installationsroot, normative Bootstrap-/Manifestpfade,
-Governance-, Manifest- und vollständigen Bundledigest, die Pre-Response-Ladepflicht, die Trennung lokaler Regeln und
-Fail-closed-Verhalten. JSON-Schema 1 nennt Architektur, Command, Outcome, Zustand, Phase,
-Rollbackstatus, Capability-Liste und optional einen Ressourcenplan. Exitcodes sind 0 (Erfolg),
-2 (ungültiger Aufruf), 4 (unsicherer Zustand), 5 (Fehler mit erfolgreichem Rollback), 6
-(Rollbackfehler) sowie 130/143 für SIGINT/SIGTERM.
+Governance-, Manifest- und vollständigen Bundledigest, die Pre-Response-Ladepflicht, die Trennung
+lokaler Regeln und Fail-closed-Verhalten. Er beginnt mit
+`<!-- BEGIN AGENT_GOVERNANCE_MANAGED_V1 -->` und endet mit
+`<!-- END AGENT_GOVERNANCE_MANAGED_V1 -->`. Außenbytes und vorhandene LF-/CRLF-Zeilenenden bleiben
+erhalten; doppelte, unvollständige, fremde oder manipulierte Marker scheitern fail-closed. Update
+ersetzt und Uninstall entfernt ausschließlich den verwalteten Block; Rollback stellt die
+vollständige vorherige Datei wieder her.
+
+Für die crash-sichere, konkurrenzfeste Entry-Wiederherstellung reserviert Rollback neben der
+Entry-Datei ein receipt-spezifisches `.<entry>.agent-governance-<transaction-id>.restore/` mit
+Modus `0700`. Dessen identitätsgebundene `entry.bin` bleibt nach erfolgreichem Rollback als
+Recovery-Evidenz erhalten und wird weder von Uninstall noch durch spätere Transaktionen implizit
+gelöscht. JSON-Strukturen und Feldsemantik gehören ausschließlich zu den
+[JSON-Schemas](installer-json-schemas.md).
 
 ## Update, Uninstall und Recovery
 

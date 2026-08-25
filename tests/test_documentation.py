@@ -130,7 +130,7 @@ class InstallBoundaryContract(unittest.TestCase):
         audit = (ROOT / "docs" / "adapter-audit.md").read_text(encoding="utf-8")
         for term in ("Trust Boundaries", "Symlink", "TOCTOU", "Receipt", "Residual"):
             self.assertIn(term, threat)
-        for term in ("schemaVersion", "OUTDATED", "DOWNGRADE_BLOCKED", "Exitcodes"):
+        for term in ("schemaVersion", "OUTDATED", "DOWNGRADE_BLOCKED", "Feldsemantik"):
             self.assertIn(term, schemas)
         for term in ("NO_GO", "rulesync", "uri-templates", "keine Runtime-Abhängigkeit"):
             self.assertIn(term, audit)
@@ -204,6 +204,13 @@ class InstallerCliReferenceContract(unittest.TestCase):
         self.assertNotIn("@next", reference)
         self.assertIn("@tomtastisch/agent-governance@1.0.1", reference)
 
+    def test_cli_reference_owns_exit_behavior(self):
+        """Catches exit behavior being split across lifecycle or schema references."""
+        reference = CLI_REFERENCE_PATH.read_text(encoding="utf-8")
+        self.assertIn("## Exitverhalten", reference)
+        for code in ("`0`", "`2`", "`4`", "`5`", "`6`", "`130`", "`143`"):
+            self.assertIn(code, reference)
+
 
 class HarnessRecipeReferenceContract(unittest.TestCase):
     def test_harness_recipes_keep_each_verified_harness_contract_source_backed(self):
@@ -230,9 +237,44 @@ class HarnessRecipeReferenceContract(unittest.TestCase):
         }
         for heading, (target, source_url) in contracts.items():
             with self.subTest(heading=heading):
-                self.assertIn(f"## {heading}", recipes)
-                self.assertIn(target, recipes)
-                self.assertIn(source_url, recipes)
+                section = re.search(
+                    rf"(?ms)^## {re.escape(heading)}$\n(.*?)(?=^## |\Z)", recipes
+                )
+                self.assertIsNotNone(section)
+                self.assertIn(target, section.group(0))
+                self.assertIn(source_url, section.group(0))
+
+    def test_harness_recipes_use_latest_without_patch_pins(self):
+        """Catches examples that turn the living recipes into stale patch instructions."""
+        recipes = HARNESS_RECIPES_PATH.read_text(encoding="utf-8")
+        self.assertIn("@tomtastisch/agent-governance@latest", recipes)
+        self.assertNotRegex(recipes, r"@tomtastisch/agent-governance@\d+\.\d+\.\d+")
+
+
+class InstallerArchitectureReferenceContract(unittest.TestCase):
+    def test_architecture_retains_the_managed_block_recovery_contract(self):
+        """Catches loss of durable managed-block and retained-recovery semantics before INSTALL removal."""
+        architecture = (ROOT / "docs" / "installer-architecture.md").read_text(encoding="utf-8")
+        for term in (
+            "<!-- BEGIN AGENT_GOVERNANCE_MANAGED_V1 -->",
+            "<!-- END AGENT_GOVERNANCE_MANAGED_V1 -->",
+            "Außenbytes",
+            "LF-/CRLF-Zeilenenden",
+            "doppelte, unvollständige, fremde oder manipulierte Marker scheitern fail-closed",
+            "entry.bin",
+        ):
+            self.assertIn(term, architecture)
+        self.assertRegex(
+            architecture,
+            r"weder von Uninstall noch durch spätere Transaktionen implizit\s+gelöscht",
+        )
+
+    def test_architecture_links_to_schema_owner_instead_of_enumerating_json_or_exits(self):
+        """Catches a second JSON or exit-code contract in the lifecycle reference."""
+        architecture = (ROOT / "docs" / "installer-architecture.md").read_text(encoding="utf-8")
+        self.assertIn("[JSON-Schemas](installer-json-schemas.md)", architecture)
+        self.assertNotIn("JSON-Schema 1 nennt", architecture)
+        self.assertNotIn("Exitcodes sind", architecture)
 
 
 class ReleaseMetadataContract(unittest.TestCase):
