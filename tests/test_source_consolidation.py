@@ -154,13 +154,12 @@ class SingleBootstrapSource(unittest.TestCase):
     def test_bootstrap_describes_bundle_state_without_installation_context(self):
         self.assertNotRegex(read(BOOTSTRAP), r"(?i)\binstall\w*")
 
-    def test_readme_names_the_complete_governance_scope(self):
+    def test_readme_links_the_normative_governance_owner(self):
         readme = read(ROOT / "README.md")
-        for responsibility in (
-            "Regeln", "Rollen", "Templates", "Source-of-Truth-Verträge",
-            "Tool-Routing", "Verifikation",
-        ):
-            self.assertIn(responsibility, readme)
+        self.assertIn(
+            "https://github.com/tomtastisch/agent-governance/blob/main/bundle/GOVERNANCE.md",
+            readme,
+        )
 
 
 class LegacyReferenceContract(unittest.TestCase):
@@ -344,7 +343,6 @@ class PrivateProfileMigrationGuardContract(unittest.TestCase):
         )
         current_documents = {
             "README.md": read(ROOT / "README.md"),
-            "INSTALL.md": read(ROOT / "INSTALL.md"),
             "CHANGELOG.md [Unreleased]": unreleased,
         }
         for name, text in current_documents.items():

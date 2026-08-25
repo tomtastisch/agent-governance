@@ -11,7 +11,6 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 README = (ROOT / "README.md").read_text(encoding="utf-8")
-INSTALL = (ROOT / "INSTALL.md").read_text(encoding="utf-8")
 CHANGELOG = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
 VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 CLI_REFERENCE_PATH = ROOT / "docs" / "installer-cli-reference.md"
@@ -121,14 +120,7 @@ class ReadmeEntryContract(unittest.TestCase):
         self.assertIn(PACKAGE["license"], README)
 
 
-class InstallBoundaryContract(unittest.TestCase):
-    def test_install_is_boundary_not_second_executable_guide(self):
-        self.assertIn("Boundary- und Verantwortungsdokument", INSTALL)
-        self.assertIn("öffentliche CLI", INSTALL)
-        self.assertIn("GLOBAL_EXPLICIT_PATH_MANAGED_BLOCK", INSTALL)
-        self.assertNotRegex(INSTALL, r"(?m)^\d+\. ")
-        self.assertIn("[`VERSION`](VERSION)", INSTALL)
-
+class CurrentDocumentationBoundaryContract(unittest.TestCase):
     def test_harness_recipes_are_source_linked_and_runtime_neutral(self):
         recipes = HARNESS_RECIPES_PATH.read_text(encoding="utf-8")
         for term in (
@@ -173,11 +165,10 @@ class InstallBoundaryContract(unittest.TestCase):
             "https://github.com/tomtastisch/agent-governance/blob/main/docs/installer-threat-model.md",
             README,
         )
-        self.assertIn("Same-UID-Final-Component-Co-Writer", INSTALL)
         self.assertIn("reale Capability-Probe", threat)
         self.assertIn("verifizierter unveränderlicher Recoveryzustand erhalten", threat)
         for absolute_claim in ("race-free", "TOCTOU-proof", "tamper-proof", "atomic against all concurrent writers"):
-            self.assertNotIn(absolute_claim, "\n".join((README, INSTALL, threat, architecture)).lower())
+            self.assertNotIn(absolute_claim, "\n".join((README, threat, architecture)).lower())
 
     def test_catchable_and_uncatchable_interruption_boundaries_are_explicit(self):
         architecture = (ROOT / "docs" / "installer-architecture.md").read_text(encoding="utf-8")
@@ -200,7 +191,6 @@ class InstallerCliReferenceContract(unittest.TestCase):
         self.assertTrue(CLI_REFERENCE_PATH.is_file())
         reference = CLI_REFERENCE_PATH.read_text(encoding="utf-8")
         self.assertIn("docs/installer-cli-reference.md", README)
-        self.assertIn("docs/installer-cli-reference.md", INSTALL)
         self.assertRegex(reference, r"(?i)nicht normative.+CLI-Bedienreferenz")
         for command in (
             "inspect", "plan", "install", "verify",
@@ -277,7 +267,7 @@ class HarnessRecipeReferenceContract(unittest.TestCase):
 
 class InstallerArchitectureReferenceContract(unittest.TestCase):
     def test_architecture_retains_the_managed_block_recovery_contract(self):
-        """Catches loss of durable managed-block and retained-recovery semantics before INSTALL removal."""
+        """Catches loss of durable managed-block and retained-recovery semantics after migration."""
         architecture = (ROOT / "docs" / "installer-architecture.md").read_text(encoding="utf-8")
         for term in (
             "<!-- BEGIN AGENT_GOVERNANCE_MANAGED_V1 -->",

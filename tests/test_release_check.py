@@ -8,7 +8,7 @@ Abdeckung:
   Cluster A: Tag-Auflösung, Peel, Signaturprüfung, deterministische Tag-Wahl
   Cluster B: CHANGELOG-Abschnittsweise Validierung (kein Cross-Section-Leak)
   Cluster C: Release-Modus via injizierte gh-Ausgaben
-  Cluster D: README/INSTALL/VERSION fail-closed
+  Cluster D: README-Dokumentlinks/VERSION fail-closed
 """
 
 import base64
@@ -44,8 +44,35 @@ _CHANGELOG_MIN = (
     "## [Unreleased]\n### Added\n- item\n### Changed\n- Keine.\n"
     "### Fixed\n- Keine.\n### Removed\n- Keine.\n\n**Breaking changes:** none\n"
 )
-_README_MIN = "**Version:** [`0.1.0`](VERSION)\n"
-_INSTALL_MIN = "See [`VERSION`](VERSION)\n"
+
+_CANONICAL_DOCUMENT_PATHS = (
+    "docs/installer-cli-reference.md",
+    "docs/harness-recipes.md",
+    "docs/installer-architecture.md",
+    "docs/installer-threat-model.md",
+    "docs/installer-json-schemas.md",
+    "CHANGELOG.md",
+    "bundle/GOVERNANCE.md",
+)
+_BLOB_MAIN = "https://github.com/tomtastisch/agent-governance/blob/main"
+
+
+def _canonical_readme(overrides=None, omitted=(), extra=()):
+    overrides = overrides or {}
+    lines = ["# Fixture", "", "## Dokumentation", ""]
+    for path in _CANONICAL_DOCUMENT_PATHS:
+        if path not in omitted:
+            lines.append(f"- [{path}]({overrides.get(path, f'{_BLOB_MAIN}/{path}')})")
+    lines.extend(f"- [extra]({url})" for url in extra)
+    lines.extend(("", "## Support und Lizenz", "", "[Support](https://example.com/support)", ""))
+    return "\n".join(lines)
+
+
+def _write_documentation_tree(root, readme=None):
+    _write(os.path.join(root, "README.md"), readme or _canonical_readme())
+    for path in _CANONICAL_DOCUMENT_PATHS:
+        if path != "CHANGELOG.md":
+            _write(os.path.join(root, path), f"fixture for {path}\n")
 
 _RELEASE_SIGNER_PRINCIPAL = "82227609+tomtastisch@users.noreply.github.com"
 _RELEASE_SIGNER_KEY = (
@@ -127,8 +154,7 @@ class TreeVersionForm(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             _write(os.path.join(d, "VERSION"), "0.1.0\n")
             _write(os.path.join(d, "CHANGELOG.md"), _CHANGELOG_MIN)
-            _write(os.path.join(d, "README.md"), _README_MIN)
-            _write(os.path.join(d, "INSTALL.md"), _INSTALL_MIN)
+            _write_documentation_tree(d)
             r = check_tree(root=d)
             self.assertTrue(r.ok, f"Erwartet OK, Fehler: {r.errors}")
 
@@ -141,8 +167,7 @@ class TreeCompetingSource(unittest.TestCase):
     def _write_minimum_tree(self, root):
         _write(os.path.join(root, "VERSION"), "0.1.0\n")
         _write(os.path.join(root, "CHANGELOG.md"), _CHANGELOG_MIN)
-        _write(os.path.join(root, "README.md"), _README_MIN)
-        _write(os.path.join(root, "INSTALL.md"), _INSTALL_MIN)
+        _write_documentation_tree(root)
 
     def test_toml_version_is_competing(self):
         with tempfile.TemporaryDirectory() as d:
@@ -261,8 +286,7 @@ class TreeChangelogSections(unittest.TestCase):
         self.d = tempfile.TemporaryDirectory()
         self.root = self.d.name
         _write(os.path.join(self.root, "VERSION"), "0.1.0\n")
-        _write(os.path.join(self.root, "README.md"), "**Version:** [`0.1.0`](VERSION)\n")
-        _write(os.path.join(self.root, "INSTALL.md"), "See [`VERSION`](VERSION)\n")
+        _write_documentation_tree(self.root)
 
     def tearDown(self):
         self.d.cleanup()
@@ -362,82 +386,247 @@ class TreeChangelogCrossSectionLeak(unittest.TestCase):
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# Cluster D: README / INSTALL
+# Cluster D: kanonische README-Dokumentlinks
 # ═══════════════════════════════════════════════════════════════════════
 
-class TreeReadmeDrift(unittest.TestCase):
-    def setUp(self):
-        self.d = tempfile.TemporaryDirectory()
-        self.root = self.d.name
-        _write(os.path.join(self.root, "VERSION"), "0.2.0\n")
-        _write(os.path.join(self.root, "CHANGELOG.md"), _CHANGELOG_MIN.replace("0.1.0", "0.2.0"))
-
-    def tearDown(self):
-        self.d.cleanup()
-
-    def test_readme_version_drift_is_error(self):
-        _write(os.path.join(self.root, "README.md"), "**Version:** [`0.1.0`](VERSION)\n")
-        r = check_tree(root=self.root)
-        self.assertFalse(r.ok)
-        self.assertTrue(any("zeigt Version '0.1.0'" in e for e in r.errors))
-
-    def test_readme_matching_version_is_ok(self):
-        _write(os.path.join(self.root, "README.md"), "**Version:** [`0.2.0`](VERSION)\n")
-        _write(os.path.join(self.root, "INSTALL.md"), _INSTALL_MIN)
-        r = check_tree(root=self.root)
-        self.assertTrue(r.ok, f"Erwartet OK, Fehler: {r.errors}")
-
-    def test_readme_bare_version_without_link_is_error(self):
-        _write(os.path.join(self.root, "README.md"), "**Version:** `0.2.0`\n")
-        r = check_tree(root=self.root)
-        self.assertFalse(r.ok)
-        self.assertTrue(any("ohne VERSION-Link" in e for e in r.errors))
-
-    def test_readme_no_version_reference_is_error(self):
-        _write(os.path.join(self.root, "README.md"), "# Title\n\nNo version here.\n")
-        r = check_tree(root=self.root)
-        self.assertFalse(r.ok)
-        self.assertTrue(any("referenziert keine versionierte" in e for e in r.errors))
-
-    def test_readme_missing_is_error(self):
-        _write(os.path.join(self.root, "INSTALL.md"), _INSTALL_MIN)
-        r = check_tree(root=self.root)
-        self.assertFalse(r.ok)
-        self.assertTrue(any("README.md fehlt" in e for e in r.errors))
-
-
-class TreeInstallContracts(unittest.TestCase):
+class TreeDocumentLinks(unittest.TestCase):
     def setUp(self):
         self.d = tempfile.TemporaryDirectory()
         self.root = self.d.name
         _write(os.path.join(self.root, "VERSION"), "0.1.0\n")
         _write(os.path.join(self.root, "CHANGELOG.md"), _CHANGELOG_MIN)
-        _write(os.path.join(self.root, "README.md"), _README_MIN)
+        _write_documentation_tree(self.root)
 
     def tearDown(self):
         self.d.cleanup()
 
-    def test_install_wrong_path_is_error(self):
-        _write(os.path.join(self.root, "INSTALL.md"), "See [`VERSION`](../VERSION)\n")
-        r = check_tree(root=self.root)
-        self.assertFalse(r.ok)
-        self.assertTrue(any("korrekter Pfad ist 'VERSION'" in e for e in r.errors))
-
-    def test_install_missing_is_error(self):
-        r = check_tree(root=self.root)
-        self.assertFalse(r.ok)
-        self.assertTrue(any("INSTALL.md fehlt" in e for e in r.errors))
-
-    def test_install_without_version_contract_is_error(self):
-        _write(os.path.join(self.root, "INSTALL.md"), "# Install\n\nJust do it.\n")
-        r = check_tree(root=self.root)
-        self.assertFalse(r.ok)
-        self.assertTrue(any("keinen Hinweis auf versionierte" in e for e in r.errors))
-
-    def test_install_correct_is_ok(self):
-        _write(os.path.join(self.root, "INSTALL.md"), _INSTALL_MIN)
+    def test_exact_canonical_links_with_deleted_install_are_ok(self):
         r = check_tree(root=self.root)
         self.assertTrue(r.ok, f"Erwartet OK, Fehler: {r.errors}")
+
+    def test_wrong_host_is_error(self):
+        path = _CANONICAL_DOCUMENT_PATHS[0]
+        _write_documentation_tree(
+            self.root,
+            _canonical_readme({path: f"https://example.com/tomtastisch/agent-governance/blob/main/{path}"}),
+        )
+        r = check_tree(root=self.root)
+        self.assertFalse(r.ok)
+        self.assertTrue(any("Host" in error for error in r.errors), r.errors)
+
+    def test_non_https_scheme_is_error(self):
+        path = _CANONICAL_DOCUMENT_PATHS[0]
+        _write_documentation_tree(
+            self.root,
+            _canonical_readme({path: f"http://github.com/tomtastisch/agent-governance/blob/main/{path}"}),
+        )
+        r = check_tree(root=self.root)
+        self.assertFalse(r.ok)
+        self.assertTrue(any("https" in error for error in r.errors), r.errors)
+
+    def test_wrong_owner_or_repository_is_error(self):
+        path = _CANONICAL_DOCUMENT_PATHS[0]
+        for repository in ("other/agent-governance", "tomtastisch/other"):
+            with self.subTest(repository=repository):
+                _write_documentation_tree(
+                    self.root,
+                    _canonical_readme({path: f"https://github.com/{repository}/blob/main/{path}"}),
+                )
+                r = check_tree(root=self.root)
+                self.assertFalse(r.ok)
+                self.assertTrue(any("Owner/Repository" in error for error in r.errors), r.errors)
+
+    def test_non_main_ref_is_error(self):
+        path = _CANONICAL_DOCUMENT_PATHS[0]
+        _write_documentation_tree(
+            self.root,
+            _canonical_readme({path: f"https://github.com/tomtastisch/agent-governance/blob/dev/{path}"}),
+        )
+        r = check_tree(root=self.root)
+        self.assertFalse(r.ok)
+        self.assertTrue(any("main-Ref" in error for error in r.errors), r.errors)
+
+    def test_non_blob_github_view_is_error(self):
+        path = _CANONICAL_DOCUMENT_PATHS[0]
+        _write_documentation_tree(
+            self.root,
+            _canonical_readme({path: f"https://github.com/tomtastisch/agent-governance/tree/main/{path}"}),
+        )
+        r = check_tree(root=self.root)
+        self.assertFalse(r.ok)
+        self.assertTrue(any("blob-Ansicht" in error for error in r.errors), r.errors)
+
+    def test_missing_canonical_path_is_error(self):
+        missing = _CANONICAL_DOCUMENT_PATHS[0]
+        _write_documentation_tree(self.root, _canonical_readme(omitted=(missing,)))
+        r = check_tree(root=self.root)
+        self.assertFalse(r.ok)
+        self.assertTrue(any(missing in error and "fehlt" in error for error in r.errors), r.errors)
+
+    def test_duplicate_canonical_path_is_error(self):
+        path = _CANONICAL_DOCUMENT_PATHS[0]
+        _write_documentation_tree(
+            self.root,
+            _canonical_readme(extra=(f"{_BLOB_MAIN}/{path}",)),
+        )
+        r = check_tree(root=self.root)
+        self.assertFalse(r.ok)
+        self.assertTrue(any(path in error and "mehrfach" in error for error in r.errors), r.errors)
+
+    def test_unexpected_document_path_is_error(self):
+        expected = _CANONICAL_DOCUMENT_PATHS[0]
+        unexpected = "docs/unexpected.md"
+        _write(os.path.join(self.root, unexpected), "unexpected\n")
+        _write_documentation_tree(
+            self.root,
+            _canonical_readme({expected: f"{_BLOB_MAIN}/{unexpected}"}),
+        )
+        r = check_tree(root=self.root)
+        self.assertFalse(r.ok)
+        self.assertTrue(any(unexpected in error and "unerwartet" in error for error in r.errors), r.errors)
+
+    def test_query_and_fragment_tricks_are_errors(self):
+        path = _CANONICAL_DOCUMENT_PATHS[0]
+        for suffix in ("?ref=dev", "#../INSTALL.md"):
+            with self.subTest(suffix=suffix):
+                _write_documentation_tree(
+                    self.root,
+                    _canonical_readme({path: f"{_BLOB_MAIN}/{path}{suffix}"}),
+                )
+                r = check_tree(root=self.root)
+                self.assertFalse(r.ok)
+                self.assertTrue(any("Query/Fragment" in error for error in r.errors), r.errors)
+
+    def test_encoded_and_plain_path_traversal_are_errors(self):
+        path = _CANONICAL_DOCUMENT_PATHS[0]
+        for target in (
+            f"{_BLOB_MAIN}/docs/%2e%2e/CHANGELOG.md",
+            f"{_BLOB_MAIN}/docs/../CHANGELOG.md",
+        ):
+            with self.subTest(target=target):
+                _write_documentation_tree(self.root, _canonical_readme({path: target}))
+                r = check_tree(root=self.root)
+                self.assertFalse(r.ok)
+                self.assertTrue(any("Pfad" in error for error in r.errors), r.errors)
+
+    def test_retired_install_file_is_error(self):
+        _write(os.path.join(self.root, "INSTALL.md"), "retired\n")
+        r = check_tree(root=self.root)
+        self.assertFalse(r.ok)
+        self.assertTrue(any("INSTALL.md" in error and "entfernt" in error for error in r.errors), r.errors)
+
+    def test_stale_docs_images_directory_is_error(self):
+        _write(os.path.join(self.root, "docs", "images", "stale.png"), "stale\n")
+        r = check_tree(root=self.root)
+        self.assertFalse(r.ok)
+        self.assertTrue(any("docs/images" in error for error in r.errors), r.errors)
+
+    def test_missing_local_target_is_error(self):
+        missing = _CANONICAL_DOCUMENT_PATHS[0]
+        os.unlink(os.path.join(self.root, missing))
+        r = check_tree(root=self.root)
+        self.assertFalse(r.ok)
+        self.assertTrue(any(missing in error and "lokales Ziel fehlt" in error for error in r.errors), r.errors)
+
+    def test_local_target_must_resolve_beneath_repository(self):
+        path = _CANONICAL_DOCUMENT_PATHS[0]
+        os.unlink(os.path.join(self.root, path))
+        outside = os.path.join(self.d.name + "-outside.md")
+        try:
+            _write(outside, "outside\n")
+            os.symlink(outside, os.path.join(self.root, path))
+            r = check_tree(root=self.root)
+            self.assertFalse(r.ok)
+            self.assertTrue(any(path in error and "Repository" in error for error in r.errors), r.errors)
+        finally:
+            if os.path.exists(outside):
+                os.unlink(outside)
+
+    def test_readme_must_resolve_beneath_repository(self):
+        readme = os.path.join(self.root, "README.md")
+        os.unlink(readme)
+        outside = os.path.join(self.d.name + "-outside-readme.md")
+        try:
+            _write(outside, _canonical_readme())
+            os.symlink(outside, readme)
+            r = check_tree(root=self.root)
+            self.assertFalse(r.ok)
+            self.assertTrue(any("README.md" in error and "Repository" in error for error in r.errors), r.errors)
+        finally:
+            if os.path.exists(outside):
+                os.unlink(outside)
+
+
+class DocsRemoteCli(unittest.TestCase):
+    def setUp(self):
+        self.d = tempfile.TemporaryDirectory()
+        self.commands = os.path.join(self.d.name, "commands")
+        os.makedirs(self.commands)
+        self.log = os.path.join(self.d.name, "gh.log")
+        self.script = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "tools",
+            "release_check.py",
+        )
+
+    def tearDown(self):
+        self.d.cleanup()
+
+    def _run(self, fake_gh=None):
+        if fake_gh is not None:
+            gh = os.path.join(self.commands, "gh")
+            _write(gh, fake_gh)
+            os.chmod(gh, 0o700)
+        return subprocess.run(
+            [sys.executable, self.script, "docs-remote"],
+            cwd=os.path.dirname(self.script),
+            env={
+                **os.environ,
+                "PATH": self.commands,
+                "GH_LOG": self.log,
+            },
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    def test_checks_every_canonical_path_with_one_argument_safe_endpoint(self):
+        result = self._run(
+            "#!/bin/sh\n"
+            "printf '%s|%s|%s\\n' \"$#\" \"$1\" \"$2\" >> \"$GH_LOG\"\n"
+            "exit 0\n"
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        with open(self.log, encoding="utf-8") as handle:
+            calls = handle.read().splitlines()
+        self.assertEqual(
+            calls,
+            [
+                "2|api|repos/tomtastisch/agent-governance/contents/"
+                f"{path}?ref=main"
+                for path in _CANONICAL_DOCUMENT_PATHS
+            ],
+        )
+
+    def test_missing_gh_cli_fails_closed(self):
+        result = self._run()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("gh CLI nicht verfügbar", result.stderr)
+
+    def test_api_error_fails_closed_without_skipping_remaining_paths(self):
+        failed_path = _CANONICAL_DOCUMENT_PATHS[2]
+        result = self._run(
+            "#!/bin/sh\n"
+            "printf '%s|%s|%s\\n' \"$#\" \"$1\" \"$2\" >> \"$GH_LOG\"\n"
+            f"case \"$2\" in *{failed_path}*) echo 'synthetic API failure' >&2; exit 1;; esac\n"
+            "exit 0\n"
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(failed_path, result.stderr)
+        self.assertIn("synthetic API failure", result.stderr)
+        with open(self.log, encoding="utf-8") as handle:
+            calls = handle.read().splitlines()
+        self.assertEqual(len(calls), len(_CANONICAL_DOCUMENT_PATHS))
 
 
 # ═══════════════════════════════════════════════════════════════════════

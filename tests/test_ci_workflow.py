@@ -73,6 +73,21 @@ def _run_registry_retry_with_failed_reads(readback: str) -> int:
 
 
 class ReleaseWorkflowSecurityContract(unittest.TestCase):
+    def test_remote_document_gate_runs_only_after_main_or_release_publication(self):
+        self.assertIn("\n  docs-remote:\n", CI_WORKFLOW)
+        block = _job_block(CI_WORKFLOW, "docs-remote")
+
+        self.assertIn(
+            "    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') "
+            "|| (github.event_name == 'release' && github.event.action == 'published')\n",
+            block,
+        )
+        self.assertIn("      contents: read\n", block)
+        self.assertIn("      GH_TOKEN: ${{ github.token }}\n", block)
+        self.assertIn("          ref: refs/heads/main\n", block)
+        self.assertIn("python3 tools/release_check.py docs-remote", block)
+        self.assertNotIn("pull_request", block)
+
     def test_installer_job_does_not_use_step_only_contexts_in_job_env(self):
         block = _job_block(CI_WORKFLOW, "installer-package")
         job_configuration = block.split("    steps:\n", 1)[0]
