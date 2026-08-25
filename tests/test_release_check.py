@@ -57,13 +57,14 @@ _CANONICAL_DOCUMENT_PATHS = (
 _BLOB_MAIN = "https://github.com/tomtastisch/agent-governance/blob/main"
 
 
-def _canonical_readme(overrides=None, omitted=(), extra=()):
+def _canonical_readme(overrides=None, omitted=(), extra=(), raw_lines=()):
     overrides = overrides or {}
     lines = ["# Fixture", "", "## Dokumentation", ""]
     for path in _CANONICAL_DOCUMENT_PATHS:
         if path not in omitted:
             lines.append(f"- [{path}]({overrides.get(path, f'{_BLOB_MAIN}/{path}')})")
     lines.extend(f"- [extra]({url})" for url in extra)
+    lines.extend(raw_lines)
     lines.extend(("", "## Support und Lizenz", "", "[Support](https://example.com/support)", ""))
     return "\n".join(lines)
 
@@ -473,6 +474,28 @@ class TreeDocumentLinks(unittest.TestCase):
         self.assertFalse(r.ok)
         self.assertTrue(any(path in error and "mehrfach" in error for error in r.errors), r.errors)
 
+    def test_unsupported_markdown_link_forms_cannot_hide_extra_links(self):
+        cases = {
+            "title": ('- [extra](https://example.com/docs "title")',),
+            "reference": (
+                "- [extra][external-doc]",
+                "[external-doc]: https://example.com/docs",
+            ),
+            "autolink": ("- <https://example.com/docs>",),
+        }
+        for name, lines in cases.items():
+            with self.subTest(name=name):
+                _write_documentation_tree(
+                    self.root,
+                    _canonical_readme(raw_lines=lines),
+                )
+                r = check_tree(root=self.root)
+                self.assertFalse(r.ok)
+                self.assertTrue(
+                    any("Markdown-Grammatik" in error for error in r.errors),
+                    r.errors,
+                )
+
     def test_unexpected_document_path_is_error(self):
         expected = _CANONICAL_DOCUMENT_PATHS[0]
         unexpected = "docs/unexpected.md"
@@ -509,6 +532,24 @@ class TreeDocumentLinks(unittest.TestCase):
                 self.assertFalse(r.ok)
                 self.assertTrue(any("Pfad" in error for error in r.errors), r.errors)
 
+    def test_url_case_userinfo_port_and_backslash_are_errors(self):
+        path = _CANONICAL_DOCUMENT_PATHS[0]
+        cases = {
+            "host-case": f"https://GitHub.com/tomtastisch/agent-governance/blob/main/{path}",
+            "userinfo": f"https://user@github.com/tomtastisch/agent-governance/blob/main/{path}",
+            "port": f"https://github.com:443/tomtastisch/agent-governance/blob/main/{path}",
+            "backslash": "https://github.com/tomtastisch/agent-governance/blob/main/"
+            "docs\\installer-cli-reference.md",
+        }
+        for name, url in cases.items():
+            with self.subTest(name=name):
+                _write_documentation_tree(
+                    self.root,
+                    _canonical_readme({path: url}),
+                )
+                r = check_tree(root=self.root)
+                self.assertFalse(r.ok, f"{name} darf den exakten URL-Vertrag nicht erfüllen")
+
     def test_retired_install_file_is_error(self):
         _write(os.path.join(self.root, "INSTALL.md"), "retired\n")
         r = check_tree(root=self.root)
@@ -542,6 +583,18 @@ class TreeDocumentLinks(unittest.TestCase):
             if os.path.exists(outside):
                 os.unlink(outside)
 
+    def test_in_repository_document_target_symlink_is_error(self):
+        path = _CANONICAL_DOCUMENT_PATHS[0]
+        target = os.path.join(self.root, path)
+        actual = os.path.join(self.root, "docs", "installer-cli-reference.actual.md")
+        os.rename(target, actual)
+        os.symlink(os.path.basename(actual), target)
+
+        r = check_tree(root=self.root)
+
+        self.assertFalse(r.ok)
+        self.assertTrue(any(path in error and "Symlink" in error for error in r.errors), r.errors)
+
     def test_readme_must_resolve_beneath_repository(self):
         readme = os.path.join(self.root, "README.md")
         os.unlink(readme)
@@ -556,6 +609,17 @@ class TreeDocumentLinks(unittest.TestCase):
             if os.path.exists(outside):
                 os.unlink(outside)
 
+    def test_in_repository_readme_symlink_is_error(self):
+        readme = os.path.join(self.root, "README.md")
+        actual = os.path.join(self.root, "README.actual.md")
+        os.rename(readme, actual)
+        os.symlink(os.path.basename(actual), readme)
+
+        r = check_tree(root=self.root)
+
+        self.assertFalse(r.ok)
+        self.assertTrue(any("README.md" in error and "Symlink" in error for error in r.errors), r.errors)
+
 
 class DocsRemoteCli(unittest.TestCase):
     def setUp(self):
@@ -568,18 +632,46 @@ class DocsRemoteCli(unittest.TestCase):
             "tools",
             "release_check.py",
         )
+        self.repository = os.path.dirname(os.path.dirname(self.script))
 
     def tearDown(self):
         self.d.cleanup()
 
-    def _run(self, fake_gh=None):
+    @staticmethod
+    def _success_response_script(prefix=""):
+        return (
+            "#!/bin/sh\n"
+            "printf '%s|%s|%s\\n' \"$#\" \"$1\" \"$2\" >> \"$GH_LOG\"\n"
+            f"{prefix}"
+            "path=${2#repos/tomtastisch/agent-governance/contents/}\n"
+            "path=${path%?ref=main}\n"
+            "name=${path##*/}\n"
+            "printf '{\"name\":\"%s\",\"path\":\"%s\",\"sha\":\"fixture\","
+            "\"size\":1,\"url\":\"https://api.github.test/content\","
+            "\"html_url\":\"https://github.test/content\","
+            "\"git_url\":\"https://api.github.test/git\","
+            "\"download_url\":\"https://raw.github.test/content\","
+            "\"type\":\"file\",\"content\":\"Zml4dHVyZQ==\","
+            "\"encoding\":\"base64\",\"_links\":{\"self\":\"self\","
+            "\"git\":\"git\",\"html\":\"html\"}}\\n' \"$name\" \"$path\"\n"
+        )
+
+    @staticmethod
+    def _fixed_response_script(response):
+        return (
+            "#!/bin/sh\n"
+            "printf '%s|%s|%s\\n' \"$#\" \"$1\" \"$2\" >> \"$GH_LOG\"\n"
+            f"printf '%s\\n' '{response}'\n"
+        )
+
+    def _run(self, fake_gh=None, command=None):
         if fake_gh is not None:
             gh = os.path.join(self.commands, "gh")
             _write(gh, fake_gh)
             os.chmod(gh, 0o700)
         return subprocess.run(
-            [sys.executable, self.script, "docs-remote"],
-            cwd=os.path.dirname(self.script),
+            command or [sys.executable, self.script, "docs-remote"],
+            cwd=self.repository,
             env={
                 **os.environ,
                 "PATH": self.commands,
@@ -591,11 +683,7 @@ class DocsRemoteCli(unittest.TestCase):
         )
 
     def test_checks_every_canonical_path_with_one_argument_safe_endpoint(self):
-        result = self._run(
-            "#!/bin/sh\n"
-            "printf '%s|%s|%s\\n' \"$#\" \"$1\" \"$2\" >> \"$GH_LOG\"\n"
-            "exit 0\n"
-        )
+        result = self._run(self._success_response_script())
         self.assertEqual(result.returncode, 0, result.stderr)
         with open(self.log, encoding="utf-8") as handle:
             calls = handle.read().splitlines()
@@ -616,10 +704,10 @@ class DocsRemoteCli(unittest.TestCase):
     def test_api_error_fails_closed_without_skipping_remaining_paths(self):
         failed_path = _CANONICAL_DOCUMENT_PATHS[2]
         result = self._run(
-            "#!/bin/sh\n"
-            "printf '%s|%s|%s\\n' \"$#\" \"$1\" \"$2\" >> \"$GH_LOG\"\n"
-            f"case \"$2\" in *{failed_path}*) echo 'synthetic API failure' >&2; exit 1;; esac\n"
-            "exit 0\n"
+            self._success_response_script(
+                f"case \"$2\" in *{failed_path}*) "
+                "echo 'synthetic API failure' >&2; exit 1;; esac\n"
+            )
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(failed_path, result.stderr)
@@ -627,6 +715,52 @@ class DocsRemoteCli(unittest.TestCase):
         with open(self.log, encoding="utf-8") as handle:
             calls = handle.read().splitlines()
         self.assertEqual(len(calls), len(_CANONICAL_DOCUMENT_PATHS))
+
+    def test_empty_success_response_fails_closed(self):
+        result = self._run(self._fixed_response_script(""))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("ungültige JSON-Antwort", result.stderr)
+
+    def test_malformed_success_response_fails_closed(self):
+        result = self._run(self._fixed_response_script("not-json"))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("ungültige JSON-Antwort", result.stderr)
+
+    def test_array_success_response_fails_closed(self):
+        result = self._run(self._fixed_response_script("[]"))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Dateiobjekt", result.stderr)
+
+    def test_directory_success_response_fails_closed(self):
+        result = self._run(
+            self._fixed_response_script(
+                '{"type":"dir","path":"docs/installer-cli-reference.md"}'
+            )
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("type", result.stderr)
+
+    def test_path_mismatch_success_response_fails_closed(self):
+        result = self._run(
+            self._fixed_response_script(
+                '{"type":"file","path":"docs/unexpected.md"}'
+            )
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("path", result.stderr)
+
+    def test_timeout_fails_closed(self):
+        result = self._run(
+            f"#!{sys.executable}\nimport time\ntime.sleep(1)\n",
+            command=[
+                sys.executable,
+                "-c",
+                "from tools.release_check import check_docs_remote; "
+                "raise SystemExit(check_docs_remote(timeout=0.01).exit())",
+            ],
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Timeout", result.stderr)
 
 
 # ═══════════════════════════════════════════════════════════════════════

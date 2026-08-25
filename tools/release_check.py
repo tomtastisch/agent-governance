@@ -40,7 +40,9 @@ UNRELEASED_HEADING_RE = re.compile(r"^##\s+\[Unreleased\]", re.MULTILINE)
 CATEGORY_HEADING_RE = re.compile(r"^###\s+(\w+)", re.MULTILINE)
 SECTION_SPLIT_RE = re.compile(r"(?=^##\s+\[)", re.MULTILINE)
 CHANGELOG_LINK_RE = re.compile(r"^\[(\d+\.\d+\.\d[^\]]*)\]:\s*(https?://\S+)", re.MULTILINE)
-MARKDOWN_LINK_RE = re.compile(r"(?<!!)\[[^\]\n]+\]\(([^)\s]+)\)")
+DOCUMENTATION_LINK_LINE_RE = re.compile(
+    r"^- \[[\w ,./&-]+\]\(([^()\s]+)\)$"
+)
 DOCUMENTATION_SECTION_RE = re.compile(
     r"(?ms)^## Dokumentation\s*$\n(?P<body>.*?)(?=^##\s|\Z)"
 )
@@ -185,7 +187,7 @@ class GhRunner:
 
     @staticmethod
     def api_content(endpoint, root, timeout=30):
-        """Read-only: ruft genau einen vorvalidierten GitHub-API-Endpunkt auf."""
+        """Read-only: gibt das geparste GitHub-Contents-Objekt oder einen Fehler zurück."""
         try:
             result = subprocess.run(
                 ["gh", "api", endpoint],
@@ -195,16 +197,19 @@ class GhRunner:
                 timeout=timeout,
             )
         except FileNotFoundError:
-            return "gh CLI nicht verfügbar"
+            return None, "gh CLI nicht verfügbar"
         except subprocess.TimeoutExpired:
-            return f"gh api {endpoint}: Timeout"
+            return None, f"gh api {endpoint}: Timeout"
         except OSError as error:
-            return f"gh api {endpoint}: nicht ausführbar: {error}"
+            return None, f"gh api {endpoint}: nicht ausführbar: {error}"
 
         if result.returncode != 0:
             detail = result.stderr.strip()[:200] or f"Exit {result.returncode}"
-            return f"gh api {endpoint}: {detail}"
-        return None
+            return None, f"gh api {endpoint}: {detail}"
+        try:
+            return json.loads(result.stdout), None
+        except json.JSONDecodeError:
+            return None, f"gh api {endpoint}: ungültige JSON-Antwort"
 
 
 # ── Hilfsfunktionen ──
@@ -531,28 +536,9 @@ def _check_document_links(root):
         r.add_error("veralteter Pfad docs/images muss entfernt sein")
 
     for path in CANONICAL_DOCUMENT_PATHS:
-        candidate = os.path.join(root_real, *path.split("/"))
-        target_real = os.path.realpath(candidate)
-        try:
-            confined = os.path.commonpath((root_real, target_real)) == root_real
-        except ValueError:
-            confined = False
-        if not confined:
-            r.add_error(f"{path}: lokales Ziel verlässt das Repository")
-        elif not os.path.isfile(candidate):
-            r.add_error(f"{path}: lokales Ziel fehlt oder ist keine reguläre Datei")
+        _check_confined_regular_file(root_real, path, r)
 
-    readme_path = os.path.join(root_real, "README.md")
-    readme_real = os.path.realpath(readme_path)
-    try:
-        readme_confined = os.path.commonpath((root_real, readme_real)) == root_real
-    except ValueError:
-        readme_confined = False
-    if not readme_confined:
-        r.add_error("README.md verlässt das Repository")
-        return r
-    if not os.path.isfile(readme_path):
-        r.add_error("README.md fehlt oder ist keine reguläre Datei")
+    if not _check_confined_regular_file(root_real, "README.md", r):
         return r
 
     readme = _read("README.md", root_real)
@@ -562,7 +548,17 @@ def _check_document_links(root):
         return r
 
     seen = {path: 0 for path in CANONICAL_DOCUMENT_PATHS}
-    urls = MARKDOWN_LINK_RE.findall(section.group("body"))
+    urls = []
+    for line in section.group("body").splitlines():
+        if not line.strip():
+            continue
+        link = DOCUMENTATION_LINK_LINE_RE.fullmatch(line)
+        if link is None:
+            r.add_error(
+                "README.md: Dokumentationsabschnitt verletzt die geschlossene Markdown-Grammatik"
+            )
+            continue
+        urls.append(link.group(1))
     for url in urls:
         path = _validate_current_document_url(url, r)
         if path in seen:
@@ -574,6 +570,31 @@ def _check_document_links(root):
         elif count > 1:
             r.add_error(f"README.md: kanonischer Dokumentlink ist mehrfach vorhanden: {path}")
     return r
+
+
+def _check_confined_regular_file(root_real, path, r):
+    """Lehnt Root-Escape, fehlende Pfade, Symlinks und Nicht-Dateien ab."""
+    candidate = os.path.join(root_real, *path.split("/"))
+    target_real = os.path.realpath(candidate)
+    try:
+        confined = os.path.commonpath((root_real, target_real)) == root_real
+    except ValueError:
+        confined = False
+    if not confined:
+        r.add_error(f"{path}: lokales Ziel verlässt das Repository")
+        return False
+    try:
+        file_stat = os.lstat(candidate)
+    except OSError:
+        r.add_error(f"{path}: lokales Ziel fehlt oder ist keine reguläre Datei")
+        return False
+    if stat.S_ISLNK(file_stat.st_mode):
+        r.add_error(f"{path}: lokales Ziel darf kein Symlink sein")
+        return False
+    if not stat.S_ISREG(file_stat.st_mode):
+        r.add_error(f"{path}: lokales Ziel ist keine reguläre Datei")
+        return False
+    return True
 
 
 def _validate_current_document_url(url, r):
@@ -632,7 +653,7 @@ def _contents_endpoint(path):
     )
 
 
-def check_docs_remote(root=None, gh=None):
+def check_docs_remote(root=None, gh=None, timeout=30):
     """Prüft den geschlossenen kanonischen Dokumentpfadsatz auf GitHub main."""
     if root is None:
         root = ROOT
@@ -640,9 +661,15 @@ def check_docs_remote(root=None, gh=None):
     r = CheckResult()
     for path in CANONICAL_DOCUMENT_PATHS:
         endpoint = _contents_endpoint(path)
-        error = runner.api_content(endpoint, root)
+        data, error = runner.api_content(endpoint, root, timeout=timeout)
         if error:
             r.add_error(f"Remote-Dokumentziel fehlt oder ist nicht prüfbar ({path}): {error}")
+        elif not isinstance(data, dict):
+            r.add_error(f"Remote-Dokumentziel ist kein GitHub-Contents-Dateiobjekt ({path})")
+        elif data.get("type") != "file":
+            r.add_error(f"Remote-Dokumentziel hat nicht type 'file' ({path})")
+        elif data.get("path") != path:
+            r.add_error(f"Remote-Dokumentziel hat nicht den erwarteten path ({path})")
     return r
 
 
