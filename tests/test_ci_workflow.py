@@ -331,6 +331,26 @@ class ReleaseWorkflowSecurityContract(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
 
+    def test_npm_publish_rejects_repository_version_with_trailing_blank_line(self):
+        result = _run_npm_publish_admission(
+            "1.0.1",
+            "1.0.1\n",
+            "v1.0.1",
+            "latest",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_npm_publish_rejects_repository_version_with_embedded_nul(self):
+        result = _run_npm_publish_admission(
+            "1.0.1",
+            "1.0.1\0",
+            "v1.0.1",
+            "latest",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+
     def test_npm_publish_requires_tag_to_equal_repository_version(self):
         result = _run_npm_publish_admission(
             "1.0.1",
