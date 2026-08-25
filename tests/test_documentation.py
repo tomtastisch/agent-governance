@@ -26,6 +26,21 @@ class ReadmeEntryContract(unittest.TestCase):
     RAW_MAIN = "https://raw.githubusercontent.com/tomtastisch/agent-governance/main"
     BLOB_MAIN = "https://github.com/tomtastisch/agent-governance/blob/main"
 
+    def test_hero_orders_icon_title_pitch_and_exact_badge_classes(self):
+        """Catches a missing pitch or badges taking the pitch position in the entry hero."""
+        hero = README.split("\n## ", 1)[0]
+        blocks = hero.strip().split("\n\n")
+        self.assertEqual(len(blocks), 4)
+        icon, title, pitch, badges = blocks
+        self.assertIn("assets/branding/agent-governance-icon.png", icon)
+        self.assertEqual(title, "# Agent Governance")
+        self.assertRegex(pitch, r"^[A-ZÄÖÜ][^\n]{20,159}\.$")
+        self.assertEqual(len(re.findall(r"[.!?](?:\s|$)", pitch)), 1)
+        self.assertFalse(pitch.startswith("[!"))
+        self.assertEqual(badges.count("[!["), 3)
+        for badge_class in ("![npm]", "![CI]", "![License: Apache-2.0]"):
+            self.assertEqual(badges.count(badge_class), 1)
+
     def test_readme_has_exactly_the_six_entry_sections(self):
         """Catches README growing into a second CLI, architecture, or security reference."""
         self.assertEqual(

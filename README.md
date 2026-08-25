@@ -4,13 +4,15 @@
 
 # Agent Governance
 
+Agent Governance installiert versionierte, harness-neutrale Regeln kontrolliert, überprüfbar und reversibel an expliziten globalen Zielpfaden.
+
 [![npm](https://img.shields.io/npm/v/@tomtastisch/agent-governance?style=flat-square)](https://www.npmjs.com/package/@tomtastisch/agent-governance) [![CI](https://github.com/tomtastisch/agent-governance/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/tomtastisch/agent-governance/actions/workflows/ci.yml) [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-0D9BF2?style=flat-square)](https://github.com/tomtastisch/agent-governance/blob/main/LICENSE)
 
 ## Was ist Agent Governance?
 
-Agent Governance ist ein harness- und providerneutrales Rulebook mit einem globalen,
-adapterlosen Installer. Es bindet ein versioniertes Governance-Bundle über einen verwalteten
-Markdownblock an einen bewusst gewählten globalen Einstieg.
+Das Projekt verbindet den kanonischen Governance-Bestand mit einem providerneutralen,
+adapterlosen Installer. Er verwaltet ausschließlich seinen Markdownblock im bewusst gewählten
+Einstieg.
 
 ## Warum Agent Governance?
 
