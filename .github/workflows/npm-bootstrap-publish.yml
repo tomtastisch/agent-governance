@@ -21,6 +21,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       RELEASE_TAG: "v1.0.0-rc.2"
+      EXPECTED_COMMIT: "06cb0b041e20c3fda2357f4bfc2f5bc9b99aa9eb"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -35,8 +36,9 @@ jobs:
           python-version: "3.11"
       - name: Verify signed RC2 tag and build its native artifact
         run: |
+          python3 tools/release_check.py tag "$RELEASE_TAG" "$EXPECTED_COMMIT"
           git checkout --detach "$RELEASE_TAG"
-          python3 tools/release_check.py tag "$RELEASE_TAG"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT"
           npm ci --ignore-scripts
           npm run build:native
           test "$(node -p 'process.platform+"-"+process.arch')" = "${{ matrix.target }}"
@@ -57,6 +59,7 @@ jobs:
       id-token: write
     env:
       RELEASE_TAG: "v1.0.0-rc.2"
+      EXPECTED_COMMIT: "06cb0b041e20c3fda2357f4bfc2f5bc9b99aa9eb"
       EXPECTED_VERSION: "1.0.0-rc.2"
       NPM_DIST_TAG: "next"
     steps:
@@ -79,8 +82,9 @@ jobs:
         run: npm install --global npm@12.0.2 --ignore-scripts
       - name: Verify immutable RC2 source
         run: |
+          python3 tools/release_check.py tag "$RELEASE_TAG" "$EXPECTED_COMMIT"
           git checkout --detach "$RELEASE_TAG"
-          python3 tools/release_check.py tag "$RELEASE_TAG"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT"
           test "$(node -p "require('./package.json').version")" = "$EXPECTED_VERSION"
           test "$RELEASE_TAG" = "v$EXPECTED_VERSION"
       - name: Rebuild and verify complete package at signed RC2 tag

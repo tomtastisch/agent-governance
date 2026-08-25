@@ -215,8 +215,10 @@ class ReleaseWorkflowSecurityContract(unittest.TestCase):
             'RELEASE_TAG: "v1.0.0-rc.2"',
             'NPM_DIST_TAG: "next"',
             'EXPECTED_VERSION: "1.0.0-rc.2"',
-            'python3 tools/release_check.py tag "$RELEASE_TAG"',
+            'EXPECTED_COMMIT: "06cb0b041e20c3fda2357f4bfc2f5bc9b99aa9eb"',
+            'python3 tools/release_check.py tag "$RELEASE_TAG" "$EXPECTED_COMMIT"',
             'git checkout --detach "$RELEASE_TAG"',
+            'test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT"',
             "REQUIRE_ALL_NATIVE_PREBUILDS=1 npm run pack:check",
             "npm run test:package",
             "tests/e2e/run_installer_fixture.sh",
@@ -253,9 +255,9 @@ class ReleaseWorkflowSecurityContract(unittest.TestCase):
         for job_name in ("native-prebuild", "publish"):
             job = _job_block(workflow, job_name)
             self.assertLess(
+                job.index('python3 tools/release_check.py tag "$RELEASE_TAG" "$EXPECTED_COMMIT"'),
                 job.index('git checkout --detach "$RELEASE_TAG"'),
-                job.index('python3 tools/release_check.py tag "$RELEASE_TAG"'),
-                f"{job_name} must select the immutable tag before verifying it",
+                f"{job_name} must authenticate the immutable tag with main-controlled code before checkout",
             )
 
         for run_block in _run_blocks(_job_block(workflow, "publish")):
