@@ -123,6 +123,7 @@ LITERAL_PRODUCTION_PATHS = (
 )
 LITERAL_CONTRACT_TESTS = (
     "tests/test_documentation.py",
+    "tests/test_installer_distribution.py",
     "tests/test_source_consolidation.py",
     "tests/test_release_check.py",
     "tests/test_ci_workflow.py",
@@ -358,6 +359,8 @@ class ReleaseMetadataContract(unittest.TestCase):
             test_path = root / "tests" / "test_ci_workflow.py"
             test_path.parent.mkdir(parents=True, exist_ok=True)
             test_path.write_text(f"value = '{version}'\n", encoding="utf-8")
+            distribution_test = root / "tests" / "test_installer_distribution.py"
+            distribution_test.write_text(f"value = '{version}'\n", encoding="utf-8")
 
             violations = current_version_literal_violations(root, version)
 
@@ -365,6 +368,7 @@ class ReleaseMetadataContract(unittest.TestCase):
             violations,
             [
                 "tests/test_ci_workflow.py:1",
+                "tests/test_installer_distribution.py:1",
                 "tools/productive.mjs:1",
                 "tools/productive.sh:1",
                 "tools/productive.ts:1",
