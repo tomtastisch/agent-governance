@@ -250,6 +250,14 @@ class ReleaseWorkflowSecurityContract(unittest.TestCase):
         self.assertNotIn("env |", workflow)
         self.assertNotIn("printenv", workflow)
 
+        for job_name in ("native-prebuild", "publish"):
+            job = _job_block(workflow, job_name)
+            self.assertLess(
+                job.index('git checkout --detach "$RELEASE_TAG"'),
+                job.index('python3 tools/release_check.py tag "$RELEASE_TAG"'),
+                f"{job_name} must select the immutable tag before verifying it",
+            )
+
         for run_block in _run_blocks(_job_block(workflow, "publish")):
             self.assertNotIn("${{", run_block)
 
