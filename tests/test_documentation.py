@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 import re
 import unittest
 
@@ -13,6 +14,8 @@ README = (ROOT / "README.md").read_text(encoding="utf-8")
 INSTALL = (ROOT / "INSTALL.md").read_text(encoding="utf-8")
 CHANGELOG = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
 VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
+CLI_REFERENCE_PATH = ROOT / "docs" / "installer-cli-reference.md"
+PACKAGE = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
 
 
 class EmployeeReadmeContract(unittest.TestCase):
@@ -165,6 +168,34 @@ class InstallBoundaryContract(unittest.TestCase):
         ):
             self.assertIn(term, README)
         self.assertNotIn("registriert keine Signalhandler", README)
+
+
+class InstallerCliReferenceContract(unittest.TestCase):
+    def test_reference_is_linked_complete_and_non_normative(self):
+        self.assertTrue(CLI_REFERENCE_PATH.is_file())
+        reference = CLI_REFERENCE_PATH.read_text(encoding="utf-8")
+        self.assertIn("docs/installer-cli-reference.md", README)
+        self.assertIn("docs/installer-cli-reference.md", INSTALL)
+        self.assertRegex(reference, r"(?i)nicht normative.+CLI-Bedienreferenz")
+        for command in (
+            "inspect", "plan", "install", "verify",
+            "status", "update", "uninstall", "rollback",
+        ):
+            self.assertRegex(reference, rf"(?m)^### `?{command}`?$")
+        for option in (
+            "--scope global", "--installation-root", "--target-root",
+            "--entry-file", "--local-rules", "--dry-run", "--json",
+            "--non-interactive",
+        ):
+            self.assertIn(f"`{option}`", reference)
+        self.assertNotIn("--harness", reference)
+        self.assertRegex(reference, r"(?i)kein cwd-Fallback")
+        self.assertRegex(reference, r"(?i)kein implizites (?:Default-)?Ziel")
+
+    def test_reference_is_the_only_packaged_docs_file(self):
+        self.assertIn("docs/installer-cli-reference.md", PACKAGE["files"])
+        packaged_docs = [entry for entry in PACKAGE["files"] if entry.startswith("docs/")]
+        self.assertEqual(packaged_docs, ["docs/installer-cli-reference.md"])
 
 
 class ReleaseMetadataContract(unittest.TestCase):

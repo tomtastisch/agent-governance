@@ -18,6 +18,9 @@ absolute kanonische reguläre Markdown-Datei. Sie muss gültiges UTF-8 enthalten
 C0-/DEL-Kontrollzeichen sind nur TAB, LF und CR zulässig. Ihr Inhalt erscheint weder in Ausgabe
 noch Evidenzfingerprints.
 
+Eine nicht normative Erklärung der einzelnen Commands und Optionen steht in der
+[Installer-CLI-Referenz](docs/installer-cli-reference.md); dieses Dokument bleibt die Boundary.
+
 Die atomare Garantie hat eine enge Plattformgrenze: Linux und Darwin bieten keinen atomaren
 Inode-CAS-Vertrag gegen einen bösartigen Same-UID-Final-Component-Co-Writer, der mit eigener
 Schreibberechtigung die finale Namenskomponente genau zwischen Beobachtung und Namespace-Syscall

@@ -22,14 +22,14 @@ if (report.length !== 1 || report[0]?.name !== expectedPackageName || !Array.isA
 }
 const paths = report[0].files.map((entry) => entry.path);
 for (const path of paths) {
-  if (typeof path !== "string" || !/^(?:CHANGELOG\.md|INSTALL\.md|LICENSE|README\.md|VERSION|package\.json|release\.files\.sha256|bundle\/|dist\/|prebuilds\/(?:darwin|linux)-(?:arm64|x64)\/agent_governance_fs\.node$)/.test(path)) {
+  if (typeof path !== "string" || !/^(?:CHANGELOG\.md|INSTALL\.md|LICENSE|README\.md|VERSION|package\.json|release\.files\.sha256|docs\/installer-cli-reference\.md|bundle\/|dist\/|prebuilds\/(?:darwin|linux)-(?:arm64|x64)\/agent_governance_fs\.node$)/.test(path)) {
     throw new Error(`unexpected tarball path: ${String(path)}`);
   }
-  if (/^(?:integrations|tests|tools|docs)\//.test(path) || /(?:codex|claude|opencode|openclaw|hooks?)/i.test(path)) {
+  if (/^(?:integrations|tests|tools)\//.test(path) || /^docs\//.test(path) && path !== "docs/installer-cli-reference.md" || /(?:codex|claude|opencode|openclaw|hooks?)/i.test(path)) {
     throw new Error(`forbidden runtime path: ${path}`);
   }
 }
-for (const required of ["dist/cli.js", "bundle/GOVERNANCE.md", "bundle/agent-governance/manifest.toml", "release.files.sha256", "VERSION"]) {
+for (const required of ["dist/cli.js", "bundle/GOVERNANCE.md", "bundle/agent-governance/manifest.toml", "docs/installer-cli-reference.md", "release.files.sha256", "VERSION"]) {
   if (!paths.includes(required)) throw new Error(`missing tarball path: ${required}`);
 }
 const nativePlatforms = process.env.REQUIRE_ALL_NATIVE_PREBUILDS === "1"

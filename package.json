@@ -10,6 +10,7 @@
     "dist",
     "prebuilds",
     "bundle",
+    "docs/installer-cli-reference.md",
     "INSTALL.md",
     "CHANGELOG.md",
     "LICENSE",

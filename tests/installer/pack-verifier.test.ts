@@ -18,6 +18,7 @@ async function allowlistedFixture(t: TestContext): Promise<{ root: string; paths
     "release.files.sha256",
     "bundle/GOVERNANCE.md",
     "bundle/agent-governance/manifest.toml",
+    "docs/installer-cli-reference.md",
     "dist/cli.js",
     `prebuilds/${process.platform}-${process.arch}/agent_governance_fs.node`,
   ];
@@ -41,7 +42,7 @@ test("pack verifier accepts the npm 12 package-keyed JSON report", async (t) => 
   const report = { "@tomtastisch/agent-governance": { name: "@tomtastisch/agent-governance", files: paths.map((path) => ({ path })) } };
   const result = verify(root, report);
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /11 tarball entries are generic and allowlisted/);
+  assert.match(result.stdout, /12 tarball entries are generic and allowlisted/);
 });
 
 test("pack verifier rejects foreign package identity in npm 12 reports", async (t) => {
