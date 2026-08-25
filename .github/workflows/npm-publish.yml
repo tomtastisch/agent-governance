@@ -125,14 +125,15 @@ jobs:
           PACKAGE_VERSION=$(node -p "require('./package.json').version")
           PACKAGE_SPEC="@tomtastisch/agent-governance@$PACKAGE_VERSION"
           for ATTEMPT in 1 2 3 4 5 6; do
-            npm view "$PACKAGE_SPEC" version --registry=https://registry.npmjs.org >/dev/null 2>&1 && break
+            if test "$(npm view "$PACKAGE_SPEC" version --registry=https://registry.npmjs.org 2>/dev/null)" = "$PACKAGE_VERSION" \
+              && test "$(npm view @tomtastisch/agent-governance "dist-tags.$NPM_DIST_TAG" --registry=https://registry.npmjs.org 2>/dev/null)" = "$PACKAGE_VERSION" \
+              && npm view "$PACKAGE_SPEC" dist --json --registry=https://registry.npmjs.org > registry-dist.json \
+              && node -e "const d=require('./registry-dist.json');if(!d.integrity||!d.shasum||d.attestations?.provenance?.predicateType!=='https://slsa.dev/provenance/v1')process.exit(1)"; then
+              break
+            fi
             test "$ATTEMPT" = 6 && exit 1
             sleep 10
           done
-          test "$(npm view "$PACKAGE_SPEC" version --registry=https://registry.npmjs.org)" = "$PACKAGE_VERSION"
-          test "$(npm view @tomtastisch/agent-governance "dist-tags.$NPM_DIST_TAG" --registry=https://registry.npmjs.org)" = "$PACKAGE_VERSION"
-          npm view "$PACKAGE_SPEC" dist --json --registry=https://registry.npmjs.org > registry-dist.json
-          node -e "const d=require('./registry-dist.json');if(!d.integrity||!d.shasum||d.attestations?.provenance?.predicateType!=='https://slsa.dev/provenance/v1')process.exit(1)"
           VERIFY_ROOT="$RUNNER_TEMP/npm-signature-readback"
           mkdir "$VERIFY_ROOT"
           cd "$VERIFY_ROOT"

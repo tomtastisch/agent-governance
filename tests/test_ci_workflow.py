@@ -201,6 +201,23 @@ class ReleaseWorkflowSecurityContract(unittest.TestCase):
         for run_block in _run_blocks(_job_block(workflow, "publish")):
             self.assertNotIn("${{", run_block)
 
+    def test_trusted_publish_retries_complete_registry_metadata(self):
+        workflow = PUBLISH_PATH.read_text(encoding="utf-8")
+        readback = workflow.split(
+            "      - name: Read back registry metadata, dist-tag, provenance, and signatures\n",
+            1,
+        )[1]
+        retry = readback.split("          for ATTEMPT", 1)[1].split("          done", 1)[0]
+        for contract in (
+            'npm view "$PACKAGE_SPEC" version',
+            '"dist-tags.$NPM_DIST_TAG"',
+            'npm view "$PACKAGE_SPEC" dist --json',
+            "d.integrity",
+            "d.shasum",
+            "https://slsa.dev/provenance/v1",
+        ):
+            self.assertIn(contract, retry)
+
     def test_one_time_npm_bootstrap_is_rc2_only_and_secret_is_step_scoped(self):
         self.assertTrue(
             BOOTSTRAP_PUBLISH_PATH.is_file(),
