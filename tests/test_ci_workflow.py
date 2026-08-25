@@ -2,7 +2,11 @@
 """Regression contracts for release-critical GitHub Actions jobs."""
 
 from pathlib import Path
+import os
 import re
+import subprocess
+import tempfile
+import textwrap
 import unittest
 
 
@@ -36,6 +40,36 @@ def _run_blocks(job_body: str) -> list[str]:
         r"((?:          [^\n]*(?:\n|$))*)",
         job_body,
     )
+
+
+def _run_registry_retry_with_failed_reads(readback: str) -> int:
+    run_block = textwrap.dedent(_run_blocks(readback)[0])
+    retry = run_block.split("PACKAGE_VERSION=", 1)[1].split("VERIFY_ROOT=", 1)[0]
+    script = f"PACKAGE_VERSION={retry}"
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        (root / "package.json").write_text(
+            '{"version":"1.0.0"}\n', encoding="utf-8"
+        )
+        commands = root / "commands"
+        commands.mkdir()
+        for name, body in (("npm", "exit 1"), ("sleep", "exit 0")):
+            command = commands / name
+            command.write_text(f"#!/bin/sh\n{body}\n", encoding="utf-8")
+            command.chmod(0o700)
+        result = subprocess.run(
+            ["/bin/sh", "-eu", "-c", script],
+            cwd=root,
+            env={
+                **os.environ,
+                "NPM_DIST_TAG": "latest",
+                "PATH": f"{commands}:{os.environ['PATH']}",
+            },
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return result.returncode
 
 
 class ReleaseWorkflowSecurityContract(unittest.TestCase):
@@ -200,6 +234,29 @@ class ReleaseWorkflowSecurityContract(unittest.TestCase):
         self.assertIn("1.0.0:latest", workflow)
         for run_block in _run_blocks(_job_block(workflow, "publish")):
             self.assertNotIn("${{", run_block)
+
+    def test_trusted_publish_retries_complete_registry_metadata(self):
+        workflow = PUBLISH_PATH.read_text(encoding="utf-8")
+        readback = workflow.split(
+            "      - name: Read back registry metadata, dist-tag, provenance, and signatures\n",
+            1,
+        )[1]
+        retry = readback.split("          for ATTEMPT", 1)[1].split("          done", 1)[0]
+        for contract in (
+            'npm view "$PACKAGE_SPEC" version',
+            '"dist-tags.$NPM_DIST_TAG"',
+            'npm view "$PACKAGE_SPEC" dist --json',
+            "d.integrity",
+            "d.shasum",
+            "https://slsa.dev/provenance/v1",
+        ):
+            self.assertIn(contract, retry)
+
+        self.assertNotEqual(
+            _run_registry_retry_with_failed_reads(readback),
+            0,
+            "registry readback must fail closed after the final failed attempt",
+        )
 
     def test_one_time_npm_bootstrap_is_rc2_only_and_secret_is_step_scoped(self):
         self.assertTrue(
