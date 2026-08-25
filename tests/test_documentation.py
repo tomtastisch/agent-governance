@@ -89,6 +89,19 @@ class ReadmeEntryContract(unittest.TestCase):
         self.assertNotIn("@next", section)
         self.assertNotIn("--harness", section)
 
+    def test_quickstart_links_parameter_and_harness_explanations_after_commands(self):
+        """Catches a quickstart that leaves parameter or target-path questions unnavigable."""
+        section = README.split("## Schnellstart", 1)[1].split("\n## ", 1)[0]
+        after_commands = section.split("```", 2)[2].strip()
+        cli_url = f"{self.BLOB_MAIN}/docs/installer-cli-reference.md"
+        harness_url = f"{self.BLOB_MAIN}/docs/harness-recipes.md"
+        self.assertIn(f"]({cli_url})", after_commands)
+        self.assertIn(f"]({harness_url})", after_commands)
+        self.assertIn("Bedeutung, Pflichtangaben und Optionen", after_commands)
+        self.assertIn("harness-spezifischen aktiven globalen Zielpfad", after_commands)
+        self.assertNotIn("](docs/", after_commands)
+        self.assertEqual(len(re.findall(r"[.!?](?:\s|$)", after_commands)), 1)
+
     def test_readme_navigates_to_current_reference_owners_on_main(self):
         """Catches relative or historical links instead of durable current-reference navigation."""
         paths = (

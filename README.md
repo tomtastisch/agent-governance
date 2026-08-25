@@ -54,6 +54,8 @@ npx @tomtastisch/agent-governance@latest verify \
   --non-interactive
 ```
 
+Die [CLI-Referenz](https://github.com/tomtastisch/agent-governance/blob/main/docs/installer-cli-reference.md) erklärt Bedeutung, Pflichtangaben und Optionen; die [Harness-Rezepte](https://github.com/tomtastisch/agent-governance/blob/main/docs/harness-recipes.md) helfen, den harness-spezifischen aktiven globalen Zielpfad vor der Installation zu prüfen.
+
 ## Wie funktioniert es?
 
 Der Installer prüft ein geschlossenes, versioniertes Bundle, sichert den bestehenden Einstieg und
