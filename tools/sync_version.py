@@ -159,9 +159,22 @@ def _stage_sibling(path: Path, content: bytes) -> Path:
 
 
 def _replace_all_atomically(planned: dict[Path, bytes]) -> None:
+    residuals = sorted(
+        residual
+        for parent in {path.parent for path in planned}
+        for residual in parent.glob(".sync-version-*")
+    )
+    if residuals:
+        raise OSError(
+            "Sync-Restdateien erfordern Prüfung vor einem erneuten Lauf: "
+            + ", ".join(path.name for path in residuals)
+        )
+
     staged = {}
     backups = {}
     replaced = []
+    committed = False
+    rollback_errors = []
     try:
         for path, content in planned.items():
             staged[path] = _stage_sibling(path, content)
@@ -170,10 +183,18 @@ def _replace_all_atomically(planned: dict[Path, bytes]) -> None:
         for path in planned:
             os.replace(staged[path], path)
             replaced.append(path)
+        committed = True
         for backup in backups.values():
-            backup.unlink(missing_ok=True)
+            try:
+                backup.unlink(missing_ok=True)
+            except OSError as cleanup_error:
+                raise OSError(
+                    "Backup-Bereinigung nach abgeschlossenem VERSION-Sync fehlgeschlagen; "
+                    "Projektionen bleiben committed und Restdateien erhalten"
+                ) from cleanup_error
     except BaseException as original_error:
-        rollback_errors = []
+        if committed:
+            raise
         for path in reversed(replaced):
             try:
                 os.replace(backups[path], path)
@@ -186,8 +207,11 @@ def _replace_all_atomically(planned: dict[Path, bytes]) -> None:
             ) from original_error
         raise
     finally:
-        for temporary in (*staged.values(), *backups.values()):
+        for temporary in staged.values():
             temporary.unlink(missing_ok=True)
+        if not committed and not rollback_errors:
+            for backup in backups.values():
+                backup.unlink(missing_ok=True)
 
 
 def synchronize(root: Path) -> None:

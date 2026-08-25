@@ -141,6 +141,34 @@ class SyncVersionContract(unittest.TestCase):
         self.assertEqual(self._projection_bytes(), before)
         self.assertEqual(list(self.root.glob(".sync-version-*")), [])
 
+    def test_backup_cleanup_failure_never_rolls_back_committed_projections(self):
+        real_unlink = SYNC_MODULE.Path.unlink
+        existing_backup_unlinks = 0
+
+        def fail_second_backup_unlink(path, *args, **kwargs):
+            nonlocal existing_backup_unlinks
+            if path.name.startswith(".sync-version-") and path.exists():
+                existing_backup_unlinks += 1
+                if existing_backup_unlinks == 2:
+                    raise OSError("injected backup cleanup failure")
+            return real_unlink(path, *args, **kwargs)
+
+        with mock.patch.object(SYNC_MODULE.Path, "unlink", new=fail_second_backup_unlink):
+            with self.assertRaisesRegex(OSError, "Backup-Bereinigung"):
+                SYNC_MODULE.synchronize(self.root)
+
+        package = json.loads((self.root / "package.json").read_text(encoding="utf-8"))
+        lock = json.loads((self.root / "package-lock.json").read_text(encoding="utf-8"))
+        self.assertEqual(package["version"], "7.8.9")
+        self.assertEqual(lock["version"], "7.8.9")
+        self.assertEqual(lock["packages"][""]["version"], "7.8.9")
+        self.assertEqual(len(list(self.root.glob(".sync-version-*"))), 1)
+
+        committed = self._projection_bytes()
+        with self.assertRaisesRegex(OSError, "Restdateien"):
+            SYNC_MODULE.synchronize(self.root)
+        self.assertEqual(self._projection_bytes(), committed)
+
     def test_invalid_or_multiline_version_fails_without_writes(self):
         for version in ("not-semver\n", "7.8.9\nextra\n"):
             with self.subTest(version=version):

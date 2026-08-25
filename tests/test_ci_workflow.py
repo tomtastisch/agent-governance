@@ -48,6 +48,8 @@ def _run_npm_publish_admission(
     repository_version: str,
     release_tag: str,
     dist_tag: str,
+    *,
+    final_lf: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     workflow = PUBLISH_PATH.read_text(encoding="utf-8")
     publish = _job_block(workflow, "publish")
@@ -63,7 +65,8 @@ def _run_npm_publish_admission(
             json.dumps({"version": package_version}) + "\n",
             encoding="utf-8",
         )
-        (root / "VERSION").write_text(f"{repository_version}\n", encoding="utf-8")
+        version_bytes = repository_version.encode("utf-8") + (b"\n" if final_lf else b"")
+        (root / "VERSION").write_bytes(version_bytes)
         commands = root / "commands"
         commands.mkdir()
         for name in ("git", "python3"):
@@ -350,6 +353,27 @@ class ReleaseWorkflowSecurityContract(unittest.TestCase):
         )
 
         self.assertNotEqual(result.returncode, 0)
+
+    def test_npm_publish_accepts_only_exact_version_bytes_with_optional_final_lf(self):
+        cases = (
+            ("1.0.1", False, True),
+            ("1.0.1", True, True),
+            ("1.0.1\n", True, False),
+            ("1.0.1\r", True, False),
+            ("1.0.1\0", False, False),
+            (" 1.0.1", True, False),
+            ("1.0.1 ", True, False),
+        )
+        for repository_version, final_lf, accepted in cases:
+            with self.subTest(raw=repr(repository_version), final_lf=final_lf):
+                result = _run_npm_publish_admission(
+                    "1.0.1",
+                    repository_version,
+                    "v1.0.1",
+                    "latest",
+                    final_lf=final_lf,
+                )
+                self.assertEqual(result.returncode == 0, accepted, result.stderr)
 
     def test_npm_publish_requires_tag_to_equal_repository_version(self):
         result = _run_npm_publish_admission(
