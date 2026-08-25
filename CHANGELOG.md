@@ -25,6 +25,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Breaking changes:** none
 
+## [1.0.1] — 2026-08-25
+
+### Added
+
+- Eine kompakte README mit klarer Dokumentationsarchitektur und eindeutigen Zuständigkeiten für
+  aktuelle Referenzen.
+- Harness Recipes für die verifizierten Harness-spezifischen Einstiegspfade sowie semantische Assets
+  für Überblick, Architektur und Branding.
+
+### Changed
+
+- Package-, Test- und Linkbereinigung bindet die aktuelle Dokumentation, das schlanke npm-Artefakt
+  und die Releaseverifikation konsistent zusammen.
+- Öffentliche CLI-Commands und Runtime-Verhalten bleiben unverändert.
+
+### Fixed
+
+- Aktuelle Installationsbeispiele verwenden den stabilen `@latest`-Kanal statt einer hartkodierten
+  Patchversion.
+
+### Removed
+
+- `INSTALL.md` nach vollständiger Migration seiner einzigartigen aktuellen Inhalte in die zuständigen
+  Referenzen.
+
+**Breaking changes:** none
+
 ## [1.0.0] — 2026-08-25
 
 ### Added

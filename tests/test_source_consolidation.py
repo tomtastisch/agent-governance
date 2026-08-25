@@ -262,16 +262,20 @@ class HistoricalEvidenceContract(unittest.TestCase):
         self.assertEqual(unmarked, [])
 
 class ReleaseMetadataContract(unittest.TestCase):
-    def test_current_version_declares_global_installer_release_candidate(self):
+    def test_current_version_declares_documentation_release(self):
         changelog = read(ROOT / "CHANGELOG.md")
         version = read(ROOT / "VERSION").strip()
         current = changelog.split(f"## [{version}]", 1)[1].split("\n## [", 1)[0]
-        self.assertEqual(version, "1.0.0")
-        self.assertIn("transaktionalem Explicit-Path-Installer", current)
-        self.assertIn("GLOBAL_EXPLICIT_PATH_MANAGED_BLOCK", current)
-        self.assertIn("keine Harnessadapter", current)
-        self.assertIn("Installer-CLI-Referenz", current)
-        self.assertIn("**Breaking changes:** present", current)
+        for term in (
+            "kompakte README",
+            "Dokumentationsarchitektur",
+            "Harness Recipes",
+            "semantische Assets",
+            "INSTALL.md",
+            "Package-, Test- und Linkbereinigung",
+        ):
+            self.assertIn(term, current)
+        self.assertIn("**Breaking changes:** none", current)
         recovery_patch = changelog.split("## [0.4.1]", 1)[1].split("\n## [", 1)[0]
         self.assertIn("**Breaking changes:** none", recovery_patch)
         historical = changelog.split("## [0.4.0]", 1)[1].split("\n## [", 1)[0]
@@ -279,6 +283,30 @@ class ReleaseMetadataContract(unittest.TestCase):
         self.assertIn("**BREAKING:**", historical)
         for catalog in ("triggers", "policy-tags", "scopes", "tools"):
             self.assertIn(f"catalogs/{catalog}.toml", historical)
+
+    def test_current_version_literal_is_limited_to_derived_or_historical_records(self):
+        """Catches a second durable current-version source outside audited projections or history."""
+        current_version = read(ROOT / "VERSION").strip()
+        allowed_roots = (
+            ROOT / "VERSION",
+            ROOT / "package.json",
+            ROOT / "package-lock.json",
+            ROOT / "CHANGELOG.md",
+            ROOT / "docs" / "superpowers",
+            ROOT / ".superpowers",
+            ROOT / "tests" / "test_sync_version.py",
+            ROOT / "tests" / "test_ci_workflow.py",
+        )
+        scanned_suffixes = {".md", ".py", ".json", ".yml", ".yaml"}
+        violations = []
+        for path in ROOT.rglob("*"):
+            if not path.is_file() or path.suffix not in scanned_suffixes:
+                continue
+            if any(path == allowed or allowed in path.parents for allowed in allowed_roots):
+                continue
+            if current_version in read(path):
+                violations.append(path.relative_to(ROOT).as_posix())
+        self.assertEqual(violations, [])
 
     def test_unreleased_is_reset_after_version_classification(self):
         changelog = read(ROOT / "CHANGELOG.md")

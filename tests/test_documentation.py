@@ -16,6 +16,7 @@ VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 CLI_REFERENCE_PATH = ROOT / "docs" / "installer-cli-reference.md"
 HARNESS_RECIPES_PATH = ROOT / "docs" / "harness-recipes.md"
 PACKAGE = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
+PACKAGE_LOCK = json.loads((ROOT / "package-lock.json").read_text(encoding="utf-8"))
 
 
 class ReadmeEntryContract(unittest.TestCase):
@@ -213,10 +214,10 @@ class InstallerCliReferenceContract(unittest.TestCase):
         self.assertEqual(packaged_docs, ["docs/installer-cli-reference.md"])
 
     def test_current_cli_examples_do_not_retain_the_next_channel(self):
-        """Catches the retired prerelease channel being presented as the current CLI contract."""
+        """Catches a prerelease or current-version literal in the durable CLI contract."""
         reference = CLI_REFERENCE_PATH.read_text(encoding="utf-8")
         self.assertNotIn("@next", reference)
-        self.assertIn("@tomtastisch/agent-governance@1.0.1", reference)
+        self.assertIn("@tomtastisch/agent-governance@latest", reference)
 
     def test_cli_reference_owns_exit_behavior(self):
         """Catches exit behavior being split across lifecycle or schema references."""
@@ -292,22 +293,24 @@ class InstallerArchitectureReferenceContract(unittest.TestCase):
 
 
 class ReleaseMetadataContract(unittest.TestCase):
-    def test_installer_release_candidate_is_consistent(self):
-        self.assertEqual(VERSION, "1.0.0")
+    def test_documentation_release_metadata_is_version_derived(self):
+        self.assertEqual(PACKAGE["version"], VERSION)
+        self.assertEqual(PACKAGE_LOCK["version"], VERSION)
+        self.assertEqual(PACKAGE_LOCK["packages"][""]["version"], VERSION)
         self.assertIn("## Support und Lizenz", README)
         self.assertIn("https://buymeacoffee.com/tomtastisch", README)
         self.assertIn(PACKAGE["license"], README)
-        self.assertIn("## [1.0.0-rc.1] — 2026-08-24", CHANGELOG)
         current = CHANGELOG.split(f"## [{VERSION}]", 1)[1].split("\n## [", 1)[0]
         for term in (
-            "transaktionalem Explicit-Path-Installer",
-            "adapterlosem",
-            "Rollback",
-            "keine Harnessadapter",
-            "macOS-Testfixtures",
+            "kompakte README",
+            "Dokumentationsarchitektur",
+            "Harness Recipes",
+            "semantische Assets",
+            "INSTALL.md",
+            "Package-, Test- und Linkbereinigung",
         ):
             self.assertIn(term, current)
-        self.assertIn("**Breaking changes:** present", current)
+        self.assertIn("**Breaking changes:** none", current)
         recovery_patch = CHANGELOG.split("## [0.4.1]", 1)[1].split("\n## [", 1)[0]
         self.assertIn("**Breaking changes:** none", recovery_patch)
         historical = CHANGELOG.split("## [0.4.0]", 1)[1].split("\n## [", 1)[0]

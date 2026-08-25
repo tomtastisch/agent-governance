@@ -12,6 +12,7 @@ Kein Modus erstellt Tags, Releases oder verändert das Repository.
 
 import base64
 import binascii
+from datetime import date as calendar_date
 import hashlib
 import json
 import os
@@ -314,35 +315,71 @@ def check_tree(root=None):
         root = ROOT
     r = CheckResult()
 
-    # ── VERSION ──
-    if not _exists("VERSION", root):
-        r.add_error("VERSION fehlt — autoritative SemVer-Quelle erforderlich")
+    version = _check_version_release_metadata(root, r)
+    if version is None:
         return r
-
-    version_raw = _read("VERSION", root)
-    version_lines = [l for l in version_raw.splitlines() if l.strip()]
-    if len(version_lines) != 1:
-        r.add_error(f"VERSION enthält {len(version_lines)} nichtleere Zeilen — "
-                    "exakt eine SemVer-Zeile erwartet (plus optionales finales Newline)")
-        return r
-
-    version = version_lines[0].strip()
-    if not _is_valid_semver(version):
-        r.add_error(f"VERSION '{version}' ist kein gültiges SemVer (MAJOR.MINOR.PATCH)")
-
-    _check_no_competing_source(root, r)
-
-    # ── CHANGELOG ──
-    if not _exists("CHANGELOG.md", root):
-        r.add_error("CHANGELOG.md fehlt — aktueller CHANGELOG erforderlich")
-    else:
-        _check_changelog_sections(root, version, r)
 
     document_links = _check_document_links(root)
     r.errors.extend(document_links.errors)
     r.warnings.extend(document_links.warnings)
 
     return r
+
+
+def _check_version_release_metadata(root, r):
+    """Validates VERSION projections and its unique current changelog release read-only."""
+    if not _exists("VERSION", root):
+        r.add_error("VERSION fehlt — autoritative SemVer-Quelle erforderlich")
+        return None
+
+    version_raw = _read("VERSION", root)
+    version_lines = [line for line in version_raw.splitlines() if line.strip()]
+    if len(version_lines) != 1:
+        r.add_error(f"VERSION enthält {len(version_lines)} nichtleere Zeilen — "
+                    "exakt eine SemVer-Zeile erwartet (plus optionales finales Newline)")
+        return None
+
+    version = version_lines[0].strip()
+    if not _is_valid_semver(version):
+        r.add_error(f"VERSION '{version}' ist kein gültiges SemVer (MAJOR.MINOR.PATCH)")
+        return None
+
+    _check_version_projections(root, version, r)
+    _check_no_competing_source(root, r)
+
+    if not _exists("CHANGELOG.md", root):
+        r.add_error("CHANGELOG.md fehlt — aktueller CHANGELOG erforderlich")
+    else:
+        _check_changelog_sections(root, version, r)
+    return version
+
+
+def _check_version_projections(root, version, r):
+    """Checks every npm projection independently from the write-only synchronizer."""
+    for rel in ("package.json", "package-lock.json"):
+        if not _exists(rel, root):
+            r.add_error(f"{rel} fehlt — VERSION-Projektion erforderlich")
+            continue
+        try:
+            data = json.loads(_read(rel, root))
+        except (json.JSONDecodeError, OSError):
+            r.add_error(f"{rel}: ungültiges JSON für VERSION-Abgleich")
+            continue
+        if not isinstance(data, dict):
+            r.add_error(f"{rel}: JSON-Objekt für VERSION-Abgleich erforderlich")
+            continue
+        if data.get("version") != version:
+            r.add_error(f"{rel}-Version ({data.get('version')}) weicht von VERSION ({version}) ab")
+        if rel == "package-lock.json":
+            packages = data.get("packages")
+            root_package = packages.get("") if isinstance(packages, dict) else None
+            if not isinstance(root_package, dict):
+                r.add_error("package-lock.json Root-Paketstruktur packages[\"\"] fehlt oder ist ungültig")
+            elif root_package.get("version") != version:
+                r.add_error(
+                    f"package-lock.json Root-Paketversion ({root_package.get('version')}) "
+                    f"weicht von VERSION ({version}) ab"
+                )
 
 
 def _check_no_competing_source(root, r):
@@ -367,27 +404,10 @@ def _check_no_competing_source(root, r):
                 if re.search(r'(?m)^version\s*=\s*"\d+\.\d+\.\d+', txt):
                     r.add_error(f"{rel}: konkurrierende version-Deklaration")
             elif name.endswith(".json"):
-                txt = _read(rel, root)
                 if rel in {"package.json", "package-lock.json"}:
-                    try:
-                        package_data = json.loads(txt)
-                        package_version = package_data.get("version")
-                    except (json.JSONDecodeError, AttributeError):
-                        r.add_error(f"{rel}: ungültiges JSON für VERSION-Abgleich")
-                        continue
-                    if package_version != authoritative_version:
-                        r.add_error(
-                            f"{rel}-Version ({package_version}) weicht von VERSION "
-                            f"({authoritative_version}) ab"
-                        )
-                    if rel == "package-lock.json":
-                        root_package_version = package_data.get("packages", {}).get("", {}).get("version")
-                        if root_package_version is not None and root_package_version != authoritative_version:
-                            r.add_error(
-                                f"package-lock.json Root-Paketversion ({root_package_version}) "
-                                f"weicht von VERSION ({authoritative_version}) ab"
-                            )
-                elif re.search(r'"version"\s*:\s*"\d+\.\d+\.\d+', txt):
+                    continue
+                txt = _read(rel, root)
+                if re.search(r'"version"\s*:\s*"\d+\.\d+\.\d+', txt):
                     r.add_error(f"{rel}: konkurrierende version-Deklaration")
             elif name.lower() in ("version.txt", "version", ".version"):
                 r.add_error(f"{rel}: parallele Versionsdatei neben VERSION")
@@ -484,13 +504,30 @@ def _check_changelog_sections(root, version, r):
         elif meta["marker"] == "present" and not meta["has_breaking_entries"]:
             r.add_error(f"[{ver}]: '**Breaking changes:** present' ohne '**BREAKING:**' Eintrag")
 
-    # ── Abgleich mit VERSION ──
-    if unreleased_sections:
-        pass  # Entwicklungszustand: Version ist Ziel, noch nicht veröffentlicht
-    elif release_sections:
-        latest = release_sections[0][0]
-        if latest != version:
-            r.add_error(f"VERSION ({version}) weicht von aktuellstem CHANGELOG-Release ({latest}) ab")
+    current_sections = [(ver, section_date, body) for ver, section_date, body in release_sections if ver == version]
+    if len(current_sections) != 1:
+        r.add_error(
+            f"CHANGELOG muss genau einen aktuellen Abschnitt [{version}] enthalten; gefunden: {len(current_sections)}"
+        )
+        return
+
+    current_version, current_date, current_body = current_sections[0]
+    if not release_sections or release_sections[0][0] != current_version:
+        r.add_error(f"[{version}] muss der erste versionierte CHANGELOG-Abschnitt sein")
+    if not current_date or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", current_date):
+        r.add_error(f"[{version}] benötigt ein gültiges ISO-Datum (YYYY-MM-DD)")
+    else:
+        try:
+            calendar_date.fromisoformat(current_date)
+        except ValueError:
+            r.add_error(f"[{version}] benötigt ein gültiges ISO-Datum (YYYY-MM-DD)")
+
+    current_meta = _parse_section("", current_body)
+    missing = REQUIRED_CATEGORIES - current_meta["categories"]
+    if missing:
+        r.add_error(f"[{version}] fehlen erforderliche Kategorien: {sorted(missing)}")
+    if current_meta["marker"] is None:
+        r.add_error(f"[{version}] fehlt der Marker '**Breaking changes:** none' oder '**Breaking changes:** present'")
 
 
 def _semver_cmp(a, b):
@@ -691,11 +728,9 @@ def check_tag(root=None, tag_ref=None, expected_commit=None, verifier=None):
         root = ROOT
     r = CheckResult()
 
-    if not _exists("VERSION", root):
-        r.add_error("VERSION fehlt — Tag-Prüfung ohne Version nicht möglich")
+    version = _check_version_release_metadata(root, r)
+    if version is None or not r.ok:
         return r
-
-    version = _read("VERSION", root).strip().splitlines()[0].strip()
     expected_tag = f"v{version}"
 
     # ── Tag deterministisch wählen (Greptile-Finding #1) ──

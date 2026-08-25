@@ -13,6 +13,7 @@ Abdeckung:
 
 import base64
 import inspect
+import json
 import os
 import re
 import subprocess
@@ -42,6 +43,8 @@ def _write(path, content):
 
 _CHANGELOG_MIN = (
     "## [Unreleased]\n### Added\n- item\n### Changed\n- Keine.\n"
+    "### Fixed\n- Keine.\n### Removed\n- Keine.\n\n**Breaking changes:** none\n\n"
+    "## [0.1.0] — 2026-07-27\n### Added\n- item\n### Changed\n- Keine.\n"
     "### Fixed\n- Keine.\n### Removed\n- Keine.\n\n**Breaking changes:** none\n"
 )
 
@@ -71,6 +74,16 @@ def _canonical_readme(overrides=None, omitted=(), extra=(), raw_lines=()):
 
 def _write_documentation_tree(root, readme=None):
     _write(os.path.join(root, "README.md"), readme or _canonical_readme())
+    version = "0.1.0"
+    version_path = os.path.join(root, "VERSION")
+    if os.path.exists(version_path):
+        with open(version_path, encoding="utf-8") as handle:
+            version = handle.read().strip()
+    _write(os.path.join(root, "package.json"), json.dumps({"version": version}))
+    _write(
+        os.path.join(root, "package-lock.json"),
+        json.dumps({"version": version, "packages": {"": {"version": version}}}),
+    )
     for path in _CANONICAL_DOCUMENT_PATHS:
         if path != "CHANGELOG.md":
             _write(os.path.join(root, path), f"fixture for {path}\n")
@@ -196,7 +209,10 @@ class TreeCompetingSource(unittest.TestCase):
     def test_matching_root_lock_version_is_derived_metadata(self):
         with tempfile.TemporaryDirectory() as d:
             self._write_minimum_tree(d)
-            _write(os.path.join(d, "package-lock.json"), '{"version": "0.1.0"}')
+            _write(
+                os.path.join(d, "package-lock.json"),
+                '{"version": "0.1.0", "packages": {"": {"version": "0.1.0"}}}',
+            )
             r = check_tree(root=d)
             self.assertTrue(r.ok, r.errors)
 
@@ -207,6 +223,25 @@ class TreeCompetingSource(unittest.TestCase):
             r = check_tree(root=d)
             self.assertFalse(r.ok)
             self.assertTrue(any("package-lock.json" in e and "VERSION" in e for e in r.errors))
+
+    def test_root_lock_package_version_drift_fails(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._write_minimum_tree(d)
+            _write(
+                os.path.join(d, "package-lock.json"),
+                '{"version": "0.1.0", "packages": {"": {"version": "0.2.0"}}}',
+            )
+            r = check_tree(root=d)
+            self.assertFalse(r.ok)
+            self.assertTrue(any("Root-Paketversion" in e for e in r.errors), r.errors)
+
+    def test_missing_root_lock_package_structure_fails(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._write_minimum_tree(d)
+            _write(os.path.join(d, "package-lock.json"), '{"version": "0.1.0"}')
+            r = check_tree(root=d)
+            self.assertFalse(r.ok)
+            self.assertTrue(any("Root-Paketstruktur" in e for e in r.errors), r.errors)
 
     def test_parallel_version_file_is_competing(self):
         with tempfile.TemporaryDirectory() as d:
@@ -296,7 +331,7 @@ class TreeChangelogSections(unittest.TestCase):
         _write(os.path.join(self.root, "CHANGELOG.md"), body)
 
     def test_unreleased_before_release_is_ok(self):
-        self._cl(_CHANGELOG_MIN + "\n## [0.1.0] — 2026-07-27\n### Added\n- history\n\n**Breaking changes:** none\n")
+        self._cl(_CHANGELOG_MIN)
         r = check_tree(root=self.root)
         self.assertTrue(r.ok, f"Erwartet OK, Fehler: {r.errors}")
 
@@ -319,13 +354,60 @@ class TreeChangelogSections(unittest.TestCase):
         self.assertTrue(any("[Unreleased]-Abschnitt fehlt" in e for e in r.errors))
 
     def test_semver_order_descending_is_ok(self):
+        _write(os.path.join(self.root, "VERSION"), "0.2.0\n")
+        _write_documentation_tree(self.root)
         self._cl(
-            _CHANGELOG_MIN + "\n"
-            "## [0.2.0] — 2026-08-01\n### Added\n- newer\n\n**Breaking changes:** none\n\n"
+            "## [Unreleased]\n### Added\n- item\n### Changed\n- Keine.\n"
+            "### Fixed\n- Keine.\n### Removed\n- Keine.\n\n**Breaking changes:** none\n\n"
+            "## [0.2.0] — 2026-08-01\n### Added\n- newer\n### Changed\n- Keine.\n"
+            "### Fixed\n- Keine.\n### Removed\n- Keine.\n\n**Breaking changes:** none\n\n"
             "## [0.1.0] — 2026-07-27\n### Added\n- older\n\n**Breaking changes:** none\n"
         )
         r = check_tree(root=self.root)
         self.assertTrue(r.ok, f"Erwartet OK, Fehler: {r.errors}")
+
+    def test_current_release_requires_an_iso_date(self):
+        self._cl(
+            "## [Unreleased]\n### Added\n- Keine.\n### Changed\n- Keine.\n"
+            "### Fixed\n- Keine.\n### Removed\n- Keine.\n\n**Breaking changes:** none\n\n"
+            "## [0.1.0]\n### Added\n- history\n### Changed\n- Keine.\n"
+            "### Fixed\n- Keine.\n### Removed\n- Keine.\n\n**Breaking changes:** none\n"
+        )
+        r = check_tree(root=self.root)
+        self.assertFalse(r.ok)
+        self.assertTrue(any("gültiges ISO-Datum" in e for e in r.errors), r.errors)
+
+    def test_current_release_requires_all_categories(self):
+        self._cl(
+            "## [Unreleased]\n### Added\n- Keine.\n### Changed\n- Keine.\n"
+            "### Fixed\n- Keine.\n### Removed\n- Keine.\n\n**Breaking changes:** none\n\n"
+            "## [0.1.0] — 2026-07-27\n### Added\n- history\n\n**Breaking changes:** none\n"
+        )
+        r = check_tree(root=self.root)
+        self.assertFalse(r.ok)
+        self.assertTrue(any("erforderliche Kategorien" in e for e in r.errors), r.errors)
+
+    def test_current_release_must_be_unique(self):
+        self._cl(
+            _CHANGELOG_MIN + "\n"
+            "## [0.1.0] — 2026-07-28\n### Added\n- duplicate\n### Changed\n- Keine.\n"
+            "### Fixed\n- Keine.\n### Removed\n- Keine.\n\n**Breaking changes:** none\n"
+        )
+        r = check_tree(root=self.root)
+        self.assertFalse(r.ok)
+        self.assertTrue(any("genau einen aktuellen Abschnitt" in error for error in r.errors), r.errors)
+
+    def test_current_release_must_be_the_first_versioned_section(self):
+        self._cl(
+            "## [Unreleased]\n### Added\n- item\n### Changed\n- Keine.\n"
+            "### Fixed\n- Keine.\n### Removed\n- Keine.\n\n**Breaking changes:** none\n\n"
+            "## [0.2.0] — 2026-08-01\n### Added\n- newer\n\n**Breaking changes:** none\n\n"
+            "## [0.1.0] — 2026-07-27\n### Added\n- current\n### Changed\n- Keine.\n"
+            "### Fixed\n- Keine.\n### Removed\n- Keine.\n\n**Breaking changes:** none\n"
+        )
+        r = check_tree(root=self.root)
+        self.assertFalse(r.ok)
+        self.assertTrue(any("erste versionierte" in error for error in r.errors), r.errors)
 
     def test_semver_order_ascending_is_error(self):
         self._cl(
@@ -795,9 +877,24 @@ class TagConsistencyBase(unittest.TestCase):
         self._git("init", "--initial-branch=main")
         self._git("config", "user.email", "test@test")
         self._git("config", "user.name", "Test")
-        _write(os.path.join(self.root, "VERSION"), f"{version}\n")
-        self._git("add", "VERSION")
+        self._write_version_metadata(version)
+        self._git("add", "VERSION", "package.json", "package-lock.json", "CHANGELOG.md")
         self._git("-c", "commit.gpgsign=false", "commit", "-m", "init")
+
+    def _write_version_metadata(self, version):
+        _write(os.path.join(self.root, "VERSION"), f"{version}\n")
+        _write(os.path.join(self.root, "package.json"), json.dumps({"version": version}))
+        _write(
+            os.path.join(self.root, "package-lock.json"),
+            json.dumps({"version": version, "packages": {"": {"version": version}}}),
+        )
+        _write(
+            os.path.join(self.root, "CHANGELOG.md"),
+            "## [Unreleased]\n### Added\n- Keine.\n### Changed\n- Keine.\n"
+            "### Fixed\n- Keine.\n### Removed\n- Keine.\n\n**Breaking changes:** none\n\n"
+            f"## [{version}] — 2026-08-25\n### Added\n- release\n### Changed\n- Keine.\n"
+            "### Fixed\n- Keine.\n### Removed\n- Keine.\n\n**Breaking changes:** none\n",
+        )
 
     def _tag(self, root, name):
         self.assertEqual(root, self.root)
@@ -841,13 +938,38 @@ class TagLightweightVsAnnotated(TagConsistencyBase):
     def test_annotated_tag_on_wrong_commit_is_error(self):
         self._init_git("0.1.0")
         head = self._git("rev-parse", "HEAD")
-        _write(os.path.join(self.root, "VERSION"), "0.2.0\n")
-        self._git("add", "VERSION")
+        self._write_version_metadata("0.2.0")
+        self._git("add", "VERSION", "package.json", "package-lock.json", "CHANGELOG.md")
         self._git("-c", "commit.gpgsign=false", "commit", "-m", "bump")
         self._git("-c", "tag.gpgsign=false", "tag", "-m", "release", "v0.2.0")
         r = check_tag(root=self.root, tag_ref="v0.2.0", expected_commit=head, verifier=self.mock_verifier)
         self.assertFalse(r.ok)
         self.assertTrue(any("zeigt auf" in e for e in r.errors))
+
+
+class TagVersionProjectionBinding(TagConsistencyBase):
+    def _assert_drift_is_rejected(self, path, value):
+        self._init_git("0.1.0")
+        self._tag(self.root, "v0.1.0")
+        _write(os.path.join(self.root, path), json.dumps(value))
+
+        r = check_tag(root=self.root, verifier=self.mock_verifier)
+
+        self.assertFalse(r.ok)
+        self.assertTrue(any("VERSION" in error for error in r.errors), r.errors)
+
+    def test_tag_rejects_package_projection_drift(self):
+        self._assert_drift_is_rejected("package.json", {"version": "0.2.0"})
+
+    def test_tag_rejects_lock_projection_drift(self):
+        self._assert_drift_is_rejected(
+            "package-lock.json", {"version": "0.2.0", "packages": {"": {"version": "0.1.0"}}}
+        )
+
+    def test_tag_rejects_lock_root_projection_drift(self):
+        self._assert_drift_is_rejected(
+            "package-lock.json", {"version": "0.1.0", "packages": {"": {"version": "0.2.0"}}}
+        )
 
 
 class TagSignature(TagConsistencyBase):
@@ -1182,15 +1304,20 @@ class ReleaseTargetCommitishTests(TagConsistencyBase):
 # ═══════════════════════════════════════════════════════════════════════
 
 class CurrentRepoState(unittest.TestCase):
-    def test_tree_check_has_version_and_changelog(self):
+    def test_tree_check_accepts_version_derived_release_metadata(self):
         r = check_tree()
-        has_version_error = any("VERSION fehlt" in e for e in r.errors)
-        self.assertFalse(has_version_error, "VERSION sollte vorhanden sein (Green)")
-        has_changelog_error = any("CHANGELOG.md fehlt" in e for e in r.errors)
-        self.assertFalse(has_changelog_error, "CHANGELOG.md sollte vorhanden sein (Green)")
-        # CHANGELOG sollte keinen vorzeitigen Release-Link haben
-        has_link_error = any("Release-Links" in e for e in r.errors)
-        self.assertFalse(has_link_error, "CHANGELOG sollte keine vorzeitigen Release-Links haben")
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, "VERSION"), encoding="utf-8") as handle:
+            version = handle.read().strip()
+        with open(os.path.join(root, "package.json"), encoding="utf-8") as handle:
+            package = json.load(handle)
+        with open(os.path.join(root, "package-lock.json"), encoding="utf-8") as handle:
+            package_lock = json.load(handle)
+
+        self.assertEqual(package["version"], version)
+        self.assertEqual(package_lock["version"], version)
+        self.assertEqual(package_lock["packages"][""]["version"], version)
+        self.assertTrue(r.ok, r.errors)
 
 
 if __name__ == "__main__":

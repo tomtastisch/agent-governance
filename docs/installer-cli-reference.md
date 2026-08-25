@@ -222,10 +222,10 @@ Alle Commands verlangen denselben expliziten Pfadvertrag.
 Alle Schritte verwenden exakt dieselben expliziten Pfade:
 
 ```sh
-npx @tomtastisch/agent-governance@1.0.1 plan --scope global --installation-root "$HOME/.agent-governance" --target-root "/absoluter/zielroot" --entry-file "EINSTIEG.md" --non-interactive --json
-npx @tomtastisch/agent-governance@1.0.1 install --scope global --installation-root "$HOME/.agent-governance" --target-root "/absoluter/zielroot" --entry-file "EINSTIEG.md" --non-interactive --json
-npx @tomtastisch/agent-governance@1.0.1 verify --scope global --installation-root "$HOME/.agent-governance" --target-root "/absoluter/zielroot" --entry-file "EINSTIEG.md" --non-interactive --json
-npx @tomtastisch/agent-governance@1.0.1 status --scope global --installation-root "$HOME/.agent-governance" --target-root "/absoluter/zielroot" --entry-file "EINSTIEG.md" --non-interactive --json
+npx @tomtastisch/agent-governance@latest plan --scope global --installation-root "$HOME/.agent-governance" --target-root "/absoluter/zielroot" --entry-file "EINSTIEG.md" --non-interactive --json
+npx @tomtastisch/agent-governance@latest install --scope global --installation-root "$HOME/.agent-governance" --target-root "/absoluter/zielroot" --entry-file "EINSTIEG.md" --non-interactive --json
+npx @tomtastisch/agent-governance@latest verify --scope global --installation-root "$HOME/.agent-governance" --target-root "/absoluter/zielroot" --entry-file "EINSTIEG.md" --non-interactive --json
+npx @tomtastisch/agent-governance@latest status --scope global --installation-root "$HOME/.agent-governance" --target-root "/absoluter/zielroot" --entry-file "EINSTIEG.md" --non-interactive --json
 ```
 
 Harness-spezifische, extern dokumentierte Rezepte stehen in den
