@@ -1,6 +1,6 @@
 # JSON- und Exitcode-Vertrag
 
-> Historische Evidenz - nicht normativ. Maßgeblich ist das geschlossene TypeScript-Schema.
+> Nicht normative JSON-Referenz. Maßgeblich ist das geschlossene TypeScript-Schema.
 
 Erfolgsobjekte enthalten ausschließlich `schemaVersion`, `architecture`, `command`, `outcome`,
 `state`, `phase`, `rollbackStatus`, `capabilities` und optional `plan`. `schemaVersion` ist `1`,
@@ -20,6 +20,19 @@ festen Negativfelder `harnessSpecificMutation: false`, `mcpMutation: false`,
 Fehlerausgaben besitzen ebenfalls `schemaVersion` und einen geschlossenen Outcome; für
 Transaktionsfehler kommen Phase, abstrakte Ressourcen-ID, Rollbackstatus und Fehlercode hinzu.
 Entry- oder Regelinhalt und daraus abgeleitete Fingerprints erscheinen nie im Schema.
+
+## Feldsemantik
+
+- `schemaVersion` versioniert die Ausgabestruktur; Verbraucher dürfen nur Schema `1` als diesen
+  Vertrag lesen.
+- `architecture` identifiziert `GLOBAL_EXPLICIT_PATH_MANAGED_BLOCK`; `command` nennt den
+  ausgeführten öffentlichen Command und `outcome` sein Ergebnis.
+- `state` beschreibt den klassifizierten Bindungszustand, `phase` den erreichten
+  Transaktionsschritt und `rollbackStatus` den Recoveryausgang.
+- `capabilities` nennt ausschließlich belegte Installerfähigkeiten. Insbesondere ist
+  `HARNESS_E2E_VERIFIED` keine durch die Dateisystem-CLI ableitbare Capability.
+- `plan` ist nur bei geplanten Operationen vorhanden und beschreibt Ressourcen sowie die festen
+  Negativfelder für Harness-, MCP-, Hook- und Approvalmutationen.
 
 ## Exitcodes
 

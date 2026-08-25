@@ -1,6 +1,6 @@
 # Installer-CLI-Referenz
 
-> Historische Evidenz - nicht normativ. Maßgeblich bleiben die CLI-Implementierung und ihre Tests.
+> Nicht normative CLI-Bedienreferenz. Maßgeblich bleiben die CLI-Implementierung und ihre Tests.
 
 Diese nicht normative CLI-Bedienreferenz erklärt die öffentliche Oberfläche des Installers. Die
 CLI-Implementierung und ihre Tests bleiben Source of Truth; Architektur-, Schema- und
@@ -212,14 +212,14 @@ Alle Commands verlangen denselben expliziten Pfadvertrag.
 Alle Schritte verwenden exakt dieselben expliziten Pfade:
 
 ```sh
-npx @tomtastisch/agent-governance@next plan --scope global --installation-root "$HOME/.agent-governance" --target-root "/absoluter/zielroot" --entry-file "EINSTIEG.md" --non-interactive --json
-npx @tomtastisch/agent-governance@next install --scope global --installation-root "$HOME/.agent-governance" --target-root "/absoluter/zielroot" --entry-file "EINSTIEG.md" --non-interactive --json
-npx @tomtastisch/agent-governance@next verify --scope global --installation-root "$HOME/.agent-governance" --target-root "/absoluter/zielroot" --entry-file "EINSTIEG.md" --non-interactive --json
-npx @tomtastisch/agent-governance@next status --scope global --installation-root "$HOME/.agent-governance" --target-root "/absoluter/zielroot" --entry-file "EINSTIEG.md" --non-interactive --json
+npx @tomtastisch/agent-governance@1.0.1 plan --scope global --installation-root "$HOME/.agent-governance" --target-root "/absoluter/zielroot" --entry-file "EINSTIEG.md" --non-interactive --json
+npx @tomtastisch/agent-governance@1.0.1 install --scope global --installation-root "$HOME/.agent-governance" --target-root "/absoluter/zielroot" --entry-file "EINSTIEG.md" --non-interactive --json
+npx @tomtastisch/agent-governance@1.0.1 verify --scope global --installation-root "$HOME/.agent-governance" --target-root "/absoluter/zielroot" --entry-file "EINSTIEG.md" --non-interactive --json
+npx @tomtastisch/agent-governance@1.0.1 status --scope global --installation-root "$HOME/.agent-governance" --target-root "/absoluter/zielroot" --entry-file "EINSTIEG.md" --non-interactive --json
 ```
 
-Harness-spezifische, extern dokumentierte Rezepte stehen im Abschnitt
-[Dokumentierte Harnessrezepte](../README.md#dokumentierte-harnessrezepte) der README.
+Harness-spezifische, extern dokumentierte Rezepte stehen in den
+[Harness-Rezepten](harness-recipes.md).
 
 ## Häufige Fehler
 
@@ -232,8 +232,8 @@ Harness-spezifische, extern dokumentierte Rezepte stehen im Abschnitt
 
 ## Weiterführende Referenzen
 
-- [README](../README.md) – Schnellstart und Harnessrezepte
-- [Installationsgrenze](../INSTALL.md) – Boundary und Verantwortlichkeiten
+- [README](../README.md) – Schnellstart und Orientierung
+- [Harness-Rezepte](harness-recipes.md) – geprüfte globale Zielpfade
 - [Installerarchitektur](installer-architecture.md)
 - [Installer-Threat-Model](installer-threat-model.md)
 - [Installer-JSON-Schemas](installer-json-schemas.md)

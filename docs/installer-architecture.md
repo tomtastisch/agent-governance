@@ -1,7 +1,7 @@
 # Installerarchitektur 1.0
 
-> Historische Evidenz - nicht normativ. Maßgeblich bleiben das Bundle und der getestete
-> öffentliche CLI-Vertrag.
+> Nicht normative Architekturreferenz. Maßgeblich bleiben das Bundle und der getestete öffentliche
+> CLI-Vertrag.
 
 ## Architektur
 
@@ -29,6 +29,23 @@ Backup, Staging, Aktivierung, Verifikation und Rollback haben geschlossene Zust�
 Current-, Local-Rules-, Receipt- und Lockdateien werden über native, identitätsgebundene Parent-
 dirfds ersetzt oder entfernt. Eine rückstandsfreie Probe führt den exklusiven Rename auf jedem
 betroffenen Dateisystem vor der ersten produktiven Mutation real aus.
+
+## Installation und Lifecycle
+
+Eine Installation materialisiert ausschließlich eine globale, explizit gewählte Bindung:
+`--scope global`, ein absoluter kanonischer `--installation-root`, ein absoluter kanonischer
+`--target-root` und ein relativer Markdownpfad in `--entry-file`. Es gibt kein Defaultziel, keinen
+cwd-Fallback, keine Harness-Erkennung und keine Projektinstallation. Die
+[Harness-Rezepte](harness-recipes.md) helfen allein bei der manuellen Auswahl eines verifizierten
+Ziels; sie verändern diesen Pfadvertrag nicht.
+
+Vor der Entry-Mutation erstellt der Installer ein Backup und verifiziert es per Read-back. Das
+Release unter `releases/<version>/bundle` wird vollständig gegen Inventar und Digests geprüft. Im
+stabilen Zustand sind `bindings/<binding-id>/current.json` und die gebundene Receiptkopie unter
+`backups/<binding-id>/<transaction-id>` bytegleich. `PREPARED`, `COMMITTED` und `ROLLED_BACK`
+klassifizieren Recoveryzustände. `SIGINT` und `SIGTERM` werden serialisiert behandelt (Exit 130
+beziehungsweise 143); bei `SIGKILL`, Stromausfall oder Dateisystemdefekten entscheidet allein der
+verifizierte Recoveryvertrag.
 
 ## Managed Block und JSON
 
@@ -65,11 +82,3 @@ Die receipt-spezifische Sibling-Detach-Datei bleibt als Recoveryevidenz erhalten
 entfernt sie nicht pathname-basiert und löscht dadurch bei einem späteren Namensaustausch keine
 fremden Bytes. Auch die Wiederanlage des gewünschten Entry-Postimages erfolgt exklusiv über den
 identitätsgebundenen Parent-dirfd.
-
-## Grenzen und Migration
-
-Der unveröffentlichte 0.6.0-Codex-Entwurf mit `--harness`, festen Homepfaden, `hooks.json` und
-PreToolUse-Bridge ist entfernt. Fremdadapter wurden nach Supply-Chain- und Capability-Audit
-verworfen. Die v0.5.0-Migration besteht aus explizitem Inventar und Backup, Installer-Dry-Run,
-Managed-Block-Installation und Fresh-Session-Verifikation; sie erfolgt lokal erst aus öffentlichem
-Stable. Dateisystemerfolg allein begründet niemals `HARNESS_E2E_VERIFIED`.

@@ -15,6 +15,7 @@ INSTALL = (ROOT / "INSTALL.md").read_text(encoding="utf-8")
 CHANGELOG = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
 VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 CLI_REFERENCE_PATH = ROOT / "docs" / "installer-cli-reference.md"
+HARNESS_RECIPES_PATH = ROOT / "docs" / "harness-recipes.md"
 PACKAGE = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
 
 
@@ -196,6 +197,42 @@ class InstallerCliReferenceContract(unittest.TestCase):
         self.assertIn("docs/installer-cli-reference.md", PACKAGE["files"])
         packaged_docs = [entry for entry in PACKAGE["files"] if entry.startswith("docs/")]
         self.assertEqual(packaged_docs, ["docs/installer-cli-reference.md"])
+
+    def test_current_cli_examples_do_not_retain_the_next_channel(self):
+        """Catches the retired prerelease channel being presented as the current CLI contract."""
+        reference = CLI_REFERENCE_PATH.read_text(encoding="utf-8")
+        self.assertNotIn("@next", reference)
+        self.assertIn("@tomtastisch/agent-governance@1.0.1", reference)
+
+
+class HarnessRecipeReferenceContract(unittest.TestCase):
+    def test_harness_recipes_keep_each_verified_harness_contract_source_backed(self):
+        """Catches a return to undocumented README-owned harness paths."""
+        self.assertTrue(HARNESS_RECIPES_PATH.is_file())
+        recipes = HARNESS_RECIPES_PATH.read_text(encoding="utf-8")
+        contracts = {
+            "Codex": (
+                "${CODEX_HOME:-$HOME/.codex}/AGENTS.md",
+                "https://developers.openai.com/codex/guides/agents-md",
+            ),
+            "Claude Code": (
+                "$HOME/.claude/CLAUDE.md",
+                "https://code.claude.com/docs/en/memory",
+            ),
+            "OpenCode V2": (
+                "$XDG_CONFIG_HOME/opencode/AGENTS.md",
+                "https://opencode.ai/v2/docs/instructions",
+            ),
+            "OpenClaw": (
+                "AGENTS.md",
+                "https://docs.openclaw.ai/agent-workspace",
+            ),
+        }
+        for heading, (target, source_url) in contracts.items():
+            with self.subTest(heading=heading):
+                self.assertIn(f"## {heading}", recipes)
+                self.assertIn(target, recipes)
+                self.assertIn(source_url, recipes)
 
 
 class ReleaseMetadataContract(unittest.TestCase):

@@ -47,8 +47,20 @@ LEGACY_REFERENCES = (
 
 ACTIVE_REFERENCE_FILES = (
     ROOT / "README.md",
-    ROOT / "INSTALL.md",
+    ROOT / "docs" / "installer-cli-reference.md",
+    ROOT / "docs" / "harness-recipes.md",
+    ROOT / "docs" / "installer-architecture.md",
+    ROOT / "docs" / "installer-threat-model.md",
+    ROOT / "docs" / "installer-json-schemas.md",
     ROOT / ".github" / "workflows" / "ci.yml",
+)
+
+CURRENT_REFERENCE_FILES = (
+    ROOT / "docs" / "installer-cli-reference.md",
+    ROOT / "docs" / "harness-recipes.md",
+    ROOT / "docs" / "installer-architecture.md",
+    ROOT / "docs" / "installer-threat-model.md",
+    ROOT / "docs" / "installer-json-schemas.md",
 )
 
 RULE_DEFINITION_RE = re.compile(r"(?m)^### [A-Z][A-Z0-9-]*-\d{3} — ")
@@ -138,6 +150,8 @@ class LegacyReferenceContract(unittest.TestCase):
     def test_no_current_entrypoint_references_removed_sources(self):
         dangling = []
         for path in ACTIVE_REFERENCE_FILES:
+            if not path.is_file():
+                continue
             text = read(path)
             for reference in LEGACY_REFERENCES:
                 if reference in text:
@@ -201,13 +215,20 @@ class ReferenceGraphContract(unittest.TestCase):
 
 
 class HistoricalEvidenceContract(unittest.TestCase):
-    def test_every_historical_document_is_explicitly_non_normative(self):
-        missing = []
-        for path in sorted((ROOT / "docs").rglob("*.md")):
-            if HISTORICAL_MARKER not in "\n".join(read(path).splitlines()[:10]):
-                missing.append(path.relative_to(ROOT).as_posix())
+    def test_current_references_are_not_mislabeled_as_historical_evidence(self):
+        """Catches current installer references being classified as historical snapshots."""
+        missing = [
+            path.relative_to(ROOT).as_posix()
+            for path in CURRENT_REFERENCE_FILES
+            if not path.is_file()
+        ]
         self.assertEqual(missing, [])
-
+        mislabeled = [
+            path.relative_to(ROOT).as_posix()
+            for path in CURRENT_REFERENCE_FILES
+            if HISTORICAL_MARKER in "\n".join(read(path).splitlines()[:10])
+        ]
+        self.assertEqual(mislabeled, [])
 
 class ReleaseMetadataContract(unittest.TestCase):
     def test_current_version_declares_global_installer_release_candidate(self):
