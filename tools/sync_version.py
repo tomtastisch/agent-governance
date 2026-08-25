@@ -21,6 +21,7 @@ SEMVER_RE = re.compile(
 )
 JSON_WHITESPACE = " \t\r\n"
 JSON_DECODER = json.JSONDecoder()
+FileIdentity = tuple[int, int, int, int, int, int]
 
 
 def fail(message: str) -> int:
@@ -28,16 +29,61 @@ def fail(message: str) -> int:
     return 1
 
 
-def read_version(root: Path) -> str:
+def _identity(file_stat: os.stat_result) -> FileIdentity:
+    return (
+        file_stat.st_dev,
+        file_stat.st_ino,
+        file_stat.st_mode,
+        file_stat.st_size,
+        file_stat.st_mtime_ns,
+        file_stat.st_ctime_ns,
+    )
+
+
+def _read_regular_bytes(path: Path) -> tuple[bytes, FileIdentity]:
     try:
-        raw = (root / "VERSION").read_bytes().decode("utf-8")
-    except (OSError, UnicodeDecodeError) as error:
+        path_stat = os.lstat(path)
+    except OSError as error:
+        raise ValueError(f"{path.name} ist nicht sicher lesbar: {error}") from error
+    if not stat.S_ISREG(path_stat.st_mode):
+        raise ValueError(f"{path.name} muss eine reguläre Nicht-Symlink-Datei sein")
+    if not hasattr(os, "O_NOFOLLOW"):
+        raise ValueError("O_NOFOLLOW fehlt — sicherer Versionsabgleich nicht verfügbar")
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError as error:
+        raise ValueError(f"{path.name} ist nicht sicher lesbar: {error}") from error
+    try:
+        opened_before = os.fstat(descriptor)
+        if not stat.S_ISREG(opened_before.st_mode) or _identity(opened_before) != _identity(path_stat):
+            raise ValueError(f"{path.name} wurde vor dem Lesen ausgetauscht")
+        with os.fdopen(descriptor, "rb", closefd=True) as handle:
+            descriptor = -1
+            content = handle.read()
+            opened_after = os.fstat(handle.fileno())
+        if _identity(opened_after) != _identity(opened_before):
+            raise ValueError(f"{path.name} wurde während des Lesens verändert")
+        return content, _identity(opened_after)
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+
+
+def _read_version_with_identity(root: Path) -> tuple[str, FileIdentity]:
+    try:
+        raw_bytes, identity = _read_regular_bytes(root / "VERSION")
+        raw = raw_bytes.decode("utf-8")
+    except (OSError, UnicodeDecodeError, ValueError) as error:
         raise ValueError(f"VERSION ist nicht lesbar: {error}") from error
     if raw.endswith("\n"):
         raw = raw[:-1]
     if "\n" in raw or "\r" in raw or not SEMVER_RE.fullmatch(raw):
         raise ValueError("VERSION muss genau eine gültige SemVer-Zeile enthalten")
-    return raw
+    return raw, identity
+
+
+def read_version(root: Path) -> str:
+    return _read_version_with_identity(root)[0]
 
 
 def _skip_whitespace(source: str, index: int) -> int:
@@ -106,12 +152,11 @@ def _parse_object(source: str, index: int):
         index = _skip_whitespace(source, index + 1)
 
 
-def _read_json_layout(path: Path) -> tuple[str, dict]:
+def _read_json_layout(path: Path) -> tuple[str, dict, FileIdentity]:
     try:
-        source = path.read_bytes().decode("utf-8")
-    except FileNotFoundError as error:
-        raise ValueError(f"{path.name} fehlt") from error
-    except (OSError, UnicodeDecodeError) as error:
+        source_bytes, identity = _read_regular_bytes(path)
+        source = source_bytes.decode("utf-8")
+    except (OSError, UnicodeDecodeError, ValueError) as error:
         raise ValueError(f"{path.name} ist nicht lesbar") from error
     try:
         json.loads(source)
@@ -120,7 +165,7 @@ def _read_json_layout(path: Path) -> tuple[str, dict]:
         raise ValueError(f"{path.name} ist kein gültiges JSON-Objekt: {error}") from error
     if _skip_whitespace(source, end) != len(source):
         raise ValueError(f"{path.name} enthält JSON-Nachlauf")
-    return source, fields
+    return source, fields, identity
 
 
 def _string_value_span(source: str, fields: dict, key: str, path: Path) -> tuple[int, int]:
@@ -143,7 +188,17 @@ def _replace_values(source: str, replacements: list[tuple[int, int, str]]) -> by
     return source.encode("utf-8")
 
 
-def _stage_sibling(path: Path, content: bytes) -> Path:
+def _require_identity(path: Path, expected: FileIdentity) -> None:
+    try:
+        current = os.lstat(path)
+    except OSError as error:
+        raise OSError(f"{path.name} wurde vor der Mutation entfernt: {error}") from error
+    if not stat.S_ISREG(current.st_mode) or _identity(current) != expected:
+        raise OSError(f"{path.name} wurde vor der Mutation ausgetauscht oder verändert")
+
+
+def _stage_sibling(path: Path, content: bytes, expected: FileIdentity) -> Path:
+    _require_identity(path, expected)
     descriptor, temporary_name = tempfile.mkstemp(prefix=".sync-version-", suffix=".tmp", dir=path.parent)
     temporary = Path(temporary_name)
     try:
@@ -151,14 +206,18 @@ def _stage_sibling(path: Path, content: bytes) -> Path:
             handle.write(content)
             handle.flush()
             os.fsync(handle.fileno())
-        os.chmod(temporary, stat.S_IMODE(path.stat().st_mode))
+        os.chmod(temporary, stat.S_IMODE(expected[2]))
         return temporary
     except BaseException:
         temporary.unlink(missing_ok=True)
         raise
 
 
-def _replace_all_atomically(planned: dict[Path, bytes]) -> None:
+def _replace_all_atomically(
+    planned: dict[Path, bytes], expected_identities: dict[Path, FileIdentity]
+) -> None:
+    for path, expected in expected_identities.items():
+        _require_identity(path, expected)
     residuals = sorted(
         residual
         for parent in {path.parent for path in planned}
@@ -177,9 +236,14 @@ def _replace_all_atomically(planned: dict[Path, bytes]) -> None:
     rollback_errors = []
     try:
         for path, content in planned.items():
-            staged[path] = _stage_sibling(path, content)
+            staged[path] = _stage_sibling(path, content, expected_identities[path])
         for path in planned:
-            backups[path] = _stage_sibling(path, path.read_bytes())
+            backup_content, backup_identity = _read_regular_bytes(path)
+            if backup_identity != expected_identities[path]:
+                raise OSError(f"{path.name} wurde vor dem Backup ausgetauscht oder verändert")
+            backups[path] = _stage_sibling(path, backup_content, expected_identities[path])
+        for path, expected in expected_identities.items():
+            _require_identity(path, expected)
         for path in planned:
             os.replace(staged[path], path)
             replaced.append(path)
@@ -215,11 +279,12 @@ def _replace_all_atomically(planned: dict[Path, bytes]) -> None:
 
 
 def synchronize(root: Path) -> None:
-    version = read_version(root)
+    version, version_identity = _read_version_with_identity(root)
+    version_path = root / "VERSION"
     package_path = root / "package.json"
     lock_path = root / "package-lock.json"
-    package_source, package_fields = _read_json_layout(package_path)
-    lock_source, lock_fields = _read_json_layout(lock_path)
+    package_source, package_fields, package_identity = _read_json_layout(package_path)
+    lock_source, lock_fields, lock_identity = _read_json_layout(lock_path)
     packages = lock_fields.get("packages")
     if packages is None or not isinstance(packages[2], dict):
         raise ValueError("package-lock.json benötigt packages als JSON-Objekt")
@@ -240,7 +305,14 @@ def synchronize(root: Path) -> None:
             ],
         ),
     }
-    _replace_all_atomically(planned)
+    _replace_all_atomically(
+        planned,
+        {
+            version_path: version_identity,
+            package_path: package_identity,
+            lock_path: lock_identity,
+        },
+    )
 
 
 def main(argv: list[str] | None = None) -> int:

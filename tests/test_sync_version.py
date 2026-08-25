@@ -25,11 +25,14 @@ SYNC_SPEC.loader.exec_module(SYNC_MODULE)
 class SyncVersionContract(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
+        self.external_directory = tempfile.TemporaryDirectory()
         self.root = Path(self.directory.name)
+        self.external_root = Path(self.external_directory.name)
         self._write_valid_tree()
 
     def tearDown(self):
         self.directory.cleanup()
+        self.external_directory.cleanup()
 
     def _write_valid_tree(self, version="7.8.9"):
         (self.root / "VERSION").write_text(f"{version}\n", encoding="utf-8")
@@ -168,6 +171,44 @@ class SyncVersionContract(unittest.TestCase):
         with self.assertRaisesRegex(OSError, "Restdateien"):
             SYNC_MODULE.synchronize(self.root)
         self.assertEqual(self._projection_bytes(), committed)
+
+    def _assert_symlink_input_is_rejected(self, name):
+        input_path = self.root / name
+        external = self.external_root / name
+        external.write_bytes(input_path.read_bytes())
+        input_path.unlink()
+        input_path.symlink_to(external)
+        external_before = external.read_bytes()
+        regular_before = {
+            path.name: path.read_bytes()
+            for path in (self.root / "VERSION", self.root / "package.json", self.root / "package-lock.json")
+            if not path.is_symlink()
+        }
+
+        result = self._run()
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertTrue(input_path.is_symlink())
+        self.assertEqual(input_path.readlink(), external)
+        self.assertEqual(external.read_bytes(), external_before)
+        self.assertEqual(
+            {
+                path.name: path.read_bytes()
+                for path in (self.root / "VERSION", self.root / "package.json", self.root / "package-lock.json")
+                if not path.is_symlink()
+            },
+            regular_before,
+        )
+        self.assertEqual(list(self.root.glob(".sync-version-*")), [])
+
+    def test_symlinked_version_is_rejected_before_any_write(self):
+        self._assert_symlink_input_is_rejected("VERSION")
+
+    def test_symlinked_package_json_is_rejected_before_any_write(self):
+        self._assert_symlink_input_is_rejected("package.json")
+
+    def test_symlinked_package_lock_is_rejected_before_any_write(self):
+        self._assert_symlink_input_is_rejected("package-lock.json")
 
     def test_invalid_or_multiline_version_fails_without_writes(self):
         for version in ("not-semver\n", "7.8.9\nextra\n"):
