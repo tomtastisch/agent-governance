@@ -19,89 +19,106 @@ HARNESS_RECIPES_PATH = ROOT / "docs" / "harness-recipes.md"
 PACKAGE = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
 
 
-class EmployeeReadmeContract(unittest.TestCase):
-    def test_readme_covers_complete_employee_flow(self):
-        headings = (
-            "## Was ist agent-governance?",
-            "## Welches Problem löst es?",
-            "## Architektur",
-            "## Schnellstart",
-            "## CLI- und Managed-Block-Vertrag",
-            "## Transaktion, Update und Recovery",
-            "## Lokale persönliche Regeln",
-            "## Dokumentierte Harnessrezepte",
-            "## Capability- und Kompatibilitätsstatus",
-            "## Migration von v0.5.0",
-            "## Releaseprozess",
-            "## Verifikation und Tests",
-            "## Security- und Betriebsgrenzen",
-            "## Bekannte Einschränkungen",
-        )
-        for heading in headings:
-            self.assertIn(heading, README)
-        self.assertLessEqual(README.count("```mermaid"), 3)
+class ReadmeEntryContract(unittest.TestCase):
+    """Catches a return from the concise entry layer to duplicated reference content."""
 
-    def test_quickstart_is_short_and_uses_the_explicit_path_contract(self):
+    REPOSITORY = "tomtastisch/agent-governance"
+    RAW_MAIN = "https://raw.githubusercontent.com/tomtastisch/agent-governance/main"
+    BLOB_MAIN = "https://github.com/tomtastisch/agent-governance/blob/main"
+
+    def test_readme_has_exactly_the_six_entry_sections(self):
+        """Catches README growing into a second CLI, architecture, or security reference."""
+        self.assertEqual(
+            re.findall(r"(?m)^## .+$", README),
+            [
+                "## Was ist Agent Governance?",
+                "## Warum Agent Governance?",
+                "## Schnellstart",
+                "## Wie funktioniert es?",
+                "## Dokumentation",
+                "## Support und Lizenz",
+            ],
+        )
+
+    def test_badges_follow_package_and_ci_metadata(self):
+        """Catches stale badges that no longer identify the published package, CI, or license."""
+        ci_workflow = ROOT / ".github" / "workflows" / "ci.yml"
+        self.assertTrue(ci_workflow.is_file())
+        package_name = PACKAGE["name"]
+        license_name = PACKAGE["license"]
+        expected_badges = (
+            f"https://img.shields.io/npm/v/{package_name}?style=flat-square",
+            f"https://github.com/{self.REPOSITORY}/actions/workflows/{ci_workflow.name}/badge.svg?branch=main",
+            f"License-{license_name.replace('-', '--')}",
+        )
+        for badge in expected_badges:
+            with self.subTest(badge=badge):
+                self.assertIn(badge, README)
+
+    def test_quickstart_uses_stable_latest_for_plan_install_and_verify(self):
+        """Catches a prerelease command or a quickstart that omits the explicit path contract."""
         section = README.split("## Schnellstart", 1)[1].split("\n## ", 1)[0]
-        for step in (
-            "@tomtastisch/agent-governance",
+        for command in ("plan", "install", "verify"):
+            with self.subTest(command=command):
+                self.assertIn(
+                    f"npx @tomtastisch/agent-governance@latest {command}", section
+                )
+        for option in (
             "--scope global",
             "--installation-root",
             "--target-root",
             "--entry-file",
             "--non-interactive",
         ):
-            self.assertIn(step, section)
+            self.assertIn(option, section)
+        self.assertNotIn("@next", section)
         self.assertNotIn("--harness", section)
 
-    def test_adapterless_boundary_and_verified_support_are_precise(self):
-        for term in (
-            "GLOBAL_EXPLICIT_PATH_MANAGED_BLOCK",
-            "keine Harnesserkennung",
-            "keine Harnessadapter",
-            "keine Runtime-Abhängigkeiten",
-            "HARNESS_E2E_VERIFIED",
-            "Fresh Session",
-        ):
-            self.assertIn(term, README)
-        self.assertNotIn("PreToolUse-Bridge", README)
-        self.assertNotIn("eigene Bridge", README)
+    def test_readme_navigates_to_current_reference_owners_on_main(self):
+        """Catches relative or historical links instead of durable current-reference navigation."""
+        paths = (
+            "docs/installer-cli-reference.md",
+            "docs/harness-recipes.md",
+            "docs/installer-architecture.md",
+            "docs/installer-threat-model.md",
+            "docs/installer-json-schemas.md",
+            "CHANGELOG.md",
+            "bundle/GOVERNANCE.md",
+        )
+        for path in paths:
+            with self.subTest(path=path):
+                self.assertTrue((ROOT / path).is_file())
+                self.assertIn(f"{self.BLOB_MAIN}/{path}", README)
 
-    def test_private_rules_and_runtime_evidence_boundary_are_explicit(self):
-        for term in (
-            "local_rules",
-            "manifest.toml",
-            "nicht committed",
-            "keine Hashes",
-            "--local-rules",
-            "explizite",
-        ):
-            self.assertIn(term, README)
-
-    def test_governance_diagrams_are_local_non_normative_explanations(self):
-        image_names = (
+    def test_assets_have_semantic_paths_and_a_single_readme_overview(self):
+        """Catches duplicate, stale, or wrongly assigned visual documentation assets."""
+        icon = "assets/branding/agent-governance-icon.png"
+        overview = "assets/diagrams/governance-overview.png"
+        architecture = "assets/diagrams/governance-architecture.png"
+        for path in (icon, overview, architecture):
+            with self.subTest(path=path):
+                self.assertTrue((ROOT / path).is_file())
+        self.assertFalse((ROOT / "docs" / "images").exists())
+        self.assertIn(f"{self.RAW_MAIN}/{icon}", README)
+        self.assertEqual(README.count(f"{self.RAW_MAIN}/{overview}"), 1)
+        architecture_doc = (ROOT / "docs" / "installer-architecture.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(f"../{architecture}", architecture_doc)
+        for stale in (
+            "docs/images/",
             "Governance-ujjm885-44_44.png",
             "Governance-dsfs652-20_44.png",
-        )
-        for name in image_names:
-            with self.subTest(name=name):
-                self.assertTrue((ROOT / "docs" / "images" / name).is_file())
-                self.assertIn(f"docs/images/{name}", README)
-        self.assertRegex(README, r"(?is)nicht normative.+Erklärung")
-        self.assertIn("<details>", README)
-        self.assertIn("Technischen Governance-Ablauf als Grafik anzeigen", README)
-
-    def test_readme_names_current_catalog_paths_without_duplication(self):
-        for path in (
-            "catalogs/triggers.toml",
-            "catalogs/policy-tags.toml",
-            "catalogs/scopes.toml",
-            "catalogs/tools.toml",
-            "modules/tool-routing.md",
+            "82b014a1-7278-4be4-a665-37dae365c850.png",
         ):
-            self.assertIn(path, README)
-        self.assertRegex(README, r"(?is)manifest\.toml.+Root-Index")
-        self.assertRegex(README, r"(?is)schematisch.+nicht normativ")
+            self.assertNotIn(stale, "\n".join((README, architecture_doc)))
+
+    def test_readme_drops_retired_entry_points_and_keeps_support(self):
+        """Catches retired RC guidance or the accidental loss of the intended support destination."""
+        for stale in ("@next", "Release Candidate", "RC", "INSTALL.md"):
+            self.assertNotIn(stale, README)
+        self.assertIn("https://buymeacoffee.com/tomtastisch", README)
+        self.assertIn(PACKAGE["license"], README)
 
 
 class InstallBoundaryContract(unittest.TestCase):
@@ -113,16 +130,20 @@ class InstallBoundaryContract(unittest.TestCase):
         self.assertIn("[`VERSION`](VERSION)", INSTALL)
 
     def test_harness_recipes_are_source_linked_and_runtime_neutral(self):
+        recipes = HARNESS_RECIPES_PATH.read_text(encoding="utf-8")
         for term in (
             "$HOME/.codex", "$HOME/.claude", "$HOME/.config/opencode",
             "$HOME/.openclaw/workspace", "AGENTS.md", "CLAUDE.md",
             "developers.openai.com/codex/guides/agents-md",
             "code.claude.com/docs/en/memory",
             "opencode.ai/v2/docs/instructions",
-            "docs.openclaw.ai/concepts/agent-workspace",
+            "docs.openclaw.ai/agent-workspace",
         ):
-            self.assertIn(term, README)
-        self.assertRegex(README, r"(?is)Rezepte.+Dokumentation.+nicht.+Runtime")
+            self.assertIn(term, recipes)
+        self.assertIn(
+            "https://github.com/tomtastisch/agent-governance/blob/main/docs/harness-recipes.md",
+            README,
+        )
 
     def test_threat_model_schema_and_adapter_decision_are_durable(self):
         threat = (ROOT / "docs" / "installer-threat-model.md").read_text(encoding="utf-8")
@@ -148,27 +169,30 @@ class InstallBoundaryContract(unittest.TestCase):
             "RENAME_EXCL",
         ):
             self.assertIn(term, threat)
-        self.assertIn("docs/installer-threat-model.md", README)
-        self.assertIn("Same-UID-Final-Component-Co-Writer", README)
+        self.assertIn(
+            "https://github.com/tomtastisch/agent-governance/blob/main/docs/installer-threat-model.md",
+            README,
+        )
         self.assertIn("Same-UID-Final-Component-Co-Writer", INSTALL)
         self.assertIn("reale Capability-Probe", threat)
         self.assertIn("verifizierter unveränderlicher Recoveryzustand erhalten", threat)
-        self.assertIn("Directory-Handles", README)
         for absolute_claim in ("race-free", "TOCTOU-proof", "tamper-proof", "atomic against all concurrent writers"):
             self.assertNotIn(absolute_claim, "\n".join((README, INSTALL, threat, architecture)).lower())
 
     def test_catchable_and_uncatchable_interruption_boundaries_are_explicit(self):
+        architecture = (ROOT / "docs" / "installer-architecture.md").read_text(encoding="utf-8")
         for term in (
             "SIGINT",
             "SIGTERM",
             "PREPARED",
-            "130",
-            "143",
             "SIGKILL",
             "Stromausfall",
         ):
-            self.assertIn(term, README)
-        self.assertNotIn("registriert keine Signalhandler", README)
+            self.assertIn(term, architecture)
+        self.assertNotIn("registriert keine Signalhandler", architecture)
+        cli_reference = CLI_REFERENCE_PATH.read_text(encoding="utf-8")
+        for code in ("`130`", "`143`"):
+            self.assertIn(code, cli_reference)
 
 
 class InstallerCliReferenceContract(unittest.TestCase):
@@ -280,27 +304,9 @@ class InstallerArchitectureReferenceContract(unittest.TestCase):
 class ReleaseMetadataContract(unittest.TestCase):
     def test_installer_release_candidate_is_consistent(self):
         self.assertEqual(VERSION, "1.0.0")
-        badge_line = README.splitlines()[2]
-        self.assertIn(
-            "[![Version](https://img.shields.io/github/v/release/"
-            "tomtastisch/agent-governance?sort=semver&display_name=tag&style=flat-square&"
-            "label=version&color=2ea44f)](VERSION)",
-            badge_line,
-        )
-        self.assertNotIn(VERSION, badge_line)
-        self.assertIn(
-            "[![Changelog](https://img.shields.io/badge/changelog-view-1f6feb?"
-            "style=flat-square)](CHANGELOG.md)",
-            badge_line,
-        )
-        self.assertIn("\n## Support\n", README)
-        self.assertIn(
-            "[![Buy Me a Coffee](https://img.buymeacoffee.com/button-api/?"
-            "text=Buy%20me%20a%20coffee&emoji=&slug=tomtastisch&button_colour=FFDD00&"
-            "font_colour=000000&font_family=Cookie&outline_colour=000000&"
-            "coffee_colour=ffffff)](https://buymeacoffee.com/tomtastisch)",
-            README,
-        )
+        self.assertIn("## Support und Lizenz", README)
+        self.assertIn("https://buymeacoffee.com/tomtastisch", README)
+        self.assertIn(PACKAGE["license"], README)
         self.assertIn("## [1.0.0-rc.1] — 2026-08-24", CHANGELOG)
         current = CHANGELOG.split(f"## [{VERSION}]", 1)[1].split("\n## [", 1)[0]
         for term in (

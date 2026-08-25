@@ -30,6 +30,8 @@ Current-, Local-Rules-, Receipt- und Lockdateien werden über native, identität
 dirfds ersetzt oder entfernt. Eine rückstandsfreie Probe führt den exklusiven Rename auf jedem
 betroffenen Dateisystem vor der ersten produktiven Mutation real aus.
 
+![Detaillierte Übersicht über Bindings, normative Dateien, Routing und Laufzeitfluss.](../assets/diagrams/governance-architecture.png)
+
 ## Installation und Lifecycle
 
 Eine Installation materialisiert ausschließlich eine globale, explizit gewählte Bindung:
