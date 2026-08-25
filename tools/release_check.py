@@ -332,17 +332,15 @@ def _check_version_release_metadata(root, r):
         r.add_error("VERSION fehlt — autoritative SemVer-Quelle erforderlich")
         return None
 
-    version_raw = _read("VERSION", root)
-    version_lines = [line for line in version_raw.splitlines() if line.strip()]
-    if len(version_lines) != 1:
-        r.add_error(f"VERSION enthält {len(version_lines)} nichtleere Zeilen — "
-                    "exakt eine SemVer-Zeile erwartet (plus optionales finales Newline)")
+    with open(os.path.join(root, "VERSION"), encoding="utf-8", newline="") as handle:
+        version_raw = handle.read()
+    if version_raw.endswith("\n"):
+        version_raw = version_raw[:-1]
+    if "\n" in version_raw or "\r" in version_raw or not _is_valid_semver(version_raw):
+        r.add_error("VERSION muss exakt SemVer oder SemVer mit einem finalen LF enthalten")
         return None
 
-    version = version_lines[0].strip()
-    if not _is_valid_semver(version):
-        r.add_error(f"VERSION '{version}' ist kein gültiges SemVer (MAJOR.MINOR.PATCH)")
-        return None
+    version = version_raw
 
     _check_version_projections(root, version, r)
     _check_no_competing_source(root, r)

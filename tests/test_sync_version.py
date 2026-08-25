@@ -4,16 +4,22 @@
 from __future__ import annotations
 
 import copy
+import importlib.util
 import json
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SYNC_VERSION = ROOT / "tools" / "sync_version.py"
+SYNC_SPEC = importlib.util.spec_from_file_location("sync_version_under_test", SYNC_VERSION)
+SYNC_MODULE = importlib.util.module_from_spec(SYNC_SPEC)
+assert SYNC_SPEC.loader is not None
+SYNC_SPEC.loader.exec_module(SYNC_MODULE)
 
 
 class SyncVersionContract(unittest.TestCase):
@@ -85,6 +91,55 @@ class SyncVersionContract(unittest.TestCase):
         self.assertEqual(first.returncode, 0, first.stderr)
         self.assertEqual(second.returncode, 0, second.stderr)
         self.assertEqual(self._projection_bytes(), after_first)
+
+    def test_noncanonical_json_preserves_every_non_projection_byte(self):
+        package = (
+            b"{\r\n"
+            b"  \"description\": \"0.0.0\",\r\n"
+            b"\t\"version\" : \"0.0.0\",\r\n"
+            b"  \"scripts\" : { \"test\" : \"fixture-test\" }\r\n"
+            b"}\r\n"
+        )
+        lock = (
+            b"{\r\n"
+            b"\t\"version\" : \"0.0.0\",\r\n"
+            b"  \"metadata\" : \"0.0.0\",\r\n"
+            b"\t\"packages\" : { \"\" : { \"version\":\"0.0.0\", \"note\":\"0.0.0\" } }\r\n"
+            b"}\r\n"
+        )
+        (self.root / "package.json").write_bytes(package)
+        (self.root / "package-lock.json").write_bytes(lock)
+
+        result = self._run()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            (self.root / "package.json").read_bytes(),
+            package.replace(b'\"version\" : \"0.0.0\"', b'\"version\" : \"7.8.9\"'),
+        )
+        self.assertEqual(
+            (self.root / "package-lock.json").read_bytes(),
+            lock.replace(b'\"version\" : \"0.0.0\"', b'\"version\" : \"7.8.9\"').replace(
+                b'\"version\":\"0.0.0\"', b'\"version\":\"7.8.9\"'
+            ),
+        )
+
+    def test_second_target_replace_failure_rolls_back_every_target_file(self):
+        before = self._projection_bytes()
+        real_replace = SYNC_MODULE.os.replace
+        lock_path = self.root / "package-lock.json"
+
+        def fail_lock_replace(source, destination):
+            if Path(destination) == lock_path:
+                raise OSError("injected lock replacement failure")
+            return real_replace(source, destination)
+
+        with mock.patch.object(SYNC_MODULE.os, "replace", side_effect=fail_lock_replace):
+            with self.assertRaises(OSError):
+                SYNC_MODULE.synchronize(self.root)
+
+        self.assertEqual(self._projection_bytes(), before)
+        self.assertEqual(list(self.root.glob(".sync-version-*")), [])
 
     def test_invalid_or_multiline_version_fails_without_writes(self):
         for version in ("not-semver\n", "7.8.9\nextra\n"):

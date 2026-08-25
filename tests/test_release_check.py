@@ -148,21 +148,32 @@ class TreeVersionForm(unittest.TestCase):
             _write(os.path.join(d, "VERSION"), "\n")
             r = check_tree(root=d)
             self.assertFalse(r.ok)
-            self.assertTrue(any("nichtleere Zeilen" in e for e in r.errors))
+            self.assertTrue(any("exakt" in e for e in r.errors))
 
     def test_multiline_is_error(self):
         with tempfile.TemporaryDirectory() as d:
             _write(os.path.join(d, "VERSION"), "0.1.0\nextra text\n")
             r = check_tree(root=d)
             self.assertFalse(r.ok)
-            self.assertTrue(any("nichtleere Zeilen" in e for e in r.errors))
+            self.assertTrue(any("exakt" in e for e in r.errors))
+
+    def test_whitespace_blank_lines_and_crlf_are_errors(self):
+        for raw in (" 0.1.0\n", "0.1.0 \n", "0.1.0\n\n", "0.1.0\r\n"):
+            with self.subTest(raw=repr(raw)):
+                with tempfile.TemporaryDirectory() as d:
+                    _write(os.path.join(d, "VERSION"), raw)
+
+                    r = check_tree(root=d)
+
+                self.assertFalse(r.ok)
+                self.assertTrue(any("exakt" in error or "gültiges SemVer" in error for error in r.errors), r.errors)
 
     def test_bad_semver_is_error(self):
         with tempfile.TemporaryDirectory() as d:
             _write(os.path.join(d, "VERSION"), "not.a.version\n")
             r = check_tree(root=d)
             self.assertFalse(r.ok)
-            self.assertTrue(any("kein gültiges SemVer" in e for e in r.errors))
+            self.assertTrue(any("exakt" in e for e in r.errors))
 
     def test_single_line_with_newline_is_ok(self):
         with tempfile.TemporaryDirectory() as d:

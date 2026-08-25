@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ast
 from pathlib import Path, PurePath
 import re
 import shutil
@@ -104,6 +105,61 @@ def current_non_bundle_markdown() -> list[Path]:
             continue
         result.append(path)
     return sorted(result)
+
+
+LITERAL_ALLOWED_HISTORICAL_RECORDS = (
+    "docs/superpowers/specs/2026-08-25-issue-39-documentation-architecture-design.md",
+    "docs/superpowers/plans/2026-08-25-issue-39-documentation-architecture.md",
+)
+LITERAL_PRODUCTION_PATHS = (
+    "README.md",
+    "docs/installer-cli-reference.md",
+    "docs/harness-recipes.md",
+    "docs/installer-architecture.md",
+    "docs/installer-threat-model.md",
+    "docs/installer-json-schemas.md",
+    "tools",
+    ".github/workflows",
+)
+LITERAL_CONTRACT_TESTS = (
+    "tests/test_documentation.py",
+    "tests/test_source_consolidation.py",
+    "tests/test_release_check.py",
+    "tests/test_ci_workflow.py",
+)
+LITERAL_SCANNED_SUFFIXES = {".md", ".py", ".mjs", ".ts", ".sh", ".yml", ".yaml", ".json"}
+
+
+def fixture_line_numbers(path: Path) -> set[int]:
+    """Allows only the test_npm_publish_* scenario bodies as current-version fixture data."""
+    if path.name != "test_ci_workflow.py":
+        return set()
+    tree = ast.parse(read(path), filename=str(path))
+    return {
+        line
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name.startswith("test_npm_publish_")
+        for line in range(node.lineno, node.end_lineno + 1)
+    }
+
+
+def current_version_literal_violations(root: Path, version: str) -> list[str]:
+    """Finds current-version literals outside named historical records and scenario fixtures."""
+    candidates: list[Path] = []
+    for relative in LITERAL_PRODUCTION_PATHS:
+        path = root / relative
+        candidates.extend(path.rglob("*") if path.is_dir() else (path,))
+    candidates.extend(root / relative for relative in LITERAL_CONTRACT_TESTS)
+    violations = []
+    for path in sorted(set(candidates)):
+        if not path.is_file() or path.suffix not in LITERAL_SCANNED_SUFFIXES:
+            continue
+        allowed_lines = fixture_line_numbers(path)
+        for number, line in enumerate(read(path).splitlines(), start=1):
+            if version in line and number not in allowed_lines:
+                violations.append(f"{path.relative_to(root).as_posix()}:{number}")
+    return violations
 
 
 class SingleBootstrapSource(unittest.TestCase):
@@ -285,28 +341,35 @@ class ReleaseMetadataContract(unittest.TestCase):
             self.assertIn(f"catalogs/{catalog}.toml", historical)
 
     def test_current_version_literal_is_limited_to_derived_or_historical_records(self):
-        """Catches a second durable current-version source outside audited projections or history."""
+        """Catches a current-version literal in a named current surface, not whole source trees."""
         current_version = read(ROOT / "VERSION").strip()
-        allowed_roots = (
-            ROOT / "VERSION",
-            ROOT / "package.json",
-            ROOT / "package-lock.json",
-            ROOT / "CHANGELOG.md",
-            ROOT / "docs" / "superpowers",
-            ROOT / ".superpowers",
-            ROOT / "tests" / "test_sync_version.py",
-            ROOT / "tests" / "test_ci_workflow.py",
+        self.assertEqual(current_version_literal_violations(ROOT, current_version), [])
+        for relative in LITERAL_ALLOWED_HISTORICAL_RECORDS:
+            self.assertTrue((ROOT / relative).is_file(), relative)
+
+    def test_literal_drift_catches_productive_extensions_and_nonfixture_test_lines(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            version = "7.8.9"
+            for suffix in (".mjs", ".ts", ".sh"):
+                path = root / "tools" / f"productive{suffix}"
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(f"const version = '{version}';\n", encoding="utf-8")
+            test_path = root / "tests" / "test_ci_workflow.py"
+            test_path.parent.mkdir(parents=True, exist_ok=True)
+            test_path.write_text(f"value = '{version}'\n", encoding="utf-8")
+
+            violations = current_version_literal_violations(root, version)
+
+        self.assertEqual(
+            violations,
+            [
+                "tests/test_ci_workflow.py:1",
+                "tools/productive.mjs:1",
+                "tools/productive.sh:1",
+                "tools/productive.ts:1",
+            ],
         )
-        scanned_suffixes = {".md", ".py", ".json", ".yml", ".yaml"}
-        violations = []
-        for path in ROOT.rglob("*"):
-            if not path.is_file() or path.suffix not in scanned_suffixes:
-                continue
-            if any(path == allowed or allowed in path.parents for allowed in allowed_roots):
-                continue
-            if current_version in read(path):
-                violations.append(path.relative_to(ROOT).as_posix())
-        self.assertEqual(violations, [])
 
     def test_unreleased_is_reset_after_version_classification(self):
         changelog = read(ROOT / "CHANGELOG.md")
