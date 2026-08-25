@@ -12,6 +12,7 @@ CI_WORKFLOW = (ROOT / ".github" / "workflows" / "ci.yml").read_text(
 )
 TAG_GATE_PATH = ROOT / ".github" / "workflows" / "release-tag-verify.yml"
 PUBLISH_PATH = ROOT / ".github" / "workflows" / "npm-publish.yml"
+BOOTSTRAP_PUBLISH_PATH = ROOT / ".github" / "workflows" / "npm-bootstrap-publish.yml"
 CHECKOUT_SHA = "de0fac2e4500dabe0009e67214ff5f5447ce83dd"
 CHECKOUT_V7_SHA = "3d3c42e5aac5ba805825da76410c181273ba90b1"
 SETUP_NODE_V7_SHA = "820762786026740c76f36085b0efc47a31fe5020"
@@ -197,6 +198,58 @@ class ReleaseWorkflowSecurityContract(unittest.TestCase):
         self.assertNotIn("NODE_AUTH_TOKEN", workflow)
         self.assertIn("1.0.0-rc.*:next", workflow)
         self.assertIn("1.0.0:latest", workflow)
+        for run_block in _run_blocks(_job_block(workflow, "publish")):
+            self.assertNotIn("${{", run_block)
+
+    def test_one_time_npm_bootstrap_is_rc2_only_and_secret_is_step_scoped(self):
+        self.assertTrue(
+            BOOTSTRAP_PUBLISH_PATH.is_file(),
+            "one-time npm bootstrap workflow is missing",
+        )
+        workflow = BOOTSTRAP_PUBLISH_PATH.read_text(encoding="utf-8")
+        for value in (
+            "workflow_dispatch:",
+            "contents: read",
+            "ref: refs/heads/main",
+            "github.ref == 'refs/heads/main'",
+            'RELEASE_TAG: "v1.0.0-rc.2"',
+            'NPM_DIST_TAG: "next"',
+            'EXPECTED_VERSION: "1.0.0-rc.2"',
+            'python3 tools/release_check.py tag "$RELEASE_TAG"',
+            'git checkout --detach "$RELEASE_TAG"',
+            "REQUIRE_ALL_NATIVE_PREBUILDS=1 npm run pack:check",
+            "npm run test:package",
+            "tests/e2e/run_installer_fixture.sh",
+            "tests/e2e/run_neutral_harness.sh",
+            'npm publish --access public --tag "$NPM_DIST_TAG"',
+            "NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}",
+            "npm audit signatures",
+        ):
+            self.assertIn(value, workflow)
+
+        publish_block = _job_block(workflow, "publish")
+        workflow_permissions = workflow.split("jobs:\n", 1)[0]
+        native_block = _job_block(workflow, "native-prebuild")
+        self.assertNotIn("id-token: write", workflow_permissions)
+        self.assertNotIn("id-token: write", native_block)
+        self.assertIn(
+            "    permissions:\n"
+            "      contents: read\n"
+            "      id-token: write\n",
+            publish_block,
+        )
+        before_publish, publish_and_after = publish_block.split(
+            "      - name: Publish public package for first-package bootstrap\n",
+            1,
+        )
+        publish_step, after_publish = publish_and_after.split("      - name:", 1)
+        self.assertNotIn("NODE_AUTH_TOKEN", before_publish)
+        self.assertIn("NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}", publish_step)
+        self.assertNotIn("NODE_AUTH_TOKEN", after_publish)
+        self.assertNotIn("set -x", workflow)
+        self.assertNotIn("env |", workflow)
+        self.assertNotIn("printenv", workflow)
+
         for run_block in _run_blocks(_job_block(workflow, "publish")):
             self.assertNotIn("${{", run_block)
 
