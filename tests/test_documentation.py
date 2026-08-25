@@ -148,6 +148,22 @@ class ReadmeEntryContract(unittest.TestCase):
         self.assertIn("https://buymeacoffee.com/tomtastisch", README)
         self.assertIn(PACKAGE["license"], README)
 
+    def test_support_uses_the_canonical_buy_me_a_coffee_button(self):
+        """Catches replacement of the functional support button with a plain text link."""
+        support = README.split("## Support und Lizenz", 1)[1]
+        image_url = (
+            "https://img.buymeacoffee.com/button-api/"
+            "?text=Buy%20me%20a%20coffee&emoji=&slug=tomtastisch"
+            "&button_colour=FFDD00&font_colour=000000&font_family=Cookie"
+            "&outline_colour=000000&coffee_colour=ffffff"
+        )
+        expected = (
+            f"[![Buy Me a Coffee]({image_url})]"
+            "(https://buymeacoffee.com/tomtastisch)"
+        )
+        self.assertIn(expected, support)
+        self.assertNotRegex(support, r"(?m)^\[Buy Me a Coffee\]\(")
+
 
 class CurrentDocumentationBoundaryContract(unittest.TestCase):
     def test_harness_recipes_are_source_linked_and_runtime_neutral(self):

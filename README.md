@@ -74,5 +74,6 @@ Sicherheitsgrenzen und Datenstrukturen liegen jeweils bei ihrer zuständigen Ref
 
 ## Support und Lizenz
 
-[Buy me a coffee](https://buymeacoffee.com/tomtastisch) · Lizenz:
-[Apache-2.0](https://github.com/tomtastisch/agent-governance/blob/main/LICENSE)
+[![Buy Me a Coffee](https://img.buymeacoffee.com/button-api/?text=Buy%20me%20a%20coffee&emoji=&slug=tomtastisch&button_colour=FFDD00&font_colour=000000&font_family=Cookie&outline_colour=000000&coffee_colour=ffffff)](https://buymeacoffee.com/tomtastisch)
+
+Lizenz: [Apache-2.0](https://github.com/tomtastisch/agent-governance/blob/main/LICENSE)
