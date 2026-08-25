@@ -25,6 +25,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Breaking changes:** none
 
+## [1.0.0-rc.3] — 2026-08-25
+
+### Added
+
+- Eine nicht normative Installer-CLI-Referenz für alle acht öffentlichen Commands und den
+  expliziten globalen Pfad- und Optionsvertrag.
+
+### Changed
+
+- Das öffentliche npm-Paket enthält gezielt `docs/installer-cli-reference.md`; README und
+  Installationsgrenze verlinken diese Bedienreferenz.
+- Das Paket mit transaktionalem Explicit-Path-Installer und adapterlosem Kern behält die Architektur
+  `GLOBAL_EXPLICIT_PATH_MANAGED_BLOCK` als globalen Auslieferungsvertrag bei: keine Harnessadapter,
+  keine implizite Zielerkennung, unveränderte Rollback-Garantien und unveränderte
+  macOS-Testfixtures.
+
+### Fixed
+
+- Dokumentations- und Pack-Drift-Tests binden die CLI-Referenz an die öffentliche Distribution,
+  während alle anderen internen Dokumentationspfade aus dem Paket ausgeschlossen bleiben.
+
+### Removed
+
+- Keine.
+
+**Breaking changes:** present
+
+- **BREAKING:** Gegenüber dem manuellen v0.5.0-Bootstrap verlangt der Installer weiterhin
+  explizite globale Zielparameter und verwaltet ausschließlich seinen markierten Markdown-Block.
+
 ## [1.0.0-rc.2] — 2026-08-24
 
 ### Added
