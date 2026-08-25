@@ -109,7 +109,10 @@ class SemVerParsing(unittest.TestCase):
             self.assertTrue(_is_valid_semver(v), f"'{v}' sollte gültig sein")
 
     def test_invalid_versions(self):
-        for v in ("1", "1.0", "01.0.0", "1.0.0-", "v1.0.0", "abc", ""):
+        for v in (
+            "1", "1.0", "01.0.0", "1.0.0-", "v1.0.0", "abc", "",
+            "1.2.3١", "1.2.3-1١",
+        ):
             self.assertFalse(_is_valid_semver(v), f"'{v}' sollte ungültig sein")
 
 

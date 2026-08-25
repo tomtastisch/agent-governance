@@ -1,6 +1,8 @@
 # Issue #39 Documentation Architecture Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Historische Evidenz - nicht normativ.** Dieser Plan dokumentiert den ausgeführten
+> Issue-#39-Lieferstrom; seine Arbeitsschritte sind keine aktiven Anweisungen und keine aktuelle
+> Governance- oder Versionsquelle.
 
 **Goal:** Deliver Issue #39 as the stable SemVer patch `1.0.1`, from compact README and separated documentation through verified PR, merge, GitHub Release, npm publication, read-back, and issue closure.
 

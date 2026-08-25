@@ -270,6 +270,20 @@ class InstallerCliReferenceContract(unittest.TestCase):
         packaged_docs = [entry for entry in PACKAGE["files"] if entry.startswith("docs/")]
         self.assertEqual(packaged_docs, ["docs/installer-cli-reference.md"])
 
+    def test_packaged_reference_uses_absolute_links_for_nonpackaged_current_docs(self):
+        reference = CLI_REFERENCE_PATH.read_text(encoding="utf-8")
+        expected_counts = {
+            "docs/harness-recipes.md": 2,
+            "docs/installer-architecture.md": 1,
+            "docs/installer-threat-model.md": 1,
+            "docs/installer-json-schemas.md": 1,
+        }
+        for path, count in expected_counts.items():
+            absolute = f"https://github.com/tomtastisch/agent-governance/blob/main/{path}"
+            with self.subTest(path=path):
+                self.assertEqual(reference.count(f"]({absolute})"), count)
+                self.assertNotIn(f"]({Path(path).name})", reference)
+
     def test_current_cli_examples_do_not_retain_the_next_channel(self):
         """Catches a prerelease or current-version literal in the durable CLI contract."""
         reference = CLI_REFERENCE_PATH.read_text(encoding="utf-8")

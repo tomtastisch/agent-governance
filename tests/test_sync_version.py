@@ -211,7 +211,12 @@ class SyncVersionContract(unittest.TestCase):
         self._assert_symlink_input_is_rejected("package-lock.json")
 
     def test_invalid_or_multiline_version_fails_without_writes(self):
-        for version in ("not-semver\n", "7.8.9\nextra\n"):
+        for version in (
+            "not-semver\n",
+            "7.8.9\nextra\n",
+            "1.2.3١\n",
+            "1.2.3-1١\n",
+        ):
             with self.subTest(version=version):
                 (self.root / "VERSION").write_text(version, encoding="utf-8")
                 before = self._projection_bytes()

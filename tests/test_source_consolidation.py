@@ -76,9 +76,11 @@ HISTORICAL_EVIDENCE_FILES = (
     ROOT / "docs" / "superpowers" / "plans" / "2026-08-19-copilot-qa-binding.md",
     ROOT / "docs" / "superpowers" / "plans" / "2026-08-24-global-explicit-path-installer.md",
     ROOT / "docs" / "superpowers" / "plans" / "2026-08-24-installer-security-contract-boundary.md",
+    ROOT / "docs" / "superpowers" / "plans" / "2026-08-25-issue-39-documentation-architecture.md",
     ROOT / "docs" / "superpowers" / "specs" / "2026-08-12-generic-bootstrap-enforcement-design.md",
     ROOT / "docs" / "superpowers" / "specs" / "2026-08-19-copilot-qa-binding-design.md",
     ROOT / "docs" / "superpowers" / "specs" / "2026-08-24-global-explicit-path-installer-design.md",
+    ROOT / "docs" / "superpowers" / "specs" / "2026-08-25-issue-39-documentation-architecture-design.md",
 )
 
 RULE_DEFINITION_RE = re.compile(r"(?m)^### [A-Z][A-Z0-9-]*-\d{3} — ")

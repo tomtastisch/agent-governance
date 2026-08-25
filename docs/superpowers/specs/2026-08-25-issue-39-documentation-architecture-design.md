@@ -1,5 +1,8 @@
 # Issue #39: Dokumentationsarchitektur für 1.0.1
 
+> **Historische Evidenz - nicht normativ.** Diese Spezifikation dokumentiert den freigegebenen
+> Zielvertrag des Issue-#39-Lieferstroms und ist keine aktuelle Governance- oder Versionsquelle.
+
 ## Ziel und Scope
 
 Issue #39 liefert den nächsten Stable-Patch `1.0.1` als atomaren Dokumentations- und

@@ -229,7 +229,7 @@ npx @tomtastisch/agent-governance@latest status --scope global --installation-ro
 ```
 
 Harness-spezifische, extern dokumentierte Rezepte stehen in den
-[Harness-Rezepten](harness-recipes.md).
+[Harness-Rezepten](https://github.com/tomtastisch/agent-governance/blob/main/docs/harness-recipes.md).
 
 ## Häufige Fehler
 
@@ -243,7 +243,7 @@ Harness-spezifische, extern dokumentierte Rezepte stehen in den
 ## Weiterführende Referenzen
 
 - [README](../README.md) – Schnellstart und Orientierung
-- [Harness-Rezepte](harness-recipes.md) – geprüfte globale Zielpfade
-- [Installerarchitektur](installer-architecture.md)
-- [Installer-Threat-Model](installer-threat-model.md)
-- [Installer-JSON-Schemas](installer-json-schemas.md)
+- [Harness-Rezepte](https://github.com/tomtastisch/agent-governance/blob/main/docs/harness-recipes.md) – geprüfte globale Zielpfade
+- [Installerarchitektur](https://github.com/tomtastisch/agent-governance/blob/main/docs/installer-architecture.md)
+- [Installer-Threat-Model](https://github.com/tomtastisch/agent-governance/blob/main/docs/installer-threat-model.md)
+- [Installer-JSON-Schemas](https://github.com/tomtastisch/agent-governance/blob/main/docs/installer-json-schemas.md)
