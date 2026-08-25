@@ -132,10 +132,28 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.11"
-      - name: Tree-Konsistenz (VERSION, CHANGELOG, README, INSTALL)
+      - name: Tree-Konsistenz (VERSION, CHANGELOG, Dokumentlinks)
         run: |
           python3 tools/release_check.py tree
           git diff --check
+
+  docs-remote:
+    name: Dokumentlinks auf main (blockierend)
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'release' && github.event.action == 'published')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: refs/heads/main
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.11"
+      - name: Kanonische Dokumentziele auf main prüfen
+        run: python3 tools/release_check.py docs-remote
 
   release-validate:
     name: Release-Validierung (nur bei published)

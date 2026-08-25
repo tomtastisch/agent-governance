@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 """Deterministische Release-Metadaten-Validierung des Repositorys.
 
-Drei Modi — alle read-only:
-  tree     Repository-/Tree-Konsistenz (VERSION ↔ CHANGELOG ↔ README ↔ INSTALL)
-  tag      Tag-Konsistenz (benötigt Git-Historie, Tag-Ref und optional erwarteten Commit)
-  release  GitHub-Release-Konsistenz (benötigt Netzwerk und gh CLI)
+Vier Modi — alle read-only:
+  tree         Repository-/Tree-Konsistenz (VERSION, CHANGELOG, Dokumentlinks)
+  docs-remote  Kanonische Dokumentziele auf GitHub main (benötigt Netzwerk und gh CLI)
+  tag          Tag-Konsistenz (benötigt Git-Historie, Tag-Ref und optional erwarteten Commit)
+  release      GitHub-Release-Konsistenz (benötigt Netzwerk und gh CLI)
 
 Kein Modus erstellt Tags, Releases oder verändert das Repository.
 """
 
 import base64
 import binascii
+from datetime import date as calendar_date
 import hashlib
 import json
 import os
@@ -18,13 +20,14 @@ import re
 import stat
 import subprocess
 import sys
+from urllib.parse import quote, urlsplit
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 SEMVER_RE = re.compile(
-    r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
-    r"(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)"
-    r"(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?"
+    r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
+    r"(?:-((?:0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)"
+    r"(?:\.(?:0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*))?"
     r"(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"
 )
 
@@ -38,6 +41,26 @@ UNRELEASED_HEADING_RE = re.compile(r"^##\s+\[Unreleased\]", re.MULTILINE)
 CATEGORY_HEADING_RE = re.compile(r"^###\s+(\w+)", re.MULTILINE)
 SECTION_SPLIT_RE = re.compile(r"(?=^##\s+\[)", re.MULTILINE)
 CHANGELOG_LINK_RE = re.compile(r"^\[(\d+\.\d+\.\d[^\]]*)\]:\s*(https?://\S+)", re.MULTILINE)
+DOCUMENTATION_LINK_LINE_RE = re.compile(
+    r"^- \[[\w ,./&-]+\]\(([^()\s]+)\)$"
+)
+DOCUMENTATION_SECTION_RE = re.compile(
+    r"(?ms)^## Dokumentation\s*$\n(?P<body>.*?)(?=^##\s|\Z)"
+)
+
+CANONICAL_DOCUMENT_PATHS = (
+    "docs/installer-cli-reference.md",
+    "docs/harness-recipes.md",
+    "docs/installer-architecture.md",
+    "docs/installer-threat-model.md",
+    "docs/installer-json-schemas.md",
+    "CHANGELOG.md",
+    "bundle/GOVERNANCE.md",
+)
+GITHUB_HOST = "github.com"
+GITHUB_OWNER = "tomtastisch"
+GITHUB_REPOSITORY = "agent-governance"
+GITHUB_CURRENT_REF = "main"
 
 STATUS_OK = 0
 STATUS_FAIL = 1
@@ -163,6 +186,32 @@ class GhRunner:
         except json.JSONDecodeError:
             return None, f"gh release view {tag}: ungültige JSON-Antwort"
 
+    @staticmethod
+    def api_content(endpoint, root, timeout=30):
+        """Read-only: gibt das geparste GitHub-Contents-Objekt oder einen Fehler zurück."""
+        try:
+            result = subprocess.run(
+                ["gh", "api", endpoint],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+        except FileNotFoundError:
+            return None, "gh CLI nicht verfügbar"
+        except subprocess.TimeoutExpired:
+            return None, f"gh api {endpoint}: Timeout"
+        except OSError as error:
+            return None, f"gh api {endpoint}: nicht ausführbar: {error}"
+
+        if result.returncode != 0:
+            detail = result.stderr.strip()[:200] or f"Exit {result.returncode}"
+            return None, f"gh api {endpoint}: {detail}"
+        try:
+            return json.loads(result.stdout), None
+        except json.JSONDecodeError:
+            return None, f"gh api {endpoint}: ungültige JSON-Antwort"
+
 
 # ── Hilfsfunktionen ──
 
@@ -266,43 +315,69 @@ def check_tree(root=None):
         root = ROOT
     r = CheckResult()
 
-    # ── VERSION ──
+    version = _check_version_release_metadata(root, r)
+    if version is None:
+        return r
+
+    document_links = _check_document_links(root)
+    r.errors.extend(document_links.errors)
+    r.warnings.extend(document_links.warnings)
+
+    return r
+
+
+def _check_version_release_metadata(root, r):
+    """Validates VERSION projections and its unique current changelog release read-only."""
     if not _exists("VERSION", root):
         r.add_error("VERSION fehlt — autoritative SemVer-Quelle erforderlich")
-        return r
+        return None
 
-    version_raw = _read("VERSION", root)
-    version_lines = [l for l in version_raw.splitlines() if l.strip()]
-    if len(version_lines) != 1:
-        r.add_error(f"VERSION enthält {len(version_lines)} nichtleere Zeilen — "
-                    "exakt eine SemVer-Zeile erwartet (plus optionales finales Newline)")
-        return r
+    with open(os.path.join(root, "VERSION"), encoding="utf-8", newline="") as handle:
+        version_raw = handle.read()
+    if version_raw.endswith("\n"):
+        version_raw = version_raw[:-1]
+    if "\n" in version_raw or "\r" in version_raw or not _is_valid_semver(version_raw):
+        r.add_error("VERSION muss exakt SemVer oder SemVer mit einem finalen LF enthalten")
+        return None
 
-    version = version_lines[0].strip()
-    if not _is_valid_semver(version):
-        r.add_error(f"VERSION '{version}' ist kein gültiges SemVer (MAJOR.MINOR.PATCH)")
+    version = version_raw
 
+    _check_version_projections(root, version, r)
     _check_no_competing_source(root, r)
 
-    # ── CHANGELOG ──
     if not _exists("CHANGELOG.md", root):
         r.add_error("CHANGELOG.md fehlt — aktueller CHANGELOG erforderlich")
     else:
         _check_changelog_sections(root, version, r)
+    return version
 
-    # ── README (fehlend = Fehler) ──
-    if not _exists("README.md", root):
-        r.add_error("README.md fehlt")
-    else:
-        _check_readme_version(root, version, r)
 
-    # ── INSTALL (fehlend = Fehler, ohne Versionsvertrag = Fehler) ──
-    if not _exists("INSTALL.md", root):
-        r.add_error("INSTALL.md fehlt")
-    else:
-        _check_install_links(root, r)
-
-    return r
+def _check_version_projections(root, version, r):
+    """Checks every npm projection independently from the write-only synchronizer."""
+    for rel in ("package.json", "package-lock.json"):
+        if not _exists(rel, root):
+            r.add_error(f"{rel} fehlt — VERSION-Projektion erforderlich")
+            continue
+        try:
+            data = json.loads(_read(rel, root))
+        except (json.JSONDecodeError, OSError):
+            r.add_error(f"{rel}: ungültiges JSON für VERSION-Abgleich")
+            continue
+        if not isinstance(data, dict):
+            r.add_error(f"{rel}: JSON-Objekt für VERSION-Abgleich erforderlich")
+            continue
+        if data.get("version") != version:
+            r.add_error(f"{rel}-Version ({data.get('version')}) weicht von VERSION ({version}) ab")
+        if rel == "package-lock.json":
+            packages = data.get("packages")
+            root_package = packages.get("") if isinstance(packages, dict) else None
+            if not isinstance(root_package, dict):
+                r.add_error("package-lock.json Root-Paketstruktur packages[\"\"] fehlt oder ist ungültig")
+            elif root_package.get("version") != version:
+                r.add_error(
+                    f"package-lock.json Root-Paketversion ({root_package.get('version')}) "
+                    f"weicht von VERSION ({version}) ab"
+                )
 
 
 def _check_no_competing_source(root, r):
@@ -327,27 +402,10 @@ def _check_no_competing_source(root, r):
                 if re.search(r'(?m)^version\s*=\s*"\d+\.\d+\.\d+', txt):
                     r.add_error(f"{rel}: konkurrierende version-Deklaration")
             elif name.endswith(".json"):
-                txt = _read(rel, root)
                 if rel in {"package.json", "package-lock.json"}:
-                    try:
-                        package_data = json.loads(txt)
-                        package_version = package_data.get("version")
-                    except (json.JSONDecodeError, AttributeError):
-                        r.add_error(f"{rel}: ungültiges JSON für VERSION-Abgleich")
-                        continue
-                    if package_version != authoritative_version:
-                        r.add_error(
-                            f"{rel}-Version ({package_version}) weicht von VERSION "
-                            f"({authoritative_version}) ab"
-                        )
-                    if rel == "package-lock.json":
-                        root_package_version = package_data.get("packages", {}).get("", {}).get("version")
-                        if root_package_version is not None and root_package_version != authoritative_version:
-                            r.add_error(
-                                f"package-lock.json Root-Paketversion ({root_package_version}) "
-                                f"weicht von VERSION ({authoritative_version}) ab"
-                            )
-                elif re.search(r'"version"\s*:\s*"\d+\.\d+\.\d+', txt):
+                    continue
+                txt = _read(rel, root)
+                if re.search(r'"version"\s*:\s*"\d+\.\d+\.\d+', txt):
                     r.add_error(f"{rel}: konkurrierende version-Deklaration")
             elif name.lower() in ("version.txt", "version", ".version"):
                 r.add_error(f"{rel}: parallele Versionsdatei neben VERSION")
@@ -444,13 +502,30 @@ def _check_changelog_sections(root, version, r):
         elif meta["marker"] == "present" and not meta["has_breaking_entries"]:
             r.add_error(f"[{ver}]: '**Breaking changes:** present' ohne '**BREAKING:**' Eintrag")
 
-    # ── Abgleich mit VERSION ──
-    if unreleased_sections:
-        pass  # Entwicklungszustand: Version ist Ziel, noch nicht veröffentlicht
-    elif release_sections:
-        latest = release_sections[0][0]
-        if latest != version:
-            r.add_error(f"VERSION ({version}) weicht von aktuellstem CHANGELOG-Release ({latest}) ab")
+    current_sections = [(ver, section_date, body) for ver, section_date, body in release_sections if ver == version]
+    if len(current_sections) != 1:
+        r.add_error(
+            f"CHANGELOG muss genau einen aktuellen Abschnitt [{version}] enthalten; gefunden: {len(current_sections)}"
+        )
+        return
+
+    current_version, current_date, current_body = current_sections[0]
+    if not release_sections or release_sections[0][0] != current_version:
+        r.add_error(f"[{version}] muss der erste versionierte CHANGELOG-Abschnitt sein")
+    if not current_date or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", current_date):
+        r.add_error(f"[{version}] benötigt ein gültiges ISO-Datum (YYYY-MM-DD)")
+    else:
+        try:
+            calendar_date.fromisoformat(current_date)
+        except ValueError:
+            r.add_error(f"[{version}] benötigt ein gültiges ISO-Datum (YYYY-MM-DD)")
+
+    current_meta = _parse_section("", current_body)
+    missing = REQUIRED_CATEGORIES - current_meta["categories"]
+    if missing:
+        r.add_error(f"[{version}] fehlen erforderliche Kategorien: {sorted(missing)}")
+    if current_meta["marker"] is None:
+        r.add_error(f"[{version}] fehlt der Marker '**Breaking changes:** none' oder '**Breaking changes:** present'")
 
 
 def _semver_cmp(a, b):
@@ -485,29 +560,152 @@ def _semver_cmp(a, b):
     return 1 if len(pre_a) > len(pre_b) else -1
 
 
-def _check_readme_version(root, version, r):
-    readme = _read("README.md", root)
-    linked_version = re.search(r"\*\*Version:\*\*\s+\[`([^`]+)`\]\(VERSION\)", readme)
-    if linked_version:
-        displayed = linked_version.group(1)
-        if displayed != version:
-            r.add_error(f"README zeigt Version '{displayed}', aber VERSION enthält '{version}'")
-    else:
-        bare_version = re.search(r"\*\*Version:\*\*\s+`?(\d+\.\d+\.\d[^`\s]*)`?", readme)
-        if bare_version:
-            r.add_error(f"README zeigt Hartversion '{bare_version.group(1)}' ohne VERSION-Link — Drift-Gefahr")
-        # README muss VERSION als autoritative Quelle nennen
-        if "VERSION" not in readme and "versioniert" not in readme and "Release-Tag" not in readme:
-            r.add_error("README referenziert keine versionierte Auslieferung (VERSION, Release-Tag)")
+def _check_document_links(root):
+    """Prüft den exakten README-Linkvertrag vollständig offline."""
+    r = CheckResult()
+    root_real = os.path.realpath(os.path.abspath(root))
+
+    if os.path.lexists(os.path.join(root_real, "INSTALL.md")):
+        r.add_error("INSTALL.md muss nach abgeschlossener Inhaltsmigration entfernt sein")
+    if os.path.lexists(os.path.join(root_real, "docs", "images")):
+        r.add_error("veralteter Pfad docs/images muss entfernt sein")
+
+    for path in CANONICAL_DOCUMENT_PATHS:
+        _check_confined_regular_file(root_real, path, r)
+
+    if not _check_confined_regular_file(root_real, "README.md", r):
+        return r
+
+    readme = _read("README.md", root_real)
+    section = DOCUMENTATION_SECTION_RE.search(readme)
+    if section is None:
+        r.add_error("README.md: Abschnitt 'Dokumentation' fehlt")
+        return r
+
+    seen = {path: 0 for path in CANONICAL_DOCUMENT_PATHS}
+    urls = []
+    for line in section.group("body").splitlines():
+        if not line.strip():
+            continue
+        link = DOCUMENTATION_LINK_LINE_RE.fullmatch(line)
+        if link is None:
+            r.add_error(
+                "README.md: Dokumentationsabschnitt verletzt die geschlossene Markdown-Grammatik"
+            )
+            continue
+        urls.append(link.group(1))
+    for url in urls:
+        path = _validate_current_document_url(url, r)
+        if path in seen:
+            seen[path] += 1
+
+    for path, count in seen.items():
+        if count == 0:
+            r.add_error(f"README.md: kanonischer Dokumentlink fehlt: {path}")
+        elif count > 1:
+            r.add_error(f"README.md: kanonischer Dokumentlink ist mehrfach vorhanden: {path}")
+    return r
 
 
-def _check_install_links(root, r):
-    inst = _read("INSTALL.md", root)
-    if "../VERSION" in inst:
-        r.add_error("INSTALL.md referenziert '../VERSION' — korrekter Pfad ist 'VERSION' (vom Repo-Root)")
-    # INSTALL muss den VERSION-Pfad oder Release-Referenz enthalten (kein Warning mehr)
-    if "VERSION" not in inst and "Version" not in inst and "Release" not in inst:
-        r.add_error("INSTALL.md enthält keinen Hinweis auf versionierte Installation (VERSION/Release)")
+def _check_confined_regular_file(root_real, path, r):
+    """Lehnt Root-Escape, fehlende Pfade, Symlinks und Nicht-Dateien ab."""
+    candidate = os.path.join(root_real, *path.split("/"))
+    target_real = os.path.realpath(candidate)
+    try:
+        confined = os.path.commonpath((root_real, target_real)) == root_real
+    except ValueError:
+        confined = False
+    if not confined:
+        r.add_error(f"{path}: lokales Ziel verlässt das Repository")
+        return False
+    try:
+        file_stat = os.lstat(candidate)
+    except OSError:
+        r.add_error(f"{path}: lokales Ziel fehlt oder ist keine reguläre Datei")
+        return False
+    if stat.S_ISLNK(file_stat.st_mode):
+        r.add_error(f"{path}: lokales Ziel darf kein Symlink sein")
+        return False
+    if not stat.S_ISREG(file_stat.st_mode):
+        r.add_error(f"{path}: lokales Ziel ist keine reguläre Datei")
+        return False
+    return True
+
+
+def _validate_current_document_url(url, r):
+    """Validiert genau eine URL aus dem README-Dokumentationsabschnitt."""
+    try:
+        parsed = urlsplit(url)
+    except ValueError as error:
+        r.add_error(f"README.md: ungültige Dokument-URL '{url}': {error}")
+        return None
+
+    if parsed.scheme != "https":
+        r.add_error(f"README.md: Dokumentlink verwendet nicht https: {url}")
+        return None
+    if parsed.netloc != GITHUB_HOST:
+        r.add_error(f"README.md: Dokumentlink hat unerwarteten Host: {url}")
+        return None
+    if parsed.query or parsed.fragment:
+        r.add_error(f"README.md: Dokumentlink enthält unerlaubtes Query/Fragment: {url}")
+        return None
+    if "%" in parsed.path or "\\" in parsed.path:
+        r.add_error(f"README.md: Dokumentlink enthält einen kodierten oder ungültigen Pfad: {url}")
+        return None
+
+    parts = parsed.path.split("/")
+    if any(part in {".", ".."} for part in parts):
+        r.add_error(f"README.md: Dokumentlink enthält Pfadtraversal: {url}")
+        return None
+    if len(parts) < 6 or parts[0] != "":
+        r.add_error(f"README.md: Dokumentlink hat eine ungültige GitHub-Pfadform: {url}")
+        return None
+    if parts[1:3] != [GITHUB_OWNER, GITHUB_REPOSITORY]:
+        r.add_error(f"README.md: Dokumentlink hat unerwartetes Owner/Repository: {url}")
+        return None
+    if parts[3] != "blob":
+        r.add_error(f"README.md: Dokumentlink verwendet nicht die GitHub-blob-Ansicht: {url}")
+        return None
+    if parts[4] != GITHUB_CURRENT_REF:
+        r.add_error(f"README.md: Dokumentlink verwendet nicht den main-Ref: {url}")
+        return None
+
+    repo_path = "/".join(parts[5:])
+    if repo_path not in CANONICAL_DOCUMENT_PATHS:
+        r.add_error(f"README.md: unerwarteter Dokumentpfad: {repo_path}")
+        return None
+    return repo_path
+
+
+def _contents_endpoint(path):
+    """Baut einen argument-sicheren GitHub-Contents-Endpunkt aus dem geschlossenen Pfadsatz."""
+    if path not in CANONICAL_DOCUMENT_PATHS:
+        raise ValueError(f"unerwarteter Dokumentpfad: {path}")
+    encoded_path = "/".join(quote(part, safe="") for part in path.split("/"))
+    return (
+        f"repos/{GITHUB_OWNER}/{GITHUB_REPOSITORY}/contents/"
+        f"{encoded_path}?ref={GITHUB_CURRENT_REF}"
+    )
+
+
+def check_docs_remote(root=None, gh=None, timeout=30):
+    """Prüft den geschlossenen kanonischen Dokumentpfadsatz auf GitHub main."""
+    if root is None:
+        root = ROOT
+    runner = gh or GhRunner
+    r = CheckResult()
+    for path in CANONICAL_DOCUMENT_PATHS:
+        endpoint = _contents_endpoint(path)
+        data, error = runner.api_content(endpoint, root, timeout=timeout)
+        if error:
+            r.add_error(f"Remote-Dokumentziel fehlt oder ist nicht prüfbar ({path}): {error}")
+        elif not isinstance(data, dict):
+            r.add_error(f"Remote-Dokumentziel ist kein GitHub-Contents-Dateiobjekt ({path})")
+        elif data.get("type") != "file":
+            r.add_error(f"Remote-Dokumentziel hat nicht type 'file' ({path})")
+        elif data.get("path") != path:
+            r.add_error(f"Remote-Dokumentziel hat nicht den erwarteten path ({path})")
+    return r
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -528,11 +726,9 @@ def check_tag(root=None, tag_ref=None, expected_commit=None, verifier=None):
         root = ROOT
     r = CheckResult()
 
-    if not _exists("VERSION", root):
-        r.add_error("VERSION fehlt — Tag-Prüfung ohne Version nicht möglich")
+    version = _check_version_release_metadata(root, r)
+    if version is None or not r.ok:
         return r
-
-    version = _read("VERSION", root).strip().splitlines()[0].strip()
     expected_tag = f"v{version}"
 
     # ── Tag deterministisch wählen (Greptile-Finding #1) ──
@@ -591,11 +787,9 @@ def check_release(root=None, tag_ref=None, gh=None, verifier=None):
         root = ROOT
     r = CheckResult()
 
-    if not _exists("VERSION", root):
-        r.add_error("VERSION fehlt — Release-Prüfung ohne Version nicht möglich")
+    version = _check_version_release_metadata(root, r)
+    if version is None or not r.ok:
         return r
-
-    version = _read("VERSION", root).strip().splitlines()[0].strip()
     expected_tag = f"v{version}"
 
     if tag_ref is None:
@@ -621,6 +815,13 @@ def check_release(root=None, tag_ref=None, gh=None, verifier=None):
     # ── Draft ──
     if data.get("isDraft", False):
         r.add_error(f"GitHub-Release '{tag_ref}' ist ein Draft — muss published sein")
+
+    expected_prerelease = SEMVER_RE.match(version).group(4) is not None
+    if data.get("isPrerelease") is not expected_prerelease:
+        r.add_error(
+            f"GitHub-Release '{tag_ref}' Prerelease-Flag "
+            f"({data.get('isPrerelease')}) entspricht nicht VERSION ({version})"
+        )
 
     # ── Commit-Vergleich (Greptile-Finding #4) ──
     # Peeling: lokalen Tag auf Commit auflösen
@@ -675,6 +876,7 @@ def _resolve_target_commitish(target, root):
 def main():
     if len(sys.argv) < 2:
         print("usage: python3 tools/release_check.py tree", file=sys.stderr)
+        print("       python3 tools/release_check.py docs-remote", file=sys.stderr)
         print("       python3 tools/release_check.py tag [TAG_NAME] [EXPECTED_COMMIT]", file=sys.stderr)
         print("       python3 tools/release_check.py release [TAG_NAME]", file=sys.stderr)
         return STATUS_FAIL
@@ -682,6 +884,8 @@ def main():
     mode = sys.argv[1]
     if mode == "tree":
         result = check_tree()
+    elif mode == "docs-remote":
+        result = check_docs_remote()
     elif mode == "tag":
         tag_ref = sys.argv[2] if len(sys.argv) > 2 else None
         expected_commit = sys.argv[3] if len(sys.argv) > 3 else None

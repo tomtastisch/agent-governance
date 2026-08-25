@@ -10,7 +10,6 @@ async function allowlistedFixture(t: TestContext): Promise<{ root: string; paths
   t.after(() => rm(root, { recursive: true, force: true }));
   const paths = [
     "CHANGELOG.md",
-    "INSTALL.md",
     "LICENSE",
     "README.md",
     "VERSION",
@@ -29,6 +28,12 @@ async function allowlistedFixture(t: TestContext): Promise<{ root: string; paths
   return { root, paths };
 }
 
+async function addFixturePath(root: string, paths: string[], path: string): Promise<void> {
+  await mkdir(join(root, path, ".."), { recursive: true });
+  await writeFile(join(root, path), "fixture\n");
+  paths.push(path);
+}
+
 function verify(root: string, report: unknown) {
   return spawnSync(process.execPath, [join(import.meta.dirname, "../../tools/verify-pack.mjs")], {
     cwd: root,
@@ -42,8 +47,42 @@ test("pack verifier accepts the npm 12 package-keyed JSON report", async (t) => 
   const report = { "@tomtastisch/agent-governance": { name: "@tomtastisch/agent-governance", files: paths.map((path) => ({ path })) } };
   const result = verify(root, report);
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /12 tarball entries are generic and allowlisted/);
+  assert.match(result.stdout, /tarball entries are generic and allowlisted/);
 });
+
+for (const path of [
+  "INSTALL.md",
+  "assets/diagrams/governance-overview.png",
+  "docs/harness-recipes.md",
+  "docs/installer-architecture.md",
+]) {
+  test(`pack verifier rejects forbidden package path ${path}`, async (t) => {
+    const { root, paths } = await allowlistedFixture(t);
+    await addFixturePath(root, paths, path);
+    const report = [{ name: "@tomtastisch/agent-governance", files: paths.map((fixturePath) => ({ path: fixturePath })) }];
+    const result = verify(root, report);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /forbidden|unexpected tarball path/);
+  });
+}
+
+for (const required of [
+  "README.md",
+  "LICENSE",
+  "CHANGELOG.md",
+  "docs/installer-cli-reference.md",
+]) {
+  test(`pack verifier requires package path ${required}`, async (t) => {
+    const { root, paths } = await allowlistedFixture(t);
+    const report = [{
+      name: "@tomtastisch/agent-governance",
+      files: paths.filter((path) => path !== required).map((path) => ({ path })),
+    }];
+    const result = verify(root, report);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, new RegExp(`missing tarball path: ${required.replaceAll(".", "\\.")}`));
+  });
+}
 
 test("pack verifier rejects foreign package identity in npm 12 reports", async (t) => {
   const { root, paths } = await allowlistedFixture(t);

@@ -1,6 +1,6 @@
-# JSON- und Exitcode-Vertrag
+# JSON-Schema-Vertrag
 
-> Historische Evidenz - nicht normativ. Maßgeblich ist das geschlossene TypeScript-Schema.
+> Nicht normative JSON-Referenz. Maßgeblich ist das geschlossene TypeScript-Schema.
 
 Erfolgsobjekte enthalten ausschließlich `schemaVersion`, `architecture`, `command`, `outcome`,
 `state`, `phase`, `rollbackStatus`, `capabilities` und optional `plan`. `schemaVersion` ist `1`,
@@ -21,12 +21,18 @@ Fehlerausgaben besitzen ebenfalls `schemaVersion` und einen geschlossenen Outcom
 Transaktionsfehler kommen Phase, abstrakte Ressourcen-ID, Rollbackstatus und Fehlercode hinzu.
 Entry- oder Regelinhalt und daraus abgeleitete Fingerprints erscheinen nie im Schema.
 
-## Exitcodes
+## Feldsemantik
 
-- `0`: Erfolg
-- `2`: `INVALID_INVOCATION`
-- `4`: `UNSAFE_STATE`
-- `5`: `VERIFICATION_ROLLED_BACK`
-- `6`: `ROLLBACK_FAILED`
-- `130`: Unterbrechung durch `SIGINT`
-- `143`: Unterbrechung durch `SIGTERM`
+- `schemaVersion` versioniert die Ausgabestruktur; Verbraucher dürfen nur Schema `1` als diesen
+  Vertrag lesen.
+- `architecture` identifiziert `GLOBAL_EXPLICIT_PATH_MANAGED_BLOCK`; `command` nennt den
+  ausgeführten öffentlichen Command und `outcome` sein Ergebnis.
+- `state` beschreibt den klassifizierten Bindungszustand, `phase` den erreichten
+  Transaktionsschritt und `rollbackStatus` den Recoveryausgang.
+- `capabilities` nennt ausschließlich belegte Installerfähigkeiten. Insbesondere ist
+  `HARNESS_E2E_VERIFIED` keine durch die Dateisystem-CLI ableitbare Capability.
+- `plan` ist nur bei geplanten Operationen vorhanden und beschreibt Ressourcen sowie die festen
+  Negativfelder für Harness-, MCP-, Hook- und Approvalmutationen.
+
+Das Exitverhalten der öffentlichen Commands steht in der
+[Installer-CLI-Referenz](installer-cli-reference.md#exitverhalten).

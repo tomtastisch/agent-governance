@@ -1,6 +1,6 @@
 # Threat Model des Explicit-Path-Installers
 
-> Historische Evidenz - nicht normativ. Der ausführbare Vertrag liegt in Code, Tests und Bundle.
+> Nicht normative Sicherheitsreferenz. Der ausführbare Vertrag liegt in Code, Tests und Bundle.
 
 ## Assets und Trust Boundaries
 
@@ -9,6 +9,12 @@ Backups, Aktivierungsmetadaten und Receipts. Vertrauensgrenzen liegen zwischen n
 Staging, explizitem Zielroot und Installer, persistenter Transaktionsmetadatei und Recovery sowie
 privater Regelquelle und veröffentlichbarer Evidenz. CLI-Argumente, bestehende Dateien und
 persistente Metadaten werden nicht allein aufgrund ihrer Herkunft vertraut.
+
+Die Installationsgrenze bleibt bewusst eng: Die öffentliche CLI akzeptiert nur `--scope global`,
+einen absoluten kanonischen Installationsroot, einen absoluten kanonischen Target-Root und einen
+relativen Markdown-Entry-Pfad. Sie erkennt keinen Harness, mutiert keine Adapter, Hooks, MCPs
+oder Approvals und verwendet keinen privilegierten Broker. Diese Beschränkung schützt vor einer
+impliziten Ziel- oder Berechtigungsausweitung.
 
 ## In Scope
 

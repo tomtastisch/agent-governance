@@ -90,12 +90,32 @@ jobs:
         run: |
           python3 tools/release_check.py tag "$RELEASE_TAG"
           git checkout --detach "$RELEASE_TAG"
-          PACKAGE_VERSION=$(node -p "require('./package.json').version")
-          case "$PACKAGE_VERSION:$NPM_DIST_TAG" in
-            1.0.0-rc.*:next|1.0.0:latest) ;;
-            *) echo "version and dist-tag contract mismatch" >&2; exit 1 ;;
-          esac
-          test "$RELEASE_TAG" = "v$PACKAGE_VERSION"
+          node - "$RELEASE_TAG" "$NPM_DIST_TAG" <<'NODE'
+          const { readFileSync } = require("node:fs");
+          const { version } = require("./package.json");
+          const [releaseTag, distTag] = process.argv.slice(2);
+          const versionBytes = readFileSync("VERSION");
+          if (typeof version !== "string") {
+            console.error("package and VERSION contract mismatch");
+            process.exit(1);
+          }
+          const exactVersionBytes = Buffer.from(version, "utf8");
+          const versionWithLfBytes = Buffer.from(`${version}\n`, "utf8");
+          if (!versionBytes.equals(exactVersionBytes) && !versionBytes.equals(versionWithLfBytes)) {
+            console.error("package and VERSION contract mismatch");
+            process.exit(1);
+          }
+          if (releaseTag !== `v${version}`) {
+            console.error("release tag and VERSION contract mismatch");
+            process.exit(1);
+          }
+          const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/.exec(version);
+          const expectedDistTag = match?.[4] === undefined ? "latest" : "next";
+          if (match === null || distTag !== expectedDistTag) {
+            console.error("version and dist-tag contract mismatch");
+            process.exit(1);
+          }
+          NODE
       - name: Rebuild and verify package at the signed tag
         run: |
           npm ci --ignore-scripts

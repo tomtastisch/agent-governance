@@ -1,6 +1,6 @@
 # Installer-CLI-Referenz
 
-> Historische Evidenz - nicht normativ. Maßgeblich bleiben die CLI-Implementierung und ihre Tests.
+> Nicht normative CLI-Bedienreferenz. Maßgeblich bleiben die CLI-Implementierung und ihre Tests.
 
 Diese nicht normative CLI-Bedienreferenz erklärt die öffentliche Oberfläche des Installers. Die
 CLI-Implementierung und ihre Tests bleiben Source of Truth; Architektur-, Schema- und
@@ -207,19 +207,29 @@ Alle Commands verlangen denselben expliziten Pfadvertrag.
 - **Beispiel:** `--non-interactive`.
 - **Fehlanwendung:** Den Schalter als Erlaubnis für implizite Pfade verstehen.
 
+## Exitverhalten
+
+- `0`: Erfolg.
+- `2`: `INVALID_INVOCATION` für einen ungültigen Aufruf.
+- `4`: `UNSAFE_STATE` für einen nicht sicher klassifizierbaren Zustand.
+- `5`: `VERIFICATION_ROLLED_BACK` für einen Fehler mit erfolgreichem Rollback.
+- `6`: `ROLLBACK_FAILED` für einen fehlgeschlagenen Rollback.
+- `130`: serialisierte Unterbrechung durch `SIGINT`.
+- `143`: serialisierte Unterbrechung durch `SIGTERM`.
+
 ## Generischer Ablauf
 
 Alle Schritte verwenden exakt dieselben expliziten Pfade:
 
 ```sh
-npx @tomtastisch/agent-governance@next plan --scope global --installation-root "$HOME/.agent-governance" --target-root "/absoluter/zielroot" --entry-file "EINSTIEG.md" --non-interactive --json
-npx @tomtastisch/agent-governance@next install --scope global --installation-root "$HOME/.agent-governance" --target-root "/absoluter/zielroot" --entry-file "EINSTIEG.md" --non-interactive --json
-npx @tomtastisch/agent-governance@next verify --scope global --installation-root "$HOME/.agent-governance" --target-root "/absoluter/zielroot" --entry-file "EINSTIEG.md" --non-interactive --json
-npx @tomtastisch/agent-governance@next status --scope global --installation-root "$HOME/.agent-governance" --target-root "/absoluter/zielroot" --entry-file "EINSTIEG.md" --non-interactive --json
+npx @tomtastisch/agent-governance@latest plan --scope global --installation-root "$HOME/.agent-governance" --target-root "/absoluter/zielroot" --entry-file "EINSTIEG.md" --non-interactive --json
+npx @tomtastisch/agent-governance@latest install --scope global --installation-root "$HOME/.agent-governance" --target-root "/absoluter/zielroot" --entry-file "EINSTIEG.md" --non-interactive --json
+npx @tomtastisch/agent-governance@latest verify --scope global --installation-root "$HOME/.agent-governance" --target-root "/absoluter/zielroot" --entry-file "EINSTIEG.md" --non-interactive --json
+npx @tomtastisch/agent-governance@latest status --scope global --installation-root "$HOME/.agent-governance" --target-root "/absoluter/zielroot" --entry-file "EINSTIEG.md" --non-interactive --json
 ```
 
-Harness-spezifische, extern dokumentierte Rezepte stehen im Abschnitt
-[Dokumentierte Harnessrezepte](../README.md#dokumentierte-harnessrezepte) der README.
+Harness-spezifische, extern dokumentierte Rezepte stehen in den
+[Harness-Rezepten](https://github.com/tomtastisch/agent-governance/blob/main/docs/harness-recipes.md).
 
 ## Häufige Fehler
 
@@ -232,8 +242,8 @@ Harness-spezifische, extern dokumentierte Rezepte stehen im Abschnitt
 
 ## Weiterführende Referenzen
 
-- [README](../README.md) – Schnellstart und Harnessrezepte
-- [Installationsgrenze](../INSTALL.md) – Boundary und Verantwortlichkeiten
-- [Installerarchitektur](installer-architecture.md)
-- [Installer-Threat-Model](installer-threat-model.md)
-- [Installer-JSON-Schemas](installer-json-schemas.md)
+- [README](../README.md) – Schnellstart und Orientierung
+- [Harness-Rezepte](https://github.com/tomtastisch/agent-governance/blob/main/docs/harness-recipes.md) – geprüfte globale Zielpfade
+- [Installerarchitektur](https://github.com/tomtastisch/agent-governance/blob/main/docs/installer-architecture.md)
+- [Installer-Threat-Model](https://github.com/tomtastisch/agent-governance/blob/main/docs/installer-threat-model.md)
+- [Installer-JSON-Schemas](https://github.com/tomtastisch/agent-governance/blob/main/docs/installer-json-schemas.md)

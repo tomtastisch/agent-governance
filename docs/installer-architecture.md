@@ -1,7 +1,7 @@
 # Installerarchitektur 1.0
 
-> Historische Evidenz - nicht normativ. Maßgeblich bleiben das Bundle und der getestete
-> öffentliche CLI-Vertrag.
+> Nicht normative Architekturreferenz. Maßgeblich bleiben das Bundle und der getestete öffentliche
+> CLI-Vertrag.
 
 ## Architektur
 
@@ -30,14 +30,43 @@ Current-, Local-Rules-, Receipt- und Lockdateien werden über native, identität
 dirfds ersetzt oder entfernt. Eine rückstandsfreie Probe führt den exklusiven Rename auf jedem
 betroffenen Dateisystem vor der ersten produktiven Mutation real aus.
 
-## Managed Block und JSON
+![Detaillierte Übersicht über Bindings, normative Dateien, Routing und Laufzeitfluss.](../assets/diagrams/governance-architecture.png)
+
+## Installation und Lifecycle
+
+Eine Installation materialisiert ausschließlich eine globale, explizit gewählte Bindung:
+`--scope global`, ein absoluter kanonischer `--installation-root`, ein absoluter kanonischer
+`--target-root` und ein relativer Markdownpfad in `--entry-file`. Es gibt kein Defaultziel, keinen
+cwd-Fallback, keine Harness-Erkennung und keine Projektinstallation. Die
+[Harness-Rezepte](harness-recipes.md) helfen allein bei der manuellen Auswahl eines verifizierten
+Ziels; sie verändern diesen Pfadvertrag nicht.
+
+Vor der Entry-Mutation erstellt der Installer ein Backup und verifiziert es per Read-back. Das
+Release unter `releases/<version>/bundle` wird vollständig gegen Inventar und Digests geprüft. Im
+stabilen Zustand sind `bindings/<binding-id>/current.json` und die gebundene Receiptkopie unter
+`backups/<binding-id>/<transaction-id>` bytegleich. `PREPARED`, `COMMITTED` und `ROLLED_BACK`
+klassifizieren Recoveryzustände. `SIGINT` und `SIGTERM` werden serialisiert behandelt; bei
+`SIGKILL`, Stromausfall oder Dateisystemdefekten entscheidet allein der verifizierte
+Recoveryvertrag. Das zugehörige Exitverhalten gehört zur
+[Installer-CLI-Referenz](installer-cli-reference.md#exitverhalten).
+
+## Managed Block
 
 Der V1-Block enthält Version, kanonischen Installationsroot, normative Bootstrap-/Manifestpfade,
-Governance-, Manifest- und vollständigen Bundledigest, die Pre-Response-Ladepflicht, die Trennung lokaler Regeln und
-Fail-closed-Verhalten. JSON-Schema 1 nennt Architektur, Command, Outcome, Zustand, Phase,
-Rollbackstatus, Capability-Liste und optional einen Ressourcenplan. Exitcodes sind 0 (Erfolg),
-2 (ungültiger Aufruf), 4 (unsicherer Zustand), 5 (Fehler mit erfolgreichem Rollback), 6
-(Rollbackfehler) sowie 130/143 für SIGINT/SIGTERM.
+Governance-, Manifest- und vollständigen Bundledigest, die Pre-Response-Ladepflicht, die Trennung
+lokaler Regeln und Fail-closed-Verhalten. Er beginnt mit
+`<!-- BEGIN AGENT_GOVERNANCE_MANAGED_V1 -->` und endet mit
+`<!-- END AGENT_GOVERNANCE_MANAGED_V1 -->`. Außenbytes und vorhandene LF-/CRLF-Zeilenenden bleiben
+erhalten; doppelte, unvollständige, fremde oder manipulierte Marker scheitern fail-closed. Update
+ersetzt und Uninstall entfernt ausschließlich den verwalteten Block; Rollback stellt die
+vollständige vorherige Datei wieder her.
+
+Für die crash-sichere, konkurrenzfeste Entry-Wiederherstellung reserviert Rollback neben der
+Entry-Datei ein receipt-spezifisches `.<entry>.agent-governance-<transaction-id>.restore/` mit
+Modus `0700`. Dessen identitätsgebundene `entry.bin` bleibt nach erfolgreichem Rollback als
+Recovery-Evidenz erhalten und wird weder von Uninstall noch durch spätere Transaktionen implizit
+gelöscht. JSON-Strukturen und Feldsemantik gehören ausschließlich zu den
+[JSON-Schemas](installer-json-schemas.md).
 
 ## Update, Uninstall und Recovery
 
@@ -65,11 +94,3 @@ Die receipt-spezifische Sibling-Detach-Datei bleibt als Recoveryevidenz erhalten
 entfernt sie nicht pathname-basiert und löscht dadurch bei einem späteren Namensaustausch keine
 fremden Bytes. Auch die Wiederanlage des gewünschten Entry-Postimages erfolgt exklusiv über den
 identitätsgebundenen Parent-dirfd.
-
-## Grenzen und Migration
-
-Der unveröffentlichte 0.6.0-Codex-Entwurf mit `--harness`, festen Homepfaden, `hooks.json` und
-PreToolUse-Bridge ist entfernt. Fremdadapter wurden nach Supply-Chain- und Capability-Audit
-verworfen. Die v0.5.0-Migration besteht aus explizitem Inventar und Backup, Installer-Dry-Run,
-Managed-Block-Installation und Fresh-Session-Verifikation; sie erfolgt lokal erst aus öffentlichem
-Stable. Dateisystemerfolg allein begründet niemals `HARNESS_E2E_VERIFIED`.

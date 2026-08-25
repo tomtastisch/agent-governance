@@ -2,6 +2,7 @@
 """Regression contracts for release-critical GitHub Actions jobs."""
 
 from pathlib import Path
+import json
 import os
 import re
 import subprocess
@@ -42,6 +43,51 @@ def _run_blocks(job_body: str) -> list[str]:
     )
 
 
+def _run_npm_publish_admission(
+    package_version: str,
+    repository_version: str,
+    release_tag: str,
+    dist_tag: str,
+    *,
+    final_lf: bool = True,
+) -> subprocess.CompletedProcess[str]:
+    workflow = PUBLISH_PATH.read_text(encoding="utf-8")
+    publish = _job_block(workflow, "publish")
+    admission_step = publish.split(
+        "      - name: Verify signed tag from trusted main and select immutable source\n",
+        1,
+    )[1].split("      - name:", 1)[0]
+    script = textwrap.dedent(_run_blocks(admission_step)[0])
+
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        (root / "package.json").write_text(
+            json.dumps({"version": package_version}) + "\n",
+            encoding="utf-8",
+        )
+        version_bytes = repository_version.encode("utf-8") + (b"\n" if final_lf else b"")
+        (root / "VERSION").write_bytes(version_bytes)
+        commands = root / "commands"
+        commands.mkdir()
+        for name in ("git", "python3"):
+            command = commands / name
+            command.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            command.chmod(0o700)
+        return subprocess.run(
+            ["/bin/sh", "-eu", "-c", script],
+            cwd=root,
+            env={
+                **os.environ,
+                "RELEASE_TAG": release_tag,
+                "NPM_DIST_TAG": dist_tag,
+                "PATH": f"{commands}:{os.environ['PATH']}",
+            },
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+
 def _run_registry_retry_with_failed_reads(readback: str) -> int:
     run_block = textwrap.dedent(_run_blocks(readback)[0])
     retry = run_block.split("PACKAGE_VERSION=", 1)[1].split("VERIFY_ROOT=", 1)[0]
@@ -73,6 +119,21 @@ def _run_registry_retry_with_failed_reads(readback: str) -> int:
 
 
 class ReleaseWorkflowSecurityContract(unittest.TestCase):
+    def test_remote_document_gate_runs_only_after_main_or_release_publication(self):
+        self.assertIn("\n  docs-remote:\n", CI_WORKFLOW)
+        block = _job_block(CI_WORKFLOW, "docs-remote")
+
+        self.assertIn(
+            "    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') "
+            "|| (github.event_name == 'release' && github.event.action == 'published')\n",
+            block,
+        )
+        self.assertIn("      contents: read\n", block)
+        self.assertIn("      GH_TOKEN: ${{ github.token }}\n", block)
+        self.assertIn("          ref: refs/heads/main\n", block)
+        self.assertIn("python3 tools/release_check.py docs-remote", block)
+        self.assertNotIn("pull_request", block)
+
     def test_installer_job_does_not_use_step_only_contexts_in_job_env(self):
         block = _job_block(CI_WORKFLOW, "installer-package")
         job_configuration = block.split("    steps:\n", 1)[0]
@@ -230,10 +291,99 @@ class ReleaseWorkflowSecurityContract(unittest.TestCase):
         ):
             self.assertIn(value, workflow)
         self.assertNotIn("NODE_AUTH_TOKEN", workflow)
-        self.assertIn("1.0.0-rc.*:next", workflow)
-        self.assertIn("1.0.0:latest", workflow)
+        self.assertNotIn("1.0.0-rc.*:next", workflow)
+        self.assertNotIn("1.0.0:latest", workflow)
         for run_block in _run_blocks(_job_block(workflow, "publish")):
             self.assertNotIn("${{", run_block)
+
+    def test_npm_publish_pairs_stable_with_latest_and_prerelease_with_next(self):
+        cases = (
+            ("1.0.1", "latest", True),
+            ("1.0.1", "next", False),
+            ("1.0.1-beta.1", "next", True),
+            ("1.0.1-beta.1", "latest", False),
+            ("not-semver", "latest", False),
+        )
+        for version, dist_tag, accepted in cases:
+            with self.subTest(version=version, dist_tag=dist_tag):
+                result = _run_npm_publish_admission(
+                    version,
+                    version,
+                    f"v{version}",
+                    dist_tag,
+                )
+                self.assertEqual(result.returncode == 0, accepted, result.stderr)
+
+    def test_npm_publish_requires_package_version_to_equal_repository_version(self):
+        result = _run_npm_publish_admission(
+            "1.0.0",
+            "1.0.1",
+            "v1.0.0",
+            "latest",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_npm_publish_rejects_multiline_repository_version(self):
+        result = _run_npm_publish_admission(
+            "1.0.1",
+            "1.0.\n1",
+            "v1.0.1",
+            "latest",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_npm_publish_rejects_repository_version_with_trailing_blank_line(self):
+        result = _run_npm_publish_admission(
+            "1.0.1",
+            "1.0.1\n",
+            "v1.0.1",
+            "latest",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_npm_publish_rejects_repository_version_with_embedded_nul(self):
+        result = _run_npm_publish_admission(
+            "1.0.1",
+            "1.0.1\0",
+            "v1.0.1",
+            "latest",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_npm_publish_accepts_only_exact_version_bytes_with_optional_final_lf(self):
+        cases = (
+            ("1.0.1", False, True),
+            ("1.0.1", True, True),
+            ("1.0.1\n", True, False),
+            ("1.0.1\r", True, False),
+            ("1.0.1\0", False, False),
+            (" 1.0.1", True, False),
+            ("1.0.1 ", True, False),
+        )
+        for repository_version, final_lf, accepted in cases:
+            with self.subTest(raw=repr(repository_version), final_lf=final_lf):
+                result = _run_npm_publish_admission(
+                    "1.0.1",
+                    repository_version,
+                    "v1.0.1",
+                    "latest",
+                    final_lf=final_lf,
+                )
+                self.assertEqual(result.returncode == 0, accepted, result.stderr)
+
+    def test_npm_publish_requires_tag_to_equal_repository_version(self):
+        result = _run_npm_publish_admission(
+            "1.0.1",
+            "1.0.1",
+            "v1.0.0",
+            "latest",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
 
     def test_trusted_publish_retries_complete_registry_metadata(self):
         workflow = PUBLISH_PATH.read_text(encoding="utf-8")

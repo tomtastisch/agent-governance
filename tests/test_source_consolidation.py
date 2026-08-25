@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ast
 from pathlib import Path, PurePath
 import re
 import shutil
@@ -47,8 +48,39 @@ LEGACY_REFERENCES = (
 
 ACTIVE_REFERENCE_FILES = (
     ROOT / "README.md",
-    ROOT / "INSTALL.md",
+    ROOT / "docs" / "installer-cli-reference.md",
+    ROOT / "docs" / "harness-recipes.md",
+    ROOT / "docs" / "installer-architecture.md",
+    ROOT / "docs" / "installer-threat-model.md",
+    ROOT / "docs" / "installer-json-schemas.md",
     ROOT / ".github" / "workflows" / "ci.yml",
+)
+
+CURRENT_REFERENCE_FILES = (
+    ROOT / "docs" / "installer-cli-reference.md",
+    ROOT / "docs" / "harness-recipes.md",
+    ROOT / "docs" / "installer-architecture.md",
+    ROOT / "docs" / "installer-threat-model.md",
+    ROOT / "docs" / "installer-json-schemas.md",
+)
+
+HISTORICAL_EVIDENCE_FILES = (
+    ROOT / "docs" / "adapter-audit.md",
+    ROOT / "docs" / "audits" / "2026-07-30-source-migration.md",
+    ROOT / "docs" / "decisions" / "0001-branch-tags-statt-agenten-praefix.md",
+    ROOT / "docs" / "decisions" / "0002-vorgang-sub-pr-in-haupt-pr-branch.md",
+    ROOT / "docs" / "decisions" / "0003-canonical-governance-bundle.md",
+    ROOT / "docs" / "dependency-evidence.md",
+    ROOT / "docs" / "superpowers" / "plans" / "2026-08-12-generic-bootstrap-enforcement.md",
+    ROOT / "docs" / "superpowers" / "plans" / "2026-08-17-typed-routing-catalogs.md",
+    ROOT / "docs" / "superpowers" / "plans" / "2026-08-19-copilot-qa-binding.md",
+    ROOT / "docs" / "superpowers" / "plans" / "2026-08-24-global-explicit-path-installer.md",
+    ROOT / "docs" / "superpowers" / "plans" / "2026-08-24-installer-security-contract-boundary.md",
+    ROOT / "docs" / "superpowers" / "plans" / "2026-08-25-issue-39-documentation-architecture.md",
+    ROOT / "docs" / "superpowers" / "specs" / "2026-08-12-generic-bootstrap-enforcement-design.md",
+    ROOT / "docs" / "superpowers" / "specs" / "2026-08-19-copilot-qa-binding-design.md",
+    ROOT / "docs" / "superpowers" / "specs" / "2026-08-24-global-explicit-path-installer-design.md",
+    ROOT / "docs" / "superpowers" / "specs" / "2026-08-25-issue-39-documentation-architecture-design.md",
 )
 
 RULE_DEFINITION_RE = re.compile(r"(?m)^### [A-Z][A-Z0-9-]*-\d{3} — ")
@@ -75,6 +107,62 @@ def current_non_bundle_markdown() -> list[Path]:
             continue
         result.append(path)
     return sorted(result)
+
+
+LITERAL_ALLOWED_HISTORICAL_RECORDS = (
+    "docs/superpowers/specs/2026-08-25-issue-39-documentation-architecture-design.md",
+    "docs/superpowers/plans/2026-08-25-issue-39-documentation-architecture.md",
+)
+LITERAL_PRODUCTION_PATHS = (
+    "README.md",
+    "docs/installer-cli-reference.md",
+    "docs/harness-recipes.md",
+    "docs/installer-architecture.md",
+    "docs/installer-threat-model.md",
+    "docs/installer-json-schemas.md",
+    "tools",
+    ".github/workflows",
+)
+LITERAL_CONTRACT_TESTS = (
+    "tests/test_documentation.py",
+    "tests/test_installer_distribution.py",
+    "tests/test_source_consolidation.py",
+    "tests/test_release_check.py",
+    "tests/test_ci_workflow.py",
+)
+LITERAL_SCANNED_SUFFIXES = {".md", ".py", ".mjs", ".ts", ".sh", ".yml", ".yaml", ".json"}
+
+
+def fixture_line_numbers(path: Path) -> set[int]:
+    """Allows only the test_npm_publish_* scenario bodies as current-version fixture data."""
+    if path.name != "test_ci_workflow.py":
+        return set()
+    tree = ast.parse(read(path), filename=str(path))
+    return {
+        line
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name.startswith("test_npm_publish_")
+        for line in range(node.lineno, node.end_lineno + 1)
+    }
+
+
+def current_version_literal_violations(root: Path, version: str) -> list[str]:
+    """Finds current-version literals outside named historical records and scenario fixtures."""
+    candidates: list[Path] = []
+    for relative in LITERAL_PRODUCTION_PATHS:
+        path = root / relative
+        candidates.extend(path.rglob("*") if path.is_dir() else (path,))
+    candidates.extend(root / relative for relative in LITERAL_CONTRACT_TESTS)
+    violations = []
+    for path in sorted(set(candidates)):
+        if not path.is_file() or path.suffix not in LITERAL_SCANNED_SUFFIXES:
+            continue
+        allowed_lines = fixture_line_numbers(path)
+        for number, line in enumerate(read(path).splitlines(), start=1):
+            if version in line and number not in allowed_lines:
+                violations.append(f"{path.relative_to(root).as_posix()}:{number}")
+    return violations
 
 
 class SingleBootstrapSource(unittest.TestCase):
@@ -125,19 +213,20 @@ class SingleBootstrapSource(unittest.TestCase):
     def test_bootstrap_describes_bundle_state_without_installation_context(self):
         self.assertNotRegex(read(BOOTSTRAP), r"(?i)\binstall\w*")
 
-    def test_readme_names_the_complete_governance_scope(self):
+    def test_readme_links_the_normative_governance_owner(self):
         readme = read(ROOT / "README.md")
-        for responsibility in (
-            "Regeln", "Rollen", "Templates", "Source-of-Truth-Verträge",
-            "Tool-Routing", "Verifikation",
-        ):
-            self.assertIn(responsibility, readme)
+        self.assertIn(
+            "https://github.com/tomtastisch/agent-governance/blob/main/bundle/GOVERNANCE.md",
+            readme,
+        )
 
 
 class LegacyReferenceContract(unittest.TestCase):
     def test_no_current_entrypoint_references_removed_sources(self):
         dangling = []
         for path in ACTIVE_REFERENCE_FILES:
+            if not path.is_file():
+                continue
             text = read(path)
             for reference in LEGACY_REFERENCES:
                 if reference in text:
@@ -201,25 +290,51 @@ class ReferenceGraphContract(unittest.TestCase):
 
 
 class HistoricalEvidenceContract(unittest.TestCase):
-    def test_every_historical_document_is_explicitly_non_normative(self):
-        missing = []
-        for path in sorted((ROOT / "docs").rglob("*.md")):
-            if HISTORICAL_MARKER not in "\n".join(read(path).splitlines()[:10]):
-                missing.append(path.relative_to(ROOT).as_posix())
+    def test_current_references_are_not_mislabeled_as_historical_evidence(self):
+        """Catches current installer references being classified as historical snapshots."""
+        missing = [
+            path.relative_to(ROOT).as_posix()
+            for path in CURRENT_REFERENCE_FILES
+            if not path.is_file()
+        ]
         self.assertEqual(missing, [])
+        mislabeled = [
+            path.relative_to(ROOT).as_posix()
+            for path in CURRENT_REFERENCE_FILES
+            if HISTORICAL_MARKER in "\n".join(read(path).splitlines()[:10])
+        ]
+        self.assertEqual(mislabeled, [])
 
+    def test_historical_evidence_inventory_keeps_its_non_normative_marker(self):
+        """Catches genuine historical evidence being reclassified as a current reference."""
+        missing = [
+            path.relative_to(ROOT).as_posix()
+            for path in HISTORICAL_EVIDENCE_FILES
+            if not path.is_file()
+        ]
+        self.assertEqual(missing, [])
+        unmarked = [
+            path.relative_to(ROOT).as_posix()
+            for path in HISTORICAL_EVIDENCE_FILES
+            if HISTORICAL_MARKER not in "\n".join(read(path).splitlines()[:10])
+        ]
+        self.assertEqual(unmarked, [])
 
 class ReleaseMetadataContract(unittest.TestCase):
-    def test_current_version_declares_global_installer_release_candidate(self):
+    def test_current_version_declares_documentation_release(self):
         changelog = read(ROOT / "CHANGELOG.md")
         version = read(ROOT / "VERSION").strip()
         current = changelog.split(f"## [{version}]", 1)[1].split("\n## [", 1)[0]
-        self.assertEqual(version, "1.0.0")
-        self.assertIn("transaktionalem Explicit-Path-Installer", current)
-        self.assertIn("GLOBAL_EXPLICIT_PATH_MANAGED_BLOCK", current)
-        self.assertIn("keine Harnessadapter", current)
-        self.assertIn("Installer-CLI-Referenz", current)
-        self.assertIn("**Breaking changes:** present", current)
+        for term in (
+            "kompakte README",
+            "Dokumentationsarchitektur",
+            "Harness Recipes",
+            "semantische Assets",
+            "INSTALL.md",
+            "Package-, Test- und Linkbereinigung",
+        ):
+            self.assertIn(term, current)
+        self.assertIn("**Breaking changes:** none", current)
         recovery_patch = changelog.split("## [0.4.1]", 1)[1].split("\n## [", 1)[0]
         self.assertIn("**Breaking changes:** none", recovery_patch)
         historical = changelog.split("## [0.4.0]", 1)[1].split("\n## [", 1)[0]
@@ -227,6 +342,40 @@ class ReleaseMetadataContract(unittest.TestCase):
         self.assertIn("**BREAKING:**", historical)
         for catalog in ("triggers", "policy-tags", "scopes", "tools"):
             self.assertIn(f"catalogs/{catalog}.toml", historical)
+
+    def test_current_version_literal_is_limited_to_derived_or_historical_records(self):
+        """Catches a current-version literal in a named current surface, not whole source trees."""
+        current_version = read(ROOT / "VERSION").strip()
+        self.assertEqual(current_version_literal_violations(ROOT, current_version), [])
+        for relative in LITERAL_ALLOWED_HISTORICAL_RECORDS:
+            self.assertTrue((ROOT / relative).is_file(), relative)
+
+    def test_literal_drift_catches_productive_extensions_and_nonfixture_test_lines(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            version = "7.8.9"
+            for suffix in (".mjs", ".ts", ".sh"):
+                path = root / "tools" / f"productive{suffix}"
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(f"const version = '{version}';\n", encoding="utf-8")
+            test_path = root / "tests" / "test_ci_workflow.py"
+            test_path.parent.mkdir(parents=True, exist_ok=True)
+            test_path.write_text(f"value = '{version}'\n", encoding="utf-8")
+            distribution_test = root / "tests" / "test_installer_distribution.py"
+            distribution_test.write_text(f"value = '{version}'\n", encoding="utf-8")
+
+            violations = current_version_literal_violations(root, version)
+
+        self.assertEqual(
+            violations,
+            [
+                "tests/test_ci_workflow.py:1",
+                "tests/test_installer_distribution.py:1",
+                "tools/productive.mjs:1",
+                "tools/productive.sh:1",
+                "tools/productive.ts:1",
+            ],
+        )
 
     def test_unreleased_is_reset_after_version_classification(self):
         changelog = read(ROOT / "CHANGELOG.md")
@@ -291,7 +440,6 @@ class PrivateProfileMigrationGuardContract(unittest.TestCase):
         )
         current_documents = {
             "README.md": read(ROOT / "README.md"),
-            "INSTALL.md": read(ROOT / "INSTALL.md"),
             "CHANGELOG.md [Unreleased]": unreleased,
         }
         for name, text in current_documents.items():
