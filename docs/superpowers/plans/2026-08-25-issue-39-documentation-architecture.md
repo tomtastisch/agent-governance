@@ -175,29 +175,54 @@
 - Modify: `package.json`
 - Modify: `package-lock.json`
 - Modify: `CHANGELOG.md`
+- Create: `tools/sync_version.py`
+- Create: `tests/test_sync_version.py`
+- Modify: `tools/release_check.py`
 - Modify: `tests/test_documentation.py`
 - Modify: `tests/test_source_consolidation.py`
 - Modify: `tests/test_release_check.py`
 
 **Interfaces:**
-- Consumes: all delivered Issue #39 behavior and repository version SSOT.
-- Produces: internally consistent release metadata for `1.0.1` with no breaking change.
+- Consumes: all delivered Issue #39 behavior and `VERSION` as the sole current-version SSOT.
+- Produces: independently validated projections, explicit historical release metadata for `1.0.1`,
+  and no breaking change.
 
 - [ ] **Step 1: Write failing version-derived tests**
 
-  Replace stale exact-`1.0.0` current-release assertions with VERSION-derived assertions, require the `1.0.1` changelog section to name documentation architecture, Harness Recipes, asset migration, INSTALL removal, package/link/test cleanup, and `**Breaking changes:** none`.
+  Replace stale exact-current-version assertions with assertions derived from `VERSION`. Add focused
+  tests proving that a valid single-line SemVer synchronizes only `package.json#version`,
+  `package-lock.json#version`, and `package-lock.json#packages[""].version`; a second run is
+  idempotent; malformed or multi-line VERSION, missing/invalid package JSON, and missing or invalid
+  lockfile root structure fail without writes. Snapshot or semantic comparisons must prove that
+  dependencies, package name, scripts, engines, publishConfig and every other field remain
+  unchanged. Add independent release-check tests for all projections and exactly one ordered,
+  date-valid current changelog section with required categories and Breaking marker. Add a narrow,
+  documented allowlist test rejecting the current literal in README, current references,
+  productive workflows/tools and current repository-contract tests while allowing VERSION,
+  projections, CHANGELOG, historical specs/plans and explicit scenario fixtures.
 
 - [ ] **Step 2: Verify RED**
 
-  Run the focused documentation, source-consolidation, and release-check tests and confirm failures identify the old metadata.
+  Run the focused sync, documentation, source-consolidation, release-check and workflow-contract
+  tests. Confirm failures identify the absent sync mechanism, stale metadata, incomplete changelog
+  binding or prohibited literal without changing production files.
 
 - [ ] **Step 3: Update release metadata**
 
-  Set VERSION/package/lock root metadata to `1.0.1`, add the dated changelog section, and leave Unreleased reset with no breaking changes. Do not embed `1.0.1` in README prose or recipes.
+  Implement `tools/sync_version.py` without shared validation helpers with `release_check.py`.
+  Strictly read `VERSION`, update only the three npm projection fields deterministically, and use it
+  to set the projections from `VERSION = 1.0.1`. Add the dated explicit changelog section and leave
+  Unreleased reset with no breaking changes. Harden the read-only release checker so tree and tag
+  gates independently bind VERSION, projections and the unique changelog release section; retain
+  the existing signed-tag-to-exact-commit boundary. Do not embed `1.0.1` in README, recipes,
+  current reference docs, productive tools or workflows.
 
 - [ ] **Step 4: Verify GREEN**
 
-  Run focused tests, `python3 tools/release_check.py tree`, and `python3 tools/release_manifest.py check`.
+  Run focused sync, release-check, workflow, documentation and source-consolidation tests twice as
+  needed to demonstrate idempotence; run `python3 tools/release_check.py tree` and
+  `python3 tools/release_manifest.py check`; inspect the version-sync diff and prove that only the
+  three intended projection fields changed.
 
 - [ ] **Step 5: Commit**
 
@@ -218,7 +243,7 @@
 
 - [ ] **Step 2: Run explicit repository invariants**
 
-  Search tracked/current user docs for `INSTALL.md`, `docs/images/`, old image names, `@next`, current RC instructions, stale package entries, duplicate asset digests, and unexpected bundle changes. Inspect the generated tarball inventory semantically.
+  Search tracked/current user docs for `INSTALL.md`, `docs/images/`, old image names, `@next`, current RC instructions, stale package entries, duplicate asset digests, and unexpected bundle changes. Run the allowlist-based current-version-literal drift check and classify every remaining current-version occurrence. Inspect the generated tarball inventory semantically.
 
 - [ ] **Step 3: Perform the semantic redundancy audit**
 
@@ -277,4 +302,3 @@
 - [ ] **Step 5: Close Issue #39 only after every gate is evidenced**
 
   Add a concise comment containing PR, release, npm version, delivered doc/package changes and verified gates, then close Issue #39 and read back its closed state.
-

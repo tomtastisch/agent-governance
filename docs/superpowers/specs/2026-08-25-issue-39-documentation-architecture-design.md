@@ -113,11 +113,27 @@ Buildartefakte, Native-Prebuilds und `docs/installer-cli-reference.md`. Es enth�
 erlaubte, erforderliche und ausdrücklich verbotene Pfade semantisch statt über eine feste
 Gesamtzahl.
 
-`VERSION`, `package.json`, `package-lock.json` und `CHANGELOG.md` werden auf `1.0.1` angehoben.
-Der Changelog nennt Dokumentationsarchitektur, Harness Recipes, Asset-Reorganisation,
-`INSTALL.md`-Entfernung sowie bereinigte Package-, Test- und Linkverträge und enthält
-`**Breaking changes:** none`. Der bestehende signierte Tag-/GitHub-Release-/npm-OIDC-Weg bleibt
-unverändert; nur seine Stable-Patch-Zulassung und Dokumentgates werden auf den neuen Stand gebracht.
+`VERSION` ist die einzige autoritative Quelle der aktuellen SemVer. `package.json#version` sowie
+die Top-Level- und Root-Package-Version in `package-lock.json` sind kontrollierte technische
+Projektionen daraus. Ein eng begrenztes, deterministisches und idempotentes Sync-Werkzeug setzt
+ausschließlich diese drei Projektionsfelder; es verändert weder Dependencies noch Namen, Scripts,
+Engines, Publish-Konfiguration, Changelog, Tags oder Releases. `tools/release_check.py` bleibt ein
+davon unabhängiger read-only Validator und beweist die Gleichheit aller Projektionen fail-closed.
+
+`CHANGELOG.md` bleibt das explizite historische Release-Ledger und keine dynamische
+Current-Version-Projektion. Für diesen Ausführungssnapshot werden `VERSION` und ihre npm-Projektionen
+auf `1.0.1` gesetzt; genau ein Abschnitt `## [1.0.1] — 2026-08-25` dokumentiert
+Dokumentationsarchitektur, Harness Recipes, Asset-Reorganisation, `INSTALL.md`-Entfernung sowie
+bereinigte Package-, Test- und Linkverträge und enthält `**Breaking changes:** none`. Produktive
+Tools, Workflows, aktuelle Referenzdocs und Repository-Vertragstests dürfen die aktuelle
+Patchversion nicht als zweite langlebige Quelle hartkodieren; historische Specs, Pläne, Fixtures
+und Changelog-Einträge behalten ihre auditrelevanten Literale.
+
+Der bestehende signierte Tag-/GitHub-Release-/npm-OIDC-Weg bleibt unverändert. Seine Nachweiskette
+bindet `VERSION` an die npm-Projektionen, genau einen passenden Changelog-Abschnitt, den signierten
+annotierten `v${VERSION}`-Tag auf dem exakten Releasecommit, das GitHub Release und das npm-Paket.
+Stable-Versionen verwenden ausschließlich `latest`, genehmigte Prereleases ausschließlich `next`.
+Signatur-, Provenance-, Integrity-, Tarball- und Consumer-Prüfungen bleiben eigenständige Gates.
 
 ## Liefer- und Verifikationsgrenze
 
@@ -127,4 +143,3 @@ Fixtures, Asset-/Altpfad-Suchen und `git diff --check` ausgeführt. Ein unabhän
 Security-Review bewertet den Exact Head. Erst nach grünen Required Checks und Review wird gemerged;
 danach folgen Remote-Link-Gate, signierter Stable-Tag `v1.0.1`, GitHub Release, Trusted npm Publish,
 Registry-/Tarball-/URL-/CI-Read-back und zuletzt das Schließen von Issue #39.
-
