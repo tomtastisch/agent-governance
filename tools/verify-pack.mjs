@@ -22,22 +22,22 @@ if (report.length !== 1 || report[0]?.name !== expectedPackageName || !Array.isA
 }
 const paths = report[0].files.map((entry) => entry.path);
 const forbiddenFiles = new Set(["INSTALL.md", "docs/harness-recipes.md"]);
-const forbiddenPrefixes = ["assets/"];
+const runtimeBrandingPath = "assets/branding/agent-governance-terminal.png";
 for (const path of paths) {
   if (typeof path !== "string") {
     throw new Error(`unexpected tarball path: ${String(path)}`);
   }
-  if (forbiddenFiles.has(path) || forbiddenPrefixes.some((prefix) => path.startsWith(prefix)) || path.startsWith("docs/") && path !== "docs/installer-cli-reference.md") {
+  if (forbiddenFiles.has(path) || path.startsWith("assets/") && path !== runtimeBrandingPath || path.startsWith("docs/") && path !== "docs/installer-cli-reference.md") {
     throw new Error(`forbidden runtime path: ${path}`);
   }
-  if (!/^(?:CHANGELOG\.md|LICENSE|README\.md|VERSION|package\.json|release\.files\.sha256|docs\/installer-cli-reference\.md|bundle\/|dist\/|prebuilds\/(?:darwin|linux)-(?:arm64|x64)\/agent_governance_fs\.node$)/.test(path)) {
+  if (path !== runtimeBrandingPath && !/^(?:CHANGELOG\.md|LICENSE|README\.md|VERSION|package\.json|release\.files\.sha256|docs\/installer-cli-reference\.md|bundle\/|dist\/|prebuilds\/(?:darwin|linux)-(?:arm64|x64)\/agent_governance_fs\.node$)/.test(path)) {
     throw new Error(`unexpected tarball path: ${path}`);
   }
   if (/^(?:integrations|tests|tools)\//.test(path) || /(?:codex|claude|opencode|openclaw|hooks?)/i.test(path)) {
     throw new Error(`forbidden runtime path: ${path}`);
   }
 }
-for (const required of ["README.md", "LICENSE", "CHANGELOG.md", "dist/cli.js", "bundle/GOVERNANCE.md", "bundle/agent-governance/manifest.toml", "docs/installer-cli-reference.md", "release.files.sha256", "VERSION"]) {
+for (const required of ["README.md", "LICENSE", "CHANGELOG.md", "dist/cli.js", "bundle/GOVERNANCE.md", "bundle/agent-governance/manifest.toml", "docs/installer-cli-reference.md", "release.files.sha256", "VERSION", runtimeBrandingPath]) {
   if (!paths.includes(required)) throw new Error(`missing tarball path: ${required}`);
 }
 const nativePlatforms = process.env.REQUIRE_ALL_NATIVE_PREBUILDS === "1"

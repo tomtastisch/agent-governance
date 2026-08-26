@@ -17,6 +17,7 @@ async function allowlistedFixture(t: TestContext): Promise<{ root: string; paths
     "release.files.sha256",
     "bundle/GOVERNANCE.md",
     "bundle/agent-governance/manifest.toml",
+    "assets/branding/agent-governance-terminal.png",
     "docs/installer-cli-reference.md",
     "dist/cli.js",
     `prebuilds/${process.platform}-${process.arch}/agent_governance_fs.node`,

@@ -6,7 +6,9 @@ import { dirname } from "node:path";
 import { EXIT_CODES, exitCodeFor, type InstallerCommand, type InstallerRequest, type PublicCommandDefinition, type PublicCommandId, type TerminalOutcome } from "./contracts.ts";
 import { discoverCandidates } from "./discovery/index.ts";
 import { InstallerFailure, InterruptedFailure } from "./errors.ts";
+import { renderBranding } from "./init/branding.ts";
 import { runInit } from "./init/orchestrator.ts";
+import { createClackPrompt } from "./init/prompt.ts";
 import type { InitOptions, InitPrompt, InitResult } from "./init/types.ts";
 import { InstallerTransaction } from "./transaction.ts";
 import { loadCommandCatalog } from "./command-catalog.ts";
@@ -36,12 +38,6 @@ function parse(argv: readonly string[], publicCommands: readonly PublicCommandId
 
 function isHelp(value: string | undefined): boolean { return value === "--help" || value === "-h"; }
 function isOutcome(value: unknown): value is TerminalOutcome { return typeof value === "string" && ["SUCCESS", "INVALID_INVOCATION", "UNSAFE_STATE", "VERIFICATION_ROLLED_BACK", "ROLLBACK_FAILED", "INTERRUPTED"].includes(value); }
-
-const unavailablePrompt: InitPrompt = Object.freeze({
-  step: () => undefined,
-  selectTargets: async () => { throw new Error("interactive init prompt is unavailable"); },
-  confirm: async () => { throw new Error("interactive init prompt is unavailable"); },
-});
 
 function defaultInitOptions(): InitOptions {
   const home = realpathSync(homedir());
@@ -76,14 +72,25 @@ export async function runCli(argv: readonly string[], out: Writer = console.log,
         transaction ??= (dependencies.createTransaction ?? ((request) => new InstallerTransaction(request)))(parsed.request);
         return transaction;
       },
-      init: dependencies.init ?? (() => runInit(
-        dependencies.initOptions ?? defaultInitOptions(),
-        {
+      init: dependencies.init ?? (async () => {
+        const initOptions = dependencies.initOptions ?? defaultInitOptions();
+        const prompt = dependencies.initPrompt ?? createClackPrompt({
+          columns: Number.parseInt(process.env.COLUMNS ?? "", 10) || process.stdout.columns,
+          environment: process.env,
+        });
+        if (dependencies.initPrompt === undefined && initOptions.isTTY) {
+          await renderBranding({
+            write: (value) => out(value.trimEnd()),
+            columns: Number.parseInt(process.env.COLUMNS ?? "", 10) || process.stdout.columns,
+            environment: process.env,
+          });
+        }
+        return runInit(initOptions, {
           discoverCandidates,
-          prompt: dependencies.initPrompt ?? unavailablePrompt,
+          prompt,
           createTransaction: dependencies.createTransaction ?? ((request) => new InstallerTransaction(request)),
-        },
-      )),
+        });
+      }),
     });
     const structured = typeof result === "object" && result !== null ? result as Record<string, unknown> : undefined;
     out(parsed.json ? JSON.stringify(result) : structured !== undefined && typeof structured.outcome === "string" && typeof structured.state === "string" && typeof structured.phase === "string" ? `${structured.outcome}: ${structured.state} (${structured.phase})` : JSON.stringify(result));

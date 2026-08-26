@@ -10,6 +10,7 @@
     "dist",
     "prebuilds",
     "bundle",
+    "assets/branding/agent-governance-terminal.png",
     "docs/installer-cli-reference.md",
     "CHANGELOG.md",
     "LICENSE",
@@ -46,6 +47,7 @@
     "provenance": true
   },
   "dependencies": {
+    "@clack/prompts": "1.7.0",
     "smol-toml": "1.8.0"
   }
 }
