@@ -12,6 +12,7 @@ export type EvidenceStrength = "strong" | "corroborating" | "weak";
 export type EvidenceSourceKind = "json" | "toml" | "plist" | "sqlite_schema" | "package_metadata";
 export type CandidateClass = "DIRECTORY" | "APP_BUNDLE";
 export type DiscoveryStatus = "COMPLETE" | "INCOMPLETE";
+export type CandidateConfidence = "HIGH_CONFIDENCE" | "UNCERTAIN" | "REJECTED";
 
 export interface DiscoveryLimits {
   readonly maxDepth: number;
@@ -102,4 +103,40 @@ export interface DiscoveredCandidate {
   readonly filesVisited: number;
   readonly entriesVisited: number;
   readonly issues: readonly DiscoveryIssue[];
+}
+
+export interface Candidate {
+  readonly root: string;
+  readonly candidateClass: CandidateClass;
+  readonly status: DiscoveryStatus;
+  readonly confidence: CandidateConfidence;
+  readonly score: number;
+  readonly families: readonly EvidenceFamily[];
+  readonly independentSources: number;
+  readonly evidence: readonly EvidenceRecord[];
+  readonly fileCount: number;
+  readonly evidenceDensity: number;
+  readonly activityAt: number | null;
+  readonly evidenceDigest: string;
+}
+
+export interface CandidateDisplay {
+  readonly root: string;
+  readonly label: string;
+  readonly candidateClass: CandidateClass;
+  readonly confidence: Exclude<CandidateConfidence, "REJECTED">;
+}
+
+export interface ClassificationContext {
+  readonly root?: string;
+  readonly candidateClass?: CandidateClass;
+  readonly status?: DiscoveryStatus;
+  readonly fileCount?: number;
+  readonly activityAt?: number | null;
+}
+
+export interface DiscoverCandidatesOptions {
+  readonly environment: DiscoveryEnvironment;
+  readonly releaseRoot?: string;
+  readonly clock?: () => number;
 }
