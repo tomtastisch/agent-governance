@@ -18,8 +18,10 @@ export async function renderBranding(io: BrandingIO): Promise<void> {
   if (io.renderImage !== undefined) {
     try {
       const rendered = await io.renderImage(BRANDING_ASSET_PATH, { width: 8, height: 4 });
-      if (rendered !== "") io.write(`${rendered}${rendered.endsWith("\n") ? "" : "\n"}`);
-      return;
+      if (rendered !== "") {
+        io.write(`${rendered}${rendered.endsWith("\n") ? "" : "\n"}`);
+        return;
+      }
     } catch {
       // Branding is decorative. The semantic text fallback remains sufficient.
     }

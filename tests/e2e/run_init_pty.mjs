@@ -7,7 +7,39 @@ import { fileURLToPath } from "node:url";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
+function markerCandidate(root, confidence) {
+  return {
+    root,
+    candidateClass: "DIRECTORY",
+    status: "COMPLETE",
+    confidence,
+    score: confidence === "HIGH_CONFIDENCE" ? 9 : 3,
+    families: ["runtime", "state", "tooling"],
+    independentSources: 3,
+    evidence: [],
+    fileCount: 3,
+    evidenceDensity: 1,
+    activityAt: null,
+    evidenceDigest: "c".repeat(64),
+  };
+}
+
 async function runChild() {
+  if (process.argv.includes("--markers-child")) {
+    const { createClackPrompt } = await import("../../src/init/prompt.ts");
+    const { INIT_CANCELLED } = await import("../../src/init/types.ts");
+    const columns = process.env.AGENT_GOVERNANCE_TEST_COLUMNS;
+    if (!columns || !/^(?:60|80|120)$/u.test(columns)) throw new Error("synthetic PTY columns are invalid");
+    const result = await createClackPrompt({
+      columns: Number.parseInt(columns, 10),
+      environment: process.env,
+    }).selectTargets([
+      markerCandidate("/synthetic/High", "HIGH_CONFIDENCE"),
+      markerCandidate("/synthetic/Uncertain", "UNCERTAIN"),
+    ]);
+    process.stdout.write(result === INIT_CANCELLED ? "MARKER_PROMPT_CANCELLED\n" : "MARKER_PROMPT_COMPLETED\n");
+    return;
+  }
   const { runCli } = await import("../../src/cli.ts");
   const home = process.env.HOME;
   const xdgConfigHome = process.env.XDG_CONFIG_HOME;
@@ -32,6 +64,7 @@ async function runChild() {
 }
 
 async function runParent() {
+  const markers = process.argv.includes("--markers");
   const columnsArgument = process.argv.find((value) => value.startsWith("--columns="));
   const columns = columnsArgument?.slice("--columns=".length) ?? "80";
   if (!/^(?:60|80|120)$/u.test(columns)) throw new Error("columns must be 60, 80, or 120");
@@ -43,19 +76,32 @@ async function runParent() {
   const systemApplications = join(syntheticRoot, "system-applications");
   await Promise.all([home, xdgConfigHome, xdgDataHome, xdgCacheHome, systemApplications].map((path) => mkdir(path)));
 
-  const childArguments = [process.execPath, "--experimental-strip-types", fileURLToPath(import.meta.url), "--child"];
+  const childEntry = fileURLToPath(import.meta.url);
+  const interaction = markers
+    ? [
+        "expect -re {AI/LLM nicht dabei}",
+        "send -- \"\\033\\[B\"",
+        "after 200",
+        "send -- \" \"",
+        "after 200",
+        "send \\003",
+        "expect eof",
+      ]
+    : [
+        "expect {",
+        "  -re {AI/LLM nicht dabei} { send \\003; exp_continue }",
+        "  eof {}",
+        "  timeout { exit 124 }",
+        "}",
+      ];
   const expectDriver = [
     "set timeout 10",
     "set columns $env(AGENT_GOVERNANCE_TEST_COLUMNS)",
     "set executable $env(AGENT_GOVERNANCE_TEST_NODE)",
     "set entry $env(AGENT_GOVERNANCE_TEST_ENTRY)",
     "set stty_init \"rows 24 columns $columns\"",
-    "spawn -noecho $executable --experimental-strip-types $entry --child",
-    "expect {",
-    "  -re {AI/LLM nicht dabei} { send \\003; exp_continue }",
-    "  eof {}",
-    "  timeout { exit 124 }",
-    "}",
+    `spawn -noecho $executable --experimental-strip-types $entry ${markers ? "--markers-child" : "--child"}`,
+    ...interaction,
     "set result [wait]",
     "exit [lindex $result 3]",
   ].join("\n");
@@ -71,8 +117,8 @@ async function runParent() {
         XDG_CACHE_HOME: xdgCacheHome,
         AGENT_GOVERNANCE_TEST_SYSTEM_APPLICATIONS: systemApplications,
         AGENT_GOVERNANCE_TEST_COLUMNS: columns,
-        AGENT_GOVERNANCE_TEST_NODE: childArguments[0],
-        AGENT_GOVERNANCE_TEST_ENTRY: childArguments[2],
+        AGENT_GOVERNANCE_TEST_NODE: process.execPath,
+        AGENT_GOVERNANCE_TEST_ENTRY: childEntry,
         COLUMNS: columns,
         TERM: process.argv.includes("--no-color") ? "dumb" : "xterm-256color",
         ...(process.argv.includes("--no-color") ? { NO_COLOR: "1" } : {}),
@@ -95,6 +141,7 @@ async function runParent() {
     const rendered = Buffer.concat(output).toString("utf8");
     process.stdout.write(rendered);
     if (/interactive init prompt is unavailable/u.test(rendered)) process.exitCode = 1;
+    else if (markers && !/MARKER_PROMPT_CANCELLED/u.test(rendered)) process.exitCode = 1;
     else if (process.argv.includes("--cancel") && !/Einrichtung abgebrochen|INTERRUPTED/u.test(rendered)) process.exitCode = 1;
     else process.exitCode = exitCode === 0 || exitCode === 130 ? 0 : exitCode;
   } finally {
@@ -102,5 +149,5 @@ async function runParent() {
   }
 }
 
-if (process.argv.includes("--child")) await runChild();
+if (process.argv.includes("--child") || process.argv.includes("--markers-child")) await runChild();
 else await runParent();

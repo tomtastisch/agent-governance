@@ -77,11 +77,10 @@ export function renderCandidate(
   const confidence = candidate.confidence === "HIGH_CONFIDENCE"
     ? theme.green("[hoch]")
     : theme.yellow("[unsicher]");
-  const stateMarkers = [
-    ...(state.focused ? [theme.cyan("[fokus]")] : []),
-    ...(state.selected ? [theme.cyan("[ausgewählt]")] : []),
-  ];
-  const prefix = [confidence, ...stateMarkers].join(" ");
+  // Focus and selection are rendered by the live Clack primitive. Keeping the
+  // candidate label state-independent prevents stale, duplicated UI markers.
+  void state;
+  const prefix = confidence;
   const prefixWidth = visibleWidth(prefix) + 1;
   const labelWidth = Math.max(10, theme.columns - prefixWidth);
   const labelLines = wrapPlain(identity.label, labelWidth);
@@ -94,7 +93,7 @@ export function renderCandidate(
 
 export function renderLegend(theme: TerminalTheme): string {
   const first = `${theme.green("[hoch]")} erkannt  ${theme.yellow("[unsicher]")} prüfen`;
-  const second = `${theme.cyan("[fokus]")} Cursor  ${theme.cyan("[ausgewählt]")} Auswahl`;
+  const second = `${theme.cyan("[fokus]")} Cursor  ${theme.green("◼")} Auswahl`;
   const third = "↑/↓ navigieren · Leertaste wählen · Enter weiter · Ctrl+C abbrechen";
   return [first, second, ...wrapPlain(third, theme.columns)].join("\n");
 }

@@ -1,8 +1,8 @@
 import {
+  autocompleteMultiselect as clackAutocompleteMultiselect,
   cancel as clackCancel,
   confirm as clackConfirm,
   isCancel as clackIsCancel,
-  multiselect as clackMultiselect,
   path as clackPath,
   spinner as clackSpinner,
 } from "@clack/prompts";
@@ -24,14 +24,14 @@ const CUSTOM_VALUE = "__custom__";
 interface PromptOption {
   readonly value: string;
   readonly label: string;
+  readonly hint?: string;
 }
 
-interface MultiSelectOptions {
+interface AutocompleteMultiSelectOptions {
   readonly message: string;
   readonly options: PromptOption[];
   readonly initialValues: string[];
   readonly required: boolean;
-  readonly showInstructions: boolean;
 }
 
 interface PathOptions {
@@ -55,7 +55,7 @@ interface PromptSpinner {
 }
 
 export interface ClackPromptOperations {
-  readonly multiselect: (options: MultiSelectOptions) => Promise<unknown>;
+  readonly autocompleteMultiselect: (options: AutocompleteMultiSelectOptions) => Promise<unknown>;
   readonly path: (options: PathOptions) => Promise<unknown>;
   readonly confirm: (options: ConfirmOptions) => Promise<unknown>;
   readonly spinner: () => PromptSpinner;
@@ -71,7 +71,7 @@ export interface ClackPromptIO {
 }
 
 const DEFAULT_OPERATIONS: ClackPromptOperations = Object.freeze({
-  multiselect: (options: MultiSelectOptions) => clackMultiselect(options),
+  autocompleteMultiselect: (options: AutocompleteMultiSelectOptions) => clackAutocompleteMultiselect(options),
   path: (options: PathOptions) => clackPath(options),
   confirm: (options: ConfirmOptions) => clackConfirm(options),
   spinner: () => clackSpinner(),
@@ -166,16 +166,16 @@ export function createClackPrompt(io: ClackPromptIO = {}): InitPrompt {
       const options: PromptOption[] = eligible.map((candidate) => ({
         value: candidate.root,
         label: renderCandidate(candidate, { focused: false, selected: false }, theme),
+        hint: theme.cyan("[fokus]"),
       }));
-      options.push({ value: CUSTOM_VALUE, label: "AI/LLM nicht dabei?" });
-      const result = await operations.multiselect({
+      options.push({ value: CUSTOM_VALUE, label: "AI/LLM nicht dabei?", hint: theme.cyan("[fokus]") });
+      const result = await operations.autocompleteMultiselect({
         message: `Ziele auswählen\n${renderLegend(theme)}`,
         options,
         initialValues: eligible
           .filter((candidate) => candidate.confidence === "HIGH_CONFIDENCE")
           .map((candidate) => candidate.root),
         required: true,
-        showInstructions: false,
       });
       if (operations.isCancel(result)) return cancelled(operations);
       const values = assertSelections(result, byRoot);

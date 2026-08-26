@@ -37,6 +37,17 @@ test("decorative renderer failure remains fail-open and continues with text", as
   assert.deepEqual(output, ["[AG] Agent Governance\n"]);
 });
 
+test("an empty decorative render falls back to the semantic text brand", async () => {
+  const output: string[] = [];
+  await renderBranding({
+    write: (value) => output.push(value),
+    columns: 60,
+    environment: { NO_COLOR: "1" },
+    renderImage: async () => "",
+  });
+  assert.deepEqual(output, ["[AG] Agent Governance\n"]);
+});
+
 async function packageFixture(t: TestContext): Promise<{ root: string; paths: string[] }> {
   const root = await mkdtemp(join(tmpdir(), "agent-governance-brand-pack-"));
   t.after(() => rm(root, { recursive: true, force: true }));

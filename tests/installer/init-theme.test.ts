@@ -27,7 +27,7 @@ function candidate(root: string, confidence: Candidate["confidence"]): Candidate
   };
 }
 
-test("renderCandidate combines separate confidence, focus, and selection markers", () => {
+test("renderCandidate leaves live focus and selection chrome to the Clack primitive", () => {
   const theme = createTerminalTheme({ columns: 80, environment: { TERM: "xterm-256color" }, color: true });
   const rendered = renderCandidate(
     candidate("/synthetic/Alpha", "HIGH_CONFIDENCE"),
@@ -36,9 +36,8 @@ test("renderCandidate combines separate confidence, focus, and selection markers
   );
 
   assert.match(rendered, /\u001b\[32m\[hoch\]\u001b\[0m/u);
-  assert.match(rendered, /\u001b\[36m\[fokus\]\u001b\[0m/u);
-  assert.match(rendered, /\u001b\[36m\[ausgewählt\]\u001b\[0m/u);
-  assert.match(stripAnsi(rendered), /^\[hoch\] \[fokus\] \[ausgewählt\] Alpha/mu);
+  assert.doesNotMatch(rendered, /\[fokus\]|\[ausgewählt\]/u);
+  assert.match(stripAnsi(rendered), /^\[hoch\] Alpha/mu);
 });
 
 test("uncertain candidates remain distinguishable without changing their local label", () => {
@@ -63,7 +62,8 @@ test("NO_COLOR and reduced terminals preserve marker semantics without ANSI", ()
     );
     assert.equal(theme.color, false);
     assert.equal(rendered.includes("\u001b["), false);
-    assert.match(rendered, /\[unsicher\] \[fokus\] \[ausgewählt\]/u);
+    assert.match(rendered, /^\[unsicher\] Beta/mu);
+    assert.doesNotMatch(rendered, /\[fokus\]|\[ausgewählt\]/u);
   }
 });
 
@@ -80,7 +80,7 @@ test("candidate and legend rendering stay within a 60-column terminal", () => {
     assert.ok(visibleWidth(line) <= 60, `${visibleWidth(line)} columns: ${line}`);
   }
   assert.match(legend, /\[hoch\].*\[unsicher\]/u);
-  assert.match(legend, /\[fokus\].*\[ausgewählt\]/u);
+  assert.match(legend, /\[fokus\].*◼ Auswahl/u);
   assert.match(legend, /↑\/↓.*Leertaste.*Enter.*Ctrl\+C/u);
 });
 

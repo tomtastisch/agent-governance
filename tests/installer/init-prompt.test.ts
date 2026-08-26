@@ -35,7 +35,10 @@ function harness(responses: readonly unknown[]): Harness {
   return {
     calls,
     operations: {
-      multiselect: async (options) => { calls.push({ kind: "multiselect", options }); return pending.shift(); },
+      autocompleteMultiselect: async (options) => {
+        calls.push({ kind: "autocompleteMultiselect", options });
+        return pending.shift();
+      },
       path: async (options) => { calls.push({ kind: "path", options }); return pending.shift(); },
       confirm: async (options) => { calls.push({ kind: "confirm", options }); return pending.shift(); },
       spinner: () => ({
@@ -62,19 +65,18 @@ test("selectTargets preselects only high-confidence candidates and keeps the cus
     { candidate: high, manualInput: { entryFile: "HIGH.md" } },
     { manualInput: { targetRoot: "/synthetic/Manual", entryFile: "MANUAL.md" } },
   ]);
-  const multiselect = fake.calls.find(({ kind }) => kind === "multiselect")?.options as {
+  const multiselect = fake.calls.find(({ kind }) => kind === "autocompleteMultiselect")?.options as {
     initialValues: string[];
-    options: Array<{ value: string; label: string }>;
+    options: Array<{ value: string; label: string; hint?: string }>;
     message: string;
-    showInstructions: boolean;
   };
   assert.deepEqual(multiselect?.initialValues, [high.root]);
   const options = multiselect.options;
   assert.deepEqual(options.map(({ value }) => value), [uncertain.root, high.root, "__custom__"]);
   assert.equal(options.at(-1)?.label, "AI/LLM nicht dabei?");
+  assert.ok(options.every(({ hint }) => hint === "[fokus]"));
   assert.match(String(multiselect?.message), /\[hoch\].*\[unsicher\]/su);
   assert.match(String(multiselect?.message), /↑\/↓.*Leertaste.*Enter.*Ctrl\+C/su);
-  assert.equal(multiselect.showInstructions, false);
   assert.ok(options.every(({ label }) => label.split("\n").every((line) => line.length <= 56)));
 });
 
@@ -130,4 +132,20 @@ test("the colored PTY path recognizes the fully rendered prompt before Ctrl+C", 
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
   assert.match(result.stdout, /\u001b\[(?:32|33|36)m/u);
   assert.match(result.stdout, /"outcome":"INTERRUPTED"/u);
+});
+
+test("the real monochrome prompt keeps confidence, focus, and toggled selection semantically separate", () => {
+  const result = spawnSync(process.execPath, [
+    join(import.meta.dirname, "../e2e/run_init_pty.mjs"),
+    "--columns=80",
+    "--no-color",
+    "--markers",
+  ], { encoding: "utf8", timeout: 15_000 });
+  const visible = result.stdout.replace(/\u001b\[[0-?]*[ -/]*[@-~]/gu, "");
+
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  assert.match(visible, /◼ \[hoch\] High[\s\S]*?\/synthetic\/High \(\[fokus\]\)/u);
+  assert.match(visible, /◻ \[unsicher\] Uncertain[\s\S]*?\/synthetic\/Uncertain \(\[fokus\]\)/u);
+  assert.match(visible, /◼ \[unsicher\] Uncertain[\s\S]*?\/synthetic\/Uncertain \(\[fokus\]\)/u);
+  assert.match(visible, /\[hoch\].*\[unsicher\].*\[fokus\].*◼ Auswahl/su);
 });
