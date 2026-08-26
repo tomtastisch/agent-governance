@@ -60,6 +60,19 @@ test("independent Runtime, State, Tooling, and AI metadata sources qualify as hi
   assert.equal(candidate.independentSources, 4);
 });
 
+test("Runtime with Tooling and AI metadata but without State cannot qualify as high confidence", () => {
+  const root = "/synthetic/runtime-overlay";
+  const candidate = classify([
+    evidence(root, "runtime.json", "runtime", "runtime_endpoint", "strong"),
+    evidence(root, "tools.toml", "tooling", "tool_registry", "corroborating", "toml"),
+    evidence(root, "prompts.plist", "ai_metadata", "model_configuration", "corroborating", "plist"),
+  ], root);
+
+  assert.equal(candidate.score, 8);
+  assert.equal(candidate.independentSources, 3);
+  assert.equal(candidate.confidence, "UNCERTAIN");
+});
+
 test("package-only, App-bundle, and plausible incomplete evidence remain uncertain", () => {
   const root = "/synthetic/runtime-profile";
   const packageOnly = classify([

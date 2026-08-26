@@ -59,3 +59,26 @@ Additional focused RED cycles:
 - Intended Task-3 paths are staged explicitly for one signed commit with message `feat(discovery): classify and deduplicate candidate roots`.
 - Independent QA and SEC were not run because the task explicitly prohibits subagents. The parent workflow must run both on the exact integrated head before any integration- or release-readiness claim.
 - The known zero-runtime-dependency and license gate remains exclusively routed to Task 6.
+
+## Review fix round 1/5
+
+### Finding 1 — basename-dependent duplicate classification
+
+- Root cause: `duplicatePair()` required `normalizedCandidateIdentity(left) === normalizedCandidateIdentity(right)` before comparing generic evidence. The basename therefore decided whether structurally indistinguishable roots entered ambiguity handling.
+- RED: `node --experimental-strip-types --test tests/installer/discovery-duplicates.test.ts` exited 1. Synthetic `/synthetic/alpha` and `/synthetic/beta` candidates had identical normalized Evidence structure, digest, density and activity, but remained `HIGH_CONFIDENCE`.
+- GREEN: removed the identity import and basename gate from duplicate resolution. Exact generic structural matches with indistinguishable quality/activity are both retained as `UNCERTAIN`. A separate test proves differing activity alone cannot group structurally dissimilar roots.
+- Refactor: removed the now-dead basename copy/snapshot normalization from `identity.ts`; `basename()` remains only in the guarded post-classification display resolver.
+
+### Finding 2 — High confidence without State anchor
+
+- Root cause: the High predicate treated State, Tooling and AI metadata as interchangeable corroborating families. Runtime + Tooling + AI metadata reached score 8, three families and three independent sources without persistent State evidence.
+- RED: `node --experimental-strip-types --test tests/installer/discovery-classifier.test.ts` exited 1; the synthetic no-State candidate was actual `HIGH_CONFIDENCE`, expected `UNCERTAIN`.
+- GREEN: High now requires the declarative Runtime gate, actual strong Runtime evidence, a strong/corroborating State anchor and additional strong/corroborating Tooling or AI metadata, while retaining all score/family/independent-source/completeness gates. The no-State overlay-shaped candidate remains positive but is demoted to `UNCERTAIN`.
+
+### Fix-round verification before commit
+
+- Focused Task-3 suite: 16/16 passed, exit 0.
+- Full Node installer suite: 188/188 passed, exit 0.
+- TypeScript typecheck: exit 0.
+- Lint and `git diff --check`: exit 0.
+- The pre-existing Issue-44 plan/design changes remain excluded. The known Task-6 zero-runtime-dependency/license gate is unchanged.

@@ -1,5 +1,4 @@
 import { relative, sep } from "node:path";
-import { normalizedCandidateIdentity } from "./identity.ts";
 import type { Candidate, EvidenceRecord } from "./types.ts";
 
 function structuralToken(candidate: Candidate, record: EvidenceRecord): string {
@@ -30,7 +29,6 @@ function similarity(left: Candidate, right: Candidate): number {
 
 function duplicatePair(left: Candidate, right: Candidate): boolean {
   if (left.candidateClass !== right.candidateClass) return false;
-  if (normalizedCandidateIdentity(left) !== normalizedCandidateIdentity(right)) return false;
   const densityRange = Math.max(left.evidenceDensity, right.evidenceDensity, 1);
   const densityDifference = Math.abs(left.evidenceDensity - right.evidenceDensity) / densityRange;
   return densityDifference <= 0.5 && (left.evidenceDigest === right.evidenceDigest || similarity(left, right) >= 0.75);

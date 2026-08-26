@@ -8,7 +8,7 @@ import type {
   EvidenceRecord,
 } from "./types.ts";
 
-const CORROBORATING_FAMILIES = new Set<EvidenceFamily>(["state", "tooling", "ai_metadata"]);
+const ADDITIONAL_CORROBORATING_FAMILIES = new Set<EvidenceFamily>(["tooling", "ai_metadata"]);
 
 function commonSourceRoot(records: readonly EvidenceRecord[]): string {
   if (records.length === 0) return resolve(sep);
@@ -79,8 +79,10 @@ export function classifyEvidence(
   }
 
   const strongRuntime = evidence.some(({ family, strength }) => family === "runtime" && strength === "strong");
-  const corroborated = evidence.some(({ family, strength }) =>
-    CORROBORATING_FAMILIES.has(family) && (strength === "strong" || strength === "corroborating"));
+  const stateAnchor = evidence.some(({ family, strength }) =>
+    family === "state" && (strength === "strong" || strength === "corroborating"));
+  const additionalCorroboration = evidence.some(({ family, strength }) =>
+    ADDITIONAL_CORROBORATING_FAMILIES.has(family) && (strength === "strong" || strength === "corroborating"));
   const complete = status === "COMPLETE" && evidence.every(({ status: recordStatus }) => recordStatus === "COMPLETE");
   const packageOnly = families.length === 1 && families[0] === "package_metadata";
   const hasAnchor = families.includes("runtime") || families.includes("state") || packageOnly;
@@ -89,8 +91,10 @@ export function classifyEvidence(
     score >= catalog.confidence.highMinimumScore &&
     families.length >= catalog.confidence.highMinimumFamilies &&
     independentSources >= catalog.confidence.highMinimumIndependentSources &&
-    (!catalog.confidence.highRequiresRuntime || strongRuntime) &&
-    corroborated;
+    catalog.confidence.highRequiresRuntime &&
+    strongRuntime &&
+    stateAnchor &&
+    additionalCorroboration;
   const plausible = packageOnly || (
     hasAnchor &&
     independentSources >= 2 &&

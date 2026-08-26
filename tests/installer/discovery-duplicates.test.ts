@@ -7,7 +7,7 @@ import type { EvidenceFamily, EvidenceRecord, EvidenceStrength } from "../../src
 
 const catalog = loadDiscoveryCatalog();
 
-function records(root: string, extra = false): readonly EvidenceRecord[] {
+function records(root: string, extra = false, filenamePrefix = ""): readonly EvidenceRecord[] {
   const definitions: Array<[string, EvidenceFamily, string, EvidenceStrength]> = [
     ["runtime.json", "runtime", "runtime_endpoint", "strong"],
     ["state.json", "state", "state_continuity", "strong"],
@@ -17,7 +17,7 @@ function records(root: string, extra = false): readonly EvidenceRecord[] {
   return definitions.map(([name, family, signalId, strength]) => Object.freeze({
     family,
     sourceKind: "json" as const,
-    sourcePath: `${root}/${name}`,
+    sourcePath: `${root}/${filenamePrefix}${name}`,
     signalId,
     strength,
     status: "COMPLETE" as const,
@@ -25,8 +25,8 @@ function records(root: string, extra = false): readonly EvidenceRecord[] {
   }));
 }
 
-function candidate(root: string, activityAt: number, extra = false) {
-  const evidence = records(root, extra);
+function candidate(root: string, activityAt: number, extra = false, filenamePrefix = "") {
+  const evidence = records(root, extra, filenamePrefix);
   return classifyEvidence(evidence, catalog, {
     root,
     candidateClass: "DIRECTORY",
@@ -54,9 +54,18 @@ test("indistinguishable copies are both retained and demoted to uncertain", () =
   assert.equal(resolved.every(({ confidence }) => confidence === "UNCERTAIN"), true);
 });
 
-test("mtime is only a secondary tie-breaker after generic identity and structural similarity", () => {
+test("different basenames cannot keep structurally indistinguishable roots at high confidence", () => {
+  const first = candidate("/synthetic/alpha", 100);
+  const second = candidate("/synthetic/beta", 100);
+  const resolved = resolveDuplicateCandidates([first, second]);
+
+  assert.deepEqual(resolved.map(({ root }) => root), [first.root, second.root]);
+  assert.equal(resolved.every(({ confidence }) => confidence === "UNCERTAIN"), true);
+});
+
+test("mtime is only a secondary tie-breaker after generic structural similarity", () => {
   const first = candidate("/synthetic/profile-a", 100);
-  const unrelatedNewer = candidate("/synthetic/profile-b", 10_000);
+  const unrelatedNewer = candidate("/synthetic/profile-b", 10_000, false, "different-");
   const resolved = resolveDuplicateCandidates([first, unrelatedNewer]);
 
   assert.deepEqual(resolved.map(({ root }) => root), [first.root, unrelatedNewer.root]);
