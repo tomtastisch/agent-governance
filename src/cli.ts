@@ -1,9 +1,13 @@
 #!/usr/bin/env node
 import { fileURLToPath } from "node:url";
 import { realpathSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname } from "node:path";
 import { EXIT_CODES, exitCodeFor, type InstallerCommand, type InstallerRequest, type PublicCommandDefinition, type PublicCommandId, type TerminalOutcome } from "./contracts.ts";
+import { discoverCandidates } from "./discovery/index.ts";
 import { InstallerFailure, InterruptedFailure } from "./errors.ts";
+import { runInit } from "./init/orchestrator.ts";
+import type { InitOptions, InitPrompt, InitResult } from "./init/types.ts";
 import { InstallerTransaction } from "./transaction.ts";
 import { loadCommandCatalog } from "./command-catalog.ts";
 import { PUBLIC_COMMAND_HANDLERS, renderCommandHelp, renderGlobalHelp } from "./public-commands.ts";
@@ -11,7 +15,9 @@ import { PUBLIC_COMMAND_HANDLERS, renderCommandHelp, renderGlobalHelp } from "./
 type Writer = (value: string) => void;
 export interface CliDependencies {
   readonly createTransaction?: (request: InstallerRequest) => InstallerTransaction;
-  readonly init?: () => Promise<unknown>;
+  readonly init?: () => Promise<InitResult>;
+  readonly initOptions?: InitOptions;
+  readonly initPrompt?: InitPrompt;
 }
 const VALUE_OPTIONS = new Set(["--target-root", "--entry-file", "--scope", "--installation-root", "--local-rules"]);
 function parse(argv: readonly string[], publicCommands: readonly PublicCommandId[]): { command: PublicCommandId; request?: InstallerRequest; json: boolean } {
@@ -31,6 +37,29 @@ function parse(argv: readonly string[], publicCommands: readonly PublicCommandId
 function isHelp(value: string | undefined): boolean { return value === "--help" || value === "-h"; }
 function isOutcome(value: unknown): value is TerminalOutcome { return typeof value === "string" && ["SUCCESS", "INVALID_INVOCATION", "UNSAFE_STATE", "VERIFICATION_ROLLED_BACK", "ROLLBACK_FAILED", "INTERRUPTED"].includes(value); }
 
+const unavailablePrompt: InitPrompt = Object.freeze({
+  step: () => undefined,
+  selectTargets: async () => { throw new Error("interactive init prompt is unavailable"); },
+  confirm: async () => { throw new Error("interactive init prompt is unavailable"); },
+});
+
+function defaultInitOptions(): InitOptions {
+  const home = realpathSync(homedir());
+  const releaseRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+  const xdgConfigHome = process.env.XDG_CONFIG_HOME;
+  const xdgDataHome = process.env.XDG_DATA_HOME;
+  return {
+    isTTY: Boolean(process.stdin.isTTY && process.stdout.isTTY),
+    environment: {
+      home,
+      platform: process.platform,
+      ...(xdgConfigHome === undefined || xdgConfigHome === "" ? {} : { xdgConfigHome }),
+      ...(xdgDataHome === undefined || xdgDataHome === "" ? {} : { xdgDataHome }),
+    },
+    releaseRoot,
+  };
+}
+
 export async function runCli(argv: readonly string[], out: Writer = console.log, error: Writer = console.error, dependencies: CliDependencies = {}): Promise<number> {
   let definitions: readonly PublicCommandDefinition[];
   try { definitions = loadCommandCatalog(); }
@@ -47,7 +76,14 @@ export async function runCli(argv: readonly string[], out: Writer = console.log,
         transaction ??= (dependencies.createTransaction ?? ((request) => new InstallerTransaction(request)))(parsed.request);
         return transaction;
       },
-      init: dependencies.init ?? (async () => { throw new Error("init handler is unavailable"); }),
+      init: dependencies.init ?? (() => runInit(
+        dependencies.initOptions ?? defaultInitOptions(),
+        {
+          discoverCandidates,
+          prompt: dependencies.initPrompt ?? unavailablePrompt,
+          createTransaction: dependencies.createTransaction ?? ((request) => new InstallerTransaction(request)),
+        },
+      )),
     });
     const structured = typeof result === "object" && result !== null ? result as Record<string, unknown> : undefined;
     out(parsed.json ? JSON.stringify(result) : structured !== undefined && typeof structured.outcome === "string" && typeof structured.state === "string" && typeof structured.phase === "string" ? `${structured.outcome}: ${structured.state} (${structured.phase})` : JSON.stringify(result));

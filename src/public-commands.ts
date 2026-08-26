@@ -1,10 +1,11 @@
 import { loadCommandCatalog } from "./command-catalog.ts";
 import type { InstallResult, PublicCommandDefinition, PublicCommandId } from "./contracts.ts";
+import type { InitResult } from "./init/types.ts";
 import type { InstallerTransaction } from "./transaction.ts";
 
 export interface PublicCommandExecution {
   readonly transaction: () => InstallerTransaction;
-  readonly init: () => Promise<unknown>;
+  readonly init: () => Promise<InitResult>;
 }
 
 export type PublicCommandHandler = (execution: PublicCommandExecution) => Promise<unknown>;
@@ -18,7 +19,7 @@ export const PUBLIC_COMMAND_HANDLERS: Readonly<Record<PublicCommandId, PublicCom
   update: async ({ transaction }): Promise<InstallResult> => transaction().update(),
   uninstall: async ({ transaction }): Promise<InstallResult> => transaction().uninstall(),
   rollback: async ({ transaction }): Promise<InstallResult> => transaction().rollback(),
-  init: async ({ init }): Promise<unknown> => init(),
+  init: async ({ init }): Promise<InitResult> => init(),
 });
 
 export function renderGlobalHelp(commands: readonly PublicCommandDefinition[] = loadCommandCatalog()): string {
