@@ -96,13 +96,17 @@ function uniqueStringArray(value: unknown, context: string): readonly string[] {
   return Object.freeze([...entries]);
 }
 
-function parseCatalog(path: string): Record<string, unknown> {
+function parseCatalogText(content: string, context: string): Record<string, unknown> {
   try {
-    return record(parse(readFileSync(path, "utf8")), "discovery catalog");
+    return record(parse(content), context);
   } catch (cause) {
-    if (cause instanceof Error && cause.message.startsWith("discovery catalog ")) throw cause;
-    throw new Error("discovery catalog is invalid TOML", { cause });
+    if (cause instanceof Error && cause.message.startsWith(`${context} `)) throw cause;
+    throw new Error(`${context} is invalid TOML`, { cause });
   }
+}
+
+function parseCatalog(path: string, context: string): Record<string, unknown> {
+  return parseCatalogText(readFileSync(path, "utf8"), context);
 }
 
 function parseLimits(raw: unknown): DiscoveryLimits {
@@ -205,12 +209,8 @@ function parseSignals(raw: unknown, families: DiscoveryCatalog["evidenceFamilies
   return Object.freeze(signals);
 }
 
-export function loadDiscoveryCatalog(releaseRoot?: string): DiscoveryCatalog {
-  const manifestPath = resolveManifestPath(releaseRoot);
-  const manifest = parseCatalog(manifestPath);
-  const catalogs = record(manifest.catalogs, "discovery manifest catalogs");
-  const catalogPath = resolveCatalogPath(manifestPath, catalogs.discovery_signals);
-  const catalog = parseCatalog(catalogPath);
+export function parseDiscoveryCatalogText(content: string): DiscoveryCatalog {
+  const catalog = parseCatalogText(content, "discovery catalog");
   exactFields(catalog, TOP_LEVEL_FIELDS, "discovery catalog");
   if (catalog.schema_version !== 1) throw new Error("discovery catalog schema_version must be integer 1");
   const evidenceFamilies = parseFamilies(catalog.evidence_families);
@@ -222,4 +222,12 @@ export function loadDiscoveryCatalog(releaseRoot?: string): DiscoveryCatalog {
     evidenceFamilies,
     signals: parseSignals(catalog.signals, evidenceFamilies),
   });
+}
+
+export function loadDiscoveryCatalog(releaseRoot?: string): DiscoveryCatalog {
+  const manifestPath = resolveManifestPath(releaseRoot);
+  const manifest = parseCatalog(manifestPath, "discovery manifest");
+  const catalogs = record(manifest.catalogs, "discovery manifest catalogs");
+  const catalogPath = resolveCatalogPath(manifestPath, catalogs.discovery_signals);
+  return parseDiscoveryCatalogText(readFileSync(catalogPath, "utf8"));
 }

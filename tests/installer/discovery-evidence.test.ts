@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { renameSync, symlinkSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -193,6 +194,47 @@ test("SQLite analysis applies object and column budgets and closes after a schem
     assert.equal(closes, 1);
   } finally {
     DatabaseSync.prototype.prepare = originalPrepare;
+    DatabaseSync.prototype.close = originalClose;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("SQLite analysis revalidates filesystem identity after the path-based open and closes on replacement", async () => {
+  const root = await canonicalTemporary("agent-governance-sqlite-identity-");
+  const path = join(root, "state.sqlite");
+  const moved = join(root, "state-opened.sqlite");
+  const replacement = join(root, "replacement.sqlite");
+  for (const databasePath of [path, replacement]) {
+    const database = new DatabaseSync(databasePath);
+    database.exec("CREATE TABLE state (id INTEGER)");
+    database.close();
+  }
+
+  const originalLocation = DatabaseSync.prototype.location;
+  const originalClose = DatabaseSync.prototype.close;
+  let swapped = false;
+  let closes = 0;
+  DatabaseSync.prototype.location = function location(databaseName?: string) {
+    if (!swapped) {
+      swapped = true;
+      renameSync(path, moved);
+      symlinkSync(replacement, path);
+    }
+    return databaseName === undefined
+      ? originalLocation.call(this)
+      : originalLocation.call(this, databaseName);
+  };
+  DatabaseSync.prototype.close = function close() {
+    closes += 1;
+    return originalClose.call(this);
+  };
+
+  try {
+    await assert.rejects(() => analyzeSqliteSchema(path, LIMITS), /canonical|changed|identity|symlink/i);
+    assert.equal(swapped, true);
+    assert.equal(closes, 1);
+  } finally {
+    DatabaseSync.prototype.location = originalLocation;
     DatabaseSync.prototype.close = originalClose;
     await rm(root, { recursive: true, force: true });
   }

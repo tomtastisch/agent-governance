@@ -4,7 +4,13 @@ import { DatabaseSync } from "node:sqlite";
 import { evidenceForStructure, sanitizeDisplay } from "./structured.ts";
 import type { DiscoveryLimits, EvidenceRecord } from "./types.ts";
 
-async function canonicalSqlitePath(path: string): Promise<string> {
+interface SqlitePathIdentity {
+  readonly path: string;
+  readonly device: number;
+  readonly inode: number;
+}
+
+async function canonicalSqlitePath(path: string): Promise<SqlitePathIdentity> {
   if (!isAbsolute(path)) throw new Error("SQLite path must be absolute");
   const normalized = resolve(path);
   const metadata = await lstat(normalized);
@@ -14,7 +20,26 @@ async function canonicalSqlitePath(path: string): Promise<string> {
   if ((await realpath(normalized)) !== normalized) {
     throw new Error("SQLite path must be canonical and contain no symlinks");
   }
-  return normalized;
+  return Object.freeze({ path: normalized, device: metadata.dev, inode: metadata.ino });
+}
+
+async function assertSqlitePathIdentity(path: string | null, expected: SqlitePathIdentity): Promise<void> {
+  if (path !== expected.path) throw new Error("SQLite path identity changed after opening");
+  try {
+    const metadata = await lstat(expected.path);
+    if (
+      metadata.isSymbolicLink() ||
+      !metadata.isFile() ||
+      metadata.dev !== expected.device ||
+      metadata.ino !== expected.inode ||
+      (await realpath(expected.path)) !== expected.path
+    ) {
+      throw new Error("SQLite path identity changed after opening");
+    }
+  } catch (cause) {
+    if (cause instanceof Error && cause.message === "SQLite path identity changed after opening") throw cause;
+    throw new Error("SQLite path identity changed after opening", { cause });
+  }
 }
 
 function validateLimits(limits: DiscoveryLimits): void {
@@ -28,10 +53,11 @@ export async function analyzeSqliteSchema(
   limits: DiscoveryLimits,
 ): Promise<readonly EvidenceRecord[]> {
   validateLimits(limits);
-  const canonicalPath = await canonicalSqlitePath(path);
+  const identity = await canonicalSqlitePath(path);
   let database: DatabaseSync | undefined;
   try {
-    database = new DatabaseSync(canonicalPath, { readOnly: true });
+    database = new DatabaseSync(identity.path, { readOnly: true });
+    await assertSqlitePathIdentity(database.location("main"), identity);
     const objects = database.prepare(
       "SELECT type, name FROM sqlite_schema " +
       "WHERE type IN ('table', 'view', 'index', 'trigger') AND name NOT LIKE 'sqlite_%' " +
@@ -68,7 +94,7 @@ export async function analyzeSqliteSchema(
     }
 
     return evidenceForStructure(
-      canonicalPath,
+      identity.path,
       "sqlite_schema",
       matchKeys,
       metadata,
