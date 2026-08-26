@@ -20,6 +20,7 @@ EXPECTED_CATALOG_PATHS = {
     "scopes": "catalogs/scopes.toml",
     "tools": "catalogs/tools.toml",
     "commands": "catalogs/commands.toml",
+    "discovery_signals": "catalogs/discovery-signals.toml",
 }
 EXPECTED_COMMANDS = {
     "inspect": (["inspect"], "transaction", "read", False, False),
@@ -108,6 +109,17 @@ class CatalogContract(unittest.TestCase):
         self.assertEqual(set(self.contract.catalogs["scopes"]), {"schema_version", "scopes"})
         self.assertEqual(set(self.contract.catalogs["tools"]), {"schema_version", "tools"})
         self.assertEqual(set(self.contract.catalogs["commands"]), {"schema_version", "commands"})
+        self.assertEqual(
+            set(self.contract.catalogs["discovery_signals"]),
+            {
+                "schema_version",
+                "limits",
+                "confidence",
+                "candidate_classes",
+                "evidence_families",
+                "signals",
+            },
+        )
         for catalog_name in ("triggers", "policy_tags", "scopes"):
             for item_id, item in self.contract.catalogs[catalog_name][catalog_name].items():
                 self.assertEqual(set(item), {"label", "description"}, item_id)
@@ -115,6 +127,25 @@ class CatalogContract(unittest.TestCase):
             self.assertEqual(set(tool), TOOL_FIELDS, tool_id)
         for command in self.contract.commands:
             self.assertEqual(set(command), COMMAND_FIELDS, command.get("id"))
+
+    def test_discovery_catalog_is_generic_closed_and_bounded(self):
+        discovery = self.contract.discovery
+        self.assertEqual(set(discovery["candidate_classes"]), {"directory", "app_bundle"})
+        self.assertEqual(
+            set(discovery["evidence_families"]),
+            {"runtime", "state", "tooling", "ai_metadata", "package_metadata", "document"},
+        )
+        self.assertTrue(all(type(value) is int and value > 0 for value in discovery["limits"].values()))
+        self.assertTrue(discovery["confidence"]["high_requires_runtime"])
+        self.assertLess(
+            discovery["confidence"]["uncertain_minimum_score"],
+            discovery["confidence"]["high_minimum_score"],
+        )
+        text = (GOVERNANCE_ROOT / EXPECTED_CATALOG_PATHS["discovery_signals"]).read_text(
+            encoding="utf-8"
+        ).lower()
+        for forbidden in ("anthropic", "claude", "codex", "copilot", "cursor", "gemini", "ollama", "openai"):
+            self.assertNotIn(forbidden, text)
 
     def test_command_catalog_defines_the_nine_public_paths_and_semantics(self):
         actual = {
@@ -527,6 +558,44 @@ class CommandCatalogFailures(CatalogMutationCase):
             'capability = "transaction"',
         )
         with self.assertRaisesRegex(self.validator.CatalogValidationError, "Semantik"):
+            self.load()
+
+
+class DiscoveryCatalogFailures(CatalogMutationCase):
+    def test_unknown_discovery_limit_field_fails_closed(self):
+        self.replace(
+            "catalogs/discovery-signals.toml",
+            "max_depth = 4",
+            "max_depth = 4\nunexpected = true",
+        )
+        with self.assertRaisesRegex(self.validator.CatalogValidationError, "unbekannte Felder"):
+            self.load()
+
+    def test_nonpositive_discovery_limit_fails_closed(self):
+        self.replace(
+            "catalogs/discovery-signals.toml",
+            "max_files = 256",
+            "max_files = 0",
+        )
+        with self.assertRaisesRegex(self.validator.CatalogValidationError, "max_files"):
+            self.load()
+
+    def test_unknown_discovery_family_reference_fails_closed(self):
+        self.replace(
+            "catalogs/discovery-signals.toml",
+            'family = "runtime"',
+            'family = "unknown"',
+        )
+        with self.assertRaisesRegex(self.validator.CatalogValidationError, "family"):
+            self.load()
+
+    def test_unknown_discovery_source_kind_fails_closed(self):
+        self.replace(
+            "catalogs/discovery-signals.toml",
+            'source_kinds = ["json", "toml", "plist"]',
+            'source_kinds = ["network"]',
+        )
+        with self.assertRaisesRegex(self.validator.CatalogValidationError, "source_kinds"):
             self.load()
 
 
