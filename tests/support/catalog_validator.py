@@ -16,7 +16,7 @@ ID_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 MANIFEST_FIELDS = frozenset(
     {"schema_version", "local_rules", "catalogs", "routing", "modules", "roles"}
 )
-CATALOG_NAMES = ("triggers", "policy_tags", "scopes", "tools")
+CATALOG_NAMES = ("triggers", "policy_tags", "scopes", "tools", "commands")
 VOCABULARY_FIELDS = frozenset({"label", "description"})
 MODULE_FIELDS = frozenset({"path", "triggers", "dependencies"})
 ROLE_FIELDS = frozenset({"path", "triggers", "modules"})
@@ -33,6 +33,20 @@ TOOL_FIELDS = frozenset(
         "constraints",
     }
 )
+COMMAND_FIELDS = frozenset(
+    {"id", "path", "description", "capability", "effect", "orchestrates", "interactive"}
+)
+COMMAND_SEMANTICS = {
+    "inspect": (("inspect",), "transaction", "read", False, False),
+    "plan": (("plan",), "transaction", "read", False, False),
+    "install": (("install",), "transaction", "write", False, False),
+    "verify": (("verify",), "transaction", "read", False, False),
+    "status": (("status",), "transaction", "read", False, False),
+    "update": (("update",), "transaction", "write", False, False),
+    "uninstall": (("uninstall",), "transaction", "write", False, False),
+    "rollback": (("rollback",), "transaction", "write", False, False),
+    "init": (("init",), "orchestration", "write", True, True),
+}
 
 
 class CatalogValidationError(RuntimeError):
@@ -48,6 +62,7 @@ class CatalogContract:
     policy_tags: frozenset[str]
     scopes: frozenset[str]
     tools: Mapping[str, Mapping[str, object]]
+    commands: tuple[Mapping[str, object], ...]
 
 
 def load_catalog_contract(
@@ -94,6 +109,7 @@ def load_catalog_contract(
     policy_tags = _validate_vocabulary(parsed_catalogs["policy_tags"], "policy_tags")
     scopes = _validate_vocabulary(parsed_catalogs["scopes"], "scopes")
     tools = _validate_tools(parsed_catalogs["tools"], triggers, policy_tags, scopes)
+    commands = _validate_commands(parsed_catalogs["commands"])
     _validate_manifest_index(root, manifest_data, triggers)
     _validate_tool_routing(manifest_data, tools)
 
@@ -105,6 +121,7 @@ def load_catalog_contract(
         policy_tags=policy_tags,
         scopes=scopes,
         tools=tools,
+        commands=commands,
     )
 
 
@@ -233,6 +250,59 @@ def _validate_tools(
         _known_references(tool_policy_tags, policy_tags, "unbekannten Policy-Tag", tool_id)
         _known_references(tool_scopes, scopes, "unbekannten Scope", tool_id)
     return tools
+
+
+def _validate_commands(catalog: Mapping[str, object]) -> tuple[Mapping[str, object], ...]:
+    _exact_fields(catalog, frozenset({"schema_version", "commands"}), "commands Top-Level")
+    if type(catalog.get("schema_version")) is not int or catalog["schema_version"] != 1:
+        raise CatalogValidationError("commands schema_version muss Integer 1 sein")
+    raw_commands = catalog.get("commands")
+    if not isinstance(raw_commands, list) or not raw_commands:
+        raise CatalogValidationError("commands muss eine nichtleere Liste sein")
+    commands: list[Mapping[str, object]] = []
+    ids: set[str] = set()
+    paths: set[tuple[str, ...]] = set()
+    for index, command in enumerate(raw_commands):
+        context = f"commands[{index}]"
+        if not isinstance(command, Mapping):
+            raise CatalogValidationError(f"{context} muss eine Tabelle sein")
+        _exact_fields(command, COMMAND_FIELDS, context)
+        command_id = _validate_id(command.get("id"), context)
+        if command_id in ids:
+            raise CatalogValidationError("commands enthält doppelte IDs")
+        raw_path = command.get("path")
+        if not isinstance(raw_path, list) or not raw_path or any(
+            not isinstance(segment, str) or re.fullmatch(r"[a-z][a-z0-9-]*", segment) is None
+            for segment in raw_path
+        ):
+            raise CatalogValidationError(f"{context}.path ist ungültig")
+        path = tuple(raw_path)
+        if path in paths:
+            raise CatalogValidationError("commands enthält doppelte Pfade")
+        description = _nonempty_text(command.get("description"), f"{context}.description")
+        if re.search(r"[\x00\r\n\x1b]", description):
+            raise CatalogValidationError(f"{context}.description enthält Steuerzeichen")
+        for field in ("capability", "effect"):
+            _nonempty_text(command.get(field), f"{context}.{field}")
+        for field in ("orchestrates", "interactive"):
+            if type(command.get(field)) is not bool:
+                raise CatalogValidationError(f"{context}.{field} muss Boolean sein")
+        expected = COMMAND_SEMANTICS.get(command_id)
+        actual = (
+            path,
+            command["capability"],
+            command["effect"],
+            command["orchestrates"],
+            command["interactive"],
+        )
+        if expected is None or actual != expected:
+            raise CatalogValidationError(f"{context} verletzt die Command-Semantik")
+        ids.add(command_id)
+        paths.add(path)
+        commands.append(command)
+    if ids != set(COMMAND_SEMANTICS):
+        raise CatalogValidationError("commands muss exakt alle öffentlichen IDs enthalten")
+    return tuple(commands)
 
 
 def _validate_manifest_index(

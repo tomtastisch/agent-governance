@@ -44,5 +44,8 @@
   "publishConfig": {
     "access": "public",
     "provenance": true
+  },
+  "dependencies": {
+    "smol-toml": "1.8.0"
   }
 }
