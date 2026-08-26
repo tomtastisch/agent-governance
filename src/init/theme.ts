@@ -1,3 +1,5 @@
+import { S_CHECKBOX_SELECTED, unicodeOr } from "@clack/prompts";
+
 import { sanitizeDisplay } from "../discovery/structured.ts";
 import { resolveCandidateIdentity } from "../discovery/identity.ts";
 import type { Candidate } from "../discovery/types.ts";
@@ -93,7 +95,7 @@ export function renderCandidate(
 
 export function renderLegend(theme: TerminalTheme): string {
   const first = `${theme.green("[hoch]")} erkannt  ${theme.yellow("[unsicher]")} prüfen`;
-  const second = `${theme.cyan("[fokus]")} Cursor  ${theme.green("◼")} Auswahl`;
-  const third = "↑/↓ navigieren · Leertaste wählen · Enter weiter · Ctrl+C abbrechen";
+  const second = `${theme.cyan("[fokus]")} Cursor  ${theme.green(S_CHECKBOX_SELECTED)} Auswahl`;
+  const third = `${unicodeOr("↑/↓", "Up/Down")} navigieren · Leertaste wählen · Enter weiter · Ctrl+C abbrechen`;
   return [first, second, ...wrapPlain(third, theme.columns)].join("\n");
 }

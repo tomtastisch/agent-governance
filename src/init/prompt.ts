@@ -27,11 +27,19 @@ interface PromptOption {
   readonly hint?: string;
 }
 
+interface PromptFilterOption {
+  readonly value: string;
+  readonly label?: string;
+  readonly hint?: string;
+  readonly disabled?: boolean;
+}
+
 interface AutocompleteMultiSelectOptions {
   readonly message: string;
   readonly options: PromptOption[];
   readonly initialValues: string[];
   readonly required: boolean;
+  readonly filter: (search: string, option: PromptFilterOption) => boolean;
 }
 
 interface PathOptions {
@@ -129,6 +137,15 @@ function assertPath(value: unknown): string {
   return value;
 }
 
+function filterTargetOption(search: string, option: PromptFilterOption): boolean {
+  if (option.value === CUSTOM_VALUE) return true;
+  if (search === "?") return false;
+  const normalizedSearch = search.toLowerCase();
+  return (option.label ?? option.value).toLowerCase().includes(normalizedSearch)
+    || (option.hint ?? "").toLowerCase().includes(normalizedSearch)
+    || option.value.toLowerCase().includes(normalizedSearch);
+}
+
 export function createClackPrompt(io: ClackPromptIO = {}): InitPrompt {
   const operations = io.prompts ?? DEFAULT_OPERATIONS;
   const promptColumns = Math.max(20, (io.columns ?? process.stdout.columns ?? 80) - 4);
@@ -163,19 +180,22 @@ export function createClackPrompt(io: ClackPromptIO = {}): InitPrompt {
       stopProgress();
       const eligible = candidates.filter((candidate) => candidate.confidence !== "REJECTED");
       const byRoot = new Map(eligible.map((candidate) => [candidate.root, candidate]));
-      const options: PromptOption[] = eligible.map((candidate) => ({
-        value: candidate.root,
-        label: renderCandidate(candidate, { focused: false, selected: false }, theme),
-        hint: theme.cyan("[fokus]"),
-      }));
-      options.push({ value: CUSTOM_VALUE, label: "AI/LLM nicht dabei?", hint: theme.cyan("[fokus]") });
+      const options: PromptOption[] = [
+        { value: CUSTOM_VALUE, label: "AI/LLM nicht dabei?", hint: theme.cyan("[fokus]") },
+        ...eligible.map((candidate) => ({
+          value: candidate.root,
+          label: renderCandidate(candidate, { focused: false, selected: false }, theme),
+          hint: theme.cyan("[fokus]"),
+        })),
+      ];
       const result = await operations.autocompleteMultiselect({
-        message: `Ziele auswählen\n${renderLegend(theme)}`,
+        message: `Ziele auswählen\nAI/LLM nicht dabei? — ? tippen, Tab wählen\n${renderLegend(theme)}`,
         options,
         initialValues: eligible
           .filter((candidate) => candidate.confidence === "HIGH_CONFIDENCE")
           .map((candidate) => candidate.root),
         required: true,
+        filter: filterTargetOption,
       });
       if (operations.isCancel(result)) return cancelled(operations);
       const values = assertSelections(result, byRoot);

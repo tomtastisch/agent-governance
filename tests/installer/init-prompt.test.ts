@@ -53,7 +53,7 @@ function harness(responses: readonly unknown[]): Harness {
 
 const CANCEL = Symbol("cancel");
 
-test("selectTargets preselects only high-confidence candidates and keeps the custom option last", async () => {
+test("selectTargets preselects only high-confidence candidates and keeps the manual action first under search", async () => {
   const high = candidate("/synthetic/High", "HIGH_CONFIDENCE");
   const uncertain = candidate(`/synthetic/${"Uncertain-local-candidate-".repeat(4)}`, "UNCERTAIN");
   const fake = harness([[high.root, "__custom__"], "HIGH.md", "/synthetic/Manual", "MANUAL.md"]);
@@ -69,12 +69,19 @@ test("selectTargets preselects only high-confidence candidates and keeps the cus
     initialValues: string[];
     options: Array<{ value: string; label: string; hint?: string }>;
     message: string;
+    filter: (search: string, option: { value: string; label: string; hint?: string }) => boolean;
   };
   assert.deepEqual(multiselect?.initialValues, [high.root]);
   const options = multiselect.options;
-  assert.deepEqual(options.map(({ value }) => value), [uncertain.root, high.root, "__custom__"]);
-  assert.equal(options.at(-1)?.label, "AI/LLM nicht dabei?");
+  assert.deepEqual(options.map(({ value }) => value), ["__custom__", uncertain.root, high.root]);
+  assert.equal(options[0]?.label, "AI/LLM nicht dabei?");
   assert.ok(options.every(({ hint }) => hint === "[fokus]"));
+  assert.equal(multiselect.filter("Uncertain", options[0]!), true);
+  assert.equal(multiselect.filter("Uncertain", options[1]!), true);
+  assert.equal(multiselect.filter("Uncertain", options[2]!), false);
+  assert.equal(multiselect.filter("?", options[0]!), true);
+  assert.equal(multiselect.filter("?", options[1]!), false);
+  assert.match(String(multiselect?.message), /AI\/LLM nicht dabei\?.*\? tippen.*Tab/su);
   assert.match(String(multiselect?.message), /\[hoch\].*\[unsicher\]/su);
   assert.match(String(multiselect?.message), /↑\/↓.*Leertaste.*Enter.*Ctrl\+C/su);
   assert.ok(options.every(({ label }) => label.split("\n").every((line) => line.length <= 56)));
@@ -146,6 +153,40 @@ test("the real monochrome prompt keeps confidence, focus, and toggled selection 
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
   assert.match(visible, /◼ \[hoch\] High[\s\S]*?\/synthetic\/High \(\[fokus\]\)/u);
   assert.match(visible, /◻ \[unsicher\] Uncertain[\s\S]*?\/synthetic\/Uncertain \(\[fokus\]\)/u);
-  assert.match(visible, /◼ \[unsicher\] Uncertain[\s\S]*?\/synthetic\/Uncertain \(\[fokus\]\)/u);
+  assert.match(visible, /◼ \[unsicher\] Uncertain/u);
+  assert.match(visible, /MARKER_SELECTION_RENDERED/u);
   assert.match(visible, /\[hoch\].*\[unsicher\].*\[fokus\].*◼ Auswahl/su);
+});
+
+test("the real 60x24 prompt keeps the manual fallback actionable with overflowing multiline options and active search", () => {
+  const result = spawnSync(process.execPath, [
+    join(import.meta.dirname, "../e2e/run_init_pty.mjs"),
+    "--columns=60",
+    "--no-color",
+    "--fallback",
+  ], { encoding: "utf8", timeout: 15_000 });
+
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  assert.match(result.stdout, /Candidate-19/u);
+  assert.match(result.stdout, /FALLBACK_SEARCH_ACTION_VISIBLE/u);
+  assert.match(result.stdout, /FALLBACK_PROMPT_CANCELLED/u);
+});
+
+test("the real TERM=linux prompt uses the same ASCII selection and navigation glyphs in options and legend", () => {
+  const result = spawnSync(process.execPath, [
+    join(import.meta.dirname, "../e2e/run_init_pty.mjs"),
+    "--columns=60",
+    "--no-color",
+    "--term-linux",
+    "--markers",
+  ], { encoding: "utf8", timeout: 15_000 });
+  const visible = result.stdout.replace(/\u001b\[[0-?]*[ -/]*[@-~]/gu, "");
+
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  assert.match(visible, /\[\+\] \[hoch\] High[\s\S]*?\/synthetic\/High \(\[fokus\]\)/u);
+  assert.match(visible, /\[\+\] \[unsicher\] Uncertain/u);
+  assert.match(visible, /MARKER_SELECTION_RENDERED/u);
+  assert.match(visible, /\[fokus\].*\[\+\] Auswahl/su);
+  assert.match(visible, /Up\/Down navigieren/u);
+  assert.doesNotMatch(visible, /◼ Auswahl|↑\/↓ navigieren/u);
 });

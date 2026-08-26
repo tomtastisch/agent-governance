@@ -25,19 +25,26 @@ function markerCandidate(root, confidence) {
 }
 
 async function runChild() {
-  if (process.argv.includes("--markers-child")) {
+  if (process.argv.includes("--markers-child") || process.argv.includes("--fallback-child")) {
     const { createClackPrompt } = await import("../../src/init/prompt.ts");
     const { INIT_CANCELLED } = await import("../../src/init/types.ts");
     const columns = process.env.AGENT_GOVERNANCE_TEST_COLUMNS;
     if (!columns || !/^(?:60|80|120)$/u.test(columns)) throw new Error("synthetic PTY columns are invalid");
+    const candidates = process.argv.includes("--fallback-child")
+      ? Array.from({ length: 20 }, (_, index) => markerCandidate(
+          `/synthetic/Candidate-${String(index + 1).padStart(2, "0")}-${"multiline-label-".repeat(4)}`,
+          index === 0 ? "HIGH_CONFIDENCE" : "UNCERTAIN",
+        ))
+      : [
+          markerCandidate("/synthetic/High", "HIGH_CONFIDENCE"),
+          markerCandidate("/synthetic/Uncertain", "UNCERTAIN"),
+        ];
     const result = await createClackPrompt({
       columns: Number.parseInt(columns, 10),
       environment: process.env,
-    }).selectTargets([
-      markerCandidate("/synthetic/High", "HIGH_CONFIDENCE"),
-      markerCandidate("/synthetic/Uncertain", "UNCERTAIN"),
-    ]);
-    process.stdout.write(result === INIT_CANCELLED ? "MARKER_PROMPT_CANCELLED\n" : "MARKER_PROMPT_COMPLETED\n");
+    }).selectTargets(candidates);
+    const prefix = process.argv.includes("--fallback-child") ? "FALLBACK" : "MARKER";
+    process.stdout.write(result === INIT_CANCELLED ? `${prefix}_PROMPT_CANCELLED\n` : `${prefix}_PROMPT_COMPLETED\n`);
     return;
   }
   const { runCli } = await import("../../src/cli.ts");
@@ -65,6 +72,7 @@ async function runChild() {
 
 async function runParent() {
   const markers = process.argv.includes("--markers");
+  const fallback = process.argv.includes("--fallback");
   const columnsArgument = process.argv.find((value) => value.startsWith("--columns="));
   const columns = columnsArgument?.slice("--columns=".length) ?? "80";
   if (!/^(?:60|80|120)$/u.test(columns)) throw new Error("columns must be 60, 80, or 120");
@@ -77,19 +85,36 @@ async function runParent() {
   await Promise.all([home, xdgConfigHome, xdgDataHome, xdgCacheHome, systemApplications].map((path) => mkdir(path)));
 
   const childEntry = fileURLToPath(import.meta.url);
-  const interaction = markers
+  const interaction = fallback
     ? [
-        "expect -re {AI/LLM nicht dabei}",
+        "expect -re {(?:◻|\\[\u2022\\]) AI/LLM nicht dabei\\?}",
+        "send -- \"Candidate-19\"",
+        "after 300",
+        "expect -re {(?:◻|\\[\u2022\\]) AI/LLM nicht dabei\\?}",
+        "send -- \"\\t\"",
+        "after 200",
+        "expect -re {(?:◼|\\[\\+\\]) AI/LLM nicht dabei\\?}",
+        "puts \"FALLBACK_SEARCH_ACTION_VISIBLE\"",
+        "send \\003",
+        "expect eof",
+      ]
+    : markers
+    ? [
+        "expect -re {Search:}",
+        "send -- \"Uncertain\"",
+        "after 200",
         "send -- \"\\033\\[B\"",
         "after 200",
+        "expect -re {Space/Tab:.*select}",
         "send -- \" \"",
-        "after 200",
+        "expect -re {Uncertain}",
+        "puts \"MARKER_SELECTION_RENDERED\"",
         "send \\003",
         "expect eof",
       ]
     : [
         "expect {",
-        "  -re {AI/LLM nicht dabei} { send \\003; exp_continue }",
+        "  -re {Search:} { send \\003; exp_continue }",
         "  eof {}",
         "  timeout { exit 124 }",
         "}",
@@ -100,7 +125,7 @@ async function runParent() {
     "set executable $env(AGENT_GOVERNANCE_TEST_NODE)",
     "set entry $env(AGENT_GOVERNANCE_TEST_ENTRY)",
     "set stty_init \"rows 24 columns $columns\"",
-    `spawn -noecho $executable --experimental-strip-types $entry ${markers ? "--markers-child" : "--child"}`,
+    `spawn -noecho $executable --experimental-strip-types $entry ${fallback ? "--fallback-child" : markers ? "--markers-child" : "--child"}`,
     ...interaction,
     "set result [wait]",
     "exit [lindex $result 3]",
@@ -120,7 +145,7 @@ async function runParent() {
         AGENT_GOVERNANCE_TEST_NODE: process.execPath,
         AGENT_GOVERNANCE_TEST_ENTRY: childEntry,
         COLUMNS: columns,
-        TERM: process.argv.includes("--no-color") ? "dumb" : "xterm-256color",
+        TERM: process.argv.includes("--term-linux") ? "linux" : "xterm-256color",
         ...(process.argv.includes("--no-color") ? { NO_COLOR: "1" } : {}),
       },
       stdio: ["pipe", "pipe", "pipe"],
@@ -141,7 +166,8 @@ async function runParent() {
     const rendered = Buffer.concat(output).toString("utf8");
     process.stdout.write(rendered);
     if (/interactive init prompt is unavailable/u.test(rendered)) process.exitCode = 1;
-    else if (markers && !/MARKER_PROMPT_CANCELLED/u.test(rendered)) process.exitCode = 1;
+    else if (fallback && (!/FALLBACK_SEARCH_ACTION_VISIBLE/u.test(rendered) || !/FALLBACK_PROMPT_CANCELLED/u.test(rendered))) process.exitCode = 1;
+    else if (markers && (!/MARKER_SELECTION_RENDERED/u.test(rendered) || !/MARKER_PROMPT_CANCELLED/u.test(rendered))) process.exitCode = 1;
     else if (process.argv.includes("--cancel") && !/Einrichtung abgebrochen|INTERRUPTED/u.test(rendered)) process.exitCode = 1;
     else process.exitCode = exitCode === 0 || exitCode === 130 ? 0 : exitCode;
   } finally {
@@ -149,5 +175,5 @@ async function runParent() {
   }
 }
 
-if (process.argv.includes("--child") || process.argv.includes("--markers-child")) await runChild();
+if (process.argv.includes("--child") || process.argv.includes("--markers-child") || process.argv.includes("--fallback-child")) await runChild();
 else await runParent();
