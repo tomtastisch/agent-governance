@@ -5,6 +5,7 @@ import test from "node:test";
 
 import type { Candidate } from "../../src/discovery/types.ts";
 import { createClackPrompt, type ClackPromptOperations } from "../../src/init/prompt.ts";
+import { stripAnsi, visibleWidth } from "../../src/init/theme.ts";
 import { INIT_CANCELLED } from "../../src/init/types.ts";
 
 function candidate(root: string, confidence: Candidate["confidence"]): Candidate {
@@ -75,7 +76,8 @@ test("selectTargets preselects only high-confidence candidates and keeps the man
   const options = multiselect.options;
   assert.deepEqual(options.map(({ value }) => value), ["__custom__", uncertain.root, high.root]);
   assert.equal(options[0]?.label, "AI/LLM nicht dabei?");
-  assert.ok(options.every(({ hint }) => hint === "[fokus]"));
+  assert.equal(options[0]?.hint, "[fokus]");
+  assert.ok(options.slice(1).every(({ hint }) => hint?.startsWith("[fokus] Pfad: ")));
   assert.equal(multiselect.filter("Uncertain", options[0]!), true);
   assert.equal(multiselect.filter("Uncertain", options[1]!), true);
   assert.equal(multiselect.filter("Uncertain", options[2]!), false);
@@ -85,6 +87,51 @@ test("selectTargets preselects only high-confidence candidates and keeps the man
   assert.match(String(multiselect?.message), /\[hoch\].*\[unsicher\]/su);
   assert.match(String(multiselect?.message), /↑\/↓.*Leertaste.*Enter.*Ctrl\+C/su);
   assert.ok(options.every(({ label }) => label.split("\n").every((line) => line.length <= 56)));
+});
+
+test("candidate roots are sanitized and 60-column bounded only in the live focused hint", async () => {
+  const root = `/synthetic/AsterveilAI/${"very-long-binding-segment-".repeat(5)}\u001b[31mprofile`;
+  const fake = harness([CANCEL]);
+  const prompt = createClackPrompt({ prompts: fake.operations, columns: 60, environment: { NO_COLOR: "1" } });
+
+  assert.equal(await prompt.selectTargets([candidate(root, "HIGH_CONFIDENCE")]), INIT_CANCELLED);
+  const multiselect = fake.calls.find(({ kind }) => kind === "autocompleteMultiselect")?.options as {
+    options: Array<{ value: string; label: string; hint?: string }>;
+  };
+  const option = multiselect.options[1]!;
+  const label = stripAnsi(option.label);
+  const hint = stripAnsi(option.hint ?? "");
+  const labelLines = label.split("\n");
+
+  assert.doesNotMatch(label, /\/synthetic\/AsterveilAI/u);
+  assert.match(hint, /^\[fokus\] Pfad: \/synthetic\//u);
+  assert.doesNotMatch(hint, /[\u0000-\u001f\u007f-\u009f]/u);
+  assert.equal(labelLines.every((line) => visibleWidth(line) <= 56), true);
+  assert.equal(2 + visibleWidth(labelLines.at(-1) ?? "") + 3 + visibleWidth(hint) <= 56, true);
+});
+
+test("the focused candidate path follows the cursor at 60, 80, and 120 columns with and without color", () => {
+  for (const columns of [60, 80, 120]) {
+    for (const noColor of [false, true]) {
+      const result = spawnSync(process.execPath, [
+        join(import.meta.dirname, "../e2e/run_init_pty.mjs"),
+        `--columns=${columns}`,
+        "--focused-path",
+        ...(noColor ? ["--no-color"] : []),
+      ], { encoding: "utf8", timeout: 15_000 });
+      const visible = result.stdout.replace(/\u001b\[[0-?]*[ -/]*[@-~]/gu, "");
+
+      assert.equal(result.status, 0, `${columns}/${noColor ? "NO_COLOR" : "color"}\n${result.stdout}\n${result.stderr}`);
+      assert.match(visible, /FOCUS_A_PATH_VISIBLE/u, `${columns}/${noColor}: first focus`);
+      assert.match(visible, /FOCUS_B_PATH_VISIBLE/u, `${columns}/${noColor}: second focus`);
+      assert.doesNotMatch(result.stdout, /\u001b\[31mPATH_ESCAPE/u);
+      for (const line of visible.split(/\r?\n/u).filter((value) => /\/[AB]\/Asterveil/u.test(value))) {
+        assert.equal([...line].length <= columns, true, `${columns}/${noColor}: ${line}`);
+      }
+      assert.match(visible, /FOCUSED_PATH_SWITCH_RENDERED/u);
+      if (!noColor) assert.match(result.stdout, /\u001b\[36m\[fokus\]\u001b\[0m/u);
+    }
+  }
 });
 
 test("selectTargets maps Ctrl+C cancellation to the orchestration sentinel", async () => {
@@ -151,9 +198,9 @@ test("the real monochrome prompt keeps confidence, focus, and toggled selection 
   const visible = result.stdout.replace(/\u001b\[[0-?]*[ -/]*[@-~]/gu, "");
 
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
-  assert.match(visible, /◼ \[hoch\] High[\s\S]*?\/synthetic\/High \(\[fokus\]\)/u);
-  assert.match(visible, /◻ \[unsicher\] Uncertain[\s\S]*?\/synthetic\/Uncertain \(\[fokus\]\)/u);
-  assert.match(visible, /◼ \[unsicher\] Uncertain/u);
+  assert.match(visible, /◼ \[hoch\] High \(\[fokus\] Pfad: \/synthetic\/High\)/u);
+  assert.match(visible, /◻ \[unsicher\] Uncertain \(\[fokus\] Pfad: \/synthetic\/Uncertain\)/u);
+  assert.match(visible, /◼ \[unsicher\] Uncertain \(\[fokus\] Pfad: \/synthetic\/Uncertain\)/u);
   assert.match(visible, /MARKER_SELECTION_RENDERED/u);
   assert.match(visible, /\[hoch\].*\[unsicher\].*\[fokus\].*◼ Auswahl/su);
 });
@@ -183,8 +230,8 @@ test("the real TERM=linux prompt uses the same ASCII selection and navigation gl
   const visible = result.stdout.replace(/\u001b\[[0-?]*[ -/]*[@-~]/gu, "");
 
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
-  assert.match(visible, /\[\+\] \[hoch\] High[\s\S]*?\/synthetic\/High \(\[fokus\]\)/u);
-  assert.match(visible, /\[\+\] \[unsicher\] Uncertain/u);
+  assert.match(visible, /\[\+\] \[hoch\] High \(\[fokus\] Pfad: \/synthetic\/High\)/u);
+  assert.match(visible, /\[\+\] \[unsicher\] Uncert/u);
   assert.match(visible, /MARKER_SELECTION_RENDERED/u);
   assert.match(visible, /\[fokus\].*\[\+\] Auswahl/su);
   assert.match(visible, /Up\/Down navigieren/u);

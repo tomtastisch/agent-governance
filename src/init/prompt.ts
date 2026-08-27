@@ -10,7 +10,7 @@ import { isAbsolute, normalize, relative, resolve } from "node:path";
 
 import { resolveCandidateIdentity } from "../discovery/identity.ts";
 import type { Candidate } from "../discovery/types.ts";
-import { createTerminalTheme, renderCandidate, renderLegend } from "./theme.ts";
+import { createTerminalTheme, renderCandidate, renderCandidateHint, renderLegend } from "./theme.ts";
 import {
   INIT_CANCELLED,
   type InitBindingSelection,
@@ -185,7 +185,7 @@ export function createClackPrompt(io: ClackPromptIO = {}): InitPrompt {
         ...eligible.map((candidate) => ({
           value: candidate.root,
           label: renderCandidate(candidate, { focused: false, selected: false }, theme),
-          hint: theme.cyan("[fokus]"),
+          hint: renderCandidateHint(candidate, theme),
         })),
       ];
       const result = await operations.autocompleteMultiselect({

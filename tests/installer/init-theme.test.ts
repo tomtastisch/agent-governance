@@ -5,6 +5,7 @@ import type { Candidate } from "../../src/discovery/types.ts";
 import {
   createTerminalTheme,
   renderCandidate,
+  renderCandidateHint,
   renderLegend,
   stripAnsi,
   visibleWidth,
@@ -69,8 +70,9 @@ test("NO_COLOR and reduced terminals preserve marker semantics without ANSI", ()
 
 test("candidate and legend rendering stay within a 60-column terminal", () => {
   const theme = createTerminalTheme({ columns: 60, environment: {}, color: false });
+  const longLabel = "very-long-local-label-".repeat(4);
   const rendered = renderCandidate(
-    candidate(`/synthetic/${"very-long-local-label-".repeat(5)}`, "HIGH_CONFIDENCE"),
+    candidate(`/synthetic/${longLabel}`, "HIGH_CONFIDENCE"),
     { focused: true, selected: true },
     theme,
   );
@@ -82,17 +84,20 @@ test("candidate and legend rendering stay within a 60-column terminal", () => {
   assert.match(legend, /\[hoch\].*\[unsicher\]/u);
   assert.match(legend, /\[fokus\].*◼ Auswahl/u);
   assert.match(legend, /↑\/↓.*Leertaste.*Enter.*Ctrl\+C/u);
+  assert.equal(stripAnsi(rendered).replace(/\s+/gu, "").includes(longLabel), true);
 });
 
 test("candidate labels and paths cannot inject terminal control sequences", () => {
   const theme = createTerminalTheme({ columns: 80, environment: {}, color: false });
+  const unsafe = candidate("/synthetic/Evil\u001b]8;;https://example.invalid\u0007label", "HIGH_CONFIDENCE");
   const rendered = renderCandidate(
-    candidate("/synthetic/Evil\u001b]8;;https://example.invalid\u0007label", "HIGH_CONFIDENCE"),
+    unsafe,
     { focused: false, selected: false },
     theme,
   );
+  const hint = renderCandidateHint(unsafe, theme);
 
-  assert.equal(rendered.includes("\u001b"), false);
-  assert.equal(rendered.includes("\u0007"), false);
-  assert.match(rendered, /Evil\?/u);
+  assert.equal(`${rendered}${hint}`.includes("\u001b"), false);
+  assert.equal(`${rendered}${hint}`.includes("\u0007"), false);
+  assert.match(hint, /^\[fokus\] Pfad: \/synthetic\/Evil\?/u);
 });

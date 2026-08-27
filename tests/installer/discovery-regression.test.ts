@@ -7,6 +7,8 @@ import { loadDiscoveryCatalog } from "../../src/discovery/catalog.ts";
 import { classifyEvidence } from "../../src/discovery/classifier.ts";
 import { resolveCandidateIdentity } from "../../src/discovery/identity.ts";
 import { discoverCandidates } from "../../src/discovery/index.ts";
+import { createClackPrompt, type ClackPromptOperations } from "../../src/init/prompt.ts";
+import { INIT_CANCELLED } from "../../src/init/types.ts";
 import type { CandidateClass, EvidenceFamily, EvidenceRecord, EvidenceStrength } from "../../src/discovery/types.ts";
 
 const catalog = loadDiscoveryCatalog();
@@ -110,6 +112,76 @@ test("discoverCandidates classifies only passive generic structure from a synthe
 
     assert.deepEqual(discovered.map(({ root }) => root), [candidate]);
     assert.equal(discovered[0]?.confidence, "HIGH_CONFIDENCE");
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("a completely unknown governance-capable AI environment is discovered and offered in step two", async () => {
+  const fixture = await realpath(await mkdtemp(join(tmpdir(), "agent-governance-unknown-environment-")));
+  const home = join(fixture, "home");
+  const config = join(fixture, "config");
+  const candidate = join(config, "AsterveilAI");
+  const cancel = Symbol("cancel");
+  let offeredValues: readonly string[] = [];
+  const operations: ClackPromptOperations = {
+    autocompleteMultiselect: async ({ options }) => {
+      offeredValues = options.map(({ value }) => value);
+      return cancel;
+    },
+    path: async () => { throw new Error("unexpected path prompt"); },
+    confirm: async () => { throw new Error("unexpected confirm prompt"); },
+    spinner: () => ({ start() {}, stop() {} }),
+    cancel() {},
+    isCancel: (value) => value === cancel,
+  };
+  try {
+    await Promise.all([mkdir(home), mkdir(candidate, { recursive: true })]);
+    await Promise.all([
+      writeFile(join(candidate, "runtime.toml"), 'transport = "local"\ncommand = "serve"\n'),
+      writeFile(join(candidate, "sessions.json"), JSON.stringify({ sessions: [] })),
+      writeFile(join(candidate, "capabilities.json"), JSON.stringify({ capabilities: [] })),
+      writeFile(join(candidate, "bindings.json"), JSON.stringify({ instructions: [], rules: [] })),
+    ]);
+
+    const discovered = await discoverCandidates({
+      environment: { home, xdgConfigHome: config, platform: "linux" },
+      clock: () => 0,
+    });
+    const selection = await createClackPrompt({
+      prompts: operations,
+      columns: 60,
+      environment: { NO_COLOR: "1" },
+    }).selectTargets(discovered);
+
+    assert.equal(selection, INIT_CANCELLED);
+    assert.deepEqual(discovered.map(({ root }) => root), [candidate]);
+    assert.equal(discovered[0]?.confidence, "HIGH_CONFIDENCE");
+    assert.deepEqual(discovered[0]?.families, ["document", "runtime", "state", "tooling"]);
+    assert.equal(offeredValues.includes(candidate), true);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("a standalone model cache is not offered as a governance target", async () => {
+  const fixture = await realpath(await mkdtemp(join(tmpdir(), "agent-governance-model-cache-")));
+  const home = join(fixture, "home");
+  const data = join(fixture, "data");
+  const modelCache = join(data, "AsterveilModelCache");
+  try {
+    await Promise.all([mkdir(home), mkdir(modelCache, { recursive: true })]);
+    await Promise.all([
+      writeFile(join(modelCache, "models.json"), JSON.stringify({ models: [], providers: [] })),
+      writeFile(join(modelCache, "weights.gguf"), "synthetic-model-artifact"),
+    ]);
+
+    const discovered = await discoverCandidates({
+      environment: { home, xdgDataHome: data, platform: "linux" },
+      clock: () => 0,
+    });
+
+    assert.deepEqual(discovered, []);
   } finally {
     await rm(fixture, { recursive: true, force: true });
   }
