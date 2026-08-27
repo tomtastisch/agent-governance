@@ -5,8 +5,8 @@
 
 ## Init-Onboarding und Dependency-Grenze
 
-Der normale öffentliche Einstieg installiert zunächst `@tomtastisch/agent-governance` und startet
-dann `agent-governance init`. `init` orchestriert ausschließlich die vorhandene Transaktion
+Der normale öffentliche Einstieg ist exakt `npm i @tomtastisch/agent-governance` gefolgt von
+`npx agent-governance init`. `init` orchestriert ausschließlich die vorhandene Transaktion
 `plan -> install -> verify`; Runtime-Abhängigkeiten werden vorab durch die deklarativen
 `package.json.dependencies` und das Lockfile geliefert. Der Init-Pfad startet weder npm, pnpm,
 yarn oder bun noch einen Package-Manager-Bootstrap und enthält keinen Self-Install-, Repair- oder

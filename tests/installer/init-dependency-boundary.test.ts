@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { access, mkdir, readFile, rm } from "node:fs/promises";
+import { access, cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
 import { createRequire, syncBuiltinESMExports } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
@@ -80,4 +81,71 @@ test("the 1.1.0 real init path never starts a package manager or dependency repa
   assert.match(await readFile(join(targetRoot, "AGENTS.md"), "utf8"), /AGENT_GOVERNANCE_MANAGED_V1/u);
   await access(join(installationRoot, "bindings"));
   assert.equal((await readFile(join(repositoryRoot, "VERSION"), "utf8")).trim(), "1.1.0");
+});
+
+test("the default init setup intercepts forbidden processes before CLI and prompt imports", () => {
+  const result = spawnSync(process.execPath, [
+    join(repositoryRoot, "tests/e2e/run_init_pty.mjs"),
+    "--boundary",
+    "--columns=60",
+    "--no-color",
+  ], { encoding: "utf8", timeout: 15_000 });
+
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  assert.match(result.stdout, /INIT_BOUNDARY_EXIT=130/u);
+  assert.match(result.stdout, /INIT_BOUNDARY_SPAWN_LOG=\[\]/u);
+  assert.doesNotMatch(result.stdout, /forbidden child process/u);
+});
+
+test("the boundary regression catches a package-manager spawn injected into defaultInitOptions", async (t) => {
+  const mutationRoot = await mkdtemp(join(repositoryRoot, "tmp-init-boundary-mutation-"));
+  await Promise.all([
+    cp(join(repositoryRoot, "src"), join(mutationRoot, "src"), { recursive: true }),
+    cp(join(repositoryRoot, "bundle"), join(mutationRoot, "bundle"), { recursive: true }),
+    symlink(join(repositoryRoot, "node_modules"), join(mutationRoot, "node_modules"), "dir"),
+  ]);
+  t.after(() => rm(mutationRoot, { recursive: true, force: true }));
+
+  const cliPath = join(mutationRoot, "src", "cli.ts");
+  const mutated = (await readFile(cliPath, "utf8"))
+    .replace(
+      'import { fileURLToPath } from "node:url";',
+      'import { fileURLToPath } from "node:url";\nimport { spawnSync } from "node:child_process";',
+    )
+    .replace(
+      "  const home = realpathSync(homedir());",
+      '  spawnSync("npm", ["--version"]);\n  const home = realpathSync(homedir());',
+    );
+  await writeFile(cliPath, mutated, "utf8");
+
+  const childProcess = require("node:child_process") as typeof import("node:child_process");
+  const intercepted: string[] = [];
+  const original = childProcess.spawnSync;
+  Object.defineProperty(childProcess, "spawnSync", {
+    configurable: true,
+    value: (...args: unknown[]) => {
+      intercepted.push(`spawnSync:${String(args[0])}`);
+      throw new Error("mutation attempted forbidden package-manager spawn");
+    },
+    writable: true,
+  });
+  syncBuiltinESMExports();
+  t.after(() => {
+    Object.defineProperty(childProcess, "spawnSync", { configurable: true, value: original, writable: true });
+    syncBuiltinESMExports();
+  });
+
+  const { runCli } = await import(`${cliPath}?mutation=${Date.now()}`);
+  const errors: string[] = [];
+  const exitCode = await runCli(["init"], () => {}, (value: string) => errors.push(value), {
+    initPrompt: {
+      step(): void {},
+      async selectTargets() { return []; },
+      async confirm() { return false; },
+    },
+  });
+
+  assert.equal(exitCode, 4, errors.join("\n"));
+  assert.deepEqual(intercepted, ["spawnSync:npm"]);
+  assert.match(errors.join("\n"), /UNSAFE_STATE/u);
 });

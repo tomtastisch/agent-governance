@@ -8,8 +8,8 @@
 `package.json.dependencies` und `package-lock.json` sind die einzige Runtime-Dependency-SSOT.
 Die zwei direkten, exakt gepinnten Runtime-Pakete sind `@clack/prompts` `1.7.0` (MIT) für den
 interaktiven Prompt-Stack und `smol-toml` `1.8.0` (BSD-3-Clause) für die direkt importierten
-Command- und Discovery-Kataloge. Der Lock löst einschließlich Root zehn Paketdatensätze auf:
-sieben Production-Pakete (zwei direkt, fünf transitiv) und drei Development-Pakete. Alle
+Command- und Discovery-Kataloge. Der Lock löst exakt `11 = 1 Root + 7 Production ohne Root + 3 Development`
+Paketdatensätze auf (sieben Production-Pakete ohne Root: zwei direkt, fünf transitiv). Alle
 Integrity- und Registry-URLs stehen unverändert im Lockfile; `npm audit --audit-level=high`, der
 License-Allowlist-Check und der echte Tarball-Consumer sind Releasegates.
 

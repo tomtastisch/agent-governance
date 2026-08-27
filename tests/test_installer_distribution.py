@@ -37,6 +37,17 @@ class InstallerPackageContract(unittest.TestCase):
         self.assertEqual(package["scripts"]["test:package"], "tests/e2e/run_package_consumers.sh")
         self.assertEqual(package["scripts"]["license:check"], "node tools/verify-licenses.mjs")
 
+    def test_dependency_evidence_uses_the_lockfile_counting_convention(self):
+        lock = json.loads((ROOT / "package-lock.json").read_text(encoding="utf-8"))
+        packages = lock["packages"]
+        production = [metadata for path, metadata in packages.items() if path and not metadata.get("dev", False)]
+        development = [metadata for path, metadata in packages.items() if path and metadata.get("dev", False)]
+        evidence = (ROOT / "docs" / "dependency-evidence.md").read_text(encoding="utf-8")
+        self.assertEqual(len(packages), 11)
+        self.assertEqual(len(production), 7)
+        self.assertEqual(len(development), 3)
+        self.assertIn("11 = 1 Root + 7 Production ohne Root + 3 Development", evidence)
+
     def test_ci_runs_package_gates_on_linux_and_macos_without_real_home(self):
         workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
         for value in (
@@ -69,6 +80,14 @@ class InstallerPackageContract(unittest.TestCase):
         for value in ("npm pack", "npm install", "init --help", "init", "pnpm@10.15.0", "pnpm dlx"):
             self.assertIn(value, runner)
         self.assertIn("mktemp -d", runner)
+        for value in (
+            "init_status",
+            '"outcome":"INVALID_INVOCATION"',
+            "spawn_log",
+            "test ! -s",
+            "for manager in npm pnpm yarn bun",
+        ):
+            self.assertIn(value, runner)
 
 
 if __name__ == "__main__":

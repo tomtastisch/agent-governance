@@ -19,11 +19,27 @@ test -f "$tarball"
 npm install --ignore-scripts --no-audit --no-fund --prefix "$consumer" "$tarball"
 cd "$consumer"
 
-"$consumer/node_modules/.bin/agent-governance" init --help >/dev/null
-if "$consumer/node_modules/.bin/agent-governance" init </dev/null >/dev/null 2>&1; then
-  echo "init unexpectedly accepted a non-interactive synthetic consumer" >&2
-  exit 1
+spawn_log="$fixture_root/init-spawn.log"
+manager_shims="$fixture_root/manager-shims"
+mkdir -p -- "$manager_shims"
+for manager in npm pnpm yarn bun; do
+  printf '%s\n' '#!/bin/sh' 'printf "%s\\n" "$0" >> "$AGENT_GOVERNANCE_INIT_SPAWN_LOG"' 'exit 73' > "$manager_shims/$manager"
+  chmod 755 "$manager_shims/$manager"
+done
+
+consumer_bin="$consumer/node_modules/.bin/agent-governance"
+"$consumer_bin" init --help >/dev/null
+if init_output=$(AGENT_GOVERNANCE_INIT_SPAWN_LOG="$spawn_log" PATH="$manager_shims:$PATH" "$consumer_bin" init </dev/null 2>&1); then
+  init_status=0
+else
+  init_status=$?
 fi
+test "$init_status" -eq 2
+case "$init_output" in
+  *'"outcome":"INVALID_INVOCATION"'*) ;;
+  *) echo "init returned an unexpected non-TTY result: $init_output" >&2; exit 1 ;;
+esac
+test ! -s "$spawn_log"
 
 common=(
   --scope global

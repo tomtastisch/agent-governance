@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { createRequire, syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const require = createRequire(import.meta.url);
 
 function markerCandidate(root, confidence) {
   return {
@@ -47,6 +49,27 @@ async function runChild() {
     process.stdout.write(result === INIT_CANCELLED ? `${prefix}_PROMPT_CANCELLED\n` : `${prefix}_PROMPT_COMPLETED\n`);
     return;
   }
+  if (process.argv.includes("--boundary-child")) {
+    const childProcess = require("node:child_process");
+    const intercepted = [];
+    const methods = ["spawn", "spawnSync", "exec", "execSync", "execFile", "execFileSync", "fork"];
+    for (const method of methods) {
+      Object.defineProperty(childProcess, method, {
+        configurable: true,
+        value: (...args) => {
+          intercepted.push(`${method}:${String(args[0])}`);
+          throw new Error(`forbidden child process via ${method}`);
+        },
+        writable: true,
+      });
+    }
+    syncBuiltinESMExports();
+    const { runCli } = await import("../../src/cli.ts");
+    const exitCode = await runCli(["init"], console.log, console.error);
+    process.stdout.write(`INIT_BOUNDARY_EXIT=${exitCode}\n`);
+    process.stdout.write(`INIT_BOUNDARY_SPAWN_LOG=${JSON.stringify(intercepted)}\n`);
+    return;
+  }
   const { runCli } = await import("../../src/cli.ts");
   const home = process.env.HOME;
   const xdgConfigHome = process.env.XDG_CONFIG_HOME;
@@ -73,6 +96,7 @@ async function runChild() {
 async function runParent() {
   const markers = process.argv.includes("--markers");
   const fallback = process.argv.includes("--fallback");
+  const boundary = process.argv.includes("--boundary");
   const columnsArgument = process.argv.find((value) => value.startsWith("--columns="));
   const columns = columnsArgument?.slice("--columns=".length) ?? "80";
   if (!/^(?:60|80|120)$/u.test(columns)) throw new Error("columns must be 60, 80, or 120");
@@ -82,10 +106,24 @@ async function runParent() {
   const xdgDataHome = join(syntheticRoot, "xdg-data");
   const xdgCacheHome = join(syntheticRoot, "xdg-cache");
   const systemApplications = join(syntheticRoot, "system-applications");
-  await Promise.all([home, xdgConfigHome, xdgDataHome, xdgCacheHome, systemApplications].map((path) => mkdir(path)));
+  const managerShims = join(syntheticRoot, "manager-shims");
+  await Promise.all([home, xdgConfigHome, xdgDataHome, xdgCacheHome, systemApplications, managerShims].map((path) => mkdir(path)));
+  if (boundary) {
+    await Promise.all(["npm", "pnpm", "yarn", "bun"].map(async (manager) => {
+      const shim = join(managerShims, manager);
+      await writeFile(shim, "#!/bin/sh\nexit 73\n", "utf8");
+      await chmod(shim, 0o755);
+    }));
+  }
 
   const childEntry = fileURLToPath(import.meta.url);
-  const interaction = fallback
+  const interaction = boundary
+    ? [
+        "expect -re {Search:}",
+        "send \\033",
+        "expect eof",
+      ]
+    : fallback
     ? [
         "expect -re {(?:◻|\\[\u2022\\]) AI/LLM nicht dabei\\?}",
         "send -- \"Candidate-19\"",
@@ -125,7 +163,7 @@ async function runParent() {
     "set executable $env(AGENT_GOVERNANCE_TEST_NODE)",
     "set entry $env(AGENT_GOVERNANCE_TEST_ENTRY)",
     "set stty_init \"rows 24 columns $columns\"",
-    `spawn -noecho $executable --experimental-strip-types $entry ${fallback ? "--fallback-child" : markers ? "--markers-child" : "--child"}`,
+    `spawn -noecho $executable --experimental-strip-types $entry ${fallback ? "--fallback-child" : markers ? "--markers-child" : boundary ? "--boundary-child" : "--child"}`,
     ...interaction,
     "set result [wait]",
     "exit [lindex $result 3]",
@@ -135,7 +173,7 @@ async function runParent() {
     const child = spawn("expect", ["-c", expectDriver], {
       cwd: repositoryRoot,
       env: {
-        PATH: process.env.PATH,
+        PATH: boundary ? `${managerShims}:${process.env.PATH ?? ""}` : process.env.PATH,
         HOME: home,
         XDG_CONFIG_HOME: xdgConfigHome,
         XDG_DATA_HOME: xdgDataHome,
@@ -175,5 +213,5 @@ async function runParent() {
   }
 }
 
-if (process.argv.includes("--child") || process.argv.includes("--markers-child") || process.argv.includes("--fallback-child")) await runChild();
+if (process.argv.includes("--child") || process.argv.includes("--markers-child") || process.argv.includes("--fallback-child") || process.argv.includes("--boundary-child")) await runChild();
 else await runParent();

@@ -6,6 +6,8 @@ from __future__ import annotations
 from pathlib import Path
 import json
 import re
+import shutil
+import tempfile
 import unittest
 
 
@@ -17,6 +19,131 @@ CLI_REFERENCE_PATH = ROOT / "docs" / "installer-cli-reference.md"
 HARNESS_RECIPES_PATH = ROOT / "docs" / "harness-recipes.md"
 PACKAGE = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
 PACKAGE_LOCK = json.loads((ROOT / "package-lock.json").read_text(encoding="utf-8"))
+
+# These are deliberately explicit: historical records may retain old examples, but a newly
+# added Markdown document must enter the current-document scan instead of being silently ignored.
+HISTORICAL_INSTALLATION_DOCUMENTS = frozenset({
+    "CHANGELOG.md",
+    "docs/adapter-audit.md",
+    "docs/dependency-evidence.md",
+    "docs/audits/2026-07-30-source-migration.md",
+    "docs/decisions/0001-branch-tags-statt-agenten-praefix.md",
+    "docs/decisions/0002-vorgang-sub-pr-in-haupt-pr-branch.md",
+    "docs/decisions/0003-canonical-governance-bundle.md",
+    "docs/superpowers/plans/2026-08-12-generic-bootstrap-enforcement.md",
+    "docs/superpowers/plans/2026-08-17-typed-routing-catalogs.md",
+    "docs/superpowers/plans/2026-08-19-copilot-qa-binding.md",
+    "docs/superpowers/plans/2026-08-24-global-explicit-path-installer.md",
+    "docs/superpowers/plans/2026-08-24-installer-security-contract-boundary.md",
+    "docs/superpowers/plans/2026-08-25-issue-39-documentation-architecture.md",
+    "docs/superpowers/plans/2026-08-26-issue-44-init-onboarding.md",
+    "docs/superpowers/specs/2026-08-12-generic-bootstrap-enforcement-design.md",
+    "docs/superpowers/specs/2026-08-19-copilot-qa-binding-design.md",
+    "docs/superpowers/specs/2026-08-24-global-explicit-path-installer-design.md",
+    "docs/superpowers/specs/2026-08-25-issue-39-documentation-architecture-design.md",
+    "docs/superpowers/specs/2026-08-26-issue-44-init-onboarding-design.md",
+})
+NON_CONSUMER_MARKDOWN_ROOTS = frozenset({".git", ".superpowers", "bundle", "integrations", "node_modules", "tests"})
+NORMAL_INSTALLATION_COMMANDS = (
+    "npm i @tomtastisch/agent-governance",
+    "npx agent-governance init",
+)
+LOW_LEVEL_COMMAND_RE = re.compile(
+    r"(?:^|\s)(?:npx\s+)?agent-governance\s+"
+    r"(?:inspect|plan|install|verify|status|update|uninstall|rollback|init)(?:\s|$)"
+)
+ADVANCED_HEADING_RE = re.compile(r"\b(?:advanced|automation|ci|low-level|troubleshooting)\b", re.IGNORECASE)
+
+
+def _current_consumer_documents(root: Path) -> list[Path]:
+    return sorted(
+        path
+        for path in root.rglob("*.md")
+        if path.is_file()
+        and path.relative_to(root).as_posix() not in HISTORICAL_INSTALLATION_DOCUMENTS
+        and not NON_CONSUMER_MARKDOWN_ROOTS.intersection(path.relative_to(root).parts)
+    )
+
+
+def _copy_current_consumer_documents(destination: Path) -> None:
+    for source in _current_consumer_documents(ROOT):
+        target = destination / source.relative_to(ROOT)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+
+
+def _normalize_shell_commands(lines: list[str]) -> list[str]:
+    commands: list[str] = []
+    pending = ""
+    for line in lines:
+        value = line.strip()
+        if not value or value.startswith("#"):
+            continue
+        if value.endswith("\\"):
+            pending += f"{value[:-1].rstrip()} "
+            continue
+        commands.append(f"{pending}{value}".strip())
+        pending = ""
+    if pending:
+        commands.append(pending.strip())
+    return commands
+
+
+def _current_installation_violations(root: Path) -> list[str]:
+    violations: list[str] = []
+    normal_blocks: list[str] = []
+    for path in _current_consumer_documents(root):
+        relative = path.relative_to(root).as_posix()
+        headings: list[str] = []
+        fence_lines: list[str] | None = None
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            heading = re.match(r"^(#{1,6})\s+(.+?)\s*$", line)
+            if heading and fence_lines is None:
+                level = len(heading.group(1))
+                headings = headings[: level - 1]
+                headings.append(heading.group(2).lower())
+                continue
+            if fence_lines is None:
+                if re.match(r"^```(?:[A-Za-z0-9_-]+)?\s*$", line):
+                    fence_lines = []
+                    continue
+                for inline in re.findall(r"`([^`\n]+)`", line):
+                    _check_installation_command(inline, relative, number, headings, violations)
+                continue
+            if line.strip() == "```":
+                commands = _normalize_shell_commands(fence_lines)
+                if any(_is_installation_command(command) for command in commands):
+                    if tuple(commands) != NORMAL_INSTALLATION_COMMANDS:
+                        violations.append(f"{relative}:{number}: normal command block must exactly equal the two-command installation path")
+                    else:
+                        normal_blocks.append(relative)
+                for command in commands:
+                    _check_installation_command(command, relative, number, headings, violations)
+                fence_lines = None
+                continue
+            fence_lines.append(line)
+    if normal_blocks != ["README.md"]:
+        violations.append(f"normal installation blocks must be exactly README.md once; found {normal_blocks}")
+    if len(normal_blocks) > 1:
+        violations.append("second normal installation block")
+    return violations
+
+
+def _check_installation_command(command: str, path: str, number: int, headings: list[str], violations: list[str]) -> None:
+    normalized = " ".join(command.split())
+    normal_prefix = _is_installation_command(normalized)
+    if normal_prefix and normalized not in NORMAL_INSTALLATION_COMMANDS:
+        violations.append(f"{path}:{number}: normal command must exactly match the installation path")
+        return
+    if LOW_LEVEL_COMMAND_RE.search(normalized) and normalized not in NORMAL_INSTALLATION_COMMANDS:
+        heading_path = " > ".join(headings)
+        if not ADVANCED_HEADING_RE.search(heading_path):
+            violations.append(f"{path}:{number}: low-level command outside Advanced/Automation/CI/Low-level/Troubleshooting section")
+
+
+def _is_installation_command(command: str) -> bool:
+    normalized = " ".join(command.split())
+    return bool(re.match(r"^(?:npm\s+(?:i|install)\b|npx\s+agent-governance\s+init\b)", normalized))
 
 
 class ReadmeEntryContract(unittest.TestCase):
@@ -168,6 +295,72 @@ class ReadmeEntryContract(unittest.TestCase):
         )
         self.assertIn(expected, support)
         self.assertNotRegex(support, r"(?m)^\[Buy Me a Coffee\]\(")
+
+
+class InstallationDocumentationContract(unittest.TestCase):
+    def test_current_consumer_documents_have_one_exact_normal_installation_block(self):
+        self.assertEqual(_current_installation_violations(ROOT), [])
+
+    def test_scanner_rejects_lookalike_package_and_init_repair(self):
+        with tempfile.TemporaryDirectory(prefix="agent-governance-docs-lookalike-") as directory:
+            fixture_root = Path(directory)
+            _copy_current_consumer_documents(fixture_root)
+            readme = fixture_root / "README.md"
+            readme.write_text(
+                readme.read_text(encoding="utf-8").replace(
+                    "npm i @tomtastisch/agent-governance\nnpx agent-governance init",
+                    "npm i @tomtastisch/agent-governance-lookalike\nnpx agent-governance init --repair",
+                ),
+                encoding="utf-8",
+            )
+            violations = _current_installation_violations(fixture_root)
+        self.assertTrue(any("normal command block" in violation for violation in violations), violations)
+
+    def test_scanner_rejects_a_second_normal_quickstart(self):
+        with tempfile.TemporaryDirectory(prefix="agent-governance-docs-second-quickstart-") as directory:
+            fixture_root = Path(directory)
+            _copy_current_consumer_documents(fixture_root)
+            (fixture_root / "GETTING_STARTED.md").write_text(
+                "# Getting started\n\n```sh\nnpm i @tomtastisch/agent-governance\nnpx agent-governance init\n```\n",
+                encoding="utf-8",
+            )
+            violations = _current_installation_violations(fixture_root)
+        self.assertTrue(any("second normal installation block" in violation for violation in violations), violations)
+
+    def test_scanner_rejects_unmarked_low_level_quickstart(self):
+        with tempfile.TemporaryDirectory(prefix="agent-governance-docs-low-level-") as directory:
+            fixture_root = Path(directory)
+            _copy_current_consumer_documents(fixture_root)
+            (fixture_root / "GETTING_STARTED.md").write_text(
+                "# Getting started\n\n```sh\nagent-governance plan --scope global\nagent-governance install --scope global\nagent-governance verify --scope global\n```\n",
+                encoding="utf-8",
+            )
+            violations = _current_installation_violations(fixture_root)
+        self.assertTrue(any("low-level command outside" in violation for violation in violations), violations)
+
+    def test_scanner_rejects_a_nested_current_consumer_quickstart(self):
+        with tempfile.TemporaryDirectory(prefix="agent-governance-docs-nested-quickstart-") as directory:
+            fixture_root = Path(directory)
+            _copy_current_consumer_documents(fixture_root)
+            nested = fixture_root / "docs" / "getting-started" / "README.md"
+            nested.parent.mkdir(parents=True)
+            nested.write_text(
+                "# Getting started\n\n```sh\nnpm i @tomtastisch/agent-governance\nnpx agent-governance init\n```\n",
+                encoding="utf-8",
+            )
+            violations = _current_installation_violations(fixture_root)
+        self.assertTrue(any("second normal installation block" in violation for violation in violations), violations)
+
+    def test_scanner_rejects_low_level_commands_in_console_fences(self):
+        with tempfile.TemporaryDirectory(prefix="agent-governance-docs-console-fence-") as directory:
+            fixture_root = Path(directory)
+            _copy_current_consumer_documents(fixture_root)
+            (fixture_root / "docs" / "getting-started.md").write_text(
+                "# Getting started\n\n```console\nagent-governance install --scope global\n```\n",
+                encoding="utf-8",
+            )
+            violations = _current_installation_violations(fixture_root)
+        self.assertTrue(any("low-level command outside" in violation for violation in violations), violations)
 
 
 class CurrentDocumentationBoundaryContract(unittest.TestCase):
@@ -334,6 +527,13 @@ class HarnessRecipeReferenceContract(unittest.TestCase):
 
 
 class InstallerArchitectureReferenceContract(unittest.TestCase):
+    def test_architecture_uses_the_exact_normal_two_command_entry(self):
+        architecture = (ROOT / "docs" / "installer-architecture.md").read_text(encoding="utf-8")
+        self.assertIn(
+            "`npm i @tomtastisch/agent-governance` gefolgt von\n`npx agent-governance init`",
+            architecture,
+        )
+
     def test_architecture_retains_the_managed_block_recovery_contract(self):
         """Catches loss of durable managed-block and retained-recovery semantics after migration."""
         architecture = (ROOT / "docs" / "installer-architecture.md").read_text(encoding="utf-8")
