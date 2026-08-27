@@ -48,6 +48,11 @@ NORMAL_INSTALLATION_COMMANDS = (
     "npm i @tomtastisch/agent-governance",
     "npx agent-governance init",
 )
+NORMAL_INSTALLATION_SECTION = ("agent governance", "schnellstart")
+ALLOWED_NORMAL_REFERENCE_SECTIONS = frozenset({
+    ("docs/harness-recipes.md", ("harness-rezepte",)),
+    ("docs/installer-architecture.md", ("installerarchitektur 1.0", "init-onboarding und dependency-grenze")),
+})
 LOW_LEVEL_COMMAND_RE = re.compile(
     r"(?:^|\s)(?:npx\s+)?agent-governance\s+"
     r"(?:inspect|plan|install|verify|status|update|uninstall|rollback|init)(?:\s|$)"
@@ -91,42 +96,100 @@ def _normalize_shell_commands(lines: list[str]) -> list[str]:
 
 def _current_installation_violations(root: Path) -> list[str]:
     violations: list[str] = []
-    normal_blocks: list[str] = []
+    normal_sequences: list[tuple[str, tuple[str, ...]]] = []
     for path in _current_consumer_documents(root):
         relative = path.relative_to(root).as_posix()
         headings: list[str] = []
-        fence_lines: list[str] | None = None
-        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-            heading = re.match(r"^(#{1,6})\s+(.+?)\s*$", line)
-            if heading and fence_lines is None:
+        section_commands: dict[tuple[str, ...], list[str]] = {}
+        fence: tuple[str, int, list[str], tuple[str, ...]] | None = None
+        lines = path.read_text(encoding="utf-8").splitlines()
+        for number, line in enumerate(lines, start=1):
+            if fence is not None:
+                marker, minimum_length, fence_lines, fence_headings = fence
+                if _is_fence_close(line, marker, minimum_length):
+                    _record_commands(
+                        _normalize_shell_commands(fence_lines), relative, number, fence_headings,
+                        section_commands, violations,
+                    )
+                    fence = None
+                    continue
+                fence_lines.append(line)
+                continue
+
+            heading = re.match(r"^ {0,3}(#{1,6})\s+(.+?)\s*$", line)
+            if heading:
                 level = len(heading.group(1))
                 headings = headings[: level - 1]
                 headings.append(heading.group(2).lower())
                 continue
-            if fence_lines is None:
-                if re.match(r"^```(?:[A-Za-z0-9_-]+)?\s*$", line):
-                    fence_lines = []
+
+            opener = _fence_open(line)
+            if opener is not None:
+                fence = (*opener, [], tuple(headings))
+                continue
+
+            for inline in re.findall(r"`([^`\n]+)`", line):
+                _record_commands(
+                    [inline], relative, number, tuple(headings), section_commands, violations,
+                )
+
+        if fence is not None:
+            _, _, fence_lines, fence_headings = fence
+            _record_commands(
+                _normalize_shell_commands(fence_lines), relative, len(lines),
+                fence_headings, section_commands, violations,
+            )
+
+        for section, commands in section_commands.items():
+            section_sequences = 0
+            for first, second in zip(commands, commands[1:]):
+                if not (_is_npm_install_command(first) and _is_npx_init_command(second)):
                     continue
-                for inline in re.findall(r"`([^`\n]+)`", line):
-                    _check_installation_command(inline, relative, number, headings, violations)
-                continue
-            if line.strip() == "```":
-                commands = _normalize_shell_commands(fence_lines)
-                if any(_is_installation_command(command) for command in commands):
-                    if tuple(commands) != NORMAL_INSTALLATION_COMMANDS:
-                        violations.append(f"{relative}:{number}: normal command block must exactly equal the two-command installation path")
-                    else:
-                        normal_blocks.append(relative)
-                for command in commands:
-                    _check_installation_command(command, relative, number, headings, violations)
-                fence_lines = None
-                continue
-            fence_lines.append(line)
-    if normal_blocks != ["README.md"]:
-        violations.append(f"normal installation blocks must be exactly README.md once; found {normal_blocks}")
-    if len(normal_blocks) > 1:
-        violations.append("second normal installation block")
+                pair = (" ".join(first.split()), " ".join(second.split()))
+                if pair == NORMAL_INSTALLATION_COMMANDS:
+                    section_sequences += 1
+                    if (relative, section) not in ALLOWED_NORMAL_REFERENCE_SECTIONS or section_sequences > 1:
+                        normal_sequences.append((relative, section))
+    if normal_sequences != [("README.md", NORMAL_INSTALLATION_SECTION)]:
+        violations.append(f"normal installation sequences must be exactly README.md once; found {normal_sequences}")
+    if len(normal_sequences) > 1:
+        violations.append("second normal installation sequence")
     return violations
+
+
+def _fence_open(line: str) -> tuple[str, int] | None:
+    match = re.match(r"^ {0,3}(?P<marker>`{3,}|~{3,})(?:[^`\n]*)$", line)
+    if match is None:
+        return None
+    marker = match.group("marker")
+    return marker[0], len(marker)
+
+
+def _is_fence_close(line: str, marker: str, minimum_length: int) -> bool:
+    return bool(re.match(rf"^ {{0,3}}{re.escape(marker)}{{{minimum_length},}}\s*$", line))
+
+
+def _record_commands(
+    commands: list[str],
+    path: str,
+    number: int,
+    headings: tuple[str, ...],
+    sections: dict[tuple[str, ...], list[str]],
+    violations: list[str],
+) -> None:
+    normalized = [" ".join(command.split()) for command in commands]
+    if any(_is_installation_command(command) for command in normalized):
+        sections.setdefault(headings, []).extend(normalized)
+    for command in normalized:
+        _check_installation_command(command, path, number, list(headings), violations)
+
+
+def _is_npm_install_command(command: str) -> bool:
+    return bool(re.match(r"^npm\s+(?:i|install)\b", command))
+
+
+def _is_npx_init_command(command: str) -> bool:
+    return bool(re.match(r"^npx\s+agent-governance\s+init\b", command))
 
 
 def _check_installation_command(command: str, path: str, number: int, headings: list[str], violations: list[str]) -> None:
@@ -298,7 +361,7 @@ class ReadmeEntryContract(unittest.TestCase):
 
 
 class InstallationDocumentationContract(unittest.TestCase):
-    def test_current_consumer_documents_have_one_exact_normal_installation_block(self):
+    def test_current_consumer_documents_have_one_exact_normal_installation_sequence(self):
         self.assertEqual(_current_installation_violations(ROOT), [])
 
     def test_scanner_rejects_lookalike_package_and_init_repair(self):
@@ -314,7 +377,7 @@ class InstallationDocumentationContract(unittest.TestCase):
                 encoding="utf-8",
             )
             violations = _current_installation_violations(fixture_root)
-        self.assertTrue(any("normal command block" in violation for violation in violations), violations)
+        self.assertTrue(any("normal command must exactly match" in violation for violation in violations), violations)
 
     def test_scanner_rejects_a_second_normal_quickstart(self):
         with tempfile.TemporaryDirectory(prefix="agent-governance-docs-second-quickstart-") as directory:
@@ -325,7 +388,7 @@ class InstallationDocumentationContract(unittest.TestCase):
                 encoding="utf-8",
             )
             violations = _current_installation_violations(fixture_root)
-        self.assertTrue(any("second normal installation block" in violation for violation in violations), violations)
+        self.assertTrue(any("second normal installation sequence" in violation for violation in violations), violations)
 
     def test_scanner_rejects_unmarked_low_level_quickstart(self):
         with tempfile.TemporaryDirectory(prefix="agent-governance-docs-low-level-") as directory:
@@ -349,7 +412,20 @@ class InstallationDocumentationContract(unittest.TestCase):
                 encoding="utf-8",
             )
             violations = _current_installation_violations(fixture_root)
-        self.assertTrue(any("second normal installation block" in violation for violation in violations), violations)
+        self.assertTrue(any("second normal installation sequence" in violation for violation in violations), violations)
+
+    def test_scanner_rejects_a_nested_inline_normal_quickstart(self):
+        with tempfile.TemporaryDirectory(prefix="agent-governance-docs-nested-inline-quickstart-") as directory:
+            fixture_root = Path(directory)
+            _copy_current_consumer_documents(fixture_root)
+            nested = fixture_root / "docs" / "getting-started" / "README.md"
+            nested.parent.mkdir(parents=True)
+            nested.write_text(
+                "# Getting started\n\nInstall with `npm i @tomtastisch/agent-governance` and then run `npx agent-governance init`.\n",
+                encoding="utf-8",
+            )
+            violations = _current_installation_violations(fixture_root)
+        self.assertTrue(any("second normal installation sequence" in violation for violation in violations), violations)
 
     def test_scanner_rejects_low_level_commands_in_console_fences(self):
         with tempfile.TemporaryDirectory(prefix="agent-governance-docs-console-fence-") as directory:
@@ -361,6 +437,29 @@ class InstallationDocumentationContract(unittest.TestCase):
             )
             violations = _current_installation_violations(fixture_root)
         self.assertTrue(any("low-level command outside" in violation for violation in violations), violations)
+
+    def test_scanner_rejects_indented_console_fences(self):
+        with tempfile.TemporaryDirectory(prefix="agent-governance-docs-indented-console-fence-") as directory:
+            fixture_root = Path(directory)
+            _copy_current_consumer_documents(fixture_root)
+            (fixture_root / "docs" / "getting-started.md").write_text(
+                "# Getting started\n\n   ```console\n   agent-governance install --scope global\n   ```\n",
+                encoding="utf-8",
+            )
+            violations = _current_installation_violations(fixture_root)
+        self.assertTrue(any("low-level command outside" in violation for violation in violations), violations)
+
+    def test_scanner_rejects_variable_backtick_and_tilde_fences(self):
+        for opener, closer in (("````console", "````"), ("~~~console", "~~~~")):
+            with self.subTest(fence=opener), tempfile.TemporaryDirectory(prefix="agent-governance-docs-variable-fence-") as directory:
+                fixture_root = Path(directory)
+                _copy_current_consumer_documents(fixture_root)
+                (fixture_root / "docs" / "getting-started.md").write_text(
+                    f"# Getting started\n\n{opener}\nagent-governance install --scope global\n{closer}\n",
+                    encoding="utf-8",
+                )
+                violations = _current_installation_violations(fixture_root)
+            self.assertTrue(any("low-level command outside" in violation for violation in violations), violations)
 
 
 class CurrentDocumentationBoundaryContract(unittest.TestCase):
