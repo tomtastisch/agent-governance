@@ -17,6 +17,13 @@ cd "$repository_root"
 npm pack --pack-destination "$fixture_root" >/dev/null
 test -f "$tarball"
 npm install --ignore-scripts --no-audit --no-fund --prefix "$consumer" "$tarball"
+cd "$consumer"
+
+"$consumer/node_modules/.bin/agent-governance" init --help >/dev/null
+if "$consumer/node_modules/.bin/agent-governance" init </dev/null >/dev/null 2>&1; then
+  echo "init unexpectedly accepted a non-interactive synthetic consumer" >&2
+  exit 1
+fi
 
 common=(
   --scope global

@@ -19,6 +19,10 @@
 - Externe Daten werden bounded, streng typisiert, control-character-sanitized und fail-closed verarbeitet; SQLite wird nur read-only geöffnet und garantiert geschlossen.
 - Genau drei Wizard-Hauptschritte; keine Mutation vor expliziter Bestätigung und kein Erfolg vor erfolgreichem Verify.
 - `@clack/prompts` ist der einzige Prompt-Stack; keine undeclared transitive Dependency wird importiert.
+- Die einzige normale öffentliche Installation und Erstkonfiguration ist exakt `npm i @tomtastisch/agent-governance` gefolgt von `npx agent-governance init`; README und nutzerorientierte GitHub-Dokumentation dürfen keinen zweiten normalen Installationsweg zeigen.
+- Low-Level-Aufrufe mit `install --scope`, `--target-root`, `--entry-file` oder `--installation-root` bleiben nur in eindeutig bezeichneten Advanced-/Automation-/CI-/Low-level-CLI-/Troubleshooting-Referenzen zulässig; `docs/harness-recipes.md` darf sie nicht als normale Alternative verkaufen.
+- `package.json.dependencies` plus Lockfile sind die einzige Runtime-Dependency-SSOT; `init` darf niemals npm, pnpm, yarn, bun, Package-Manager-Bootstraps oder Self-Install-/Repair-/Nachladepfade starten.
+- Eine fehlende deklarierte Runtime-Dependency wird als unvollständiges Package fail-closed gemeldet; `chalk`, `boxen` und `log-update` bleiben ohne direkten Runtime-Import ausgeschlossen.
 - Tests verwenden ausschließlich synthetische isolierte HOME-/XDG-/Application-Support-Roots.
 - #42-Management-Namespaces und #37-Readiness-Zustandsmaschine bleiben außerhalb des Scopes.
 - TDD: Für jede Verhaltensänderung zuerst ein spezifischer roter Test, beobachtetes erwartetes Scheitern, minimale Implementierung, grüner relevanter Umfang, Refactor bei weiter grünem Stand.
@@ -171,17 +175,18 @@
 - Modify: `tests/test_source_consolidation.py`
 - Modify: `tests/installer/pack-verifier.test.ts`
 - Modify: `tests/e2e/run_package_consumers.sh`
+- Create: `tests/installer/init-dependency-boundary.test.ts`
 
 **Interfaces:**
 - Produces: npm package metadata, allowlisted dependency/license contract, packed command/discovery catalogs and terminal asset, registry-ready 1.1.0 projections.
 - Consumes: runtime imports and decisions from Tasks 1–5.
 
-- [ ] **Step 1: Re-read npm registry and release state**, then write red metadata/pack/docs tests for exact dependencies, truthful description/keywords, runtime assets, init-first quickstart, advanced explicit commands, threat boundaries and tarball-only help/init smokes.
+- [ ] **Step 1: Re-read npm registry and release state**, then search repository-wide across README, installer CLI/architecture/harness docs, all further Markdown/consumer docs and command-expectation tests for competing installation examples; write red metadata/pack/docs tests that enforce the exact two-command normal path, reject any second normal quickstart, allow explicit low-level commands only under clearly marked Advanced/Automation/CI/Low-level/Troubleshooting sections, and cover exact dependencies, truthful description/keywords, runtime assets, threat boundaries and tarball-only help/init smokes; add a child-process interception regression proving that `init` never starts npm, pnpm, yarn, bun or a Package-Manager bootstrap for Runtime-Dependencies.
 - [ ] **Step 2: Run targeted Python/pack/package tests** and verify they fail for the old zero-dependency/asset/quickstart contracts.
-- [ ] **Step 3: Update package metadata and lockfile without force**, document direct/transitive counts, licenses, install/tarball sizes, maintenance, integrity, audit and the explicit `terminal-image` decision.
-- [ ] **Step 4: Update README, CLI reference, architecture and threat model** without creating a second command truth or reversing the no-adapter decision.
+- [ ] **Step 3: Update package metadata and lockfile without force**, declare every directly imported Runtime-Paket under `dependencies`, document direct/transitive counts, licenses, install/tarball sizes, maintenance, integrity, audit and the explicit `terminal-image` decision; implement no Self-Install- oder Repair-Code.
+- [ ] **Step 4: Update README, CLI reference, architecture, harness recipes and threat model** so the only normal public installation/setup truth is `npm i @tomtastisch/agent-governance` then `npx agent-governance init`; retain concrete low-level commands only in clearly marked Advanced/Automation/CI/Low-level/Troubleshooting references, without creating a second command truth or reversing the no-adapter decision.
 - [ ] **Step 5: Set `VERSION` to `1.1.0`**, run the repository sync/version and release-manifest tools, add the dated changelog section, and avoid historical replacements.
-- [ ] **Step 6: Run targeted docs, distribution, pack and consumer tests**, then commit `feat(release): prepare npm init onboarding 1.1.0`.
+- [ ] **Step 6: Run targeted docs, dependency-boundary, distribution, pack and consumer tests**, install the real tarball into a dependency-empty fresh consumer, run its packaged `init --help` and synthetic `init` without repository module resolution, assert no additional package installation or process spawn, then commit `feat(release): prepare npm init onboarding 1.1.0`.
 
 ### Task 7: Full local gates and real visual QA
 

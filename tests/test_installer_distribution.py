@@ -10,13 +10,25 @@ class InstallerPackageContract(unittest.TestCase):
     def test_active_codex_only_bootstrap_was_removed(self):
         self.assertFalse((ROOT / "Installation.bootstrap.prompt.md").exists())
 
-    def test_package_is_node24_strict_and_zero_runtime_dependency(self):
+    def test_package_declares_only_the_direct_init_runtime_dependencies(self):
         package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
         current_version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
         self.assertEqual(package["name"], "@tomtastisch/agent-governance")
         self.assertEqual(package["version"], current_version)
         self.assertEqual(package["engines"]["node"], ">=24")
-        self.assertNotIn("dependencies", package)
+        self.assertEqual(
+            package["dependencies"],
+            {"@clack/prompts": "1.7.0", "smol-toml": "1.8.0"},
+        )
+        self.assertEqual(
+            package["keywords"],
+            ["agent-governance", "governance", "installer", "ai", "llm"],
+        )
+        self.assertIn("interactive", package["description"].lower())
+        self.assertNotIn("terminal-image", package["dependencies"])
+        self.assertNotIn("chalk", package["dependencies"])
+        self.assertNotIn("boxen", package["dependencies"])
+        self.assertNotIn("log-update", package["dependencies"])
         self.assertEqual(package["devDependencies"]["typescript"], "5.9.2")
         self.assertEqual(package["devDependencies"]["@types/node"], "24.3.0")
         self.assertEqual(package["bin"]["agent-governance"], "dist/cli.js")
@@ -54,7 +66,7 @@ class InstallerPackageContract(unittest.TestCase):
 
     def test_package_consumers_cover_tarball_npx_and_pnpm_dlx(self):
         runner = (ROOT / "tests" / "e2e" / "run_package_consumers.sh").read_text(encoding="utf-8")
-        for value in ("npm pack", "npm install", "npx", "pnpm@10.15.0", "pnpm dlx"):
+        for value in ("npm pack", "npm install", "init --help", "init", "pnpm@10.15.0", "pnpm dlx"):
             self.assertIn(value, runner)
         self.assertIn("mktemp -d", runner)
 

@@ -3,6 +3,33 @@
 > Historische Evidenz - nicht normativ. Maßgeblich sind Lockfiles, Paketartefakte und der geprüfte
 > Exact Head des Pull Requests.
 
+## Runtime-Dependency-Projektion 1.1.0
+
+`package.json.dependencies` und `package-lock.json` sind die einzige Runtime-Dependency-SSOT.
+Die zwei direkten, exakt gepinnten Runtime-Pakete sind `@clack/prompts` `1.7.0` (MIT) für den
+interaktiven Prompt-Stack und `smol-toml` `1.8.0` (BSD-3-Clause) für die direkt importierten
+Command- und Discovery-Kataloge. Der Lock löst einschließlich Root zehn Paketdatensätze auf:
+sieben Production-Pakete (zwei direkt, fünf transitiv) und drei Development-Pakete. Alle
+Integrity- und Registry-URLs stehen unverändert im Lockfile; `npm audit --audit-level=high`, der
+License-Allowlist-Check und der echte Tarball-Consumer sind Releasegates.
+
+Die Registry-Integritäten der direkten Pins sind für `@clack/prompts` exakt
+`sha512-y7/yvZ2TPAnR9+jnc00klvNNLkJiXFFrQA/hlLCcxA9a2A4zQIOimyFQ9XfwYKiGD1fb5GY8vbKIIgO8d5Tb2A==`
+und für `smol-toml` exakt
+`sha512-kCZr2V3ch9i00x8zXRhjUNVcjG9ijES5dDudkXvUVCT5QlJNQWElSJdZqyPemffHoLNUYwOcou0Fy+ojN0uHSQ==`.
+Die Projekte sind jeweils über ihre veröffentlichten Repository-URLs nachverfolgbar; Maintenance,
+Lizenz- und Auditstatus bleiben vor jedem Dependency-Update neu zu prüfen.
+
+Der lokale Pack-Check für 1.1.0 ergab 131 Dateien, 137.388 Bytes komprimiert und 611.802 Bytes
+entpackt. Ein frischer Consumer mit ausschließlich dem Tarball installierte acht Paketverzeichnisse
+in 1.368 KiB `node_modules`; der Audit auf High-Severity meldete null Vulnerabilities.
+
+`terminal-image@5.0.1` bleibt ausgeschlossen: Das kleine paketierte Terminal-Branding benötigt
+keinen Bildrenderer, und dessen zusätzliche transitive Größe, Lizenz-, Audit- und Maintenance-Fläche
+ist für dekoratives Rendering nicht verhältnismäßig. `chalk`, `boxen` und `log-update` sind ebenfalls
+nicht deklariert, weil kein direkter Runtime-Import besteht. Der Init-Pfad installiert, repariert
+oder lädt keine Pakete nach und startet weder npm, pnpm, yarn noch bun.
+
 ## Eigene Paketabhängigkeiten
 
 Der Installer besitzt keine Third-Party-Runtime-Abhängigkeiten. Die schmale repository-eigene

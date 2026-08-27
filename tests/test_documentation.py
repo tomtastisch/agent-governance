@@ -70,26 +70,18 @@ class ReadmeEntryContract(unittest.TestCase):
             with self.subTest(badge=badge):
                 self.assertIn(badge, README)
 
-    def test_quickstart_uses_stable_latest_for_plan_install_and_verify(self):
-        """Catches a prerelease command or a quickstart that omits the explicit path contract."""
+    def test_quickstart_has_the_only_normal_two_command_installation_path(self):
+        """Catches a return to a second normal explicit-path quickstart."""
         section = README.split("## Schnellstart", 1)[1].split("\n## ", 1)[0]
-        for command in ("plan", "install", "verify"):
-            with self.subTest(command=command):
-                self.assertIn(
-                    f"npx @tomtastisch/agent-governance@latest {command}", section
-                )
-        for option in (
-            "--scope global",
-            "--installation-root",
-            "--target-root",
-            "--entry-file",
-            "--non-interactive",
-        ):
-            self.assertIn(option, section)
+        self.assertIn("npm i @tomtastisch/agent-governance", section)
+        self.assertIn("npx agent-governance init", section)
+        self.assertNotIn("agent-governance install", section)
+        self.assertNotIn("--installation-root", section)
+        self.assertNotIn("@latest", section)
         self.assertNotIn("@next", section)
         self.assertNotIn("--harness", section)
 
-    def test_quickstart_links_parameter_and_harness_explanations_after_commands(self):
+    def test_quickstart_links_wizard_and_advanced_references_after_commands(self):
         """Catches a quickstart that leaves parameter or target-path questions unnavigable."""
         section = README.split("## Schnellstart", 1)[1].split("\n## ", 1)[0]
         after_commands = section.split("```", 2)[2].strip()
@@ -97,10 +89,10 @@ class ReadmeEntryContract(unittest.TestCase):
         harness_url = f"{self.BLOB_MAIN}/docs/harness-recipes.md"
         self.assertIn(f"]({cli_url})", after_commands)
         self.assertIn(f"]({harness_url})", after_commands)
-        self.assertIn("Bedeutung, Pflichtangaben und Optionen", after_commands)
-        self.assertIn("harness-spezifischen aktiven globalen Zielpfad", after_commands)
+        self.assertIn("Advanced", after_commands)
+        self.assertIn("Harness", after_commands)
         self.assertNotIn("](docs/", after_commands)
-        self.assertEqual(len(re.findall(r"[.!?](?:\s|$)", after_commands)), 1)
+        self.assertEqual(len(re.findall(r"[.!?](?:\s|$)", after_commands)), 2)
 
     def test_readme_navigates_to_current_reference_owners_on_main(self):
         """Catches relative or historical links instead of durable current-reference navigation."""
@@ -288,7 +280,8 @@ class InstallerCliReferenceContract(unittest.TestCase):
         """Catches a prerelease or current-version literal in the durable CLI contract."""
         reference = CLI_REFERENCE_PATH.read_text(encoding="utf-8")
         self.assertNotIn("@next", reference)
-        self.assertIn("@tomtastisch/agent-governance@latest", reference)
+        self.assertNotIn("@tomtastisch/agent-governance@latest", reference)
+        self.assertIn("## Advanced: Automation und CI", reference)
 
     def test_cli_reference_owns_exit_behavior(self):
         """Catches exit behavior being split across lifecycle or schema references."""
@@ -304,19 +297,19 @@ class HarnessRecipeReferenceContract(unittest.TestCase):
         self.assertTrue(HARNESS_RECIPES_PATH.is_file())
         recipes = HARNESS_RECIPES_PATH.read_text(encoding="utf-8")
         contracts = {
-            "Codex": (
+            "Advanced: Codex": (
                 "${CODEX_HOME:-$HOME/.codex}/AGENTS.md",
                 "https://developers.openai.com/codex/guides/agents-md",
             ),
-            "Claude Code": (
+            "Advanced: Claude Code": (
                 "$HOME/.claude/CLAUDE.md",
                 "https://code.claude.com/docs/en/memory",
             ),
-            "OpenCode V2": (
+            "Advanced: OpenCode V2": (
                 "$XDG_CONFIG_HOME/opencode/AGENTS.md",
                 "https://opencode.ai/v2/docs/instructions",
             ),
-            "OpenClaw": (
+            "Advanced: OpenClaw": (
                 "AGENTS.md",
                 "https://docs.openclaw.ai/agent-workspace",
             ),
@@ -330,11 +323,14 @@ class HarnessRecipeReferenceContract(unittest.TestCase):
                 self.assertIn(target, section.group(0))
                 self.assertIn(source_url, section.group(0))
 
-    def test_harness_recipes_use_latest_without_patch_pins(self):
-        """Catches examples that turn the living recipes into stale patch instructions."""
+    def test_harness_recipes_mark_low_level_examples_as_advanced(self):
+        """Catches low-level install commands presented as a normal installation route."""
         recipes = HARNESS_RECIPES_PATH.read_text(encoding="utf-8")
-        self.assertIn("@tomtastisch/agent-governance@latest", recipes)
-        self.assertNotRegex(recipes, r"@tomtastisch/agent-governance@\d+\.\d+\.\d+")
+        self.assertIn("npm i @tomtastisch/agent-governance", recipes)
+        self.assertIn("npx agent-governance init", recipes)
+        self.assertIn("## Advanced: Codex", recipes)
+        self.assertIn("## Advanced: Claude Code", recipes)
+        self.assertNotIn("@tomtastisch/agent-governance@latest", recipes)
 
 
 class InstallerArchitectureReferenceContract(unittest.TestCase):
@@ -373,12 +369,12 @@ class ReleaseMetadataContract(unittest.TestCase):
         self.assertIn(PACKAGE["license"], README)
         current = CHANGELOG.split(f"## [{VERSION}]", 1)[1].split("\n## [", 1)[0]
         for term in (
-            "kompakte README",
-            "Dokumentationsarchitektur",
-            "Harness Recipes",
-            "semantische Assets",
-            "INSTALL.md",
-            "Package-, Test- und Linkbereinigung",
+            "init",
+            "npm i @tomtastisch/agent-governance",
+            "@clack/prompts",
+            "smol-toml",
+            "Package Manager",
+            "Drei-Command-Quickstart",
         ):
             self.assertIn(term, current)
         self.assertIn("**Breaking changes:** none", current)

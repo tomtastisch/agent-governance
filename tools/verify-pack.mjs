@@ -37,7 +37,12 @@ for (const path of paths) {
     throw new Error(`forbidden runtime path: ${path}`);
   }
 }
-for (const required of ["README.md", "LICENSE", "CHANGELOG.md", "dist/cli.js", "bundle/GOVERNANCE.md", "bundle/agent-governance/manifest.toml", "docs/installer-cli-reference.md", "release.files.sha256", "VERSION", runtimeBrandingPath]) {
+const packageMetadata = JSON.parse(await readFile("package.json", "utf8"));
+const requiredPaths = ["README.md", "LICENSE", "CHANGELOG.md", "dist/cli.js", "bundle/GOVERNANCE.md", "bundle/agent-governance/manifest.toml", "docs/installer-cli-reference.md", "release.files.sha256", "VERSION", runtimeBrandingPath];
+if (packageMetadata.name === expectedPackageName) {
+  requiredPaths.push("bundle/agent-governance/catalogs/commands.toml", "bundle/agent-governance/catalogs/discovery-signals.toml");
+}
+for (const required of requiredPaths) {
   if (!paths.includes(required)) throw new Error(`missing tarball path: ${required}`);
 }
 const nativePlatforms = process.env.REQUIRE_ALL_NATIVE_PREBUILDS === "1"
