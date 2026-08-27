@@ -53,8 +53,13 @@ ALLOWED_NORMAL_REFERENCE_SECTIONS = frozenset({
     ("docs/harness-recipes.md", ("harness-rezepte",)),
     ("docs/installer-architecture.md", ("installerarchitektur 1.0", "init-onboarding und dependency-grenze")),
 })
+LOW_LEVEL_INVOCATION_RE = (
+    r"(?:agent-governance|npx\s+agent-governance|"
+    r"(?:\.\.?/)*node_modules/\.bin/agent-governance|"
+    r"/(?:[^\s/]+/)*node_modules/\.bin/agent-governance)"
+)
 LOW_LEVEL_COMMAND_RE = re.compile(
-    r"(?:^|\s)(?:npx\s+)?agent-governance\s+"
+    rf"(?:^|\s){LOW_LEVEL_INVOCATION_RE}\s+"
     r"(?:inspect|plan|install|verify|status|update|uninstall|rollback|init)(?:\s|$)"
 )
 ADVANCED_HEADING_RE = re.compile(r"\b(?:advanced|automation|ci|low-level|troubleshooting)\b", re.IGNORECASE)
@@ -158,10 +163,12 @@ def _current_installation_violations(root: Path) -> list[str]:
 
 
 def _fence_open(line: str) -> tuple[str, int] | None:
-    match = re.match(r"^ {0,3}(?P<marker>`{3,}|~{3,})(?:[^`\n]*)$", line)
+    match = re.match(r"^ {0,3}(?P<marker>`{3,}|~{3,})(?P<info>[^\n]*)$", line)
     if match is None:
         return None
     marker = match.group("marker")
+    if marker[0] == "`" and "`" in match.group("info"):
+        return None
     return marker[0], len(marker)
 
 
@@ -460,6 +467,28 @@ class InstallationDocumentationContract(unittest.TestCase):
                 )
                 violations = _current_installation_violations(fixture_root)
             self.assertTrue(any("low-level command outside" in violation for violation in violations), violations)
+
+    def test_scanner_rejects_low_level_command_in_tilde_fence_with_backtick_info(self):
+        with tempfile.TemporaryDirectory(prefix="agent-governance-docs-tilde-backtick-info-") as directory:
+            fixture_root = Path(directory)
+            _copy_current_consumer_documents(fixture_root)
+            (fixture_root / "docs" / "tilde-info.md").write_text(
+                "~~~console title=`manual`\nagent-governance install --scope global\n~~~\n",
+                encoding="utf-8",
+            )
+            violations = _current_installation_violations(fixture_root)
+        self.assertTrue(any("low-level command outside" in violation for violation in violations), violations)
+
+    def test_scanner_rejects_direct_binary_path_in_console_fence(self):
+        with tempfile.TemporaryDirectory(prefix="agent-governance-docs-direct-binary-") as directory:
+            fixture_root = Path(directory)
+            _copy_current_consumer_documents(fixture_root)
+            (fixture_root / "docs" / "direct-binary.md").write_text(
+                "```console\n./node_modules/.bin/agent-governance install --scope global\n```\n",
+                encoding="utf-8",
+            )
+            violations = _current_installation_violations(fixture_root)
+        self.assertTrue(any("low-level command outside" in violation for violation in violations), violations)
 
 
 class CurrentDocumentationBoundaryContract(unittest.TestCase):
