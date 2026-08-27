@@ -25,11 +25,7 @@ function markerCandidate(root, confidence) {
 }
 
 async function runChild() {
-  if (
-    process.argv.includes("--markers-child")
-    || process.argv.includes("--fallback-child")
-    || process.argv.includes("--focused-path-child")
-  ) {
+  if (process.argv.includes("--markers-child") || process.argv.includes("--fallback-child")) {
     const { createClackPrompt } = await import("../../src/init/prompt.ts");
     const { INIT_CANCELLED } = await import("../../src/init/types.ts");
     const columns = process.env.AGENT_GOVERNANCE_TEST_COLUMNS;
@@ -39,11 +35,6 @@ async function runChild() {
           `/synthetic/Candidate-${String(index + 1).padStart(2, "0")}-${"multiline-label-".repeat(4)}`,
           index === 0 ? "HIGH_CONFIDENCE" : "UNCERTAIN",
         ))
-      : process.argv.includes("--focused-path-child")
-        ? [
-            markerCandidate(`/A/Asterveil/${"long-binding-segment-".repeat(8)}\u001b[31mPATH_ESCAPE`, "HIGH_CONFIDENCE"),
-            markerCandidate(`/B/Asterveil/${"long-binding-segment-".repeat(8)}\u0007profile`, "UNCERTAIN"),
-          ]
       : [
           markerCandidate("/synthetic/High", "HIGH_CONFIDENCE"),
           markerCandidate("/synthetic/Uncertain", "UNCERTAIN"),
@@ -52,11 +43,7 @@ async function runChild() {
       columns: Number.parseInt(columns, 10),
       environment: process.env,
     }).selectTargets(candidates);
-    const prefix = process.argv.includes("--fallback-child")
-      ? "FALLBACK"
-      : process.argv.includes("--focused-path-child")
-        ? "FOCUSED_PATH"
-        : "MARKER";
+    const prefix = process.argv.includes("--fallback-child") ? "FALLBACK" : "MARKER";
     process.stdout.write(result === INIT_CANCELLED ? `${prefix}_PROMPT_CANCELLED\n` : `${prefix}_PROMPT_COMPLETED\n`);
     return;
   }
@@ -86,7 +73,6 @@ async function runChild() {
 async function runParent() {
   const markers = process.argv.includes("--markers");
   const fallback = process.argv.includes("--fallback");
-  const focusedPath = process.argv.includes("--focused-path");
   const columnsArgument = process.argv.find((value) => value.startsWith("--columns="));
   const columns = columnsArgument?.slice("--columns=".length) ?? "80";
   if (!/^(?:60|80|120)$/u.test(columns)) throw new Error("columns must be 60, 80, or 120");
@@ -112,22 +98,6 @@ async function runParent() {
         "send \\003",
         "expect eof",
       ]
-    : focusedPath
-    ? [
-        "expect -re {Search:}",
-        "expect -re {/A/Asterveil.*fokus|fokus.*/A/Asterveil}",
-        "expect -re {Type:.*to}",
-        "expect -re {search}",
-        "puts \"XFOCUS_A_PATH_VISIBLE\"",
-        "send -- \"\\033\\[B\"",
-        "expect -re {/B/Asterveil.*fokus|fokus.*/B/Asterveil}",
-        "expect -re {Type:.*to}",
-        "expect -re {search}",
-        "puts \"XFOCUS_B_PATH_VISIBLE\"",
-        "puts \"XFOCUSED_PATH_SWITCH_RENDERED\"",
-        "send \\003",
-        "expect eof",
-      ]
     : markers
     ? [
         "expect -re {Search:}",
@@ -137,7 +107,7 @@ async function runParent() {
         "after 200",
         "expect -re {Space/Tab:.*select}",
         "send -- \" \"",
-        "expect -re {Uncert}",
+        "expect -re {Uncertain}",
         "puts \"MARKER_SELECTION_RENDERED\"",
         "send \\003",
         "expect eof",
@@ -155,7 +125,7 @@ async function runParent() {
     "set executable $env(AGENT_GOVERNANCE_TEST_NODE)",
     "set entry $env(AGENT_GOVERNANCE_TEST_ENTRY)",
     "set stty_init \"rows 24 columns $columns\"",
-    `spawn -noecho $executable --experimental-strip-types $entry ${fallback ? "--fallback-child" : focusedPath ? "--focused-path-child" : markers ? "--markers-child" : "--child"}`,
+    `spawn -noecho $executable --experimental-strip-types $entry ${fallback ? "--fallback-child" : markers ? "--markers-child" : "--child"}`,
     ...interaction,
     "set result [wait]",
     "exit [lindex $result 3]",
@@ -197,7 +167,6 @@ async function runParent() {
     process.stdout.write(rendered);
     if (/interactive init prompt is unavailable/u.test(rendered)) process.exitCode = 1;
     else if (fallback && (!/FALLBACK_SEARCH_ACTION_VISIBLE/u.test(rendered) || !/FALLBACK_PROMPT_CANCELLED/u.test(rendered))) process.exitCode = 1;
-    else if (focusedPath && (!/FOCUSED_PATH_SWITCH_RENDERED/u.test(rendered) || !/FOCUSED_PATH_PROMPT_CANCELLED/u.test(rendered))) process.exitCode = 1;
     else if (markers && (!/MARKER_SELECTION_RENDERED/u.test(rendered) || !/MARKER_PROMPT_CANCELLED/u.test(rendered))) process.exitCode = 1;
     else if (process.argv.includes("--cancel") && !/Einrichtung abgebrochen|INTERRUPTED/u.test(rendered)) process.exitCode = 1;
     else process.exitCode = exitCode === 0 || exitCode === 130 ? 0 : exitCode;
@@ -206,10 +175,5 @@ async function runParent() {
   }
 }
 
-if (
-  process.argv.includes("--child")
-  || process.argv.includes("--markers-child")
-  || process.argv.includes("--fallback-child")
-  || process.argv.includes("--focused-path-child")
-) await runChild();
+if (process.argv.includes("--child") || process.argv.includes("--markers-child") || process.argv.includes("--fallback-child")) await runChild();
 else await runParent();

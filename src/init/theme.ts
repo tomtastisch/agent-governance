@@ -69,73 +69,28 @@ function wrapPlain(value: string, width: number): string[] {
   return lines;
 }
 
-function truncatePlain(value: string, width: number): string {
-  const characters = [...value];
-  if (characters.length <= width) return value;
-  if (width <= 1) return "…";
-  return `${characters.slice(0, width - 1).join("")}…`;
-}
-
-function wrapPlainWithFinalWidth(value: string, width: number, finalWidth: number): string[] {
-  const normalized = value.replace(/\s+/gu, " ").trim();
-  const characters = [...normalized];
-  if (characters.length <= finalWidth) return [normalized];
-  const split = characters.length - finalWidth;
-  const leading = characters.slice(0, split).join("").trimEnd();
-  const trailing = characters.slice(split).join("").trimStart();
-  return [...wrapPlain(leading, width), trailing];
-}
-
-function renderCandidateParts(candidate: Candidate, theme: TerminalTheme): {
-  readonly label: string;
-  readonly hint: string;
-} {
-  if (candidate.confidence === "REJECTED") throw new Error("rejected candidate cannot be rendered");
-  const identity = resolveCandidateIdentity(candidate);
-  const confidence = candidate.confidence === "HIGH_CONFIDENCE"
-    ? theme.green("[hoch]")
-    : theme.yellow("[unsicher]");
-  const focus = theme.cyan("[fokus]");
-  const pathPrefix = "Pfad: ";
-  const optionChromeWidth = 5;
-  const fixedWidth = optionChromeWidth
-    + visibleWidth(confidence) + 1
-    + visibleWidth(focus) + 1
-    + visibleWidth(pathPrefix);
-  const availableWidth = Math.max(2, theme.columns - fixedWidth);
-  const finalLabelWidth = Math.min(
-    [...identity.label].length,
-    Math.max(1, Math.min(12, Math.floor(availableWidth * 0.4))),
-  );
-  const pathWidth = Math.max(1, availableWidth - finalLabelWidth);
-  const prefixWidth = visibleWidth(confidence) + 1;
-  const labelLines = wrapPlainWithFinalWidth(
-    identity.label,
-    Math.max(1, theme.columns - prefixWidth),
-    finalLabelWidth,
-  );
-  const first = `${confidence} ${labelLines[0] ?? ""}`;
-  const continuation = labelLines.slice(1).map((line) => `${" ".repeat(prefixWidth)}${line}`);
-  const path = truncatePlain(sanitizeDisplay(candidate.root, 512), pathWidth);
-  return Object.freeze({
-    label: [first, ...continuation].join("\n"),
-    hint: `${focus} ${theme.dim(`${pathPrefix}${path}`)}`,
-  });
-}
-
 export function renderCandidate(
   candidate: Candidate,
   state: CandidateRenderState,
   theme: TerminalTheme,
 ): string {
+  if (candidate.confidence === "REJECTED") throw new Error("rejected candidate cannot be rendered");
+  const identity = resolveCandidateIdentity(candidate);
+  const confidence = candidate.confidence === "HIGH_CONFIDENCE"
+    ? theme.green("[hoch]")
+    : theme.yellow("[unsicher]");
   // Focus and selection are rendered by the live Clack primitive. Keeping the
   // candidate label state-independent prevents stale, duplicated UI markers.
   void state;
-  return renderCandidateParts(candidate, theme).label;
-}
-
-export function renderCandidateHint(candidate: Candidate, theme: TerminalTheme): string {
-  return renderCandidateParts(candidate, theme).hint;
+  const prefix = confidence;
+  const prefixWidth = visibleWidth(prefix) + 1;
+  const labelWidth = Math.max(10, theme.columns - prefixWidth);
+  const labelLines = wrapPlain(identity.label, labelWidth);
+  const first = `${prefix} ${labelLines[0] ?? ""}`;
+  const continuation = labelLines.slice(1).map((line) => `${" ".repeat(prefixWidth)}${line}`);
+  const safeRoot = sanitizeDisplay(candidate.root, 512);
+  const rootLines = wrapPlain(safeRoot, Math.max(10, theme.columns - 2)).map((line) => theme.dim(`  ${line}`));
+  return [first, ...continuation, ...rootLines].join("\n");
 }
 
 export function renderLegend(theme: TerminalTheme): string {
