@@ -113,6 +113,7 @@ test("step uses a spinner and confirm preserves false and cancellation semantics
   assert.equal(await prompt.confirm([]), false);
   assert.equal(await prompt.confirm([]), INIT_CANCELLED);
   assert.deepEqual(fake.calls.slice(0, 2).map(({ kind }) => kind), ["spinner:start", "spinner:stop"]);
+  assert.equal(fake.calls[1]?.options && (fake.calls[1].options as { message?: string }).message, "[1/3] Umgebung prüfen");
   assert.equal(fake.calls.filter(({ kind }) => kind === "cancel").length, 1);
 });
 

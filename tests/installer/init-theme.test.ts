@@ -96,3 +96,9 @@ test("candidate labels and paths cannot inject terminal control sequences", () =
   assert.equal(rendered.includes("\u0007"), false);
   assert.match(rendered, /Evil\?/u);
 });
+
+test("visibleWidth measures terminal cells for wide, combining, and emoji characters", () => {
+  assert.equal(visibleWidth("界".repeat(30)), 60);
+  assert.equal(visibleWidth(("e\u0301").repeat(30)), 30);
+  assert.equal(visibleWidth("👩‍💻".repeat(20)), 40);
+});

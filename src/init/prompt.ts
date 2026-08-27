@@ -156,11 +156,13 @@ export function createClackPrompt(io: ClackPromptIO = {}): InitPrompt {
   });
   const progress = operations.spinner();
   let progressActive = false;
+  let activeStep: InitStep | undefined;
 
   const stopProgress = (): void => {
     if (!progressActive) return;
-    progress.stop();
+    progress.stop(activeStep === undefined ? undefined : `[${activeStep.position}/${activeStep.total}] ${activeStep.title}`);
     progressActive = false;
+    activeStep = undefined;
   };
 
   const askPath = async (options: PathOptions): Promise<string | typeof INIT_CANCELLED> => {
@@ -174,6 +176,7 @@ export function createClackPrompt(io: ClackPromptIO = {}): InitPrompt {
       stopProgress();
       progress.start(`[${step.position}/${step.total}] ${step.title}`);
       progressActive = true;
+      activeStep = step;
     },
 
     async selectTargets(candidates: readonly Candidate[]): Promise<readonly InitBindingSelection[] | typeof INIT_CANCELLED> {
