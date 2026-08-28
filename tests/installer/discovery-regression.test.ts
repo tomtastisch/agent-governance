@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -8,6 +8,7 @@ import { classifyEvidence } from "../../src/discovery/classifier.ts";
 import { resolveCandidateIdentity } from "../../src/discovery/identity.ts";
 import { discoverCandidates } from "../../src/discovery/index.ts";
 import type { CandidateClass, EvidenceFamily, EvidenceRecord, EvidenceStrength } from "../../src/discovery/types.ts";
+import { createReleaseFixture } from "../fixtures/installer/release.ts";
 
 const catalog = loadDiscoveryCatalog();
 
@@ -105,6 +106,41 @@ test("discoverCandidates classifies only passive generic structure from a synthe
 
     const discovered = await discoverCandidates({
       environment: { home, xdgConfigHome: config, platform: "linux" },
+      clock: () => 0,
+    });
+
+    assert.deepEqual(discovered.map(({ root }) => root), [candidate]);
+    assert.equal(discovered[0]?.confidence, "HIGH_CONFIDENCE");
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("discoverCandidates uses the selected release catalog for evidence extraction", async () => {
+  const fixture = await realpath(await mkdtemp(join(tmpdir(), "agent-governance-discovery-release-catalog-")));
+  const home = join(fixture, "home");
+  const config = join(fixture, "config");
+  const candidate = join(config, "runtime-profile");
+  const releaseRoot = await createReleaseFixture(join(fixture, "release"));
+  const catalogPath = join(releaseRoot, "bundle", "agent-governance", "catalogs", "discovery-signals.toml");
+  try {
+    await Promise.all([mkdir(home), mkdir(candidate, { recursive: true })]);
+    const source = await readFile(catalogPath, "utf8");
+    const selectedCatalog = source
+      .replace('keys = ["transport", "command", "arguments"]', 'keys = ["nebula_transport", "nebula_command"]')
+      .replace('keys = ["sessions", "history", "state", "events"]', 'keys = ["nebula_sessions"]')
+      .replace('keys = ["tools", "servers", "capabilities"]', 'keys = ["nebula_tools"]');
+    assert.notEqual(selectedCatalog, source);
+    await writeFile(catalogPath, selectedCatalog);
+    await Promise.all([
+      writeFile(join(candidate, "runtime.json"), JSON.stringify({ nebula_transport: "local", nebula_command: "passive" })),
+      writeFile(join(candidate, "state.json"), JSON.stringify({ nebula_sessions: [] })),
+      writeFile(join(candidate, "tools.json"), JSON.stringify({ nebula_tools: [] })),
+    ]);
+
+    const discovered = await discoverCandidates({
+      environment: { home, xdgConfigHome: config, platform: "linux" },
+      releaseRoot,
       clock: () => 0,
     });
 

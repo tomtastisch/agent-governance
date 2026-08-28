@@ -24,13 +24,17 @@ function record(value: unknown, context: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function parseToml(path: string, context: string): Record<string, unknown> {
+function parseTomlText(content: string, context: string): Record<string, unknown> {
   try {
-    return record(parse(readFileSync(path, "utf8")), context);
+    return record(parse(content), context);
   } catch (cause) {
     if (cause instanceof Error && cause.message.startsWith(`${context} `)) throw cause;
     throw new Error(`${context} is invalid TOML`, { cause });
   }
+}
+
+function parseToml(path: string, context: string): Record<string, unknown> {
+  return parseTomlText(readFileSync(path, "utf8"), context);
 }
 
 function samePath(actual: readonly string[], expected: readonly string[]): boolean {
@@ -58,12 +62,8 @@ function validateCommand(raw: unknown): PublicCommandDefinition {
   return Object.freeze({ id: id as PublicCommandId, path: Object.freeze([...(path as string[])]), description, capability: capability as PublicCommandDefinition["capability"], effect: effect as PublicCommandDefinition["effect"], orchestrates, interactive });
 }
 
-export function loadCommandCatalog(releaseRoot?: string): readonly PublicCommandDefinition[] {
-  const manifestPath = resolveManifestPath(releaseRoot);
-  const manifest = parseToml(manifestPath, "command manifest");
-  const catalogs = record(manifest.catalogs, "command manifest catalogs");
-  const catalogPath = resolveCatalogPath(manifestPath, catalogs.commands);
-  const catalog = parseToml(catalogPath, "command catalog");
+export function parseCommandCatalogText(content: string): readonly PublicCommandDefinition[] {
+  const catalog = parseTomlText(content, "command catalog");
   const unknownTopLevel = Object.keys(catalog).filter((field) => field !== "schema_version" && field !== "commands");
   if (unknownTopLevel.length > 0 || Object.keys(catalog).length !== 2) throw new Error("command catalog has invalid top-level fields");
   if (catalog.schema_version !== 1) throw new Error("command catalog schema_version must be integer 1");
@@ -78,4 +78,12 @@ export function loadCommandCatalog(releaseRoot?: string): readonly PublicCommand
   if (new Set(ids).size !== ids.length) throw new Error("command catalog contains duplicate IDs");
   if (ids.length !== PUBLIC_COMMAND_IDS.length || PUBLIC_COMMAND_IDS.some((id) => !ids.includes(id))) throw new Error("command catalog must define exactly the public command IDs");
   return Object.freeze(commands);
+}
+
+export function loadCommandCatalog(releaseRoot?: string): readonly PublicCommandDefinition[] {
+  const manifestPath = resolveManifestPath(releaseRoot);
+  const manifest = parseToml(manifestPath, "command manifest");
+  const catalogs = record(manifest.catalogs, "command manifest catalogs");
+  const catalogPath = resolveCatalogPath(manifestPath, catalogs.commands);
+  return parseCommandCatalogText(readFileSync(catalogPath, "utf8"));
 }

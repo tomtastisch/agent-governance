@@ -1,4 +1,4 @@
-import type { DiscoveryLimits, EvidenceRecord } from "./types.ts";
+import type { DiscoveryCatalog, DiscoveryLimits, EvidenceRecord } from "./types.ts";
 import {
   collectStructureKeys,
   evidenceForStructure,
@@ -10,6 +10,7 @@ const PACKAGE_STRUCTURE_KEYS = new Set(["bin", "engines", "dependencies", "expor
 export async function analyzePackageMetadata(
   path: string,
   limits: DiscoveryLimits,
+  catalog?: DiscoveryCatalog,
 ): Promise<readonly EvidenceRecord[]> {
   const source = await readBoundedTextFile(path, limits);
   let parsed: unknown;
@@ -27,6 +28,7 @@ export async function analyzePackageMetadata(
     packageKeys,
     collected.status,
     limits,
+    catalog,
   );
   return Object.freeze(records.filter(({ family, strength }) => family === "package_metadata" && strength === "weak"));
 }

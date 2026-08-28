@@ -1,6 +1,7 @@
 import { lstat, readFile, realpath } from "node:fs/promises";
 import { isAbsolute, join, normalize, sep } from "node:path";
 import { parseDiscoveryCatalogText } from "./discovery/catalog.ts";
+import { parseCommandCatalogText } from "./command-catalog.ts";
 
 type TomlValue = string | number | TomlValue[] | TomlTable;
 type TomlTable = { [key: string]: TomlValue };
@@ -181,7 +182,8 @@ export async function validateGovernanceContract(manifestRoot: string, manifestT
     if (!/\.toml$/i.test(path)) throw new Error(`release manifest ${label} catalog has an invalid format`);
     referencedPaths.add(path);
     const content = await safeIndexedFile(manifestRoot, path, inventory, `${label} catalog`);
-    if (name === "discovery_signals") parseDiscoveryCatalogText(content);
+    if (name === "commands") parseCommandCatalogText(content);
+    else parseDiscoveryCatalogText(content);
   }
   const triggers = validateVocabulary(parsed.get("triggers")!, "triggers");
   const policyTags = validateVocabulary(parsed.get("policy_tags")!, "policy_tags");

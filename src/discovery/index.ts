@@ -17,6 +17,7 @@ const STRUCTURED_EXTENSIONS = new Set([".json", ".toml", ".plist"]);
 async function analyzeCandidateFiles(
   files: readonly string[],
   limits: ReturnType<typeof loadDiscoveryCatalog>["limits"],
+  catalog: ReturnType<typeof loadDiscoveryCatalog>,
 ): Promise<{ readonly evidence: readonly EvidenceRecord[]; readonly status: DiscoveryStatus; readonly activityAt: number | null }> {
   const evidence: EvidenceRecord[] = [];
   let status: DiscoveryStatus = "COMPLETE";
@@ -27,11 +28,11 @@ async function analyzeCandidateFiles(
       activityAt = Math.max(activityAt ?? 0, metadata.mtimeMs);
       const extension = extname(path).toLowerCase();
       const records = basename(path).toLowerCase() === "package.json"
-        ? await analyzePackageMetadata(path, limits)
+        ? await analyzePackageMetadata(path, limits, catalog)
         : SQLITE_EXTENSIONS.has(extension)
-          ? await analyzeSqliteSchema(path, limits)
+          ? await analyzeSqliteSchema(path, limits, catalog)
           : STRUCTURED_EXTENSIONS.has(extension)
-            ? await analyzeStructuredFile(path, limits)
+            ? await analyzeStructuredFile(path, limits, catalog)
             : [];
       evidence.push(...records.map((record) => Object.freeze({ ...record, sourcePath: path })));
       if (records.some(({ status: recordStatus }) => recordStatus === "INCOMPLETE")) status = "INCOMPLETE";
@@ -51,7 +52,7 @@ export async function discoverCandidates(options: DiscoverCandidatesOptions): Pr
   );
   const classified: Candidate[] = [];
   for (const candidate of enumerated) {
-    const analysis = await analyzeCandidateFiles(candidate.files, catalog.limits);
+    const analysis = await analyzeCandidateFiles(candidate.files, catalog.limits, catalog);
     const status = candidate.status === "INCOMPLETE" || analysis.status === "INCOMPLETE" ? "INCOMPLETE" : "COMPLETE";
     classified.push(classifyEvidence(analysis.evidence, catalog, {
       root: candidate.root,

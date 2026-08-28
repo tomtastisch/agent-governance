@@ -2,7 +2,7 @@ import { lstat, realpath } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { evidenceForStructure, sanitizeDisplay } from "./structured.ts";
-import type { DiscoveryLimits, EvidenceRecord } from "./types.ts";
+import type { DiscoveryCatalog, DiscoveryLimits, EvidenceRecord } from "./types.ts";
 
 interface SqlitePathIdentity {
   readonly path: string;
@@ -51,6 +51,7 @@ function validateLimits(limits: DiscoveryLimits): void {
 export async function analyzeSqliteSchema(
   path: string,
   limits: DiscoveryLimits,
+  catalog?: DiscoveryCatalog,
 ): Promise<readonly EvidenceRecord[]> {
   validateLimits(limits);
   const identity = await canonicalSqlitePath(path);
@@ -100,6 +101,7 @@ export async function analyzeSqliteSchema(
       metadata,
       incomplete ? "INCOMPLETE" : "COMPLETE",
       limits,
+      catalog,
     );
   } finally {
     database?.close();

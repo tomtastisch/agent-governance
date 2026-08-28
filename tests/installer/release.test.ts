@@ -83,6 +83,18 @@ test("release verifier rejects a digest-bound semantically invalid discovery cat
   await assert.rejects(verifyRelease(root), /discovery|max_files|positive|invalid/i);
 });
 
+test("release verifier rejects a digest-bound semantically invalid command catalog", async () => {
+  const root = await fixture();
+  const catalogPath = join(root, "bundle", "agent-governance", "catalogs", "commands.toml");
+  const catalog = await readFile(catalogPath, "utf8");
+  const changed = catalog.replace('effect = "read"', 'effect = "write"');
+  assert.notEqual(changed, catalog);
+  await writeFile(catalogPath, changed);
+  await writeInventory(root);
+
+  await assert.rejects(verifyRelease(root), /command|semantics|invalid/i);
+});
+
 test("release verifier rejects listed but unreferenced normative bundle files", async () => {
   const root = await fixture();
   await writeFile(join(root, "bundle", "agent-governance", "modules", "shadow.md"), "unreferenced normative source\n");

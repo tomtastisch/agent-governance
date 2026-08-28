@@ -5,6 +5,7 @@ import { parse } from "smol-toml";
 import { loadDiscoveryCatalog } from "./catalog.ts";
 import type {
   DiscoveryLimits,
+  DiscoveryCatalog,
   DiscoveryStatus,
   EvidenceRecord,
   EvidenceSourceKind,
@@ -157,8 +158,8 @@ export function evidenceForStructure(
   metadata: readonly string[],
   status: DiscoveryStatus,
   limits: DiscoveryLimits,
+  catalog: DiscoveryCatalog = loadDiscoveryCatalog(),
 ): readonly EvidenceRecord[] {
-  const catalog = loadDiscoveryCatalog();
   const normalized = new Set(matchKeys.map(normalizedKey));
   const safeMetadata = Object.freeze(
     metadata.slice(0, limits.maxEntries).map((value) => sanitizeDisplay(value, limits.maxMetadataLength)),
@@ -183,6 +184,7 @@ export function evidenceForStructure(
 export async function analyzeStructuredFile(
   path: string,
   limits: DiscoveryLimits,
+  catalog?: DiscoveryCatalog,
 ): Promise<readonly EvidenceRecord[]> {
   const source = await readBoundedTextFile(path, limits);
   const extension = extname(source.path).toLowerCase();
@@ -212,5 +214,6 @@ export async function analyzeStructuredFile(
     collected.keys,
     collected.status,
     limits,
+    catalog,
   );
 }
