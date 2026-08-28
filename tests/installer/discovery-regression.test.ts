@@ -116,6 +116,79 @@ test("discoverCandidates classifies only passive generic structure from a synthe
   }
 });
 
+test("a large early candidate cannot hide a real candidate in a later discovery zone", async () => {
+  const fixture = await realpath(await mkdtemp(join(tmpdir(), "agent-governance-discovery-fairness-")));
+  const home = join(fixture, "home");
+  const config = join(fixture, "config");
+  const largeCandidate = join(home, "wide-container");
+  const realCandidate = join(config, "runtime-profile");
+  const releaseRoot = await createReleaseFixture(join(fixture, "release"));
+  const catalogPath = join(releaseRoot, "bundle", "agent-governance", "catalogs", "discovery-signals.toml");
+  try {
+    await Promise.all([
+      mkdir(largeCandidate, { recursive: true }),
+      mkdir(realCandidate, { recursive: true }),
+    ]);
+    const source = await readFile(catalogPath, "utf8");
+    const constrainedCatalog = source.replace("max_files = 256", "max_files = 6");
+    assert.notEqual(constrainedCatalog, source);
+    await writeFile(catalogPath, constrainedCatalog);
+    await Promise.all([
+      ...Array.from({ length: 7 }, (_, index) =>
+        writeFile(join(largeCandidate, `noise-${index}.json`), "{}")),
+      writeFile(join(realCandidate, "runtime.json"), JSON.stringify({ transport: "local", command: "passive" })),
+      writeFile(join(realCandidate, "state.json"), JSON.stringify({ sessions: [] })),
+      writeFile(join(realCandidate, "tools.json"), JSON.stringify({ tools: [] })),
+    ]);
+
+    const discovered = await discoverCandidates({
+      environment: { home, xdgConfigHome: config, platform: "linux" },
+      releaseRoot,
+      clock: () => 0,
+    });
+
+    assert.deepEqual(discovered.map(({ root }) => root), [realCandidate]);
+    assert.equal(discovered[0]?.confidence, "HIGH_CONFIDENCE");
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("discoverCandidates applies one injected-clock deadline to enumeration and evidence analysis", async () => {
+  const fixture = await realpath(await mkdtemp(join(tmpdir(), "agent-governance-discovery-deadline-")));
+  const home = join(fixture, "home");
+  const config = join(fixture, "config");
+  const candidate = join(config, "runtime-profile");
+  let clockCalls = 0;
+  try {
+    await Promise.all([mkdir(home), mkdir(candidate, { recursive: true })]);
+    await Promise.all([
+      writeFile(join(candidate, "runtime.json"), JSON.stringify({ transport: "local", command: "passive" })),
+      writeFile(join(candidate, "state.json"), JSON.stringify({ sessions: [] })),
+      writeFile(join(candidate, "tools.json"), JSON.stringify({ tools: [] })),
+    ]);
+
+    const discovered = await discoverCandidates({
+      environment: { home, xdgConfigHome: config, platform: "linux" },
+      clock: () => {
+        clockCalls += 1;
+        if (clockCalls === 1) return 0;
+        return clockCalls <= 11 ? catalog.limits.maxDurationMs - 1 : catalog.limits.maxDurationMs;
+      },
+    });
+
+    assert.equal(discovered.length, 1);
+    assert.equal(discovered[0]?.status, "INCOMPLETE");
+    assert.equal(discovered[0]?.confidence, "UNCERTAIN");
+    assert.deepEqual(
+      [...new Set(discovered[0]?.evidence.map(({ sourcePath }) => sourcePath))].map((path) => path.split("/").at(-1)),
+      ["runtime.json", "state.json"],
+    );
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
 test("discoverCandidates uses the selected release catalog for evidence extraction", async () => {
   const fixture = await realpath(await mkdtemp(join(tmpdir(), "agent-governance-discovery-release-catalog-")));
   const home = join(fixture, "home");

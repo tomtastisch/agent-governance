@@ -47,6 +47,7 @@ async function traverseCandidate(
   candidate: MutableCandidate,
   limits: DiscoveryLimits,
   counters: Counters,
+  candidateFileLimit: number,
   expired: () => boolean,
 ): Promise<void> {
   const visitDirectory = async (directory: string, depth: number): Promise<boolean> => {
@@ -94,6 +95,10 @@ async function traverseCandidate(
           continue;
         }
         if (!metadata.isFile()) continue;
+        if (candidate.filesVisited >= candidateFileLimit) {
+          candidate.issues.add("FILE_LIMIT");
+          return false;
+        }
         if (counters.files >= limits.maxFiles) {
           candidate.issues.add("FILE_LIMIT");
           return false;
@@ -140,11 +145,12 @@ export async function enumerateCandidates(
   zones: readonly DiscoveryZone[],
   limits: DiscoveryLimits,
   clock: () => number,
+  deadline = clock() + limits.maxDurationMs,
 ): Promise<readonly DiscoveredCandidate[]> {
   validateLimits(limits);
-  const startedAt = clock();
-  const expired = (): boolean => clock() - startedAt >= limits.maxDurationMs;
+  const expired = (): boolean => clock() >= deadline;
   const counters: Counters = { entries: 0, files: 0 };
+  const candidateFileLimit = Math.max(1, Math.floor(limits.maxFiles / 2));
   const candidates: DiscoveredCandidate[] = [];
   const seen = new Set<string>();
 
@@ -161,7 +167,7 @@ export async function enumerateCandidates(
       throw error;
     }
     for await (const entry of handle) {
-      if (counters.entries >= limits.maxEntries || expired()) break;
+      if (counters.entries >= limits.maxEntries || counters.files >= limits.maxFiles || expired()) break;
       counters.entries += 1;
       const path = join(root, entry.name);
       let metadata;
@@ -182,11 +188,10 @@ export async function enumerateCandidates(
         filesVisited: 0,
         issues: new Set(),
       };
-      await traverseCandidate(candidate, limits, counters, expired);
+      await traverseCandidate(candidate, limits, counters, candidateFileLimit, expired);
       candidates.push(complete(candidate));
       if (
         candidate.issues.has("ENTRY_LIMIT") ||
-        candidate.issues.has("FILE_LIMIT") ||
         candidate.issues.has("TIME_LIMIT")
       ) {
         break;

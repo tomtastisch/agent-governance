@@ -164,9 +164,8 @@ export async function validateGovernanceContract(manifestRoot: string, manifestT
   const catalogs = table(manifest.catalogs, "release manifest catalogs");
   const catalogFields = Object.keys(catalogs).sort().join("\0");
   const legacyCatalogFields = [...CORE_CATALOGS].sort().join("\0");
-  const publicCatalogFields = [...CORE_CATALOGS, "commands"].sort().join("\0");
   const discoveryCatalogFields = [...CORE_CATALOGS, ...OPTIONAL_CATALOGS].sort().join("\0");
-  if (catalogFields !== legacyCatalogFields && catalogFields !== publicCatalogFields && catalogFields !== discoveryCatalogFields) throw new Error("release manifest catalogs has missing or unknown fields");
+  if (catalogFields !== legacyCatalogFields && catalogFields !== discoveryCatalogFields) throw new Error("release manifest catalogs has missing or unknown fields");
   const parsed = new Map<string, TomlTable>();
   const referencedPaths = new Set<string>();
   for (const name of CORE_CATALOGS) {
