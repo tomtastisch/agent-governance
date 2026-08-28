@@ -204,3 +204,30 @@ test("enumeration enforces file, depth, entry, and deadline budgets", async () =
     }
   }
 });
+
+test("a single discovery zone can use the full global file budget", async () => {
+  const fixture = await syntheticEnvironment();
+  const candidate = join(fixture.xdgConfig, "runtime-full-budget");
+  const limits = { ...LIMITS, maxFiles: 6 };
+  try {
+    await mkdir(candidate, { recursive: true });
+    await Promise.all(
+      Array.from({ length: 7 }, (_, index) =>
+        writeFile(join(candidate, `evidence-${index}.json`), "{}")),
+    );
+
+    const candidates = await enumerateCandidates(
+      [{ id: "config", root: fixture.xdgConfig, candidateClass: "DIRECTORY" }],
+      limits,
+      () => 0,
+    );
+
+    assert.equal(candidates.length, 1);
+    assert.equal(candidates[0]?.filesVisited, limits.maxFiles);
+    assert.equal(candidates[0]?.files.length, limits.maxFiles);
+    assert.equal(candidates[0]?.status, "INCOMPLETE");
+    assert.equal(candidates[0]?.issues.includes("FILE_LIMIT"), true);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});

@@ -47,7 +47,8 @@ async function traverseCandidate(
   candidate: MutableCandidate,
   limits: DiscoveryLimits,
   counters: Counters,
-  candidateFileLimit: number,
+  zoneFileStart: number,
+  zoneFileLimit: number,
   expired: () => boolean,
 ): Promise<void> {
   const visitDirectory = async (directory: string, depth: number): Promise<boolean> => {
@@ -95,7 +96,7 @@ async function traverseCandidate(
           continue;
         }
         if (!metadata.isFile()) continue;
-        if (candidate.filesVisited >= candidateFileLimit) {
+        if (counters.files - zoneFileStart >= zoneFileLimit) {
           candidate.issues.add("FILE_LIMIT");
           return false;
         }
@@ -150,11 +151,13 @@ export async function enumerateCandidates(
   validateLimits(limits);
   const expired = (): boolean => clock() >= deadline;
   const counters: Counters = { entries: 0, files: 0 };
-  const candidateFileLimit = Math.max(1, Math.floor(limits.maxFiles / 2));
   const candidates: DiscoveredCandidate[] = [];
   const seen = new Set<string>();
 
-  for (const zone of zones) {
+  for (const [zoneIndex, zone] of zones.entries()) {
+    const zoneFileStart = counters.files;
+    const remainingZones = zones.length - zoneIndex;
+    const zoneFileLimit = Math.floor((limits.maxFiles - counters.files) / remainingZones);
     const zoneStart = candidates.length;
     const root = await requireCanonicalDirectory(zone.root, `discovery zone ${zone.id}`);
     let handle;
@@ -188,7 +191,7 @@ export async function enumerateCandidates(
         filesVisited: 0,
         issues: new Set(),
       };
-      await traverseCandidate(candidate, limits, counters, candidateFileLimit, expired);
+      await traverseCandidate(candidate, limits, counters, zoneFileStart, zoneFileLimit, expired);
       candidates.push(complete(candidate));
       if (
         candidate.issues.has("ENTRY_LIMIT") ||
