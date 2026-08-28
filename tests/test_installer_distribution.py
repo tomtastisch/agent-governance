@@ -48,6 +48,16 @@ class InstallerPackageContract(unittest.TestCase):
         self.assertEqual(len(development), 3)
         self.assertIn("11 = 1 Root + 7 Production ohne Root + 3 Development", evidence)
 
+    def test_dependency_evidence_matches_declared_runtime_dependencies(self):
+        package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
+        evidence = (ROOT / "docs" / "dependency-evidence.md").read_text(encoding="utf-8")
+        own_dependencies = evidence.split("## Eigene Paketabhängigkeiten", 1)[1]
+        self.assertNotIn("keine Third-Party-Runtime-Abhängigkeiten", own_dependencies)
+        self.assertNotIn("insgesamt vier Pakete", own_dependencies)
+        for name, version in package["dependencies"].items():
+            self.assertIn(name, own_dependencies)
+            self.assertIn(version, own_dependencies)
+
     def test_ci_runs_package_gates_on_linux_and_macos_without_real_home(self):
         workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
         for value in (

@@ -32,14 +32,16 @@ oder lädt keine Pakete nach und startet weder npm, pnpm, yarn noch bun.
 
 ## Eigene Paketabhängigkeiten
 
-Der Installer besitzt keine Third-Party-Runtime-Abhängigkeiten. Die schmale repository-eigene
+Der Installer besitzt genau zwei direkte Third-Party-Runtime-Abhängigkeiten:
+`@clack/prompts` `1.7.0` und `smol-toml` `1.8.0`. Die schmale repository-eigene
 Node-API-C-Komponente nutzt ausschließlich OS- und stabile Node-API-Symbole; sie wird für
 Darwin/Linux auf arm64/x64 im Releaseworkflow gebaut und als vier Prebuilds im gleichen
 provenance-gebundenen npm-Tarball ausgeliefert. Exakt gelockte Entwicklungsabhängigkeiten sind
-TypeScript `5.9.2` und `@types/node` `24.3.0`; npm löst insgesamt vier Pakete auf. Der lokale
-`npm audit --audit-level=high` meldete bei der Einführung null bekannte Schwachstellen. Beide
-Pakete stammen aus der npm-Registry, ihre Integritätswerte stehen in `package-lock.json`; sie werden
-nicht in das Laufzeitpaket gebündelt. Repository und Paket verwenden Apache-2.0.
+TypeScript `5.9.2` und `@types/node` `24.3.0`; die Lockfile-Projektion umfasst wie oben beschrieben
+11 Datensätze. Der lokale `npm audit --audit-level=high` meldete bei der Einführung null bekannte
+Schwachstellen. Die direkten und Entwicklungsabhängigkeiten stammen aus der npm-Registry, ihre
+Integritätswerte stehen in `package-lock.json`; Entwicklungsabhängigkeiten werden nicht in das
+Laufzeitpaket gebündelt. Repository und Paket verwenden Apache-2.0.
 
 ## `neon-solutions/add-mcp`
 
