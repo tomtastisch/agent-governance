@@ -234,6 +234,42 @@ test("an exhausted early zone preserves the entry budget for a later real candid
   }
 });
 
+test("empty directories in an early zone cannot hide a later real candidate", async () => {
+  const fixture = await realpath(await mkdtemp(join(tmpdir(), "agent-governance-discovery-empty-entry-fairness-")));
+  const home = join(fixture, "home");
+  const config = join(fixture, "config");
+  const noise = join(home, "wide-empty-container");
+  const realCandidate = join(config, "runtime-profile");
+  const releaseRoot = await createReleaseFixture(join(fixture, "release"));
+  const catalogPath = join(releaseRoot, "bundle", "agent-governance", "catalogs", "discovery-signals.toml");
+  try {
+    await Promise.all([mkdir(noise, { recursive: true }), mkdir(realCandidate, { recursive: true })]);
+    for (let index = 0; index < 12; index += 1) {
+      await mkdir(join(noise, `empty-${String(index).padStart(2, "0")}`));
+    }
+    const source = await readFile(catalogPath, "utf8");
+    const constrainedCatalog = source.replace("max_entries = 4096", "max_entries = 10");
+    assert.notEqual(constrainedCatalog, source);
+    await writeFile(catalogPath, constrainedCatalog);
+    await Promise.all([
+      writeFile(join(realCandidate, "runtime.json"), JSON.stringify({ transport: "local", command: "passive" })),
+      writeFile(join(realCandidate, "state.json"), JSON.stringify({ sessions: [] })),
+      writeFile(join(realCandidate, "tools.json"), JSON.stringify({ tools: [] })),
+    ]);
+
+    const discovered = await discoverCandidates({
+      environment: { home, xdgConfigHome: config, platform: "linux" },
+      releaseRoot,
+      clock: () => 0,
+    });
+
+    assert.deepEqual(discovered.map(({ root }) => root), [realCandidate]);
+    assert.equal(discovered[0]?.confidence, "HIGH_CONFIDENCE");
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
 test("discoverCandidates applies one injected-clock deadline to enumeration and evidence analysis", async () => {
   const fixture = await realpath(await mkdtemp(join(tmpdir(), "agent-governance-discovery-deadline-")));
   const home = join(fixture, "home");

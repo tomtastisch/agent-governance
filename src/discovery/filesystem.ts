@@ -47,6 +47,8 @@ async function traverseCandidate(
   candidate: MutableCandidate,
   limits: DiscoveryLimits,
   counters: Counters,
+  zoneEntryStart: number,
+  zoneEntryLimit: number,
   zoneFileStart: number,
   zoneFileLimit: number,
   expired: () => boolean,
@@ -69,7 +71,10 @@ async function traverseCandidate(
           candidate.issues.add("TIME_LIMIT");
           return false;
         }
-        if (counters.entries >= limits.maxEntries) {
+        if (
+          counters.entries - zoneEntryStart >= zoneEntryLimit
+          || counters.entries >= limits.maxEntries
+        ) {
           candidate.issues.add("ENTRY_LIMIT");
           return false;
         }
@@ -155,8 +160,10 @@ export async function enumerateCandidates(
   const seen = new Set<string>();
 
   for (const [zoneIndex, zone] of zones.entries()) {
+    const zoneEntryStart = counters.entries;
     const zoneFileStart = counters.files;
     const remainingZones = zones.length - zoneIndex;
+    const zoneEntryLimit = Math.floor((limits.maxEntries - counters.entries) / remainingZones);
     const zoneFileLimit = Math.floor((limits.maxFiles - counters.files) / remainingZones);
     const zoneStart = candidates.length;
     const root = await requireCanonicalDirectory(zone.root, `discovery zone ${zone.id}`);
@@ -170,6 +177,7 @@ export async function enumerateCandidates(
       throw error;
     }
     for await (const entry of handle) {
+      if (counters.entries - zoneEntryStart >= zoneEntryLimit) break;
       if (counters.files - zoneFileStart >= zoneFileLimit) break;
       if (counters.entries >= limits.maxEntries || counters.files >= limits.maxFiles || expired()) break;
       counters.entries += 1;
@@ -192,7 +200,16 @@ export async function enumerateCandidates(
         filesVisited: 0,
         issues: new Set(),
       };
-      await traverseCandidate(candidate, limits, counters, zoneFileStart, zoneFileLimit, expired);
+      await traverseCandidate(
+        candidate,
+        limits,
+        counters,
+        zoneEntryStart,
+        zoneEntryLimit,
+        zoneFileStart,
+        zoneFileLimit,
+        expired,
+      );
       candidates.push(complete(candidate));
       if (
         candidate.issues.has("ENTRY_LIMIT") ||

@@ -262,3 +262,30 @@ test("an exhausted zone stops before consuming the entry budget reserved for lat
     await rm(fixture.root, { recursive: true, force: true });
   }
 });
+
+test("empty trees in an early zone preserve the entry budget for later zones", async () => {
+  const fixture = await syntheticEnvironment();
+  const noise = join(fixture.home, "wide-empty-container");
+  const target = join(fixture.xdgConfig, "runtime-profile");
+  const limits = { ...LIMITS, maxEntries: 10, maxFiles: 6 };
+  try {
+    await Promise.all([mkdir(noise), mkdir(target)]);
+    for (let index = 0; index < 12; index += 1) {
+      await mkdir(join(noise, `empty-${String(index).padStart(2, "0")}`));
+    }
+    await writeFile(join(target, "runtime.json"), "{}");
+
+    const candidates = await enumerateCandidates(
+      [
+        { id: "home", root: fixture.home, candidateClass: "DIRECTORY" },
+        { id: "config", root: fixture.xdgConfig, candidateClass: "DIRECTORY" },
+      ],
+      limits,
+      () => 0,
+    );
+
+    assert.equal(candidates.some(({ root }) => root === target), true);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
