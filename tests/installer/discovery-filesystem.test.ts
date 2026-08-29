@@ -231,3 +231,34 @@ test("a single discovery zone can use the full global file budget", async () => 
     await rm(fixture.root, { recursive: true, force: true });
   }
 });
+
+test("an exhausted zone stops before consuming the entry budget reserved for later zones", async () => {
+  const fixture = await syntheticEnvironment();
+  const target = join(fixture.xdgConfig, "runtime-profile");
+  const limits = { ...LIMITS, maxEntries: 10, maxFiles: 6 };
+  try {
+    for (let index = 0; index < 4; index += 1) {
+      const candidate = join(fixture.home, `noise-${index}`);
+      await mkdir(candidate);
+      await Promise.all(
+        Array.from({ length: 4 }, (_, fileIndex) =>
+          writeFile(join(candidate, `evidence-${fileIndex}.json`), "{}")),
+      );
+    }
+    await mkdir(target);
+    await writeFile(join(target, "runtime.json"), "{}");
+
+    const candidates = await enumerateCandidates(
+      [
+        { id: "home", root: fixture.home, candidateClass: "DIRECTORY" },
+        { id: "config", root: fixture.xdgConfig, candidateClass: "DIRECTORY" },
+      ],
+      limits,
+      () => 0,
+    );
+
+    assert.equal(candidates.some(({ root }) => root === target), true);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});

@@ -170,6 +170,7 @@ export async function enumerateCandidates(
       throw error;
     }
     for await (const entry of handle) {
+      if (counters.files - zoneFileStart >= zoneFileLimit) break;
       if (counters.entries >= limits.maxEntries || counters.files >= limits.maxFiles || expired()) break;
       counters.entries += 1;
       const path = join(root, entry.name);
