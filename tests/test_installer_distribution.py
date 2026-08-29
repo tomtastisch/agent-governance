@@ -78,6 +78,20 @@ class InstallerPackageContract(unittest.TestCase):
         self.assertIn("tests/e2e/run_installer_fixture.sh", workflow)
         self.assertNotIn("$HOME/.codex", workflow)
 
+    def test_ci_installs_the_real_pty_driver_before_linux_installer_tests(self):
+        workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+        installer_job = workflow.split("\n  installer-package:\n", 1)[1].split("\n  consistency-tests:\n", 1)[0]
+        pty_setup = (
+            "      - name: Install PTY test tool on Linux\n"
+            "        if: runner.os == 'Linux'\n"
+            "        run: |\n"
+            "          sudo apt-get update\n"
+            "          sudo apt-get install --yes expect\n"
+        )
+
+        self.assertIn(pty_setup, installer_job)
+        self.assertLess(installer_job.index(pty_setup), installer_job.index("      - name: Install exact package toolchain\n"))
+
     def test_installer_fixture_runner_uses_only_temporary_home(self):
         runner = (ROOT / "tests" / "e2e" / "run_installer_fixture.sh").read_text(encoding="utf-8")
         self.assertIn("mktemp -d", runner)
