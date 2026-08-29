@@ -40,6 +40,7 @@ function harness(responses: readonly unknown[]): Harness {
         return pending.shift();
       },
       path: async (options) => { calls.push({ kind: "path", options }); return pending.shift(); },
+      text: async (options) => { calls.push({ kind: "text", options }); return pending.shift(); },
       confirm: async (options) => { calls.push({ kind: "confirm", options }); return pending.shift(); },
       spinner: () => ({
         start(message): void { calls.push({ kind: "spinner:start", options: { message } }); },
@@ -85,6 +86,8 @@ test("selectTargets preselects only high-confidence candidates and keeps the man
   assert.match(String(multiselect?.message), /\[hoch\].*\[unsicher\]/su);
   assert.match(String(multiselect?.message), /↑\/↓.*Leertaste.*Enter.*Ctrl\+C/su);
   assert.ok(options.every(({ label }) => label.split("\n").every((line) => line.length <= 56)));
+  assert.equal(fake.calls.filter(({ kind }) => kind === "text").length, 2);
+  assert.equal(fake.calls.filter(({ kind }) => kind === "path").length, 1);
 });
 
 test("selectTargets maps Ctrl+C cancellation to the orchestration sentinel", async () => {
@@ -95,13 +98,14 @@ test("selectTargets maps Ctrl+C cancellation to the orchestration sentinel", asy
   assert.equal(fake.calls.filter(({ kind }) => kind === "cancel").length, 1);
 });
 
-test("path cancellation is clean and does not continue to later fields", async () => {
+test("entry cancellation is clean and does not continue to later fields", async () => {
   const selected = candidate("/synthetic/Target", "HIGH_CONFIDENCE");
   const fake = harness([[selected.root], CANCEL, "must-not-be-read.md"]);
   const prompt = createClackPrompt({ prompts: fake.operations, columns: 80, environment: {} });
 
   assert.equal(await prompt.selectTargets([selected]), INIT_CANCELLED);
-  assert.equal(fake.calls.filter(({ kind }) => kind === "path").length, 1);
+  assert.equal(fake.calls.filter(({ kind }) => kind === "text").length, 1);
+  assert.equal(fake.calls.filter(({ kind }) => kind === "path").length, 0);
   assert.equal(fake.calls.filter(({ kind }) => kind === "cancel").length, 1);
 });
 
@@ -140,6 +144,18 @@ test("the colored PTY path recognizes the fully rendered prompt before Ctrl+C", 
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
   assert.match(result.stdout, /\u001b\[(?:32|33|36)m/u);
   assert.match(result.stdout, /"outcome":"INTERRUPTED"/u);
+});
+
+test("the real PTY accepts a relative Markdown entry that does not exist yet", () => {
+  const result = spawnSync(process.execPath, [
+    join(import.meta.dirname, "../e2e/run_init_pty.mjs"),
+    "--columns=80",
+    "--no-color",
+    "--entry-new-file",
+  ], { encoding: "utf8", timeout: 15_000 });
+
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  assert.match(result.stdout, /ENTRY_SELECTION_COMPLETED=AGENTS\.md/u);
 });
 
 test("the real monochrome prompt keeps confidence, focus, and toggled selection semantically separate", () => {

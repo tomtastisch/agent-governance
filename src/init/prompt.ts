@@ -5,6 +5,7 @@ import {
   isCancel as clackIsCancel,
   path as clackPath,
   spinner as clackSpinner,
+  text as clackText,
 } from "@clack/prompts";
 import { isAbsolute, normalize, relative, resolve } from "node:path";
 
@@ -50,6 +51,13 @@ interface PathOptions {
   readonly validate?: (value: string | undefined) => string | Error | undefined;
 }
 
+interface TextOptions {
+  readonly message: string;
+  readonly placeholder?: string;
+  readonly initialValue?: string;
+  readonly validate?: (value: string | undefined) => string | Error | undefined;
+}
+
 interface ConfirmOptions {
   readonly message: string;
   readonly active: string;
@@ -65,6 +73,7 @@ interface PromptSpinner {
 export interface ClackPromptOperations {
   readonly autocompleteMultiselect: (options: AutocompleteMultiSelectOptions) => Promise<unknown>;
   readonly path: (options: PathOptions) => Promise<unknown>;
+  readonly text: (options: TextOptions) => Promise<unknown>;
   readonly confirm: (options: ConfirmOptions) => Promise<unknown>;
   readonly spinner: () => PromptSpinner;
   readonly cancel: (message?: string) => void;
@@ -81,6 +90,7 @@ export interface ClackPromptIO {
 const DEFAULT_OPERATIONS: ClackPromptOperations = Object.freeze({
   autocompleteMultiselect: (options: AutocompleteMultiSelectOptions) => clackAutocompleteMultiselect(options),
   path: (options: PathOptions) => clackPath(options),
+  text: (options: TextOptions) => clackText(options),
   confirm: (options: ConfirmOptions) => clackConfirm(options),
   spinner: () => clackSpinner(),
   cancel: (message?: string) => clackCancel(message),
@@ -171,6 +181,16 @@ export function createClackPrompt(io: ClackPromptIO = {}): InitPrompt {
     return assertPath(value);
   };
 
+  const askEntry = async (message: string, root: string): Promise<string | typeof INIT_CANCELLED> => {
+    const value = await operations.text({
+      message,
+      placeholder: "AGENTS.md",
+      validate: (entry) => validateEntry(root, entry),
+    });
+    if (operations.isCancel(value)) return cancelled(operations);
+    return assertPath(value);
+  };
+
   return Object.freeze({
     step(step: InitStep): void {
       stopProgress();
@@ -211,12 +231,7 @@ export function createClackPrompt(io: ClackPromptIO = {}): InitPrompt {
             validate: validateAbsoluteRoot,
           });
           if (targetRoot === INIT_CANCELLED) return INIT_CANCELLED;
-          const entryValue = await askPath({
-            message: "Relative Markdown-Entry-Datei",
-            root: targetRoot,
-            initialValue: `${targetRoot}/`,
-            validate: (entry) => validateEntry(targetRoot, entry),
-          });
+          const entryValue = await askEntry("Relative Markdown-Entry-Datei", targetRoot);
           if (entryValue === INIT_CANCELLED) return INIT_CANCELLED;
           selections.push(Object.freeze({
             manualInput: Object.freeze({ targetRoot, entryFile: relativeEntry(targetRoot, entryValue) }),
@@ -224,12 +239,10 @@ export function createClackPrompt(io: ClackPromptIO = {}): InitPrompt {
           continue;
         }
         const candidate = byRoot.get(value)!;
-        const entryValue = await askPath({
-          message: `${resolveCandidateIdentity(candidate).label}: relative Markdown-Entry-Datei`,
-          root: candidate.root,
-          initialValue: `${candidate.root}/`,
-          validate: (entry) => validateEntry(candidate.root, entry),
-        });
+        const entryValue = await askEntry(
+          `${resolveCandidateIdentity(candidate).label}: relative Markdown-Entry-Datei`,
+          candidate.root,
+        );
         if (entryValue === INIT_CANCELLED) return INIT_CANCELLED;
         selections.push(Object.freeze({
           candidate,

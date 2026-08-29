@@ -27,12 +27,14 @@ function markerCandidate(root, confidence) {
 }
 
 async function runChild() {
-  if (process.argv.includes("--markers-child") || process.argv.includes("--fallback-child")) {
+  if (process.argv.includes("--markers-child") || process.argv.includes("--fallback-child") || process.argv.includes("--entry-child")) {
     const { createClackPrompt } = await import("../../src/init/prompt.ts");
     const { INIT_CANCELLED } = await import("../../src/init/types.ts");
     const columns = process.env.AGENT_GOVERNANCE_TEST_COLUMNS;
     if (!columns || !/^(?:60|80|120)$/u.test(columns)) throw new Error("synthetic PTY columns are invalid");
-    const candidates = process.argv.includes("--fallback-child")
+    const candidates = process.argv.includes("--entry-child")
+      ? [markerCandidate(join(process.env.XDG_CONFIG_HOME, "runtime-profile"), "HIGH_CONFIDENCE")]
+      : process.argv.includes("--fallback-child")
       ? Array.from({ length: 20 }, (_, index) => markerCandidate(
           `/synthetic/Candidate-${String(index + 1).padStart(2, "0")}-${"multiline-label-".repeat(4)}`,
           index === 0 ? "HIGH_CONFIDENCE" : "UNCERTAIN",
@@ -45,6 +47,11 @@ async function runChild() {
       columns: Number.parseInt(columns, 10),
       environment: process.env,
     }).selectTargets(candidates);
+    if (process.argv.includes("--entry-child")) {
+      const entryFile = result === INIT_CANCELLED ? "CANCELLED" : result[0]?.manualInput.entryFile;
+      process.stdout.write(`ENTRY_SELECTION_COMPLETED=${String(entryFile)}\n`);
+      return;
+    }
     const prefix = process.argv.includes("--fallback-child") ? "FALLBACK" : "MARKER";
     process.stdout.write(result === INIT_CANCELLED ? `${prefix}_PROMPT_CANCELLED\n` : `${prefix}_PROMPT_COMPLETED\n`);
     return;
@@ -96,6 +103,7 @@ async function runChild() {
 async function runParent() {
   const markers = process.argv.includes("--markers");
   const fallback = process.argv.includes("--fallback");
+  const entryNewFile = process.argv.includes("--entry-new-file");
   const boundary = process.argv.includes("--boundary");
   const columnsArgument = process.argv.find((value) => value.startsWith("--columns="));
   const columns = columnsArgument?.slice("--columns=".length) ?? "80";
@@ -108,6 +116,7 @@ async function runParent() {
   const systemApplications = join(syntheticRoot, "system-applications");
   const managerShims = join(syntheticRoot, "manager-shims");
   await Promise.all([home, xdgConfigHome, xdgDataHome, xdgCacheHome, systemApplications, managerShims].map((path) => mkdir(path)));
+  if (entryNewFile) await mkdir(join(xdgConfigHome, "runtime-profile"));
   if (boundary) {
     await Promise.all(["npm", "pnpm", "yarn", "bun"].map(async (manager) => {
       const shim = join(managerShims, manager);
@@ -121,6 +130,15 @@ async function runParent() {
     ? [
         "expect -re {Search:}",
         "send \\033",
+        "expect eof",
+      ]
+    : entryNewFile
+    ? [
+        "expect -re {Search:}",
+        "send -- \"\\r\"",
+        "expect -re {relative Markdown-Entry-Datei}",
+        "send -- \"AGENTS.md\\r\"",
+        "expect -re {ENTRY_SELECTION_COMPLETED=AGENTS.md}",
         "expect eof",
       ]
     : fallback
@@ -163,7 +181,7 @@ async function runParent() {
     "set executable $env(AGENT_GOVERNANCE_TEST_NODE)",
     "set entry $env(AGENT_GOVERNANCE_TEST_ENTRY)",
     "set stty_init \"rows 24 columns $columns\"",
-    `spawn -noecho $executable --experimental-strip-types $entry ${fallback ? "--fallback-child" : markers ? "--markers-child" : boundary ? "--boundary-child" : "--child"}`,
+    `spawn -noecho $executable --experimental-strip-types $entry ${entryNewFile ? "--entry-child" : fallback ? "--fallback-child" : markers ? "--markers-child" : boundary ? "--boundary-child" : "--child"}`,
     ...interaction,
     "set result [wait]",
     "exit [lindex $result 3]",
@@ -204,6 +222,7 @@ async function runParent() {
     const rendered = Buffer.concat(output).toString("utf8");
     process.stdout.write(rendered);
     if (/interactive init prompt is unavailable/u.test(rendered)) process.exitCode = 1;
+    else if (entryNewFile && !/ENTRY_SELECTION_COMPLETED=AGENTS\.md/u.test(rendered)) process.exitCode = 1;
     else if (fallback && (!/FALLBACK_SEARCH_ACTION_VISIBLE/u.test(rendered) || !/FALLBACK_PROMPT_CANCELLED/u.test(rendered))) process.exitCode = 1;
     else if (markers && (!/MARKER_SELECTION_RENDERED/u.test(rendered) || !/MARKER_PROMPT_CANCELLED/u.test(rendered))) process.exitCode = 1;
     else if (process.argv.includes("--cancel") && !/Einrichtung abgebrochen|INTERRUPTED/u.test(rendered)) process.exitCode = 1;
@@ -213,5 +232,5 @@ async function runParent() {
   }
 }
 
-if (process.argv.includes("--child") || process.argv.includes("--markers-child") || process.argv.includes("--fallback-child") || process.argv.includes("--boundary-child")) await runChild();
+if (process.argv.includes("--child") || process.argv.includes("--markers-child") || process.argv.includes("--fallback-child") || process.argv.includes("--entry-child") || process.argv.includes("--boundary-child")) await runChild();
 else await runParent();
