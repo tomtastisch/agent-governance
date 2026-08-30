@@ -6,6 +6,8 @@ triggers = "catalogs/triggers.toml"
 policy_tags = "catalogs/policy-tags.toml"
 scopes = "catalogs/scopes.toml"
 tools = "catalogs/tools.toml"
+commands = "catalogs/commands.toml"
+discovery_signals = "catalogs/discovery-signals.toml"
 
 [routing]
 unknown = "block"

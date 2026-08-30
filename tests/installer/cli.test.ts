@@ -4,7 +4,7 @@ import test from "node:test";
 import { runCli } from "../../src/cli.ts";
 import { InstallerFailure, InterruptedFailure } from "../../src/errors.ts";
 import { InstallerTransaction } from "../../src/transaction.ts";
-import type { InstallResult } from "../../src/contracts.ts";
+import { COMMANDS, type InstallResult } from "../../src/contracts.ts";
 import { createTestRoot } from "../fixtures/installer/workspace.ts";
 
 async function args(command: string): Promise<string[]> { const target = await createTestRoot("agent-governance-cli-"); return [command, "--scope", "global", "--target-root", target, "--entry-file", "AGENTS.md", "--installation-root", join(target, ".agent-governance"), "--non-interactive", "--json"]; }
@@ -12,5 +12,73 @@ function result(command: InstallResult["command"]): InstallResult { return { sch
 
 test("CLI inspect and plan emit deterministic versioned JSON without mutation", async () => { const output: string[] = []; assert.equal(await runCli(await args("inspect"), (value) => output.push(value)), 0); assert.equal(JSON.parse(output.at(-1)!).schemaVersion, 1); assert.equal(await runCli(await args("plan"), (value) => output.push(value)), 0); const plan = JSON.parse(output.at(-1)!).plan; assert.equal(plan.harnessSpecificMutation, false); assert.equal(plan.hookMutation, false); });
 test("CLI exposes all generic commands through one explicit path contract", async () => { const originals = new Map<string, unknown>(); for (const command of ["install", "verify", "status", "update", "uninstall", "rollback"] as const) { originals.set(command, InstallerTransaction.prototype[command]); InstallerTransaction.prototype[command] = async () => result(command) as never; } try { for (const command of originals.keys()) assert.equal(await runCli(await args(command), () => {}), 0, command); } finally { for (const [command, original] of originals) Object.assign(InstallerTransaction.prototype, { [command]: original }); } });
+test("CLI renders global and command help before required options or transaction access", async () => {
+  const originals = new Map<string, unknown>();
+  let transactionCalls = 0;
+  for (const command of COMMANDS) {
+    originals.set(command, InstallerTransaction.prototype[command]);
+    InstallerTransaction.prototype[command] = (async () => { transactionCalls += 1; throw new Error("transaction must not run for help"); }) as never;
+  }
+  try {
+    for (const argv of [["--help"], ["-h"], ["init", "--help"], ["install", "--help"], ["install", "-h"]]) {
+      const output: string[] = [];
+      const errors: string[] = [];
+      assert.equal(await runCli(argv, (value) => output.push(value), (value) => errors.push(value)), 0, argv.join(" "));
+      assert.equal(output.length, 1, argv.join(" "));
+      assert.equal(errors.length, 0, argv.join(" "));
+    }
+    assert.equal(transactionCalls, 0);
+  } finally {
+    for (const [command, original] of originals) Object.assign(InstallerTransaction.prototype, { [command]: original });
+  }
+});
 test("CLI rejects implicit, duplicate, unknown, non-global, and harness-specific arguments", async () => { for (const argv of [[], ["install", "--json"], [...await args("install"), "--target-root", "/duplicate"], [...await args("install"), "--scope", "project"], [...await args("install"), "--harness", "codex"]]) assert.equal(await runCli(argv, () => {}, () => {}), 2); });
+test("CLI rejects unknown commands with exit 2 even when help is requested", async () => { assert.equal(await runCli(["unknown", "--help"], () => {}, () => {}), 2); });
+test("CLI routes init through its orchestration handler without constructing a transaction", async () => {
+  let initCalls = 0;
+  let transactionCalls = 0;
+  const output: string[] = [];
+  const exitCode = await runCli(["init"], (value) => output.push(value), () => {}, {
+    createTransaction: () => { transactionCalls += 1; throw new Error("transaction command must not back init"); },
+    init: async () => {
+      initCalls += 1;
+      return { schemaVersion: 1, command: "init", outcome: "SUCCESS", targets: [] };
+    },
+  });
+  assert.equal(exitCode, 0);
+  assert.equal(initCalls, 1);
+  assert.equal(transactionCalls, 0);
+  assert.deepEqual(JSON.parse(output[0]!), { schemaVersion: 1, command: "init", outcome: "SUCCESS", targets: [] });
+});
+test("CLI default init uses the orchestration boundary for deterministic non-TTY refusal", async () => {
+  let promptCalls = 0;
+  let transactionCalls = 0;
+  const output: string[] = [];
+  const errors: string[] = [];
+  const exitCode = await runCli(["init"], (value) => output.push(value), (value) => errors.push(value), {
+    initOptions: {
+      isTTY: false,
+      environment: { home: "/synthetic/home", platform: "linux" },
+      releaseRoot: "/synthetic/release",
+    },
+    initPrompt: {
+      step: () => { promptCalls += 1; },
+      selectTargets: async () => { promptCalls += 1; return []; },
+      confirm: async () => { promptCalls += 1; return true; },
+    },
+    createTransaction: () => { transactionCalls += 1; throw new Error("non-TTY init must not construct a transaction"); },
+  });
+  assert.equal(exitCode, 2);
+  assert.equal(promptCalls, 0);
+  assert.equal(transactionCalls, 0);
+  assert.equal(errors.length, 0);
+  assert.deepEqual(JSON.parse(output[0]!), {
+    schemaVersion: 1,
+    command: "init",
+    outcome: "INVALID_INVOCATION",
+    reason: "NON_TTY",
+    guidance: "Use an explicit transaction command with --non-interactive.",
+    targets: [],
+  });
+});
 test("CLI maps structured failures and catchable signals without secret content", async () => { const original = InstallerTransaction.prototype.install; try { InstallerTransaction.prototype.install = async () => { throw new InstallerFailure("VERIFY", "verify", "entry-file", "VERIFICATION_ROLLED_BACK", "failed", "SUCCEEDED"); }; const errors: string[] = []; assert.equal(await runCli(await args("install"), () => {}, (value) => errors.push(value)), 5); assert.equal(JSON.parse(errors.at(-1)!).outcome, "VERIFICATION_ROLLED_BACK"); for (const [signal, code] of [["SIGINT", 130], ["SIGTERM", 143]] as const) { InstallerTransaction.prototype.install = async () => { throw new InterruptedFailure(signal, "activate", "SUCCEEDED"); }; assert.equal(await runCli(await args("install"), () => {}, (value) => errors.push(value)), code); assert.equal(JSON.parse(errors.at(-1)!).signal, signal); } assert.equal(errors.some((value) => /token|secret/i.test(value)), false); } finally { InstallerTransaction.prototype.install = original; } });

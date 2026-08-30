@@ -25,6 +25,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Breaking changes:** none
 
+## [1.1.0] — 2026-08-27
+
+### Added
+
+- Der interaktive `init`-Onboarding-Einstieg ist als einzige normale öffentliche Installation über
+  `npm i @tomtastisch/agent-governance` und `npx agent-governance init` dokumentiert.
+- Der npm-Tarball prüft nun explizit Command- und Discovery-Kataloge, Terminal-Branding und den
+  tarball-only Init-Help-Pfad.
+
+### Changed
+
+- Direkte Runtime-Imports sind mit `@clack/prompts` 1.7.0 und `smol-toml` 1.8.0 exakt im Paket und
+  Lockfile deklariert; Advanced-/Automation-/CI-Referenzen behalten die Low-Level-Commands.
+
+### Fixed
+
+- `init` startet keinen Package Manager, keine Self-Install-, Repair- oder bedingte Nachladefunktion.
+
+### Removed
+
+- Der frühere normale Drei-Command-Quickstart mit expliziten Pfaden.
+
+**Breaking changes:** none
+
 ## [1.0.1] — 2026-08-25
 
 ### Added

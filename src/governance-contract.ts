@@ -1,11 +1,14 @@
 import { lstat, readFile, realpath } from "node:fs/promises";
 import { isAbsolute, join, normalize, sep } from "node:path";
+import { parseDiscoveryCatalogText } from "./discovery/catalog.ts";
+import { parseCommandCatalogText } from "./command-catalog.ts";
 
 type TomlValue = string | number | TomlValue[] | TomlTable;
 type TomlTable = { [key: string]: TomlValue };
 
 const ID = /^[a-z][a-z0-9_]*$/;
-const CATALOGS = ["triggers", "policy_tags", "scopes", "tools"] as const;
+const CORE_CATALOGS = ["triggers", "policy_tags", "scopes", "tools"] as const;
+const OPTIONAL_CATALOGS = ["commands", "discovery_signals"] as const;
 const MODULE_FIELDS = ["path", "triggers", "dependencies"] as const;
 const ROLE_FIELDS = ["path", "triggers", "modules"] as const;
 const TOOL_FIELDS = ["name", "purpose", "required_on", "useful_on", "policy_tags", "scopes", "evidence", "fallback", "constraints"] as const;
@@ -159,14 +162,27 @@ export async function validateGovernanceContract(manifestRoot: string, manifestT
   if (!/\.md$/i.test(localRules)) throw new Error("release manifest local rules path is invalid");
 
   const catalogs = table(manifest.catalogs, "release manifest catalogs");
-  exact(catalogs, CATALOGS, "release manifest catalogs");
+  const catalogFields = Object.keys(catalogs).sort().join("\0");
+  const legacyCatalogFields = [...CORE_CATALOGS].sort().join("\0");
+  const discoveryCatalogFields = [...CORE_CATALOGS, ...OPTIONAL_CATALOGS].sort().join("\0");
+  if (catalogFields !== legacyCatalogFields && catalogFields !== discoveryCatalogFields) throw new Error("release manifest catalogs has missing or unknown fields");
   const parsed = new Map<string, TomlTable>();
   const referencedPaths = new Set<string>();
-  for (const name of CATALOGS) {
+  for (const name of CORE_CATALOGS) {
     const path = safeIndexPath(catalogs[name], `release manifest ${name} catalog`);
     if (!/\.toml$/i.test(path)) throw new Error(`release manifest ${name} catalog has an invalid format`);
     referencedPaths.add(path);
     parsed.set(name, parseClosedToml(await safeIndexedFile(manifestRoot, path, inventory, `${name} catalog`), `${name} catalog`));
+  }
+  for (const name of OPTIONAL_CATALOGS) {
+    if (catalogs[name] === undefined) continue;
+    const label = name.replace("_", " ");
+    const path = safeIndexPath(catalogs[name], `release manifest ${label} catalog`);
+    if (!/\.toml$/i.test(path)) throw new Error(`release manifest ${label} catalog has an invalid format`);
+    referencedPaths.add(path);
+    const content = await safeIndexedFile(manifestRoot, path, inventory, `${label} catalog`);
+    if (name === "commands") parseCommandCatalogText(content);
+    else parseDiscoveryCatalogText(content);
   }
   const triggers = validateVocabulary(parsed.get("triggers")!, "triggers");
   const policyTags = validateVocabulary(parsed.get("policy_tags")!, "policy_tags");

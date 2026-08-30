@@ -88,6 +88,11 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           package-manager-cache: false
+      - name: Install PTY test tool on Linux
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes expect
       - name: Install exact package toolchain
         run: npm ci --ignore-scripts
       - name: Typecheck, test, build, audit, and inspect package

@@ -27,34 +27,18 @@ bei Harness-Erkennung, Adaptern oder impliziten Zielannahmen.
 
 ## Schnellstart
 
-Verwende den Stable-Channel `@latest`. `--installation-root` und `--target-root` müssen
-ausdrückliche absolute Pfade sein; `--entry-file` ist ein relativer Markdownpfad innerhalb des
-gewählten Target-Roots. Erst planen, dann installieren und verifizieren:
+Installiere das Paket und starte den interaktiven, geführten Einstieg:
 
 ```sh
-npx @tomtastisch/agent-governance@latest plan \
-  --scope global \
-  --installation-root "$HOME/.agent-governance" \
-  --target-root "$HOME/.codex" \
-  --entry-file "AGENTS.md" \
-  --non-interactive
-
-npx @tomtastisch/agent-governance@latest install \
-  --scope global \
-  --installation-root "$HOME/.agent-governance" \
-  --target-root "$HOME/.codex" \
-  --entry-file "AGENTS.md" \
-  --non-interactive
-
-npx @tomtastisch/agent-governance@latest verify \
-  --scope global \
-  --installation-root "$HOME/.agent-governance" \
-  --target-root "$HOME/.codex" \
-  --entry-file "AGENTS.md" \
-  --non-interactive
+npm i @tomtastisch/agent-governance
+npx agent-governance init
 ```
 
-Die [CLI-Referenz](https://github.com/tomtastisch/agent-governance/blob/main/docs/installer-cli-reference.md) erklärt Bedeutung, Pflichtangaben und Optionen; die [Harness-Rezepte](https://github.com/tomtastisch/agent-governance/blob/main/docs/harness-recipes.md) helfen, den harness-spezifischen aktiven globalen Zielpfad vor der Installation zu prüfen.
+Der Wizard prüft die Umgebung, lässt Ziele auswählen und führt erst nach Bestätigung Install und
+Verify aus. Für Advanced-Automation, CI und manuelle Diagnose erklären die
+[CLI-Referenz](https://github.com/tomtastisch/agent-governance/blob/main/docs/installer-cli-reference.md)
+und [Harness-Rezepte](https://github.com/tomtastisch/agent-governance/blob/main/docs/harness-recipes.md)
+den expliziten Pfadvertrag.
 
 ## Wie funktioniert es?
 
