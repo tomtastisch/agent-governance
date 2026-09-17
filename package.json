@@ -4,10 +4,18 @@
   "description": "Interactive and transactional installer for Agent Governance",
   "keywords": [
     "agent-governance",
-    "governance",
-    "installer",
-    "ai",
-    "llm"
+    "ai-governance",
+    "governance-as-code",
+    "policy-as-code",
+    "ai-agents",
+    "coding-agents",
+    "coding-agent-governance",
+    "ai-security",
+    "developer-tools",
+    "cli",
+    "harness-agnostic",
+    "llm",
+    "installer"
   ],
   "type": "module",
   "bin": {

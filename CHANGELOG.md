@@ -38,10 +38,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Direkte Runtime-Imports sind mit `@clack/prompts` 1.7.0 und `smol-toml` 1.8.0 exakt im Paket und
   Lockfile deklariert; Advanced-/Automation-/CI-Referenzen behalten die Low-Level-Commands.
+- npm-Keywords beschreiben den vorhandenen AI-Governance-, Policy-as-Code-, Security-, CLI- und
+  harness-neutralen Installerumfang ohne spätere Management-Funktionen vorwegzunehmen.
 
 ### Fixed
 
 - `init` startet keinen Package Manager, keine Self-Install-, Repair- oder bedingte Nachladefunktion.
+- `OUTDATED`-Ziele verwenden den Updatepfad; der gemeinsame Freigabeschritt zeigt vorher je Ziel
+  Zustand, Mutation und Ressourcenoperationen, und Non-TTY-Aufrufe brechen vor Home-Kanonisierung ab.
+- Passive Discovery verteilt begrenzte Traversalbudgets auf Geschwister, toleriert erwartbare
+  Dateisystem-Races, erhält App-Bundle-Grenzen und bevorzugt bei Score-Gleichstand vollständige
+  Kandidaten.
+- Strukturierte Evidence erzwingt die plist-Dict-Hierarchie und liest gleichzeitig wachsende Dateien
+  nur bis zur konfigurierten Grenze plus einem Overflow-Byte; Manifestpfade lehnen Symlinks in jeder
+  Zwischenkomponente ab.
+- Der Linux-PTY-Treiber setzt für Expect ausdrücklich `C.UTF-8`, damit Suche, Multiselect und manueller
+  Fallback auch mit `TERM=linux`, `NO_COLOR` und 60×24-Zellen zuverlässig bedienbar bleiben.
 
 ### Removed
 

@@ -22,7 +22,21 @@ class InstallerPackageContract(unittest.TestCase):
         )
         self.assertEqual(
             package["keywords"],
-            ["agent-governance", "governance", "installer", "ai", "llm"],
+            [
+                "agent-governance",
+                "ai-governance",
+                "governance-as-code",
+                "policy-as-code",
+                "ai-agents",
+                "coding-agents",
+                "coding-agent-governance",
+                "ai-security",
+                "developer-tools",
+                "cli",
+                "harness-agnostic",
+                "llm",
+                "installer",
+            ],
         )
         self.assertIn("interactive", package["description"].lower())
         self.assertNotIn("terminal-image", package["dependencies"])
