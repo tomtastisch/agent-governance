@@ -5,7 +5,7 @@ import test from "node:test";
 
 import type { Candidate } from "../../src/discovery/types.ts";
 import { createClackPrompt, type ClackPromptOperations } from "../../src/init/prompt.ts";
-import { INIT_CANCELLED } from "../../src/init/types.ts";
+import { INIT_CANCELLED, type InitPlannedTarget } from "../../src/init/types.ts";
 
 function candidate(root: string, confidence: Candidate["confidence"]): Candidate {
   return {
@@ -119,6 +119,60 @@ test("step uses a spinner and confirm preserves false and cancellation semantics
   assert.deepEqual(fake.calls.slice(0, 2).map(({ kind }) => kind), ["spinner:start", "spinner:stop"]);
   assert.equal(fake.calls[1]?.options && (fake.calls[1].options as { message?: string }).message, "[1/3] Umgebung prüfen");
   assert.equal(fake.calls.filter(({ kind }) => kind === "cancel").length, 1);
+});
+
+test("confirm shows each target's concrete state, mutation, and resource operations before approval", async () => {
+  const fake = harness([true]);
+  const prompt = createClackPrompt({ prompts: fake.operations, columns: 80, environment: { NO_COLOR: "1" } });
+  const plans: readonly InitPlannedTarget[] = [{
+    target: { targetRoot: "/synthetic/Target", entryFile: "nested/AGENTS.md" },
+    status: {
+      schemaVersion: 1,
+      architecture: "GLOBAL_EXPLICIT_PATH_MANAGED_BLOCK",
+      command: "status",
+      outcome: "SUCCESS",
+      state: "OUTDATED",
+      phase: "inspect",
+      rollbackStatus: "AVAILABLE",
+      capabilities: [],
+    },
+    plan: {
+      schemaVersion: 1,
+      architecture: "GLOBAL_EXPLICIT_PATH_MANAGED_BLOCK",
+      command: "plan",
+      outcome: "SUCCESS",
+      state: "OUTDATED",
+      phase: "plan",
+      rollbackStatus: "AVAILABLE",
+      capabilities: [],
+      plan: {
+        schemaVersion: 1,
+        architecture: "GLOBAL_EXPLICIT_PATH_MANAGED_BLOCK",
+        command: "update",
+        state: "OUTDATED",
+        resources: [
+          { id: "release", target: "/installation/releases/1.1.0", operation: "create" },
+          { id: "entry-file", target: "/synthetic/Target/nested/AGENTS.md", operation: "replace" },
+          { id: "local-rules", target: "/installation/releases/1.1.0/local/user-rules.md", operation: "preserve" },
+        ],
+        harnessSpecificMutation: false,
+        mcpMutation: false,
+        hookMutation: false,
+        approvalExpansion: false,
+      },
+    },
+  }];
+
+  assert.equal(await prompt.confirm(plans), true);
+  const confirmation = fake.calls.find(({ kind }) => kind === "confirm")?.options as { message: string };
+  assert.match(confirmation.message, /Target Root:\s*\/synthetic\/Target/u);
+  assert.match(confirmation.message, /Entry File:\s*nested\/AGENTS\.md/u);
+  assert.match(confirmation.message, /Aktueller Zustand:\s*OUTDATED/u);
+  assert.match(confirmation.message, /Mutation:\s*update/u);
+  assert.match(confirmation.message, /release:\s*create.*\/installation\/releases\/1\.1\.0/u);
+  assert.match(confirmation.message, /entry-file:\s*replace.*\/synthetic\/Target\/nested\/AGENTS\.md/u);
+  assert.match(confirmation.message, /local-rules:\s*preserve.*\/installation\/releases\/1\.1\.0\/local\/user-rules\.md/u);
+  assert.match(confirmation.message, /jetzt einrichten und anschließend verifizieren\?$/u);
 });
 
 test("the real CLI uses the Clack prompt and handles Ctrl+C in a synthetic PTY", () => {

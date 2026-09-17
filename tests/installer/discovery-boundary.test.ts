@@ -3,7 +3,7 @@ import test from "node:test";
 import { refineCandidateRoots } from "../../src/discovery/boundary.ts";
 import { loadDiscoveryCatalog } from "../../src/discovery/catalog.ts";
 import { classifyEvidence } from "../../src/discovery/classifier.ts";
-import type { EvidenceFamily, EvidenceRecord, EvidenceStrength } from "../../src/discovery/types.ts";
+import type { CandidateClass, DiscoveryStatus, EvidenceFamily, EvidenceRecord, EvidenceStrength } from "../../src/discovery/types.ts";
 
 const catalog = loadDiscoveryCatalog();
 
@@ -24,11 +24,16 @@ function cluster(root: string): readonly EvidenceRecord[] {
   }));
 }
 
-function broadCandidate(root: string, records: readonly EvidenceRecord[]) {
+function broadCandidate(
+  root: string,
+  records: readonly EvidenceRecord[],
+  status: DiscoveryStatus = "COMPLETE",
+  candidateClass: CandidateClass = "DIRECTORY",
+) {
   return classifyEvidence(records, catalog, {
     root,
-    candidateClass: "DIRECTORY",
-    status: "COMPLETE",
+    candidateClass,
+    status,
     fileCount: records.length,
     activityAt: 100,
   });
@@ -41,6 +46,30 @@ test("a broad container with one coherent child is replaced by the child root", 
 
   assert.deepEqual(refined.map(({ root }) => root), [child]);
   assert.equal(refined[0]?.confidence, "HIGH_CONFIDENCE");
+});
+
+test("equal-score root collisions retain a complete candidate over an earlier incomplete candidate", () => {
+  const root = "/synthetic/profile";
+  const records = cluster(root);
+  const incomplete = broadCandidate(root, records, "INCOMPLETE");
+  const complete = broadCandidate(root, records);
+  assert.equal(incomplete.score, complete.score);
+
+  const refined = refineCandidateRoots([incomplete, complete]);
+
+  assert.equal(refined.length, 1);
+  assert.equal(refined[0]?.status, "COMPLETE");
+  assert.equal(refined[0]?.confidence, "HIGH_CONFIDENCE");
+});
+
+test("app-bundle refinement preserves the enumerated app root", () => {
+  const appRoot = "/synthetic/Foo.app";
+  const refined = refineCandidateRoots([
+    broadCandidate(appRoot, cluster(`${appRoot}/Contents`), "COMPLETE", "APP_BUNDLE"),
+  ]);
+
+  assert.deepEqual(refined.map(({ root }) => root), [appRoot]);
+  assert.equal(refined[0]?.candidateClass, "APP_BUNDLE");
 });
 
 test("a broad container with multiple coherent child clusters becomes the smallest child roots", () => {

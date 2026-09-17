@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { renameSync, symlinkSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
-import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, open, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { analyzePackageMetadata } from "../../src/discovery/package-metadata.ts";
 import { analyzeSqliteSchema } from "../../src/discovery/sqlite.ts";
-import { analyzeStructuredFile } from "../../src/discovery/structured.ts";
+import { analyzeStructuredFile, readBoundedTextFile } from "../../src/discovery/structured.ts";
 import type { DiscoveryLimits, EvidenceRecord } from "../../src/discovery/types.ts";
 
 const LIMITS: DiscoveryLimits = Object.freeze({
@@ -94,6 +94,83 @@ test("structured analysis rejects an unclosed plist key instead of accepting par
     await writeFile(path, "<plist><dict><key>state</dict></plist>");
     await assert.rejects(() => analyzeStructuredFile(path, LIMITS), /malformed/i);
   } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("plist evidence accepts dictionary keys and rejects keys outside dictionary hierarchy", async () => {
+  const root = await canonicalTemporary("agent-governance-plist-hierarchy-");
+  try {
+    const valid = join(root, "valid.plist");
+    const direct = join(root, "direct.plist");
+    const array = join(root, "array.plist");
+    await writeFile(valid, "<plist><dict><key>transport</key><string>local</string><key>state</key><dict><key>sessions</key><array></array></dict></dict></plist>");
+    await writeFile(direct, "<plist><key>transport</key><string>local</string></plist>");
+    await writeFile(array, "<plist><array><key>transport</key><string>local</string></array></plist>");
+
+    assert.equal((await analyzeStructuredFile(valid, LIMITS)).length > 0, true);
+    await assert.rejects(() => analyzeStructuredFile(direct, LIMITS), /malformed/i);
+    await assert.rejects(() => analyzeStructuredFile(array, LIMITS), /malformed/i);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a file that grows after opening is rejected after at most one bounded overflow byte", async () => {
+  const root = await canonicalTemporary("agent-governance-growing-structured-");
+  const path = join(root, "growing.json");
+  const probe = await open(path, "w+");
+  const prototype = Object.getPrototypeOf(probe) as object;
+  const statDescriptor = Object.getOwnPropertyDescriptor(prototype, "stat")!;
+  const readDescriptor = Object.getOwnPropertyDescriptor(prototype, "read")!;
+  const readFileDescriptor = Object.getOwnPropertyDescriptor(prototype, "readFile")!;
+  const originalStat = statDescriptor.value as (...args: unknown[]) => Promise<unknown>;
+  const originalRead = readDescriptor.value as (...args: unknown[]) => Promise<{ bytesRead: number }>;
+  const originalReadFile = readFileDescriptor.value as (...args: unknown[]) => Promise<Buffer>;
+  await probe.close();
+  await writeFile(path, '{"state":"ok"}');
+  let grew = false;
+  let consumedBytes = 0;
+
+  Object.defineProperty(prototype, "stat", {
+    ...statDescriptor,
+    value: async function stat(this: unknown, ...args: unknown[]): Promise<unknown> {
+      const metadata = await originalStat.apply(this, args);
+      if (!grew) {
+        grew = true;
+        await appendFile(path, "x".repeat(1_024));
+      }
+      return metadata;
+    },
+  });
+  Object.defineProperty(prototype, "readFile", {
+    ...readFileDescriptor,
+    value: async function readFile(this: unknown, ...args: unknown[]): Promise<Buffer> {
+      const bytes = await originalReadFile.apply(this, args);
+      consumedBytes = bytes.byteLength;
+      return bytes;
+    },
+  });
+  Object.defineProperty(prototype, "read", {
+    ...readDescriptor,
+    value: async function read(this: unknown, ...args: unknown[]): Promise<{ bytesRead: number }> {
+      const result = await originalRead.apply(this, args);
+      consumedBytes += result.bytesRead;
+      return result;
+    },
+  });
+
+  try {
+    await assert.rejects(
+      () => readBoundedTextFile(path, { ...LIMITS, maxFileBytes: 32 }),
+      /size|large|limit/i,
+    );
+    assert.equal(grew, true);
+    assert.equal(consumedBytes <= 33, true, `consumed ${consumedBytes} bytes`);
+  } finally {
+    Object.defineProperty(prototype, "stat", statDescriptor);
+    Object.defineProperty(prototype, "read", readDescriptor);
+    Object.defineProperty(prototype, "readFile", readFileDescriptor);
     await rm(root, { recursive: true, force: true });
   }
 });

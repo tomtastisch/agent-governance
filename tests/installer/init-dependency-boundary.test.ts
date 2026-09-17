@@ -113,8 +113,8 @@ test("the boundary regression catches a package-manager spawn injected into defa
       'import { fileURLToPath } from "node:url";\nimport { spawnSync } from "node:child_process";',
     )
     .replace(
-      "  const home = realpathSync(homedir());",
-      '  spawnSync("npm", ["--version"]);\n  const home = realpathSync(homedir());',
+      "  const isTTY = Boolean(process.stdin.isTTY && process.stdout.isTTY);",
+      '  spawnSync("npm", ["--version"]);\n  const isTTY = Boolean(process.stdin.isTTY && process.stdout.isTTY);',
     );
   await writeFile(cliPath, mutated, "utf8");
 

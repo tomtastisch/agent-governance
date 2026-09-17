@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, mkdir, readFile, readdir, rm } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 
@@ -83,8 +83,9 @@ function prompt(
 function fakeTransaction(events: string[], targetRoot: string, state: InstallResult["state"] = "FRESH"): InitTransaction {
   return {
     async status(): Promise<InstallResult> { events.push(`status:${targetRoot}`); return transactionResult("status", state); },
-    async plan(): Promise<InstallResult> { events.push(`plan:${targetRoot}`); return transactionResult("plan", state); },
+    async plan(command = "install"): Promise<InstallResult> { events.push(`plan:${targetRoot}`); return { ...transactionResult("plan", state), plan: { schemaVersion: 1, architecture: "GLOBAL_EXPLICIT_PATH_MANAGED_BLOCK", command, state, resources: [], harnessSpecificMutation: false, mcpMutation: false, hookMutation: false, approvalExpansion: false } }; },
     async install(): Promise<InstallResult> { events.push(`install:${targetRoot}`); return transactionResult("install", "CURRENT"); },
+    async update(): Promise<InstallResult> { events.push(`update:${targetRoot}`); return transactionResult("update", "CURRENT"); },
     async verify(): Promise<InstallResult> { events.push(`verify:${targetRoot}`); return transactionResult("verify", "CURRENT"); },
   };
 }
@@ -175,6 +176,7 @@ test("runInit uses real InstallerTransaction plan install and verify for every s
         status: async () => { events.push(`status:${id}`); return transaction.status(); },
         plan: async () => { events.push(`plan:${id}`); return transaction.plan(); },
         install: async () => { events.push(`install:${id}`); return transaction.install(); },
+        update: async () => { events.push(`update:${id}`); return transaction.update(); },
         verify: async () => { events.push(`verify:${id}`); return transaction.verify(); },
       };
     },
@@ -329,4 +331,49 @@ test("runInit keeps CURRENT targets idempotent and uses the default or explicit 
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+
+test("runInit aktualisiert ein OUTDATED-Ziel nach dem genehmigten Updateplan und verifiziert es", async () => {
+  const root = await createTestRoot("agent-governance-init-update-");
+  try {
+    const targetRoot = join(root, "target");
+    await mkdir(targetRoot);
+    const oldRelease = await createReleaseFixture(join(root, "old"), "1.0.1");
+    const releaseRoot = await createReleaseFixture(join(root, "new"), "1.1.0");
+    const installationRoot = join(root, "installation");
+    const request: InstallerRequest = { targetRoot, entryFile: "AGENTS.md", scope: "global", installationRoot, releaseRoot: oldRelease, dryRun: false, nonInteractive: false };
+    await new InstallerTransaction(request).install();
+    const localRules = join(installationRoot, "releases/1.0.1/bundle/agent-governance/local/user-rules.md");
+    await mkdir(join(localRules, ".."), { recursive: true });
+    await writeFile(localRules, "Synthetic local rule\n");
+    const selected = candidate(targetRoot);
+    let verified = false;
+    const result = await runInit(options(root, releaseRoot, installationRoot), {
+      discoverCandidates: async () => [selected],
+      prompt: {
+        ...prompt([{ candidate: selected, manualInput: { entryFile: "AGENTS.md" } }], []),
+        confirm: async (plans) => {
+          assert.equal(plans[0]?.status.state, "OUTDATED");
+          assert.equal(plans[0]?.plan.plan?.command, "update");
+          assert.ok(plans[0]?.plan.plan?.resources.some((r) => r.id === "local-rules" && r.operation === "create"));
+          assert.match(await readFile(join(targetRoot, "AGENTS.md"), "utf8"), /1\.0\.1/);
+          return true;
+        },
+      },
+      createTransaction: (input) => {
+        const transaction = new InstallerTransaction(input);
+        return {
+          status: () => transaction.status(), plan: (command) => transaction.plan(command),
+          install: () => transaction.install(), update: () => transaction.update(),
+          verify: async () => { const result = await transaction.verify(); verified = true; return result; },
+        };
+      },
+    });
+    assert.equal(result.outcome, "SUCCESS");
+    assert.equal(result.targets[0]?.previousState, "OUTDATED");
+    assert.equal(verified, true);
+    assert.match(await readFile(join(targetRoot, "AGENTS.md"), "utf8"), /1\.1\.0/);
+    assert.equal(await readFile(join(installationRoot, "releases/1.1.0/bundle/agent-governance/local/user-rules.md"), "utf8"), "Synthetic local rule\n");
+  } finally { await rm(root, { recursive: true, force: true }); }
 });

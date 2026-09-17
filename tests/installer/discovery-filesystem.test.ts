@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { chmod, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { enumerateCandidates } from "../../src/discovery/filesystem.ts";
+import { canonicalizeLiveCandidate, enumerateCandidates } from "../../src/discovery/filesystem.ts";
 import { discoverZones } from "../../src/discovery/zones.ts";
 import type { DiscoveryLimits, DiscoveryZone } from "../../src/discovery/types.ts";
 
@@ -288,4 +288,76 @@ test("empty trees in an early zone preserve the entry budget for later zones", a
   } finally {
     await rm(fixture.root, { recursive: true, force: true });
   }
+});
+
+test("sibling candidates share the file budget before a large first sibling exhausts it", async () => {
+  const fixture = await syntheticEnvironment();
+  try {
+    await Promise.all([mkdir(join(fixture.xdgConfig, "first")), mkdir(join(fixture.xdgConfig, "second"))]);
+    const names = await readdir(fixture.xdgConfig);
+    const noise = join(fixture.xdgConfig, names[0]!);
+    const target = join(fixture.xdgConfig, names[1]!);
+    await Promise.all(Array.from({ length: 7 }, (_, index) => writeFile(join(noise, `${index}.json`), "{}")));
+    const targetFile = join(target, "runtime.json");
+    await writeFile(targetFile, "{}");
+    const limits = { ...LIMITS, maxFiles: 6 };
+
+    const candidates = await enumerateCandidates(
+      [{ id: "config", root: fixture.xdgConfig, candidateClass: "DIRECTORY" }], limits, () => 0,
+    );
+
+    assert.deepEqual(candidates.find(({ root }) => root === target)?.files, [targetFile]);
+    assert.equal(candidates.find(({ root }) => root === noise)?.status, "INCOMPLETE");
+    assert.equal(candidates.reduce((count, candidate) => count + candidate.filesVisited, 0) <= limits.maxFiles, true);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("sibling candidates share the entry budget before a wide first sibling exhausts it", async () => {
+  const fixture = await syntheticEnvironment();
+  try {
+    await Promise.all([mkdir(join(fixture.xdgConfig, "first")), mkdir(join(fixture.xdgConfig, "second"))]);
+    const names = await readdir(fixture.xdgConfig);
+    const noise = join(fixture.xdgConfig, names[0]!);
+    const target = join(fixture.xdgConfig, names[1]!);
+    await Promise.all(Array.from({ length: 12 }, (_, index) => mkdir(join(noise, `empty-${index}`))));
+    const targetFile = join(target, "runtime.json");
+    await writeFile(targetFile, "{}");
+    const limits = { ...LIMITS, maxEntries: 10 };
+
+    const candidates = await enumerateCandidates(
+      [{ id: "config", root: fixture.xdgConfig, candidateClass: "DIRECTORY" }], limits, () => 0,
+    );
+
+    assert.deepEqual(candidates.find(({ root }) => root === target)?.files, [targetFile]);
+    assert.equal(candidates.find(({ root }) => root === noise)?.issues.includes("ENTRY_LIMIT"), true);
+    assert.equal(candidates.reduce((count, candidate) => count + candidate.entriesVisited, names.length) <= limits.maxEntries, true);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("a candidate disappearing before canonicalization is skipped without hiding later candidates", async () => {
+  const vanished = new Error("vanished") as NodeJS.ErrnoException;
+  vanished.code = "ENOENT";
+  const later = "/synthetic/later";
+  let calls = 0;
+
+  assert.equal(await canonicalizeLiveCandidate("/synthetic/vanished", async () => {
+    calls += 1;
+    throw vanished;
+  }), null);
+  assert.equal(await canonicalizeLiveCandidate(later, async (path) => path), later);
+  assert.equal(calls, 1);
+});
+
+test("candidate canonicalization preserves unexpected filesystem failures", async () => {
+  const unexpected = new Error("unexpected") as NodeJS.ErrnoException;
+  unexpected.code = "EIO";
+
+  await assert.rejects(
+    canonicalizeLiveCandidate("/synthetic/candidate", async () => { throw unexpected; }),
+    /unexpected/,
+  );
 });

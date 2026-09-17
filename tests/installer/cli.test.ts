@@ -81,4 +81,28 @@ test("CLI default init uses the orchestration boundary for deterministic non-TTY
     targets: [],
   });
 });
+test("CLI default init rejects non-TTY before canonicalizing a missing home directory", async () => {
+  const previousHome = process.env.HOME;
+  const output: string[] = [];
+  const errors: string[] = [];
+  process.env.HOME = `/agent-governance-missing-home-${process.pid}-${Date.now()}`;
+  try {
+    assert.equal(
+      await runCli(["init"], (value) => output.push(value), (value) => errors.push(value)),
+      2,
+    );
+  } finally {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+  }
+  assert.equal(errors.length, 0);
+  assert.deepEqual(JSON.parse(output[0]!), {
+    schemaVersion: 1,
+    command: "init",
+    outcome: "INVALID_INVOCATION",
+    reason: "NON_TTY",
+    guidance: "Use an explicit transaction command with --non-interactive.",
+    targets: [],
+  });
+});
 test("CLI maps structured failures and catchable signals without secret content", async () => { const original = InstallerTransaction.prototype.install; try { InstallerTransaction.prototype.install = async () => { throw new InstallerFailure("VERIFY", "verify", "entry-file", "VERIFICATION_ROLLED_BACK", "failed", "SUCCEEDED"); }; const errors: string[] = []; assert.equal(await runCli(await args("install"), () => {}, (value) => errors.push(value)), 5); assert.equal(JSON.parse(errors.at(-1)!).outcome, "VERIFICATION_ROLLED_BACK"); for (const [signal, code] of [["SIGINT", 130], ["SIGTERM", 143]] as const) { InstallerTransaction.prototype.install = async () => { throw new InterruptedFailure(signal, "activate", "SUCCEEDED"); }; assert.equal(await runCli(await args("install"), () => {}, (value) => errors.push(value)), code); assert.equal(JSON.parse(errors.at(-1)!).signal, signal); } assert.equal(errors.some((value) => /token|secret/i.test(value)), false); } finally { InstallerTransaction.prototype.install = original; } });

@@ -21,6 +21,19 @@ interface MutableCandidate {
   issues: Set<DiscoveryIssue>;
 }
 
+export async function canonicalizeLiveCandidate(
+  path: string,
+  canonicalize: (path: string) => Promise<string> = realpath,
+): Promise<string | null> {
+  try {
+    return await canonicalize(path);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (["EACCES", "ELOOP", "ENOENT", "ENOTDIR", "EPERM"].includes(code ?? "")) return null;
+    throw error;
+  }
+}
+
 function validateLimits(limits: DiscoveryLimits): void {
   for (const [name, value] of Object.entries(limits)) {
     if (!Number.isSafeInteger(value) || value <= 0) throw new Error(`${name} must be a positive integer`);
@@ -166,6 +179,7 @@ export async function enumerateCandidates(
     const zoneEntryLimit = Math.floor((limits.maxEntries - counters.entries) / remainingZones);
     const zoneFileLimit = Math.floor((limits.maxFiles - counters.files) / remainingZones);
     const zoneStart = candidates.length;
+    const zoneCandidates: MutableCandidate[] = [];
     const root = await requireCanonicalDirectory(zone.root, `discovery zone ${zone.id}`);
     let handle;
     try {
@@ -190,7 +204,8 @@ export async function enumerateCandidates(
       }
       if (metadata.isSymbolicLink() || !metadata.isDirectory()) continue;
       if (zone.candidateClass === "APP_BUNDLE" && !entry.name.toLowerCase().endsWith(".app")) continue;
-      if ((await realpath(path)) !== path || seen.has(path)) continue;
+      const canonicalPath = await canonicalizeLiveCandidate(path);
+      if (canonicalPath !== path || seen.has(path)) continue;
       seen.add(path);
       const candidate: MutableCandidate = {
         root: path,
@@ -200,23 +215,30 @@ export async function enumerateCandidates(
         filesVisited: 0,
         issues: new Set(),
       };
+      zoneCandidates.push(candidate);
+    }
+    for (const [candidateIndex, candidate] of zoneCandidates.entries()) {
+      const remainingCandidates = zoneCandidates.length - candidateIndex;
+      const candidateEntryStart = counters.entries;
+      const candidateFileStart = counters.files;
+      const candidateEntryLimit = Math.floor(
+        (zoneEntryLimit - (counters.entries - zoneEntryStart)) / remainingCandidates,
+      );
+      const candidateFileLimit = Math.floor(
+        (zoneFileLimit - (counters.files - zoneFileStart)) / remainingCandidates,
+      );
       await traverseCandidate(
         candidate,
         limits,
         counters,
-        zoneEntryStart,
-        zoneEntryLimit,
-        zoneFileStart,
-        zoneFileLimit,
+        candidateEntryStart,
+        candidateEntryLimit,
+        candidateFileStart,
+        candidateFileLimit,
         expired,
       );
       candidates.push(complete(candidate));
-      if (
-        candidate.issues.has("ENTRY_LIMIT") ||
-        candidate.issues.has("TIME_LIMIT")
-      ) {
-        break;
-      }
+      if (candidate.issues.has("TIME_LIMIT")) break;
     }
     const sortedZoneCandidates = candidates.slice(zoneStart).sort((left, right) => left.root.localeCompare(right.root));
     candidates.splice(zoneStart, sortedZoneCandidates.length, ...sortedZoneCandidates);

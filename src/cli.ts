@@ -40,12 +40,13 @@ function isHelp(value: string | undefined): boolean { return value === "--help" 
 function isOutcome(value: unknown): value is TerminalOutcome { return typeof value === "string" && ["SUCCESS", "INVALID_INVOCATION", "UNSAFE_STATE", "VERIFICATION_ROLLED_BACK", "ROLLBACK_FAILED", "INTERRUPTED"].includes(value); }
 
 function defaultInitOptions(): InitOptions {
-  const home = realpathSync(homedir());
+  const isTTY = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+  const home = isTTY ? realpathSync(homedir()) : homedir();
   const releaseRoot = dirname(dirname(fileURLToPath(import.meta.url)));
   const xdgConfigHome = process.env.XDG_CONFIG_HOME;
   const xdgDataHome = process.env.XDG_DATA_HOME;
   return {
-    isTTY: Boolean(process.stdin.isTTY && process.stdout.isTTY),
+    isTTY,
     environment: {
       home,
       platform: process.platform,

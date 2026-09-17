@@ -1,4 +1,4 @@
-import type { InstallResult, InstallerRequest, InstallState } from "../contracts.ts";
+import type { InstallResult, InstallerCommand, InstallerRequest, InstallState } from "../contracts.ts";
 import type { Candidate, DiscoverCandidatesOptions } from "../discovery/types.ts";
 
 export interface InitTarget {
@@ -32,8 +32,9 @@ export const INIT_CANCELLED: unique symbol = Symbol("INIT_CANCELLED");
 
 export interface InitTransaction {
   readonly status: () => Promise<InstallResult>;
-  readonly plan: () => Promise<InstallResult>;
+  readonly plan: (command?: InstallerCommand) => Promise<InstallResult>;
   readonly install: () => Promise<InstallResult>;
+  readonly update: () => Promise<InstallResult>;
   readonly verify: () => Promise<InstallResult>;
 }
 

@@ -10,6 +10,7 @@ import {
 import { isAbsolute, normalize, relative, resolve } from "node:path";
 
 import { resolveCandidateIdentity } from "../discovery/identity.ts";
+import { sanitizeDisplay } from "../discovery/structured.ts";
 import type { Candidate } from "../discovery/types.ts";
 import { createTerminalTheme, renderCandidate, renderLegend } from "./theme.ts";
 import {
@@ -156,6 +157,24 @@ function filterTargetOption(search: string, option: PromptFilterOption): boolean
     || option.value.toLowerCase().includes(normalizedSearch);
 }
 
+function renderApprovalPlan(plans: readonly InitPlannedTarget[]): string {
+  return plans.map(({ target, status, plan }, index) => {
+    if (plan.plan === undefined) throw new Error("init approval requires a concrete installation plan");
+    const resources = plan.plan.resources.map(({ id, operation, target: resourceTarget }) =>
+      `- ${id}: ${operation} -> ${sanitizeDisplay(resourceTarget, 1024)}`
+    );
+    return [
+      `Ziel ${index + 1}`,
+      `Target Root: ${sanitizeDisplay(target.targetRoot, 1024)}`,
+      `Entry File: ${sanitizeDisplay(target.entryFile, 1024)}`,
+      `Aktueller Zustand: ${status.state}`,
+      `Mutation: ${plan.plan.command}`,
+      "Ressourcen:",
+      ...resources,
+    ].join("\n");
+  }).join("\n\n");
+}
+
 export function createClackPrompt(io: ClackPromptIO = {}): InitPrompt {
   const operations = io.prompts ?? DEFAULT_OPERATIONS;
   const promptColumns = Math.max(20, (io.columns ?? process.stdout.columns ?? 80) - 4);
@@ -255,8 +274,12 @@ export function createClackPrompt(io: ClackPromptIO = {}): InitPrompt {
     async confirm(plans: readonly InitPlannedTarget[]): Promise<boolean | typeof INIT_CANCELLED> {
       stopProgress();
       const targetCount = plans.length;
+      const renderedPlan = renderApprovalPlan(plans);
       const result = await operations.confirm({
-        message: `${targetCount} Ziel${targetCount === 1 ? "" : "e"} jetzt einrichten und anschließend verifizieren?`,
+        message: [
+          ...(renderedPlan === "" ? [] : ["Geplanter Ablauf:", renderedPlan, ""]),
+          `${targetCount} Ziel${targetCount === 1 ? "" : "e"} jetzt einrichten und anschließend verifizieren?`,
+        ].join("\n"),
         active: "Einrichten",
         inactive: "Abbrechen",
         initialValue: false,

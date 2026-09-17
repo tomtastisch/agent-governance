@@ -81,7 +81,8 @@ export async function runInit(options: InitOptions, dependencies: InitDependenci
       releaseRoot: options.releaseRoot,
     });
     const status = await transaction.status();
-    const plan = await transaction.plan();
+    const operation = status.state === "OUTDATED" ? "update" : "install";
+    const plan = await transaction.plan(operation);
     prepared.push(Object.freeze({ target, transaction, status, plan }));
   }
 
@@ -91,7 +92,9 @@ export async function runInit(options: InitOptions, dependencies: InitDependenci
 
   const completed: InitTargetResult[] = [];
   for (const item of prepared) {
-    const installed = await item.transaction.install();
+    const installed = item.status.state === "OUTDATED"
+      ? await item.transaction.update()
+      : await item.transaction.install();
     if (installed.outcome !== "SUCCESS") throw new Error("init installation failed");
     const verified = await item.transaction.verify();
     if (verified.outcome !== "SUCCESS" || verified.state !== "CURRENT") {

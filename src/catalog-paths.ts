@@ -24,7 +24,28 @@ function requireReleaseRoot(releaseRoot: string): string {
 
 export function resolveManifestPath(releaseRoot: string = PACKAGE_RELEASE_ROOT): string {
   const root = requireReleaseRoot(releaseRoot);
-  return requireRegularFile(join(root, "bundle", "agent-governance", "manifest.toml"), "command manifest");
+  const parts = ["bundle", "agent-governance", "manifest.toml"] as const;
+  let current = root;
+  for (const [index, part] of parts.entries()) {
+    current = join(current, part);
+    let metadata;
+    try {
+      metadata = lstatSync(current);
+    } catch {
+      throw new Error("command manifest path must exist");
+    }
+    if (metadata.isSymbolicLink()) throw new Error("command manifest path must not contain symlinks");
+    const isManifest = index === parts.length - 1;
+    if ((isManifest && !metadata.isFile()) || (!isManifest && !metadata.isDirectory())) {
+      throw new Error("command manifest path has an invalid component type");
+    }
+  }
+  const resolved = realpathSync(current);
+  const offset = relative(root, resolved);
+  if (offset === ".." || offset.startsWith(`..${sep}`) || isAbsolute(offset)) {
+    throw new Error("command manifest path escapes release root");
+  }
+  return resolved;
 }
 
 export function resolveCatalogPath(manifestPath: string, rawPath: unknown): string {

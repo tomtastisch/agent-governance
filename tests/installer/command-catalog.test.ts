@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
@@ -65,6 +65,18 @@ test("command catalog rejects unknown fields, wrong types, duplicate paths, and 
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  }
+});
+
+test("command manifest rejects symlinked intermediate path components", async () => {
+  const external = await catalogFixture();
+  const root = await mkdtemp(join(tmpdir(), "agent-governance-command-manifest-link-"));
+  try {
+    await symlink(join(external, "bundle"), join(root, "bundle"), "dir");
+    assert.throws(() => loadCommandCatalog(root), /symlink/i);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(external, { recursive: true, force: true });
   }
 });
 

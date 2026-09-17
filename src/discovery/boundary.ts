@@ -13,6 +13,7 @@ function childRoot(root: string, sourcePath: string): string | null {
 
 function splitBroadCandidate(candidate: Candidate, catalog: DiscoveryCatalog): readonly Candidate[] {
   if (candidate.confidence === "REJECTED") return [];
+  if (candidate.candidateClass === "APP_BUNDLE") return [candidate];
   const groups = new Map<string, EvidenceRecord[]>();
   for (const record of candidate.evidence) {
     const root = childRoot(candidate.root, record.sourcePath);
@@ -45,7 +46,15 @@ export function refineCandidateRoots(
   const byRoot = new Map<string, Candidate>();
   for (const candidate of candidates.flatMap((item) => splitBroadCandidate(item, catalog))) {
     const current = byRoot.get(candidate.root);
-    if (current === undefined || candidate.score > current.score) byRoot.set(candidate.root, candidate);
+    if (
+      current === undefined
+      || candidate.score > current.score
+      || candidate.score === current.score
+        && candidate.status === "COMPLETE"
+        && current.status === "INCOMPLETE"
+    ) {
+      byRoot.set(candidate.root, candidate);
+    }
   }
   const unique = [...byRoot.values()];
   return Object.freeze(unique
