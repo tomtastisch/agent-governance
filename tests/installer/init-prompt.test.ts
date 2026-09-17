@@ -175,19 +175,22 @@ test("the real monochrome prompt keeps confidence, focus, and toggled selection 
   assert.match(visible, /\[hoch\].*\[unsicher\].*\[fokus\].*◼ Auswahl/su);
 });
 
-test("the real 60x24 prompt keeps the manual fallback actionable with overflowing multiline options and active search", () => {
-  const result = spawnSync(process.execPath, [
-    join(import.meta.dirname, "../e2e/run_init_pty.mjs"),
-    "--columns=60",
-    "--no-color",
-    "--fallback",
-  ], { encoding: "utf8", timeout: 15_000 });
+for (const terminal of ["xterm", "linux"]) {
+  test("the real 60x24 prompt keeps the manual fallback actionable with overflowing multiline options and active search: " + terminal, () => {
+    const result = spawnSync(process.execPath, [
+      join(import.meta.dirname, "../e2e/run_init_pty.mjs"),
+      "--columns=60",
+      "--no-color",
+      "--fallback",
+      ...(terminal === "linux" ? ["--term-linux"] : []),
+    ], { encoding: "utf8", timeout: 15_000 });
 
-  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
-  assert.match(result.stdout, /Candidate-19/u);
-  assert.match(result.stdout, /FALLBACK_SEARCH_ACTION_VISIBLE/u);
-  assert.match(result.stdout, /FALLBACK_PROMPT_CANCELLED/u);
-});
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.match(result.stdout, /Candidate-19/u);
+    assert.match(result.stdout, /FALLBACK_SEARCH_ACTION_VISIBLE/u);
+    assert.match(result.stdout, /FALLBACK_PROMPT_CANCELLED/u);
+  });
+}
 
 test("the real TERM=linux prompt uses the same ASCII selection and navigation glyphs in options and legend", () => {
   const result = spawnSync(process.execPath, [

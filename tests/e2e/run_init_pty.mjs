@@ -143,10 +143,10 @@ async function runParent() {
       ]
     : fallback
     ? [
-        "expect -re {(?:◻|\\[\u2022\\]) AI/LLM nicht dabei\\?}",
+        "expect -re {(?:◻|\\[(?: |\u2022)\\]) AI/LLM nicht dabei\\?}",
         "send -- \"Candidate-19\"",
         "after 300",
-        "expect -re {(?:◻|\\[\u2022\\]) AI/LLM nicht dabei\\?}",
+        "expect -re {(?:◻|\\[(?: |\u2022)\\]) AI/LLM nicht dabei\\?}",
         "send -- \"\\t\"",
         "after 200",
         "expect -re {(?:◼|\\[\\+\\]) AI/LLM nicht dabei\\?}",
@@ -200,6 +200,10 @@ async function runParent() {
         AGENT_GOVERNANCE_TEST_COLUMNS: columns,
         AGENT_GOVERNANCE_TEST_NODE: process.execPath,
         AGENT_GOVERNANCE_TEST_ENTRY: childEntry,
+        // Tcl otherwise defaults to Latin-1 on Linux when the isolated env has no locale.
+        // The real Node terminal emits UTF-8, including the selection glyphs we match.
+        LANG: "C.UTF-8",
+        LC_ALL: "C.UTF-8",
         COLUMNS: columns,
         TERM: process.argv.includes("--term-linux") ? "linux" : "xterm-256color",
         ...(process.argv.includes("--no-color") ? { NO_COLOR: "1" } : {}),
