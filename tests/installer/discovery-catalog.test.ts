@@ -83,6 +83,11 @@ test("discovery catalog rejects unknown fields, invalid limits, duplicate IDs, a
       /family/i,
     ],
     [
+      "inherited object member as family",
+      (manifest, catalog) => [manifest, catalog.replace('family = "runtime"', 'family = "constructor"')],
+      /family/i,
+    ],
+    [
       "duplicate signal ID",
       (manifest, catalog) => [manifest, catalog.replace('id = "state_continuity"', 'id = "runtime_endpoint"')],
       /duplicate/i,

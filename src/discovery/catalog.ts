@@ -178,7 +178,7 @@ function parseFamilies(raw: unknown): DiscoveryCatalog["evidenceFamilies"] {
   return Object.freeze(result);
 }
 
-function parseSignals(raw: unknown, families: DiscoveryCatalog["evidenceFamilies"]): readonly DiscoverySignal[] {
+function parseSignals(raw: unknown): readonly DiscoverySignal[] {
   if (!Array.isArray(raw) || raw.length === 0) throw new Error("discovery signals must be a nonempty array");
   const seen = new Set<string>();
   const signals = raw.map((item, index): DiscoverySignal => {
@@ -187,8 +187,11 @@ function parseSignals(raw: unknown, families: DiscoveryCatalog["evidenceFamilies
     const signalId = id(signal.id, `discovery signal ${index}.id`);
     if (seen.has(signalId)) throw new Error("discovery signals contain duplicate IDs");
     seen.add(signalId);
-    const family = id(signal.family, `discovery signal ${signalId}.family`) as EvidenceFamily;
-    if (!(family in families)) throw new Error(`discovery signal ${signalId}.family is unknown`);
+    const family = enumValue(
+      signal.family,
+      EVIDENCE_FAMILIES,
+      `discovery signal ${signalId}.family`,
+    ) as EvidenceFamily;
     const sourceKinds = uniqueStringArray(signal.source_kinds, `discovery signal ${signalId}.source_kinds`).map(
       (source) => enumValue(source, SOURCE_KINDS, `discovery signal ${signalId}.source_kinds`),
     );
@@ -220,7 +223,7 @@ export function parseDiscoveryCatalogText(content: string): DiscoveryCatalog {
     confidence: parseConfidence(catalog.confidence),
     candidateClasses: parseCandidateClasses(catalog.candidate_classes),
     evidenceFamilies,
-    signals: parseSignals(catalog.signals, evidenceFamilies),
+    signals: parseSignals(catalog.signals),
   });
 }
 
