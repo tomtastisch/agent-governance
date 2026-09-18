@@ -126,60 +126,98 @@ export function collectStructureKeys(value: unknown, limits: DiscoveryLimits): C
 }
 
 function plistKeys(text: string, limits: DiscoveryLimits): CollectedStructure {
-  if (/<!DOCTYPE|<!--|-->|<!\[CDATA\[|<\?(?!xml\b)/i.test(text)) throw new Error("structured plist is malformed");
-  const declarations = [...text.matchAll(/<\?xml\b[^?]*\?>/gi)];
-  if (
-    declarations.length > 1
-    || (declarations[0] !== undefined && text.slice(0, declarations[0].index).trim() !== "")
-    || text.replace(/<\?xml\b[^?]*\?>/gi, "").includes("?>")
-  ) {
-    throw new Error("structured plist is malformed");
+  const declaration = text.match(/^\s*<\?xml\s+version=(?:"1\.0"|'1\.0')(?:\s+encoding=(?:"UTF-8"|'UTF-8'))?\s*\?>/iu);
+  const body = declaration === null ? text : text.slice(declaration[0].length);
+  if (/<!DOCTYPE|<!--|-->|<!\[CDATA\[|<\?|\?>/iu.test(body)) throw new Error("structured plist is malformed");
+  for (const character of body) {
+    const codePoint = character.codePointAt(0)!;
+    if (
+      codePoint !== 0x09
+      && codePoint !== 0x0a
+      && codePoint !== 0x0d
+      && !(codePoint >= 0x20 && codePoint <= 0xd7ff)
+      && !(codePoint >= 0xe000 && codePoint <= 0xfffd)
+      && !(codePoint >= 0x10000 && codePoint <= 0x10ffff)
+    ) {
+      throw new Error("structured plist is malformed");
+    }
   }
-  if (/&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-f]+);)/iu.test(text)) {
-    throw new Error("structured plist is malformed");
-  }
-  const tagNames = [...text.matchAll(/<\/?\s*([A-Za-z][A-Za-z0-9_-]*)\b[^>]*>/g)].map((match) => match[1]!.toLowerCase());
-  const allowedTags = new Set(["plist", "dict", "array", "key", "string", "integer", "real", "true", "false", "date", "data"]);
-  if (tagNames.some((tag) => !allowedTags.has(tag))) throw new Error("structured plist is malformed");
-  if ((text.match(/<plist\b/gi)?.length ?? 0) !== 1 || (text.match(/<\/plist\s*>/gi)?.length ?? 0) !== 1) {
-    throw new Error("structured plist is malformed");
-  }
-  if ((text.match(/<key\b[^>]*>/gi)?.length ?? 0) !== (text.match(/<\/key\s*>/gi)?.length ?? 0)) {
-    throw new Error("structured plist is malformed");
-  }
+  const validNamedEntities = new Set(["amp", "lt", "gt", "quot", "apos"]);
+  const validXmlCodePoint = (value: number): boolean => value === 0x09 || value === 0x0a || value === 0x0d
+    || value >= 0x20 && value <= 0xd7ff
+    || value >= 0xe000 && value <= 0xfffd
+    || value >= 0x10000 && value <= 0x10ffff;
+  const withoutEntities = body.replace(/&([^;]*);/gu, (entity, value: string): string => {
+    const decimal = value.match(/^#([0-9]+)$/u);
+    const hexadecimal = value.match(/^#x([0-9a-f]+)$/iu);
+    const codePoint = decimal !== null
+      ? Number.parseInt(decimal[1]!, 10)
+      : hexadecimal !== null
+      ? Number.parseInt(hexadecimal[1]!, 16)
+      : undefined;
+    if (!validNamedEntities.has(value) && (codePoint === undefined || !validXmlCodePoint(codePoint))) {
+      throw new Error("structured plist is malformed");
+    }
+    return entity.startsWith("&") ? "" : entity;
+  });
+  if (withoutEntities.includes("&")) throw new Error("structured plist is malformed");
 
   type PlistFrame = {
     readonly tag: string;
     childCount?: number;
     expecting?: "key" | "value";
+    text?: string;
   };
   const valueTags = new Set(["dict", "array", "string", "integer", "real", "true", "false", "date", "data"]);
+  const textTags = new Set(["key", "string", "integer", "real", "date", "data"]);
   const stack: PlistFrame[] = [];
+  const keys: string[] = [];
   let containerDepth = 0;
   let rootClosed = false;
   let incomplete = false;
-  for (const match of text.matchAll(/<(\/?)\s*(plist|dict|array|key|string|integer|real|true|false|date|data)\b[^>]*>/gi)) {
-    const closing = match[1] === "/";
-    const tag = match[2]!.toLowerCase();
-    if (closing) {
-      const frame = stack.pop();
-      if (frame?.tag !== tag) throw new Error("structured plist is malformed");
-      if (tag === "dict" || tag === "array") containerDepth -= 1;
-      if (tag === "dict" && frame.expecting !== "key") throw new Error("structured plist is malformed");
-      if (tag === "plist" && frame.childCount !== 1) throw new Error("structured plist is malformed");
-      const parent = stack.at(-1);
-      if (tag === "key") {
-        if (parent?.tag !== "dict" || parent.expecting !== "key") throw new Error("structured plist is malformed");
-        parent.expecting = "value";
-      } else if (valueTags.has(tag) && parent?.tag === "dict") {
-        if (parent.expecting !== "value") throw new Error("structured plist is malformed");
-        parent.expecting = "key";
-      } else if (tag === "plist") {
-        rootClosed = true;
-      }
+
+  const consumeText = (fragment: string): void => {
+    if (fragment.includes("<")) throw new Error("structured plist is malformed");
+    if (fragment.trim() === "") return;
+    const frame = stack.at(-1);
+    if (frame === undefined || !textTags.has(frame.tag)) throw new Error("structured plist is malformed");
+    if (frame.tag === "key") frame.text = `${frame.text ?? ""}${fragment}`;
+  };
+
+  const closeTag = (tag: string): void => {
+    const frame = stack.pop();
+    if (frame?.tag !== tag) throw new Error("structured plist is malformed");
+    if (tag === "dict" || tag === "array") containerDepth -= 1;
+    if (tag === "dict" && frame.expecting !== "key") throw new Error("structured plist is malformed");
+    if (tag === "plist" && frame.childCount !== 1) throw new Error("structured plist is malformed");
+    const parent = stack.at(-1);
+    if (tag === "key") {
+      if (parent?.tag !== "dict" || parent.expecting !== "key") throw new Error("structured plist is malformed");
+      if (keys.length >= limits.maxEntries) incomplete = true;
+      else keys.push(sanitizeDisplay(frame.text ?? "", limits.maxMetadataLength));
+      parent.expecting = "value";
+    } else if (valueTags.has(tag) && parent?.tag === "dict") {
+      if (parent.expecting !== "value") throw new Error("structured plist is malformed");
+      parent.expecting = "key";
+    } else if (tag === "plist") {
+      rootClosed = true;
+    }
+  };
+
+  let cursor = 0;
+  for (const match of body.matchAll(/<[^>]*>/gu)) {
+    consumeText(body.slice(cursor, match.index));
+    cursor = match.index + match[0].length;
+    const closing = match[0].match(/^<\/(plist|dict|array|key|string|integer|real|true|false|date|data)\s*>$/iu);
+    if (closing !== null) {
+      closeTag(closing[1]!.toLowerCase());
       continue;
     }
-
+    const plist = match[0].match(/^<(plist)(?:\s+version=(?:"1\.0"|'1\.0'))?\s*>$/iu);
+    const opening = plist ?? match[0].match(/^<(dict|array|key|string|integer|real|true|false|date|data)\s*(\/?)>$/iu);
+    if (opening === null) throw new Error("structured plist is malformed");
+    const tag = opening[1]!.toLowerCase();
+    const selfClosing = plist === null && opening[2] === "/";
     if (rootClosed) throw new Error("structured plist is malformed");
     const parent = stack.at(-1);
     if (tag === "plist") {
@@ -203,33 +241,21 @@ function plistKeys(text: string, limits: DiscoveryLimits): CollectedStructure {
       ? { tag, childCount: 0 }
       : tag === "dict"
       ? { tag, expecting: "key" }
+      : tag === "key"
+      ? { tag, text: "" }
       : { tag };
     stack.push(frame);
     if (tag === "dict" || tag === "array") {
       containerDepth += 1;
       if (containerDepth > limits.maxDepth) throw new Error("structured plist exceeds depth limit");
     }
-    if (/\/\s*>$/u.test(match[0])) {
+    if (selfClosing) {
       if (tag === "key" || tag === "plist") throw new Error("structured plist is malformed");
-      stack.pop();
-      if (tag === "dict" || tag === "array") containerDepth -= 1;
-      const container = stack.at(-1);
-      if (container?.tag === "dict") {
-        if (container.expecting !== "value") throw new Error("structured plist is malformed");
-        container.expecting = "key";
-      }
+      closeTag(tag);
     }
   }
+  consumeText(body.slice(cursor));
   if (stack.length > 0 || !rootClosed) throw new Error("structured plist is malformed");
-
-  const keys: string[] = [];
-  for (const match of text.matchAll(/<key\b[^>]*>([^<]*)<\/key\s*>/gi)) {
-    if (keys.length >= limits.maxEntries) {
-      incomplete = true;
-      break;
-    }
-    keys.push(sanitizeDisplay(match[1] ?? "", limits.maxMetadataLength));
-  }
   return Object.freeze({
     keys: Object.freeze(keys),
     status: incomplete ? "INCOMPLETE" : "COMPLETE",

@@ -1,4 +1,5 @@
-import { lstat, realpath } from "node:fs/promises";
+import { constants } from "node:fs";
+import { lstat, open, realpath } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { evidenceForStructure, sanitizeDisplay } from "./structured.ts";
@@ -8,9 +9,10 @@ interface SqlitePathIdentity {
   readonly path: string;
   readonly device: number;
   readonly inode: number;
+  readonly size: number;
 }
 
-async function canonicalSqlitePath(path: string): Promise<SqlitePathIdentity> {
+async function canonicalSqlitePath(path: string, maximumBytes: number): Promise<SqlitePathIdentity> {
   if (!isAbsolute(path)) throw new Error("SQLite path must be absolute");
   const normalized = resolve(path);
   const metadata = await lstat(normalized);
@@ -20,26 +22,8 @@ async function canonicalSqlitePath(path: string): Promise<SqlitePathIdentity> {
   if ((await realpath(normalized)) !== normalized) {
     throw new Error("SQLite path must be canonical and contain no symlinks");
   }
-  return Object.freeze({ path: normalized, device: metadata.dev, inode: metadata.ino });
-}
-
-async function assertSqlitePathIdentity(path: string | null, expected: SqlitePathIdentity): Promise<void> {
-  if (path !== expected.path) throw new Error("SQLite path identity changed after opening");
-  try {
-    const metadata = await lstat(expected.path);
-    if (
-      metadata.isSymbolicLink() ||
-      !metadata.isFile() ||
-      metadata.dev !== expected.device ||
-      metadata.ino !== expected.inode ||
-      (await realpath(expected.path)) !== expected.path
-    ) {
-      throw new Error("SQLite path identity changed after opening");
-    }
-  } catch (cause) {
-    if (cause instanceof Error && cause.message === "SQLite path identity changed after opening") throw cause;
-    throw new Error("SQLite path identity changed after opening", { cause });
-  }
+  if (metadata.size > maximumBytes) throw new Error("SQLite file exceeds size limit");
+  return Object.freeze({ path: normalized, device: metadata.dev, inode: metadata.ino, size: metadata.size });
 }
 
 function validateLimits(limits: DiscoveryLimits): void {
@@ -54,11 +38,23 @@ export async function analyzeSqliteSchema(
   catalog?: DiscoveryCatalog,
 ): Promise<readonly EvidenceRecord[]> {
   validateLimits(limits);
-  const identity = await canonicalSqlitePath(path);
+  const identity = await canonicalSqlitePath(path, limits.maxFileBytes);
+  let handle: Awaited<ReturnType<typeof open>> | undefined;
   let database: DatabaseSync | undefined;
   try {
-    database = new DatabaseSync(identity.path, { readOnly: true });
-    await assertSqlitePathIdentity(database.location("main"), identity);
+    handle = await open(identity.path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    const opened = await handle.stat();
+    if (
+      !opened.isFile()
+      || opened.dev !== identity.device
+      || opened.ino !== identity.inode
+      || opened.size !== identity.size
+      || opened.size > limits.maxFileBytes
+    ) {
+      throw new Error("SQLite path identity changed after opening or exceeds size limit");
+    }
+    const descriptorPath = `/dev/fd/${handle.fd}`;
+    database = new DatabaseSync(`file:${descriptorPath}?mode=ro&immutable=1`, { readOnly: true });
     const objects = database.prepare(
       "SELECT type, name FROM sqlite_schema " +
       "WHERE type IN ('table', 'view', 'index', 'trigger') AND name NOT LIKE 'sqlite_%' " +
@@ -94,6 +90,17 @@ export async function analyzeSqliteSchema(
       remainingColumns -= columns.length;
     }
 
+    const finalMetadata = await handle.stat();
+    if (
+      !finalMetadata.isFile()
+      || finalMetadata.dev !== identity.device
+      || finalMetadata.ino !== identity.inode
+      || finalMetadata.size !== identity.size
+      || finalMetadata.size > limits.maxFileBytes
+    ) {
+      throw new Error("SQLite file changed during bounded schema analysis");
+    }
+
     return evidenceForStructure(
       identity.path,
       "sqlite_schema",
@@ -104,6 +111,10 @@ export async function analyzeSqliteSchema(
       catalog,
     );
   } finally {
-    database?.close();
+    try {
+      database?.close();
+    } finally {
+      await handle?.close();
+    }
   }
 }

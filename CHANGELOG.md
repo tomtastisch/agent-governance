@@ -48,8 +48,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Zustand, Mutation und Ressourcenoperationen, und Non-TTY-Aufrufe brechen vor Home-Kanonisierung ab.
 - Strukturierte Discovery öffnet Live-Dateien nichtblockierend, verwirft FIFO-Austauschrennen und
   begrenzt Reads auch bei gleichzeitig wachsenden Dateien.
-- plist-Evidence akzeptiert nur begrenzte, wohlgeformte Hierarchien ohne kommentierte Signale,
-  ungültige Entities oder übertiefe Strukturen.
+- plist-Evidence akzeptiert nur vollständig tokenisierte, begrenzte und wohlgeformte Hierarchien
+  ohne kommentierte Signale, ungültige Entities, Attribute, Containertext oder übertiefe Strukturen.
+- SQLite-Schema-Evidence erzwingt das Dateigrößenbudget und bleibt über einen nichtblockierend
+  geöffneten Descriptor an die geprüfte reguläre Datei sowie `mode=ro&immutable=1` gebunden.
 - Der geführte Init-Prompt beendet seinen Fortschrittsindikator auch nach Discovery- oder
   Planungsfehlern, sodass der CLI-Prozess deterministisch zurückkehrt.
 - Passive Discovery verteilt begrenzte Traversalbudgets auf Geschwister, toleriert erwartbare

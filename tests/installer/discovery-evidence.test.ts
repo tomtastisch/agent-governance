@@ -17,7 +17,7 @@ const LIMITS: DiscoveryLimits = Object.freeze({
   maxDepth: 4,
   maxFiles: 64,
   maxEntries: 64,
-  maxFileBytes: 8_192,
+  maxFileBytes: 32_768,
   maxSqliteObjects: 8,
   maxSqliteColumns: 8,
   maxDurationMs: 1_000,
@@ -37,11 +37,11 @@ test("structured analysis emits bounded sanitized keys for JSON, TOML, and plist
   const secret = "VALUE-MUST-NEVER-LEAVE-THE-FILE";
   try {
     const fixtures = [
-      ["runtime.json", JSON.stringify({ transport: secret, command: secret, nested: { providers: [secret] } })],
+      ["runtime.json", JSON.stringify({ transport: secret, command: secret, nested: { providers: [secret] }, ["bad\u0007key"]: secret })],
       ["runtime.toml", `transport = "${secret}"\ncommand = "${secret}"\n[models]\nprimary = "${secret}"\n`],
       [
         "runtime.plist",
-        `<?xml version="1.0"?><plist><dict><key>transport</key><string>${secret}</string><key>bad\u0007key</key><string>${secret}</string></dict></plist>`,
+        `<?xml version="1.0"?><plist><dict><key>transport</key><string>${secret}</string><key>bad-key</key><string>${secret}</string></dict></plist>`,
       ],
     ] as const;
 
@@ -132,6 +132,27 @@ test("plist evidence rejects commented signals, malformed entities, and excessiv
     await assert.rejects(() => analyzeStructuredFile(commented, LIMITS), /malformed/i);
     await assert.rejects(() => analyzeStructuredFile(malformedEntity, LIMITS), /malformed/i);
     await assert.rejects(() => analyzeStructuredFile(deep, { ...LIMITS, maxDepth: 4 }), /malformed|depth/i);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("plist evidence rejects unmatched markup, invalid attributes, and container text", async () => {
+  const root = await canonicalTemporary("agent-governance-plist-tokenization-");
+  try {
+    const malformed = [
+      "<plist><dict><key>state</key><string>x</string></dict></plist><",
+      "<plist><dict><key>state</key><string>x</string></dict></plist><!bad",
+      "<plist><dict><key invalid>state</key><string>x</string></dict></plist>",
+      "<plist><dict>raw<key>state</key><string>x</string></dict></plist>",
+      "<plist><dict><key>state</key><string>bad\u0007text</string></dict></plist>",
+      "<plist><dict><key>state</key><string>&#0;</string></dict></plist>",
+    ];
+    for (const [index, content] of malformed.entries()) {
+      const path = join(root, `malformed-${index}.plist`);
+      await writeFile(path, content);
+      await assert.rejects(() => analyzeStructuredFile(path, LIMITS), /malformed/i, content);
+    }
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -344,7 +365,73 @@ test("SQLite analysis applies object and column budgets and closes after a schem
   }
 });
 
-test("SQLite analysis revalidates filesystem identity after the path-based open and closes on replacement", async () => {
+test("SQLite analysis rejects a database larger than the structured-file byte budget", async () => {
+  const root = await canonicalTemporary("agent-governance-sqlite-size-");
+  const path = join(root, "state.sqlite");
+  const database = new DatabaseSync(path);
+  database.exec("CREATE TABLE state (id INTEGER)");
+  database.close();
+  try {
+    await assert.rejects(
+      () => analyzeSqliteSchema(path, { ...LIMITS, maxFileBytes: 32 }),
+      /size|limit/i,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("SQLite analysis promptly rejects a regular file replaced by a FIFO", async (t) => {
+  if (process.platform === "win32") {
+    t.skip("POSIX FIFO regression");
+    return;
+  }
+  const root = await canonicalTemporary("agent-governance-sqlite-fifo-");
+  const path = join(root, "state.sqlite");
+  const moved = join(root, "original.sqlite");
+  const source = [
+    'import assert from "node:assert/strict";',
+    'import fsPromises from "node:fs/promises";',
+    'import { renameSync } from "node:fs";',
+    'import { spawnSync } from "node:child_process";',
+    'import { syncBuiltinESMExports } from "node:module";',
+    'import { DatabaseSync } from "node:sqlite";',
+    'const [path, moved, modulePath] = process.argv.slice(1);',
+    'const database = new DatabaseSync(path); database.exec("CREATE TABLE state (id INTEGER)"); database.close();',
+    'const originalRealpath = fsPromises.realpath;',
+    'let replaced = false;',
+    'fsPromises.realpath = async (value, options) => {',
+    '  const canonical = await originalRealpath(value, options);',
+    '  if (!replaced && canonical === path) {',
+    '    replaced = true; renameSync(path, moved);',
+    '    const created = spawnSync("mkfifo", [path], { encoding: "utf8" }); assert.equal(created.status, 0, created.stderr);',
+    '  }',
+    '  return canonical;',
+    '};',
+    'syncBuiltinESMExports();',
+    'const { analyzeSqliteSchema } = await import(modulePath);',
+    'await assert.rejects(() => analyzeSqliteSchema(path, { maxDepth: 4, maxFiles: 64, maxEntries: 64, maxFileBytes: 8192, maxSqliteObjects: 8, maxSqliteColumns: 8, maxDurationMs: 1000, maxMetadataLength: 48 }), /regular|identity|type/i);',
+    'assert.equal(replaced, true);',
+  ].join("\n");
+  try {
+    const result = spawnSync(process.execPath, [
+      "--experimental-strip-types",
+      "--input-type=module",
+      "--eval",
+      source,
+      path,
+      moved,
+      new URL("../../src/discovery/sqlite.ts", import.meta.url).href,
+    ], { encoding: "utf8", timeout: 2_000, killSignal: "SIGKILL" });
+    assert.equal(result.error, undefined, String(result.error));
+    assert.equal(result.signal, null);
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("SQLite analysis stays bound to its opened descriptor across pathname replacement", async () => {
   const root = await canonicalTemporary("agent-governance-sqlite-identity-");
   const path = join(root, "state.sqlite");
   const moved = join(root, "state-opened.sqlite");
@@ -355,19 +442,17 @@ test("SQLite analysis revalidates filesystem identity after the path-based open 
     database.close();
   }
 
-  const originalLocation = DatabaseSync.prototype.location;
+  const originalPrepare = DatabaseSync.prototype.prepare;
   const originalClose = DatabaseSync.prototype.close;
   let swapped = false;
   let closes = 0;
-  DatabaseSync.prototype.location = function location(databaseName?: string) {
+  DatabaseSync.prototype.prepare = function prepare(sql: string) {
     if (!swapped) {
       swapped = true;
       renameSync(path, moved);
       symlinkSync(replacement, path);
     }
-    return databaseName === undefined
-      ? originalLocation.call(this)
-      : originalLocation.call(this, databaseName);
+    return originalPrepare.call(this, sql);
   };
   DatabaseSync.prototype.close = function close() {
     closes += 1;
@@ -375,11 +460,12 @@ test("SQLite analysis revalidates filesystem identity after the path-based open 
   };
 
   try {
-    await assert.rejects(() => analyzeSqliteSchema(path, LIMITS), /canonical|changed|identity|symlink/i);
+    const records = await analyzeSqliteSchema(path, LIMITS);
+    assert.equal(records.length > 0, true);
     assert.equal(swapped, true);
     assert.equal(closes, 1);
   } finally {
-    DatabaseSync.prototype.location = originalLocation;
+    DatabaseSync.prototype.prepare = originalPrepare;
     DatabaseSync.prototype.close = originalClose;
     await rm(root, { recursive: true, force: true });
   }
