@@ -60,7 +60,7 @@ export async function readBoundedTextFile(path: string, limits: DiscoveryLimits)
   }
   if (pathMetadata.size > limits.maxFileBytes) throw new Error("structured file exceeds size limit");
 
-  const handle = await open(normalized, constants.O_RDONLY | constants.O_NOFOLLOW);
+  const handle = await open(normalized, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   try {
     const openedMetadata = await handle.stat();
     if (
@@ -126,7 +126,18 @@ export function collectStructureKeys(value: unknown, limits: DiscoveryLimits): C
 }
 
 function plistKeys(text: string, limits: DiscoveryLimits): CollectedStructure {
-  if (/<!DOCTYPE/i.test(text)) throw new Error("structured plist is malformed");
+  if (/<!DOCTYPE|<!--|-->|<!\[CDATA\[|<\?(?!xml\b)/i.test(text)) throw new Error("structured plist is malformed");
+  const declarations = [...text.matchAll(/<\?xml\b[^?]*\?>/gi)];
+  if (
+    declarations.length > 1
+    || (declarations[0] !== undefined && text.slice(0, declarations[0].index).trim() !== "")
+    || text.replace(/<\?xml\b[^?]*\?>/gi, "").includes("?>")
+  ) {
+    throw new Error("structured plist is malformed");
+  }
+  if (/&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-f]+);)/iu.test(text)) {
+    throw new Error("structured plist is malformed");
+  }
   const tagNames = [...text.matchAll(/<\/?\s*([A-Za-z][A-Za-z0-9_-]*)\b[^>]*>/g)].map((match) => match[1]!.toLowerCase());
   const allowedTags = new Set(["plist", "dict", "array", "key", "string", "integer", "real", "true", "false", "date", "data"]);
   if (tagNames.some((tag) => !allowedTags.has(tag))) throw new Error("structured plist is malformed");
@@ -144,6 +155,7 @@ function plistKeys(text: string, limits: DiscoveryLimits): CollectedStructure {
   };
   const valueTags = new Set(["dict", "array", "string", "integer", "real", "true", "false", "date", "data"]);
   const stack: PlistFrame[] = [];
+  let containerDepth = 0;
   let rootClosed = false;
   let incomplete = false;
   for (const match of text.matchAll(/<(\/?)\s*(plist|dict|array|key|string|integer|real|true|false|date|data)\b[^>]*>/gi)) {
@@ -152,6 +164,7 @@ function plistKeys(text: string, limits: DiscoveryLimits): CollectedStructure {
     if (closing) {
       const frame = stack.pop();
       if (frame?.tag !== tag) throw new Error("structured plist is malformed");
+      if (tag === "dict" || tag === "array") containerDepth -= 1;
       if (tag === "dict" && frame.expecting !== "key") throw new Error("structured plist is malformed");
       if (tag === "plist" && frame.childCount !== 1) throw new Error("structured plist is malformed");
       const parent = stack.at(-1);
@@ -192,12 +205,14 @@ function plistKeys(text: string, limits: DiscoveryLimits): CollectedStructure {
       ? { tag, expecting: "key" }
       : { tag };
     stack.push(frame);
-    if (stack.filter(({ tag: openTag }) => openTag === "dict" || openTag === "array").length > limits.maxDepth) {
-      incomplete = true;
+    if (tag === "dict" || tag === "array") {
+      containerDepth += 1;
+      if (containerDepth > limits.maxDepth) throw new Error("structured plist exceeds depth limit");
     }
     if (/\/\s*>$/u.test(match[0])) {
       if (tag === "key" || tag === "plist") throw new Error("structured plist is malformed");
       stack.pop();
+      if (tag === "dict" || tag === "array") containerDepth -= 1;
       const container = stack.at(-1);
       if (container?.tag === "dict") {
         if (container.expecting !== "value") throw new Error("structured plist is malformed");

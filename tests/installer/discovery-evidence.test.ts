@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
-import { renameSync, symlinkSync } from "node:fs";
+import { constants, renameSync, symlinkSync } from "node:fs";
+import fsPromises from "node:fs/promises";
 import { DatabaseSync } from "node:sqlite";
 import { appendFile, mkdir, mkdtemp, open, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { analyzePackageMetadata } from "../../src/discovery/package-metadata.ts";
 import { analyzeSqliteSchema } from "../../src/discovery/sqlite.ts";
@@ -112,6 +115,71 @@ test("plist evidence accepts dictionary keys and rejects keys outside dictionary
     await assert.rejects(() => analyzeStructuredFile(direct, LIMITS), /malformed/i);
     await assert.rejects(() => analyzeStructuredFile(array, LIMITS), /malformed/i);
   } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("plist evidence rejects commented signals, malformed entities, and excessive nesting", async () => {
+  const root = await canonicalTemporary("agent-governance-plist-structure-");
+  try {
+    const commented = join(root, "commented.plist");
+    const malformedEntity = join(root, "entity.plist");
+    const deep = join(root, "deep.plist");
+    await writeFile(commented, "<plist><dict><!-- <key>transport</key><string>local</string> --></dict></plist>");
+    await writeFile(malformedEntity, "<plist><dict><key>state</key><string>bare & invalid</string></dict></plist>");
+    await writeFile(deep, `<plist>${"<array>".repeat(32)}<dict></dict>${"</array>".repeat(32)}</plist>`);
+
+    await assert.rejects(() => analyzeStructuredFile(commented, LIMITS), /malformed/i);
+    await assert.rejects(() => analyzeStructuredFile(malformedEntity, LIMITS), /malformed/i);
+    await assert.rejects(() => analyzeStructuredFile(deep, { ...LIMITS, maxDepth: 4 }), /malformed|depth/i);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a regular file replaced by a FIFO is opened nonblocking, rejected, and closed", async (t) => {
+  if (process.platform === "win32") {
+    t.skip("POSIX FIFO regression");
+    return;
+  }
+  const root = await canonicalTemporary("agent-governance-fifo-structured-");
+  const path = join(root, "replaced.json");
+  const original = join(root, "original.json");
+  await writeFile(path, '{"state":"ok"}');
+  const originalRealpath = fsPromises.realpath;
+  const originalOpen = fsPromises.open;
+  let replaced = false;
+  let closeCalls = 0;
+  fsPromises.realpath = (async (value: Parameters<typeof originalRealpath>[0], options?: Parameters<typeof originalRealpath>[1]) => {
+    const canonical = await originalRealpath(value, options as never);
+    if (!replaced && canonical === path) {
+      replaced = true;
+      renameSync(path, original);
+      const created = spawnSync("mkfifo", [path], { encoding: "utf8" });
+      assert.equal(created.status, 0, created.stderr);
+    }
+    return canonical;
+  }) as typeof originalRealpath;
+  fsPromises.open = (async (...args: Parameters<typeof originalOpen>) => {
+    assert.equal(Number(args[1]) & constants.O_NONBLOCK, constants.O_NONBLOCK);
+    const handle = await originalOpen(...args);
+    const close = handle.close.bind(handle);
+    handle.close = async () => {
+      closeCalls += 1;
+      await close();
+    };
+    return handle;
+  }) as typeof originalOpen;
+  syncBuiltinESMExports();
+
+  try {
+    await assert.rejects(() => readBoundedTextFile(path, LIMITS), /changed type|regular/i);
+    assert.equal(replaced, true);
+    assert.equal(closeCalls, 1);
+  } finally {
+    fsPromises.realpath = originalRealpath;
+    fsPromises.open = originalOpen;
+    syncBuiltinESMExports();
     await rm(root, { recursive: true, force: true });
   }
 });
