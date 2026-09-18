@@ -211,6 +211,10 @@ export function createClackPrompt(io: ClackPromptIO = {}): InitPrompt {
   };
 
   return Object.freeze({
+    dispose(): void {
+      stopProgress();
+    },
+
     step(step: InitStep): void {
       stopProgress();
       progress.start(`[${step.position}/${step.total}] ${step.title}`);

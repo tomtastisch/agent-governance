@@ -48,6 +48,7 @@ test("the 1.1.0 real init path never starts a package manager or dependency repa
   });
 
   const prompt: InitPrompt = {
+    dispose(): void {},
     step(): void {},
     async selectTargets() {
       return [{ manualInput: { targetRoot, entryFile: "AGENTS.md" } }];

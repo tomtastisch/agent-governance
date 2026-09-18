@@ -68,6 +68,7 @@ function prompt(
   approved: boolean | typeof INIT_CANCELLED = true,
 ): InitPrompt {
   return {
+    dispose(): void {},
     step(step: InitStep): void { events.push(`${step.position}/${step.total}:${step.title}`); },
     async selectTargets(): Promise<readonly InitBindingSelection[] | typeof INIT_CANCELLED> {
       events.push("select");
@@ -288,6 +289,36 @@ test("runInit preserves verify failure as the aggregate failure", async () => {
     /verification failed/i,
   );
   assert.equal(events.includes(`verify:${targetRoot}`), true);
+});
+
+test("runInit disposes prompt progress after discovery and planning failures", async () => {
+  const selected = candidate("/synthetic/dispose-target");
+  for (const failure of ["discovery", "planning"] as const) {
+    const events: string[] = [];
+    const basePrompt = prompt([{ candidate: selected, manualInput: { entryFile: "AGENTS.md" } }], events);
+    const disposablePrompt: InitPrompt = {
+      ...basePrompt,
+      dispose: () => { events.push("dispose"); },
+    };
+    await assert.rejects(
+      runInit(options("/synthetic/home"), {
+        discoverCandidates: async () => {
+          if (failure === "discovery") throw new Error("synthetic discovery failure");
+          return [selected];
+        },
+        prompt: disposablePrompt,
+        createTransaction: () => ({
+          ...fakeTransaction(events, selected.root),
+          status: async () => {
+            throw new Error("synthetic planning failure");
+          },
+        }),
+      }),
+      new RegExp(failure),
+    );
+    assert.equal(events.at(-1), "dispose", failure);
+    assert.equal(events.filter((event) => event === "dispose").length, 1, failure);
+  }
 });
 
 test("runInit keeps CURRENT targets idempotent and uses the default or explicit installation root", async () => {

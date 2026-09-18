@@ -121,6 +121,37 @@ test("step uses a spinner and confirm preserves false and cancellation semantics
   assert.equal(fake.calls.filter(({ kind }) => kind === "cancel").length, 1);
 });
 
+test("dispose stops active progress exactly once", () => {
+  const fake = harness([]);
+  const prompt = createClackPrompt({ prompts: fake.operations, columns: 80, environment: {} });
+  prompt.step({ position: 1, total: 3, title: "Umgebung prüfen" });
+
+  prompt.dispose();
+  prompt.dispose();
+
+  assert.deepEqual(fake.calls.map(({ kind }) => kind), ["spinner:start", "spinner:stop"]);
+});
+
+test("the real CLI exits after an interactive discovery failure", () => {
+  const source = [
+    'import { runCli } from "./src/cli.ts";',
+    'const code = await runCli(["init"], () => {}, () => {}, {',
+    '  initOptions: { isTTY: true, environment: { home: process.cwd(), platform: "linux", xdgConfigHome: "relative-invalid-zone" }, releaseRoot: process.cwd() },',
+    '});',
+    'process.exitCode = code;',
+  ].join("\n");
+  const result = spawnSync(process.execPath, ["--experimental-strip-types", "--input-type=module", "--eval", source], {
+    cwd: join(import.meta.dirname, "../.."),
+    encoding: "utf8",
+    timeout: 3_000,
+    killSignal: "SIGKILL",
+  });
+
+  assert.equal(result.error, undefined, String(result.error));
+  assert.equal(result.signal, null);
+  assert.equal(result.status, 4, `${result.stdout}\n${result.stderr}`);
+});
+
 test("confirm shows each target's concrete state, mutation, and resource operations before approval", async () => {
   const fake = harness([true]);
   const prompt = createClackPrompt({ prompts: fake.operations, columns: 80, environment: { NO_COLOR: "1" } });

@@ -46,6 +46,7 @@ export interface InitPlannedTarget {
 
 export interface InitPrompt {
   readonly step: (step: InitStep) => void;
+  readonly dispose: () => void;
   readonly selectTargets: (
     candidates: readonly Candidate[],
   ) => Promise<readonly InitBindingSelection[] | typeof INIT_CANCELLED>;

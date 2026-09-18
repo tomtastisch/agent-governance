@@ -62,6 +62,7 @@ test("CLI default init uses the orchestration boundary for deterministic non-TTY
       releaseRoot: "/synthetic/release",
     },
     initPrompt: {
+      dispose: () => { promptCalls += 1; },
       step: () => { promptCalls += 1; },
       selectTargets: async () => { promptCalls += 1; return []; },
       confirm: async () => { promptCalls += 1; return true; },
