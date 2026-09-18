@@ -158,6 +158,51 @@ test("plist evidence rejects unmatched markup, invalid attributes, and container
   }
 });
 
+test("plist evidence rejects XML case mismatches and forbidden character data", async () => {
+  const root = await canonicalTemporary("agent-governance-plist-xml-");
+  try {
+    const malformed = [
+      "<plist><dict><key>state</KEY><string>x</string></dict></plist>",
+      "<plist><dict><key>state</key><string>]]></string></dict></plist>",
+      "<plist><dict><key>state</key><string>&#X41;</string></dict></plist>",
+      "<plist><dict><key\u00a0>state</key><string>x</string></dict></plist>",
+    ];
+    for (const [index, content] of malformed.entries()) {
+      const path = join(root, `malformed-${index}.plist`);
+      await writeFile(path, content);
+      await assert.rejects(() => analyzeStructuredFile(path, LIMITS), /malformed/i, content);
+    }
+    const valid = join(root, "valid.plist");
+    await writeFile(valid, '<plist version="1.0"><dict><key>state</key><string>&amp;&#x41;&#65;]]&gt;</string></dict></plist>');
+    assert.equal((await analyzeStructuredFile(valid, LIMITS)).some(({ signalId }) => signalId === "state_continuity"), true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+for (const delimiter of ["&", "<"]) {
+  test(`plist evidence promptly rejects repeated incomplete ${delimiter} tokens`, async () => {
+    const root = await canonicalTemporary("agent-governance-plist-linear-");
+    try {
+      const path = join(root, "incomplete.plist");
+      await writeFile(path, delimiter.repeat(100_000));
+      const reader = new URL("../../src/discovery/structured.ts", import.meta.url).href;
+      const script = `
+        import assert from 'node:assert/strict';
+        import { analyzeStructuredFile } from ${JSON.stringify(reader)};
+        await assert.rejects(() => analyzeStructuredFile(process.argv[1], ${JSON.stringify({ ...LIMITS, maxFileBytes: 262_144 })}), /malformed/i);
+      `;
+      const result = spawnSync(process.execPath, ["--experimental-strip-types", "--input-type=module", "-e", script, path], {
+        encoding: "utf8", timeout: 3_000,
+      });
+      assert.equal(result.error, undefined, "bounded malformed input must not block discovery");
+      assert.equal(result.status, 0, result.stderr);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+}
+
 test("a regular file replaced by a FIFO is opened nonblocking, rejected, and closed", async (t) => {
   if (process.platform === "win32") {
     t.skip("POSIX FIFO regression");

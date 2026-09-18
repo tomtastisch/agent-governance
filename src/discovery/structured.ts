@@ -126,7 +126,7 @@ export function collectStructureKeys(value: unknown, limits: DiscoveryLimits): C
 }
 
 function plistKeys(text: string, limits: DiscoveryLimits): CollectedStructure {
-  const declaration = text.match(/^\s*<\?xml\s+version=(?:"1\.0"|'1\.0')(?:\s+encoding=(?:"UTF-8"|'UTF-8'))?\s*\?>/iu);
+  const declaration = text.match(/^[\t\n\r ]*<\?xml[\t\n\r ]+version=(?:"1\.0"|'1\.0')(?:[\t\n\r ]+encoding=(?:"UTF-8"|'UTF-8'))?[\t\n\r ]*\?>/u);
   const body = declaration === null ? text : text.slice(declaration[0].length);
   if (/<!DOCTYPE|<!--|-->|<!\[CDATA\[|<\?|\?>/iu.test(body)) throw new Error("structured plist is malformed");
   for (const character of body) {
@@ -147,9 +147,9 @@ function plistKeys(text: string, limits: DiscoveryLimits): CollectedStructure {
     || value >= 0x20 && value <= 0xd7ff
     || value >= 0xe000 && value <= 0xfffd
     || value >= 0x10000 && value <= 0x10ffff;
-  const withoutEntities = body.replace(/&([^;]*);/gu, (entity, value: string): string => {
+  const withoutEntities = body.replace(/&([^&;]*);/gu, (entity, value: string): string => {
     const decimal = value.match(/^#([0-9]+)$/u);
-    const hexadecimal = value.match(/^#x([0-9a-f]+)$/iu);
+    const hexadecimal = value.match(/^#x([0-9a-fA-F]+)$/u);
     const codePoint = decimal !== null
       ? Number.parseInt(decimal[1]!, 10)
       : hexadecimal !== null
@@ -177,8 +177,8 @@ function plistKeys(text: string, limits: DiscoveryLimits): CollectedStructure {
   let incomplete = false;
 
   const consumeText = (fragment: string): void => {
-    if (fragment.includes("<")) throw new Error("structured plist is malformed");
-    if (fragment.trim() === "") return;
+    if (fragment.includes("<") || fragment.includes("]]>")) throw new Error("structured plist is malformed");
+    if (/^[\t\n\r ]*$/u.test(fragment)) return;
     const frame = stack.at(-1);
     if (frame === undefined || !textTags.has(frame.tag)) throw new Error("structured plist is malformed");
     if (frame.tag === "key") frame.text = `${frame.text ?? ""}${fragment}`;
@@ -205,18 +205,18 @@ function plistKeys(text: string, limits: DiscoveryLimits): CollectedStructure {
   };
 
   let cursor = 0;
-  for (const match of body.matchAll(/<[^>]*>/gu)) {
+  for (const match of body.matchAll(/<[^<>]*>/gu)) {
     consumeText(body.slice(cursor, match.index));
     cursor = match.index + match[0].length;
-    const closing = match[0].match(/^<\/(plist|dict|array|key|string|integer|real|true|false|date|data)\s*>$/iu);
+    const closing = match[0].match(/^<\/(plist|dict|array|key|string|integer|real|true|false|date|data)[\t\n\r ]*>$/u);
     if (closing !== null) {
-      closeTag(closing[1]!.toLowerCase());
+      closeTag(closing[1]!);
       continue;
     }
-    const plist = match[0].match(/^<(plist)(?:\s+version=(?:"1\.0"|'1\.0'))?\s*>$/iu);
-    const opening = plist ?? match[0].match(/^<(dict|array|key|string|integer|real|true|false|date|data)\s*(\/?)>$/iu);
+    const plist = match[0].match(/^<(plist)(?:[\t\n\r ]+version=(?:"1\.0"|'1\.0'))?[\t\n\r ]*>$/u);
+    const opening = plist ?? match[0].match(/^<(dict|array|key|string|integer|real|true|false|date|data)[\t\n\r ]*(\/?)>$/u);
     if (opening === null) throw new Error("structured plist is malformed");
-    const tag = opening[1]!.toLowerCase();
+    const tag = opening[1]!;
     const selfClosing = plist === null && opening[2] === "/";
     if (rootClosed) throw new Error("structured plist is malformed");
     const parent = stack.at(-1);
