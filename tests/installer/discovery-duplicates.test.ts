@@ -18,6 +18,7 @@ function records(root: string, extra = false, filenamePrefix = ""): readonly Evi
     family,
     sourceKind: "json" as const,
     sourcePath: `${root}/${filenamePrefix}${name}`,
+    sourceIdentity: `${root}/${filenamePrefix}${name}`,
     signalId,
     strength,
     status: "COMPLETE" as const,

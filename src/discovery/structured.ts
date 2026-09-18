@@ -47,6 +47,7 @@ async function readAtMostOneOverflowByte(
 export async function readBoundedTextFile(path: string, limits: DiscoveryLimits): Promise<{
   readonly path: string;
   readonly text: string;
+  readonly sourceIdentity: string;
 }> {
   validateLimits(limits);
   if (!isAbsolute(path)) throw new Error("structured file path must be absolute");
@@ -79,7 +80,7 @@ export async function readBoundedTextFile(path: string, limits: DiscoveryLimits)
     } catch {
       throw new Error("structured file is not valid UTF-8");
     }
-    return { path: normalized, text };
+    return { path: normalized, text, sourceIdentity: `${openedMetadata.dev}:${openedMetadata.ino}` };
   } finally {
     await handle.close();
   }
@@ -127,7 +128,10 @@ export function collectStructureKeys(value: unknown, limits: DiscoveryLimits): C
 
 function plistKeys(text: string, limits: DiscoveryLimits): CollectedStructure {
   const declaration = text.match(/^[\t\n\r ]*<\?xml[\t\n\r ]+version=(?:"1\.0"|'1\.0')(?:[\t\n\r ]+encoding=(?:"UTF-8"|'UTF-8'))?[\t\n\r ]*\?>/u);
-  const body = declaration === null ? text : text.slice(declaration[0].length);
+  const prolog = declaration === null ? text : text.slice(declaration[0].length);
+  // Recognize the standard declaration as inert syntax; never load a DTD or expand entities.
+  const doctype = prolog.match(/^[\t\n\r ]*<!DOCTYPE[\t\n\r ]+plist[\t\n\r ]+PUBLIC[\t\n\r ]+(?:"-\/\/Apple\/\/DTD PLIST 1\.0\/\/EN"|'-\/\/Apple\/\/DTD PLIST 1\.0\/\/EN')[\t\n\r ]+(?:"http:\/\/www\.apple\.com\/DTDs\/PropertyList-1\.0\.dtd"|'http:\/\/www\.apple\.com\/DTDs\/PropertyList-1\.0\.dtd')[\t\n\r ]*>/u);
+  const body = doctype === null ? prolog : prolog.slice(doctype[0].length);
   if (/<!DOCTYPE|<!--|-->|<!\[CDATA\[|<\?|\?>/iu.test(body)) throw new Error("structured plist is malformed");
   for (const character of body) {
     const codePoint = character.codePointAt(0)!;
@@ -274,6 +278,7 @@ export function evidenceForStructure(
   status: DiscoveryStatus,
   limits: DiscoveryLimits,
   catalog: DiscoveryCatalog = loadDiscoveryCatalog(),
+  sourceIdentity?: string,
 ): readonly EvidenceRecord[] {
   const normalized = new Set(matchKeys.map(normalizedKey));
   const safeMetadata = Object.freeze(
@@ -288,6 +293,7 @@ export function evidenceForStructure(
       family: signal.family,
       sourceKind,
       sourcePath: safePath,
+      ...(sourceIdentity === undefined ? {} : { sourceIdentity }),
       signalId: signal.id,
       strength: signal.strength,
       status,
@@ -330,5 +336,6 @@ export async function analyzeStructuredFile(
     collected.status,
     limits,
     catalog,
+    source.sourceIdentity,
   );
 }

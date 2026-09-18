@@ -32,6 +32,69 @@ async function canonicalTemporary(prefix: string): Promise<string> {
   return realpath(await mkdtemp(join(tmpdir(), prefix)));
 }
 
+test("plist evidence accepts only the standard inert Apple document declaration", async () => {
+  const root = await canonicalTemporary("agent-governance-plist-doctype-");
+  const path = join(root, "runtime.plist");
+  const document = '<plist version="1.0"><dict><key>transport</key><string>local</string><key>command</key><string>passive</string></dict></plist>';
+  const standard = '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">';
+  try {
+    await writeFile(path, `<?xml version="1.0" encoding="UTF-8"?>\n${standard}\n${document}`);
+    const records = await analyzeStructuredFile(path, LIMITS);
+    assert.equal(records.some(({ family }) => family === "runtime"), true);
+    assert.equal(records.every(({ status }) => status === "COMPLETE"), true);
+    await writeFile(path, `${standard.replaceAll('"', "'").replace(" PUBLIC ", "\nPUBLIC\t")}\n${document}`);
+    assert.equal((await analyzeStructuredFile(path, LIMITS)).some(({ family }) => family === "runtime"), true);
+    for (const invalid of [
+      standard.replace("www.apple.com", "untrusted.invalid"),
+      standard.replace(">", ' [<!ENTITY payload SYSTEM "file:///private">]>'),
+      '<!DOCTYPE plist SYSTEM "file:///private">',
+      standard.replace("DOCTYPE plist", "DOCTYPE other"),
+      standard.replace("PUBLIC", "public"),
+      `${standard}${standard}`,
+      `${document}${standard}`,
+    ]) {
+      await writeFile(path, `${invalid}${document}`);
+      await assert.rejects(() => analyzeStructuredFile(path, LIMITS), /malformed/i);
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("SQLite exact object and column limits remain complete while overflow is bounded", async () => {
+  const root = await canonicalTemporary("agent-governance-sqlite-exact-limits-");
+  const path = join(root, "state.sqlite");
+  try {
+    const database = new DatabaseSync(path);
+    database.exec("CREATE TABLE sessions (transport TEXT, tools TEXT)");
+    database.close();
+    for (const [maxSqliteObjects, maxSqliteColumns, expected] of [
+      [1, 2, "COMPLETE"],
+      [2, 2, "COMPLETE"],
+      [2, 3, "COMPLETE"],
+      [1, 1, "INCOMPLETE"],
+    ] as const) {
+      const records = await analyzeSqliteSchema(path, { ...LIMITS, maxSqliteObjects, maxSqliteColumns });
+      assert.equal(records.length > 0, true);
+      assert.equal(records.every(({ status }) => status === expected), true, `${maxSqliteObjects}/${maxSqliteColumns}`);
+      assert.equal(records.every(({ metadata }) => metadata.filter((item) => item.startsWith("column:")).length <= maxSqliteColumns), true);
+    }
+    const expanded = new DatabaseSync(path);
+    expanded.exec("CREATE TABLE tools (command TEXT)");
+    expanded.close();
+    const exactAggregate = await analyzeSqliteSchema(path, { ...LIMITS, maxSqliteObjects: 2, maxSqliteColumns: 3 });
+    assert.equal(exactAggregate.length > 0, true);
+    assert.equal(exactAggregate.every(({ status }) => status === "COMPLETE"), true);
+    for (const limits of [{ maxSqliteObjects: 1, maxSqliteColumns: 8 }, { maxSqliteObjects: 2, maxSqliteColumns: 2 }]) {
+      const records = await analyzeSqliteSchema(path, { ...LIMITS, ...limits });
+      assert.equal(records.length > 0, true);
+      assert.equal(records.every(({ status }) => status === "INCOMPLETE"), true);
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("structured analysis emits bounded sanitized keys for JSON, TOML, and plist without values", async () => {
   const root = await canonicalTemporary("agent-governance-structured-");
   const secret = "VALUE-MUST-NEVER-LEAVE-THE-FILE";

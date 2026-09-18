@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import fsPromises from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
 import { chmod, mkdir, mkdtemp, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -163,7 +165,6 @@ test("enumeration enforces file, depth, entry, and deadline budgets", async () =
     name: string;
     limits: DiscoveryLimits;
     expectedIssue: "FILE_LIMIT" | "DEPTH_LIMIT" | "ENTRY_LIMIT" | "TIME_LIMIT";
-    clock?: () => number;
   }> = [
     { name: "file", limits: { ...LIMITS, maxFiles: 1 }, expectedIssue: "FILE_LIMIT" },
     { name: "depth", limits: { ...LIMITS, maxDepth: 1 }, expectedIssue: "DEPTH_LIMIT" },
@@ -172,16 +173,14 @@ test("enumeration enforces file, depth, entry, and deadline budgets", async () =
       name: "time",
       limits: { ...LIMITS, maxDurationMs: 2 },
       expectedIssue: "TIME_LIMIT",
-      clock: (() => {
-        let tick = 0;
-        return () => tick++;
-      })(),
     },
   ];
 
   for (const scenario of scenarios) {
     const fixture = await syntheticEnvironment();
     const candidate = join(fixture.xdgConfig, `runtime-${scenario.name}`);
+    const originalLstat = fsPromises.lstat;
+    let elapsed = 0;
     try {
       await mkdir(join(candidate, "nested", "deeper"), { recursive: true });
       await Promise.all([
@@ -190,16 +189,25 @@ test("enumeration enforces file, depth, entry, and deadline budgets", async () =
         writeFile(join(candidate, "nested", "three.json"), "{}"),
         writeFile(join(candidate, "nested", "deeper", "four.json"), "{}"),
       ]);
+      fsPromises.lstat = (async (...args: Parameters<typeof originalLstat>) => {
+        if (scenario.name === "time" && String(args[0]).startsWith(`${candidate}/`)) {
+          elapsed = scenario.limits.maxDurationMs;
+        }
+        return originalLstat(...args);
+      }) as typeof originalLstat;
+      syncBuiltinESMExports();
       const candidates = await enumerateCandidates(
         [{ id: "config", root: fixture.xdgConfig, candidateClass: "DIRECTORY" }],
         scenario.limits,
-        scenario.clock ?? (() => 0),
+        () => elapsed,
       );
       assert.equal(candidates[0]?.status, "INCOMPLETE", scenario.name);
       assert.equal(candidates[0]?.issues.includes(scenario.expectedIssue), true, scenario.name);
       assert.equal(candidates[0]!.files.length <= scenario.limits.maxFiles, true, scenario.name);
       assert.equal(candidates[0]!.entriesVisited <= scenario.limits.maxEntries, true, scenario.name);
     } finally {
+      fsPromises.lstat = originalLstat;
+      syncBuiltinESMExports();
       await rm(fixture.root, { recursive: true, force: true });
     }
   }

@@ -173,9 +173,13 @@ export async function enumerateCandidates(
   const seen = new Set<string>();
 
   for (const [zoneIndex, zone] of zones.entries()) {
+    if (expired()) break;
     const zoneEntryStart = counters.entries;
     const zoneFileStart = counters.files;
     const remainingZones = zones.length - zoneIndex;
+    const zoneStarted = clock();
+    const zoneDeadline = zoneStarted + Math.max(0, deadline - zoneStarted) / remainingZones;
+    const zoneExpired = (): boolean => clock() >= zoneDeadline;
     const zoneEntryLimit = Math.floor((limits.maxEntries - counters.entries) / remainingZones);
     const zoneFileLimit = Math.floor((limits.maxFiles - counters.files) / remainingZones);
     const zoneStart = candidates.length;
@@ -193,7 +197,7 @@ export async function enumerateCandidates(
     for await (const entry of handle) {
       if (counters.entries - zoneEntryStart >= zoneEntryLimit) break;
       if (counters.files - zoneFileStart >= zoneFileLimit) break;
-      if (counters.entries >= limits.maxEntries || counters.files >= limits.maxFiles || expired()) break;
+      if (counters.entries >= limits.maxEntries || counters.files >= limits.maxFiles || zoneExpired()) break;
       counters.entries += 1;
       const path = join(root, entry.name);
       let metadata;
@@ -219,6 +223,9 @@ export async function enumerateCandidates(
     }
     for (const [candidateIndex, candidate] of zoneCandidates.entries()) {
       const remainingCandidates = zoneCandidates.length - candidateIndex;
+      const candidateStarted = clock();
+      const candidateDeadline = Math.min(zoneDeadline,
+        candidateStarted + Math.max(0, zoneDeadline - candidateStarted) / remainingCandidates);
       const candidateEntryStart = counters.entries;
       const candidateFileStart = counters.files;
       const candidateEntryLimit = Math.floor(
@@ -235,10 +242,9 @@ export async function enumerateCandidates(
         candidateEntryLimit,
         candidateFileStart,
         candidateFileLimit,
-        expired,
+        () => clock() >= candidateDeadline,
       );
       candidates.push(complete(candidate));
-      if (candidate.issues.has("TIME_LIMIT")) break;
     }
     const sortedZoneCandidates = candidates.slice(zoneStart).sort((left, right) => left.root.localeCompare(right.root));
     candidates.splice(zoneStart, sortedZoneCandidates.length, ...sortedZoneCandidates);

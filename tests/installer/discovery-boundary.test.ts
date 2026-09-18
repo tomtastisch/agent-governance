@@ -17,6 +17,7 @@ function cluster(root: string): readonly EvidenceRecord[] {
     family,
     sourceKind: "json" as const,
     sourcePath: `${root}/${name}`,
+    sourceIdentity: `${root}/${name}`,
     signalId,
     strength,
     status: "COMPLETE" as const,

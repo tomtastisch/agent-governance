@@ -24,6 +24,7 @@ function evidence(
     family,
     sourceKind,
     sourcePath: `${root}/${name}`,
+    sourceIdentity: `${root}/${name}`,
     signalId,
     strength,
     status: "COMPLETE",
@@ -44,6 +45,19 @@ function classify(
     activityAt: 100,
   });
 }
+
+test("high confidence requires physical identity and distinguishes devices", () => {
+  const root = "/synthetic/runtime-profile";
+  const records = [
+    evidence(root, "runtime.json", "runtime", "runtime_endpoint", "strong"),
+    evidence(root, "state.json", "state", "state_continuity", "strong"),
+    evidence(root, "tools.json", "tooling", "tool_registry", "corroborating"),
+  ];
+  assert.notEqual(classify(records.map(({ sourceIdentity: _identity, ...record }) => record)).confidence, "HIGH_CONFIDENCE");
+  const distinct = records.map((record, index) => ({ ...record, sourceIdentity: `${index + 1}:42` }));
+  assert.equal(classify(distinct).confidence, "HIGH_CONFIDENCE");
+  assert.equal(classify(distinct.map((record) => ({ ...record, sourceIdentity: "1:42" }))).independentSources, 1);
+});
 
 test("independent Runtime, State, Tooling, and AI metadata sources qualify as high confidence", () => {
   const root = "/synthetic/runtime-profile";

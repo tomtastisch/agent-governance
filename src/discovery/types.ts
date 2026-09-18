@@ -65,6 +65,7 @@ export interface EvidenceRecord {
   readonly family: EvidenceFamily;
   readonly sourceKind: EvidenceSourceKind;
   readonly sourcePath: string;
+  readonly sourceIdentity?: string;
   readonly signalId: string;
   readonly strength: EvidenceStrength;
   readonly status: DiscoveryStatus;

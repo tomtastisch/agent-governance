@@ -65,7 +65,8 @@ export function classifyEvidence(
   const root = resolve(context.root ?? commonSourceRoot(records));
   const evidence = catalogEvidence(records, catalog);
   const families = [...new Set(evidence.map(({ family }) => family))].sort();
-  const independentSources = new Set(evidence.map(({ sourcePath }) => resolve(sourcePath))).size;
+  const independentSources = new Set(evidence.map(({ sourcePath, sourceIdentity }) =>
+    sourceIdentity === undefined ? `path:${resolve(sourcePath)}` : `file:${sourceIdentity}`)).size;
   const score = families.reduce((total, family) => total + catalog.evidenceFamilies[family].weight, 0);
   const candidateClass = context.candidateClass ?? "DIRECTORY";
   const status = context.status ?? (evidence.every(({ status: recordStatus }) => recordStatus === "COMPLETE")
@@ -88,6 +89,7 @@ export function classifyEvidence(
   const hasAnchor = families.includes("runtime") || families.includes("state") || packageOnly;
   const high = candidateClass === "DIRECTORY" &&
     complete &&
+    evidence.every(({ sourceIdentity }) => sourceIdentity !== undefined) &&
     score >= catalog.confidence.highMinimumScore &&
     families.length >= catalog.confidence.highMinimumFamilies &&
     independentSources >= catalog.confidence.highMinimumIndependentSources &&

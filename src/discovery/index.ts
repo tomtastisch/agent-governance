@@ -64,16 +64,20 @@ async function analyzeCandidateFiles(
 export async function discoverCandidates(options: DiscoverCandidatesOptions): Promise<readonly Candidate[]> {
   const catalog = loadDiscoveryCatalog(options.releaseRoot);
   const clock = options.clock ?? Date.now;
-  const deadline = clock() + catalog.limits.maxDurationMs;
+  const started = clock();
+  const deadline = started + catalog.limits.maxDurationMs;
   const enumerated = await enumerateCandidates(
     discoverZones(options.environment),
     catalog.limits,
     clock,
-    deadline,
+    started + catalog.limits.maxDurationMs / 2,
   );
   const classified: Candidate[] = [];
-  for (const candidate of enumerated) {
-    const analysis = await analyzeCandidateFiles(candidate.files, catalog.limits, catalog, clock, deadline);
+  for (const [candidateIndex, candidate] of enumerated.entries()) {
+    const candidateStarted = clock();
+    if (candidateStarted >= deadline) break;
+    const candidateDeadline = candidateStarted + (deadline - candidateStarted) / (enumerated.length - candidateIndex);
+    const analysis = await analyzeCandidateFiles(candidate.files, catalog.limits, catalog, clock, candidateDeadline);
     const status = candidate.status === "INCOMPLETE" || analysis.status === "INCOMPLETE" ? "INCOMPLETE" : "COMPLETE";
     classified.push(classifyEvidence(analysis.evidence, catalog, {
       root: candidate.root,
@@ -82,7 +86,6 @@ export async function discoverCandidates(options: DiscoverCandidatesOptions): Pr
       fileCount: candidate.filesVisited,
       activityAt: analysis.activityAt,
     }));
-    if (analysis.deadlineExpired) break;
   }
   const positive = classified.filter(({ confidence }) => confidence !== "REJECTED");
   return resolveDuplicateCandidates(refineCandidateRoots(positive, catalog));

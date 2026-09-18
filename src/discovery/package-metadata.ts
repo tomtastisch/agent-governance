@@ -29,6 +29,7 @@ export async function analyzePackageMetadata(
     collected.status,
     limits,
     catalog,
+    source.sourceIdentity,
   );
   return Object.freeze(records.filter(({ family, strength }) => family === "package_metadata" && strength === "weak"));
 }

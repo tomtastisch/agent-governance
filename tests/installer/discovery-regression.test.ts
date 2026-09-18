@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import fsPromises from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
+import { link, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -7,10 +9,91 @@ import { loadDiscoveryCatalog } from "../../src/discovery/catalog.ts";
 import { classifyEvidence } from "../../src/discovery/classifier.ts";
 import { resolveCandidateIdentity } from "../../src/discovery/identity.ts";
 import { discoverCandidates } from "../../src/discovery/index.ts";
+import { enumerateCandidates } from "../../src/discovery/filesystem.ts";
 import type { CandidateClass, EvidenceFamily, EvidenceRecord, EvidenceStrength } from "../../src/discovery/types.ts";
 import { createReleaseFixture } from "../fixtures/installer/release.ts";
 
 const catalog = loadDiscoveryCatalog();
+
+for (const phase of ["enumeration", "analysis"] as const) {
+  test(`later zones retain time after slow early ${phase}`, async () => {
+    const fixture = await realpath(await mkdtemp(join(tmpdir(), "agent-governance-discovery-time-fairness-")));
+    const home = join(fixture, "home");
+    const config = join(fixture, "config");
+    const noise = join(home, "noise");
+    const candidate = join(config, "runtime-profile");
+    let elapsed = 0;
+    const originalLstat = fsPromises.lstat;
+    const originalOpen = fsPromises.open;
+    try {
+      await mkdir(noise, { recursive: true });
+      await mkdir(candidate, { recursive: true });
+      for (let index = 0; index < 80; index += 1) await writeFile(join(noise, `${index}.json`), "{}");
+      await writeFile(join(candidate, "runtime.json"), '{"transport":"local","command":"passive"}');
+      await writeFile(join(candidate, "state.json"), '{"sessions":[]}');
+      await writeFile(join(candidate, "tools.json"), '{"tools":[]}');
+      fsPromises.lstat = (async (...args: Parameters<typeof originalLstat>) => {
+        if (phase === "enumeration" && String(args[0]).startsWith(`${noise}/`)) elapsed += 5;
+        return originalLstat(...args);
+      }) as typeof originalLstat;
+      fsPromises.open = (async (...args: Parameters<typeof originalOpen>) => {
+        const handle = await originalOpen(...args);
+        if (phase === "analysis" && String(args[0]).startsWith(`${noise}/`)) {
+          const read = handle.read.bind(handle);
+          handle.read = ((...readArgs: Parameters<typeof read>) => {
+            elapsed += 10;
+            return read(...readArgs);
+          }) as typeof handle.read;
+        }
+        return handle;
+      }) as typeof originalOpen;
+      syncBuiltinESMExports();
+      if (phase === "enumeration") {
+        const enumerated = await enumerateCandidates([
+          { id: "home", root: home, candidateClass: "DIRECTORY" },
+          { id: "xdg_config", root: config, candidateClass: "DIRECTORY" },
+        ], catalog.limits, () => elapsed);
+        assert.equal(enumerated.some(({ root, files }) => root === candidate && files.length === 3), true);
+        elapsed = 0;
+      }
+      const discovered = await discoverCandidates({
+        environment: { home, xdgConfigHome: config, platform: "linux" },
+        clock: () => elapsed,
+      });
+      assert.equal(discovered.find(({ root }) => root === candidate)?.confidence, "HIGH_CONFIDENCE");
+      assert.equal(elapsed < catalog.limits.maxDurationMs, true);
+    } finally {
+      fsPromises.lstat = originalLstat;
+      fsPromises.open = originalOpen;
+      syncBuiltinESMExports();
+      await rm(fixture, { recursive: true, force: true });
+    }
+  });
+}
+
+test("hard-linked evidence cannot impersonate independent physical sources", async () => {
+  const fixture = await realpath(await mkdtemp(join(tmpdir(), "agent-governance-discovery-hardlinks-")));
+  const home = join(fixture, "home");
+  const candidate = join(home, "runtime-profile");
+  const content = JSON.stringify({ transport: "local", command: "passive", sessions: [], tools: [] });
+  try {
+    await mkdir(candidate, { recursive: true });
+    await writeFile(join(candidate, "runtime.json"), content);
+    await link(join(candidate, "runtime.json"), join(candidate, "state.json"));
+    await link(join(candidate, "runtime.json"), join(candidate, "tools.json"));
+    const options = { environment: { home, platform: "linux" as const }, clock: () => 0 };
+    assert.deepEqual(await discoverCandidates(options), []);
+    await rm(join(candidate, "state.json"));
+    await rm(join(candidate, "tools.json"));
+    await writeFile(join(candidate, "state.json"), content);
+    await writeFile(join(candidate, "tools.json"), content);
+    const independent = await discoverCandidates(options);
+    assert.equal(independent[0]?.confidence, "HIGH_CONFIDENCE");
+    assert.equal(independent[0]?.independentSources, 3);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
 
 function fixtureRecords(root: string, shape: "high" | "package" | "app" | "overlay"): readonly EvidenceRecord[] {
   const rows: Array<[string, EvidenceFamily, string, EvidenceStrength, EvidenceRecord["sourceKind"]]> =
@@ -31,6 +114,7 @@ function fixtureRecords(root: string, shape: "high" | "package" | "app" | "overl
     family,
     sourceKind,
     sourcePath: `${root}/${name}`,
+    sourceIdentity: `${root}/${name}`,
     signalId,
     strength,
     status: "COMPLETE" as const,
@@ -275,7 +359,8 @@ test("discoverCandidates applies one injected-clock deadline to enumeration and 
   const home = join(fixture, "home");
   const config = join(fixture, "config");
   const candidate = join(config, "runtime-profile");
-  let clockCalls = 0;
+  let elapsed = 0;
+  const originalOpen = fsPromises.open;
   try {
     await Promise.all([mkdir(home), mkdir(candidate, { recursive: true })]);
     await Promise.all([
@@ -284,13 +369,15 @@ test("discoverCandidates applies one injected-clock deadline to enumeration and 
       writeFile(join(candidate, "tools.json"), JSON.stringify({ tools: [] })),
     ]);
 
+    fsPromises.open = (async (...args: Parameters<typeof originalOpen>) => {
+      const handle = await originalOpen(...args);
+      if (String(args[0]) === join(candidate, "state.json")) elapsed = catalog.limits.maxDurationMs;
+      return handle;
+    }) as typeof originalOpen;
+    syncBuiltinESMExports();
     const discovered = await discoverCandidates({
       environment: { home, xdgConfigHome: config, platform: "linux" },
-      clock: () => {
-        clockCalls += 1;
-        if (clockCalls === 1) return 0;
-        return clockCalls <= 11 ? catalog.limits.maxDurationMs - 1 : catalog.limits.maxDurationMs;
-      },
+      clock: () => elapsed,
     });
 
     assert.equal(discovered.length, 1);
@@ -301,6 +388,8 @@ test("discoverCandidates applies one injected-clock deadline to enumeration and 
       ["runtime.json", "state.json"],
     );
   } finally {
+    fsPromises.open = originalOpen;
+    syncBuiltinESMExports();
     await rm(fixture, { recursive: true, force: true });
   }
 });

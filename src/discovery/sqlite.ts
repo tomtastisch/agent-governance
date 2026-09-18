@@ -59,13 +59,13 @@ export async function analyzeSqliteSchema(
       "SELECT type, name FROM sqlite_schema " +
       "WHERE type IN ('table', 'view', 'index', 'trigger') AND name NOT LIKE 'sqlite_%' " +
       "ORDER BY type, name LIMIT ?",
-    ).all(limits.maxSqliteObjects);
-    let incomplete = objects.length >= limits.maxSqliteObjects;
+    ).all(limits.maxSqliteObjects + 1);
+    let incomplete = objects.length > limits.maxSqliteObjects;
     let remainingColumns = limits.maxSqliteColumns;
     const matchKeys: string[] = [];
     const metadata: string[] = [];
 
-    for (const object of objects) {
+    for (const object of objects.slice(0, limits.maxSqliteObjects)) {
       if (typeof object.type !== "string" || typeof object.name !== "string") {
         throw new Error("SQLite schema returned invalid metadata");
       }
@@ -73,12 +73,13 @@ export async function analyzeSqliteSchema(
       const name = sanitizeDisplay(object.name, limits.maxMetadataLength);
       matchKeys.push(type, name);
       metadata.push(`${type}:${name}`);
-      if ((type !== "table" && type !== "view") || remainingColumns === 0) continue;
+      if (type !== "table" && type !== "view") continue;
       const columns = database.prepare(
         "SELECT name, type FROM pragma_table_info(?) ORDER BY cid LIMIT ?",
-      ).all(object.name, remainingColumns);
-      if (columns.length >= remainingColumns) incomplete = true;
-      for (const column of columns) {
+      ).all(object.name, remainingColumns + 1);
+      if (columns.length > remainingColumns) incomplete = true;
+      const acceptedColumns = columns.slice(0, remainingColumns);
+      for (const column of acceptedColumns) {
         if (typeof column.name !== "string" || typeof column.type !== "string") {
           throw new Error("SQLite schema returned invalid column metadata");
         }
@@ -87,7 +88,7 @@ export async function analyzeSqliteSchema(
         matchKeys.push(columnName);
         metadata.push(`column:${columnName}:${columnType}`);
       }
-      remainingColumns -= columns.length;
+      remainingColumns -= acceptedColumns.length;
     }
 
     const finalMetadata = await handle.stat();
@@ -109,6 +110,7 @@ export async function analyzeSqliteSchema(
       incomplete ? "INCOMPLETE" : "COMPLETE",
       limits,
       catalog,
+      `${opened.dev}:${opened.ino}`,
     );
   } finally {
     try {

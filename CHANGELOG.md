@@ -50,8 +50,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   begrenzt Reads auch bei gleichzeitig wachsenden Dateien.
 - plist-Evidence akzeptiert nur vollständig tokenisierte, begrenzte und wohlgeformte Hierarchien
   ohne kommentierte Signale, ungültige Entities, Attribute, Containertext oder übertiefe Strukturen.
+  Die Standard-Apple-DOCTYPE wird ausschließlich als inerte Deklaration erkannt, ohne DTD-Zugriff.
 - SQLite-Schema-Evidence erzwingt das Dateigrößenbudget und bleibt über einen nichtblockierend
   geöffneten Descriptor an die geprüfte reguläre Datei sowie `mode=ro&immutable=1` gebunden.
+  Exakt ausgeschöpfte Schema-Grenzen bleiben vollständig; ein begrenzter zusätzlicher Datensatz
+  unterscheidet sie von tatsächlichem Überlauf.
+- Unabhängige Evidence-Quellen werden anhand der geöffneten Dateiidentität gezählt; Hardlinks
+  desselben Objekts können keine hohe Konfidenz erzeugen.
+- Das Discovery-Zeitbudget reserviert Analysezeit und verteilt die verbleibende Zeit auf Zonen
+  und Kandidaten, damit eine frühe breite HOME-Struktur spätere XDG-Ziele nicht verdrängt.
 - Der geführte Init-Prompt beendet seinen Fortschrittsindikator auch nach Discovery- oder
   Planungsfehlern, sodass der CLI-Prozess deterministisch zurückkehrt.
 - Passive Discovery verteilt begrenzte Traversalbudgets auf Geschwister, toleriert erwartbare
