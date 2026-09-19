@@ -718,7 +718,8 @@ def check_tag(root=None, tag_ref=None, expected_commit=None, verifier=None):
     Args:
         root: Repository-Root
         tag_ref: Tag-Name. Wenn None → deterministisch v{VERSION}
-        expected_commit: Erwarteter Commit-SHA. Wenn None, HEAD.
+        expected_commit: Erwarteter Commit-SHA. Wenn None, muss der Tag-Commit
+            von HEAD (geschützte main-Historie) erreichbar sein.
         verifier: Callable(tag_ref, root) → (ok: bool, detail: str).
                   Wenn None → GitRunner.verify_signature.
     """
