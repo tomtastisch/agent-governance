@@ -131,6 +131,29 @@ test("overlays, one broad document, message-like metadata, and an AI-agent phras
   }
 });
 
+test("high confidence runtime requirement follows the catalog flag", () => {
+  const root = "/synthetic/runtime-optional";
+  const records = [
+    evidence(root, "state.json", "state", "state_continuity", "strong"),
+    evidence(root, "tools.json", "tooling", "tool_registry", "corroborating"),
+    evidence(root, "models.json", "ai_metadata", "model_configuration", "corroborating"),
+    evidence(root, "package.json", "package_metadata", "package_surface", "weak", "package_metadata"),
+  ];
+  const classifyWith = (highRequiresRuntime: boolean) => classifyEvidence(records, {
+    ...catalog,
+    confidence: { ...catalog.confidence, highRequiresRuntime },
+  }, {
+    root,
+    candidateClass: "DIRECTORY",
+    status: "COMPLETE",
+    fileCount: records.length,
+    activityAt: 100,
+  });
+
+  assert.equal(classifyWith(true).confidence, "UNCERTAIN");
+  assert.equal(classifyWith(false).confidence, "HIGH_CONFIDENCE");
+});
+
 test("duplicate signals from one source cannot inflate source, family, or score gates", () => {
   const root = "/synthetic/runtime-profile";
   const repeated = Array.from({ length: 12 }, () =>

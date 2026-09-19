@@ -182,6 +182,7 @@ export async function enumerateCandidates(
     const zoneExpired = (): boolean => clock() >= zoneDeadline;
     const zoneEntryLimit = Math.floor((limits.maxEntries - counters.entries) / remainingZones);
     const zoneFileLimit = Math.floor((limits.maxFiles - counters.files) / remainingZones);
+    const enumerationEntryLimit = Math.floor(zoneEntryLimit / 2);
     const zoneStart = candidates.length;
     const zoneCandidates: MutableCandidate[] = [];
     const root = await requireCanonicalDirectory(zone.root, `discovery zone ${zone.id}`);
@@ -195,7 +196,7 @@ export async function enumerateCandidates(
       throw error;
     }
     for await (const entry of handle) {
-      if (counters.entries - zoneEntryStart >= zoneEntryLimit) break;
+      if (counters.entries - zoneEntryStart >= enumerationEntryLimit) break;
       if (counters.files - zoneFileStart >= zoneFileLimit) break;
       if (counters.entries >= limits.maxEntries || counters.files >= limits.maxFiles || zoneExpired()) break;
       counters.entries += 1;
@@ -209,8 +210,9 @@ export async function enumerateCandidates(
       if (metadata.isSymbolicLink() || !metadata.isDirectory()) continue;
       if (zone.candidateClass === "APP_BUNDLE" && !entry.name.toLowerCase().endsWith(".app")) continue;
       const canonicalPath = await canonicalizeLiveCandidate(path);
-      if (canonicalPath !== path || seen.has(path)) continue;
-      seen.add(path);
+      const seenIdentity = `${zone.candidateClass}\0${path}`;
+      if (canonicalPath !== path || seen.has(seenIdentity)) continue;
+      seen.add(seenIdentity);
       const candidate: MutableCandidate = {
         root: path,
         candidateClass: zone.candidateClass,

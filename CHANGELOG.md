@@ -69,6 +69,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Zwischenkomponente ab.
 - Der Linux-PTY-Treiber setzt für Expect ausdrücklich `C.UTF-8`, damit Suche, Multiselect und manueller
   Fallback auch mit `TERM=linux`, `NO_COLOR` und 60×24-Zellen zuverlässig bedienbar bleiben.
+- Passive Discovery reserviert im Zonenbudget anteilig Traversalbudget, damit ein breiter Zonenroot
+  entdeckte Kandidaten nicht auf ein Nullbudget setzt, und dedupliziert kandidatenklassenbewusst,
+  damit sich DIRECTORY- und APP_BUNDLE-Sichten überlappender Zonen nicht gegenseitig verdecken.
+- Die plist-Evidence zählt jeden Strukturknoten gegen das Entry-Limit statt nur Keys, und der
+  Katalogwert `high_requires_runtime = false` wird korrekt beachtet, statt hohe Konfidenz
+  unabhängig von der Konfiguration auszuschließen.
 
 ### Removed
 

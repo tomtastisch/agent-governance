@@ -346,6 +346,50 @@ test("sibling candidates share the entry budget before a wide first sibling exha
   }
 });
 
+test("a zone root wider than its entry budget still traverses discovered candidates", async () => {
+  const fixture = await syntheticEnvironment();
+  const limits = { ...LIMITS, maxEntries: 10, maxFiles: 6 };
+  const target = join(fixture.xdgConfig, "0-target");
+  const targetFile = join(target, "runtime.json");
+  try {
+    await mkdir(target);
+    await writeFile(targetFile, "{}");
+    await Promise.all(
+      Array.from({ length: 9 }, (_, index) => writeFile(join(fixture.xdgConfig, `zz-${index}.json`), "{}")),
+    );
+
+    const candidates = await enumerateCandidates(
+      [{ id: "config", root: fixture.xdgConfig, candidateClass: "DIRECTORY" }],
+      limits,
+      () => 0,
+    );
+
+    assert.deepEqual(candidates.find(({ root }) => root === target)?.files, [targetFile]);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("cross-zone deduplication preserves the candidate class for overlapping roots", async () => {
+  const fixture = await syntheticEnvironment();
+  const app = join(fixture.systemApplications, "runtime.app");
+  try {
+    await mkdir(join(app, "Contents"), { recursive: true });
+    await writeFile(join(app, "Contents", "Info.plist"), "<plist><dict></dict></plist>");
+
+    const zones: readonly DiscoveryZone[] = [
+      { id: "overlap-directory", root: fixture.systemApplications, candidateClass: "DIRECTORY" },
+      { id: "overlap-app", root: fixture.systemApplications, candidateClass: "APP_BUNDLE" },
+    ];
+    const candidates = await enumerateCandidates(zones, LIMITS, () => 0);
+
+    assert.deepEqual(candidates.map(({ root }) => root), [app, app]);
+    assert.deepEqual(candidates.map(({ candidateClass }) => candidateClass), ["DIRECTORY", "APP_BUNDLE"]);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
 test("a candidate disappearing before canonicalization is skipped without hiding later candidates", async () => {
   const vanished = new Error("vanished") as NodeJS.ErrnoException;
   vanished.code = "ENOENT";

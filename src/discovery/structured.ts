@@ -179,6 +179,7 @@ function plistKeys(text: string, limits: DiscoveryLimits): CollectedStructure {
   let containerDepth = 0;
   let rootClosed = false;
   let incomplete = false;
+  let nodeCount = 0;
 
   const consumeText = (fragment: string): void => {
     if (fragment.includes("<") || fragment.includes("]]>")) throw new Error("structured plist is malformed");
@@ -223,6 +224,11 @@ function plistKeys(text: string, limits: DiscoveryLimits): CollectedStructure {
     const tag = opening[1]!;
     const selfClosing = plist === null && opening[2] === "/";
     if (rootClosed) throw new Error("structured plist is malformed");
+    nodeCount += 1;
+    if (nodeCount > limits.maxEntries) {
+      incomplete = true;
+      break;
+    }
     const parent = stack.at(-1);
     if (tag === "plist") {
       if (parent !== undefined || stack.length !== 0) throw new Error("structured plist is malformed");
@@ -258,8 +264,10 @@ function plistKeys(text: string, limits: DiscoveryLimits): CollectedStructure {
       closeTag(tag);
     }
   }
-  consumeText(body.slice(cursor));
-  if (stack.length > 0 || !rootClosed) throw new Error("structured plist is malformed");
+  if (!incomplete) {
+    consumeText(body.slice(cursor));
+    if (stack.length > 0 || !rootClosed) throw new Error("structured plist is malformed");
+  }
   return Object.freeze({
     keys: Object.freeze(keys),
     status: incomplete ? "INCOMPLETE" : "COMPLETE",

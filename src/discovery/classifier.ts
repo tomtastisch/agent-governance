@@ -93,8 +93,7 @@ export function classifyEvidence(
     score >= catalog.confidence.highMinimumScore &&
     families.length >= catalog.confidence.highMinimumFamilies &&
     independentSources >= catalog.confidence.highMinimumIndependentSources &&
-    catalog.confidence.highRequiresRuntime &&
-    strongRuntime &&
+    (!catalog.confidence.highRequiresRuntime || strongRuntime) &&
     stateAnchor &&
     additionalCorroboration;
   const plausible = packageOnly || (

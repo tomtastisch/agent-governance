@@ -266,6 +266,21 @@ for (const delimiter of ["&", "<"]) {
   });
 }
 
+test("plist evidence counts every structural node against the entry limit", async () => {
+  const root = await canonicalTemporary("agent-governance-plist-entry-nodes-");
+  const path = join(root, "large-array.plist");
+  try {
+    const items = Array.from({ length: 12 }, (_, index) => `<integer>${index}</integer>`).join("");
+    const content = `<plist><dict><key>transport</key><string>local</string><key>state</key><array>${items}</array></dict></plist>`;
+    await writeFile(path, content);
+    const records = await analyzeStructuredFile(path, { ...LIMITS, maxEntries: 8 });
+    assert.equal(records.length > 0, true);
+    assert.equal(records.every(({ status }) => status === "INCOMPLETE"), true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("a regular file replaced by a FIFO is opened nonblocking, rejected, and closed", async (t) => {
   if (process.platform === "win32") {
     t.skip("POSIX FIFO regression");
