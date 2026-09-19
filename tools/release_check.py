@@ -750,13 +750,25 @@ def check_tag(root=None, tag_ref=None, expected_commit=None, verifier=None):
         return r
 
     if expected_commit is None:
-        out2, err2, code2 = GitRunner.run(["rev-parse", "HEAD"], root)
-        if code2 != 0:
-            r.add_error(f"HEAD nicht auflösbar: {err2}")
+        # Immutable Release-Commit-Bindung: Der Tag-Commit muss Teil der
+        # geschützten main-Historie sein (von HEAD erreichbar), statt dem
+        # beweglichen main-Tip zu entsprechen. Ein bereits signierter
+        # Release-Tag bleibt so nach einem Workflow-only-Hotfix publizierbar,
+        # während fremde/divergente Tags weiterhin blockiert werden.
+        head_out, head_err, head_code = GitRunner.run(["rev-parse", "HEAD"], root)
+        if head_code != 0:
+            r.add_error(f"HEAD nicht auflösbar: {head_err}")
             return r
-        expected_commit = out2.strip()
-
-    if tag_commit != expected_commit:
+        head = head_out.strip()
+        _, anc_err, anc_code = GitRunner.run(
+            ["merge-base", "--is-ancestor", tag_commit, head], root
+        )
+        if anc_code != 0:
+            r.add_error(
+                f"Tag '{tag_ref}' zeigt auf {tag_commit[:12]}, "
+                f"das nicht von HEAD ({head[:12]}) aus erreichbar ist"
+            )
+    elif tag_commit != expected_commit:
         r.add_error(f"Tag '{tag_ref}' zeigt auf {tag_commit[:12]}, erwartet {expected_commit[:12]}")
 
     # ── Signaturprüfung (blockierend wenn README signierten Tag verlangt) ──
