@@ -961,6 +961,64 @@ class TagLightweightVsAnnotated(TagConsistencyBase):
         self.assertTrue(any("zeigt auf" in e for e in r.errors))
 
 
+class TagImmutableCommitBinding(TagConsistencyBase):
+    """Release-Commit-Bindung: Tag-Commit muss Teil der main-Historie sein.
+
+    Ein bereits signierter Release-Tag bleibt nach einem Workflow-only-Hotfix
+    auf main publizierbar (Tag-Commit ist weiterhin Vorfahre von main),
+    während fremde/divergente Tags blockiert werden.
+    """
+
+    def test_tag_commit_ancestor_of_head_is_ok(self):
+        self._init_git("0.1.0")
+        self._tag(self.root, "v0.1.0")
+        # Workflow-only-Hotfix auf main nach dem Tag
+        _write(os.path.join(self.root, ".github", "workflows", "hotfix.yml"), "x\n")
+        self._git("add", ".github/workflows/hotfix.yml")
+        self._git("-c", "commit.gpgsign=false", "commit", "-m", "workflow hotfix")
+        r = check_tag(root=self.root, verifier=self.mock_verifier)
+        self.assertTrue(r.ok, f"Erwartet OK (Tag-Commit ist Vorfahre von HEAD), Fehler: {r.errors}")
+
+    def test_tag_commit_not_reachable_from_head_is_error(self):
+        self._init_git("0.1.0")
+        self._tag(self.root, "v0.1.0")
+        # Divergenter/Orphan-Commit als HEAD, von dem der Tag-Commit nicht erreichbar ist
+        self._git("checkout", "--orphan", "orphan")
+        self._write_version_metadata("0.1.0")
+        self._git("add", "VERSION", "package.json", "package-lock.json", "CHANGELOG.md")
+        self._git("-c", "commit.gpgsign=false", "commit", "-m", "orphan")
+        r = check_tag(root=self.root, verifier=self.mock_verifier)
+        self.assertFalse(r.ok)
+        self.assertTrue(any("erreichbar" in e for e in r.errors), r.errors)
+
+    def test_tag_on_ancestor_with_stale_version_is_error(self):
+        self._init_git("0.1.0")
+        # Tag v0.2.0 zeigt auf Commit A mit VERSION=0.1.0
+        self._tag(self.root, "v0.2.0")
+        # main rückt auf 0.2.0 vor; der Tag bleibt auf dem alten Vorfahren
+        self._write_version_metadata("0.2.0")
+        self._git("add", "VERSION", "package.json", "package-lock.json", "CHANGELOG.md")
+        self._git("-c", "commit.gpgsign=false", "commit", "-m", "bump")
+        r = check_tag(root=self.root, tag_ref="v0.2.0", verifier=self.mock_verifier)
+        self.assertFalse(r.ok)
+        self.assertTrue(any("Tree-VERSION" in e for e in r.errors), r.errors)
+
+    def test_tag_on_ancestor_with_stale_package_version_is_error(self):
+        self._init_git("0.1.0")
+        # Tag-Commit mit VERSION=0.2.0, aber package.json=0.1.0 (inkonsistent)
+        _write(os.path.join(self.root, "VERSION"), "0.2.0\n")
+        self._git("add", "VERSION")
+        self._git("-c", "commit.gpgsign=false", "commit", "-m", "inconsistent tag tree")
+        self._tag(self.root, "v0.2.0")
+        # main konsistent auf 0.2.0
+        self._write_version_metadata("0.2.0")
+        self._git("add", "VERSION", "package.json", "package-lock.json", "CHANGELOG.md")
+        self._git("-c", "commit.gpgsign=false", "commit", "-m", "consistent main")
+        r = check_tag(root=self.root, tag_ref="v0.2.0", verifier=self.mock_verifier)
+        self.assertFalse(r.ok)
+        self.assertTrue(any("package.json-Version" in e for e in r.errors), r.errors)
+
+
 class TagVersionProjectionBinding(TagConsistencyBase):
     def _assert_drift_is_rejected(self, path, value):
         self._init_git("0.1.0")
