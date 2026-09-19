@@ -712,6 +712,14 @@ def check_docs_remote(root=None, gh=None, timeout=30):
 # Tag-Konsistenz
 # ═══════════════════════════════════════════════════════════════════════
 
+def _git_show_commit_file(commit, rel, root):
+    """Liest eine Datei aus dem Tree eines Commits. Gibt (content|None, error|None)."""
+    out, err, code = GitRunner.run(["show", f"{commit}:{rel}"], root)
+    if code != 0:
+        return None, f"Tag-Tree '{rel}' nicht lesbar: {err[:120]}"
+    return out, None
+
+
 def check_tag(root=None, tag_ref=None, expected_commit=None, verifier=None):
     """Prüft Konsistenz eines Git-Tags gegen VERSION.
 
@@ -771,6 +779,37 @@ def check_tag(root=None, tag_ref=None, expected_commit=None, verifier=None):
             )
     elif tag_commit != expected_commit:
         r.add_error(f"Tag '{tag_ref}' zeigt auf {tag_commit[:12]}, erwartet {expected_commit[:12]}")
+
+    # ── Tag-Tree-Version: Der zu veröffentlichende Tag-Inhalt muss exakt der
+    # autoritativen VERSION entsprechen, nicht nur der Name v{VERSION}. Sonst
+    # könnte ein signierter Tag auf einem älteren Vorfahren mit abweichenden
+    # Versionsprojektionen den Release-Tag-Gate passieren.
+    tag_version_out, tv_err = _git_show_commit_file(tag_commit, "VERSION", root)
+    if tv_err:
+        r.add_error(tv_err)
+    else:
+        tag_version = (
+            tag_version_out[:-1] if tag_version_out.endswith("\n") else tag_version_out
+        )
+        if tag_version != version:
+            r.add_error(
+                f"Tag '{tag_ref}' Tree-VERSION ({tag_version!r}) weicht von VERSION ({version}) ab"
+            )
+
+    tag_pkg_out, tp_err = _git_show_commit_file(tag_commit, "package.json", root)
+    if tp_err:
+        r.add_error(tp_err)
+    else:
+        try:
+            tag_pkg = json.loads(tag_pkg_out)
+        except json.JSONDecodeError:
+            r.add_error(f"Tag '{tag_ref}' Tree package.json ist kein gültiges JSON")
+        else:
+            if tag_pkg.get("version") != version:
+                r.add_error(
+                    f"Tag '{tag_ref}' Tree package.json-Version ({tag_pkg.get('version')}) "
+                    f"weicht von VERSION ({version}) ab"
+                )
 
     # ── Signaturprüfung (blockierend wenn README signierten Tag verlangt) ──
     vf = verifier or GitRunner.verify_signature

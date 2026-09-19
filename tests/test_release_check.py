@@ -991,6 +991,33 @@ class TagImmutableCommitBinding(TagConsistencyBase):
         self.assertFalse(r.ok)
         self.assertTrue(any("erreichbar" in e for e in r.errors), r.errors)
 
+    def test_tag_on_ancestor_with_stale_version_is_error(self):
+        self._init_git("0.1.0")
+        # Tag v0.2.0 zeigt auf Commit A mit VERSION=0.1.0
+        self._tag(self.root, "v0.2.0")
+        # main rückt auf 0.2.0 vor; der Tag bleibt auf dem alten Vorfahren
+        self._write_version_metadata("0.2.0")
+        self._git("add", "VERSION", "package.json", "package-lock.json", "CHANGELOG.md")
+        self._git("-c", "commit.gpgsign=false", "commit", "-m", "bump")
+        r = check_tag(root=self.root, tag_ref="v0.2.0", verifier=self.mock_verifier)
+        self.assertFalse(r.ok)
+        self.assertTrue(any("Tree-VERSION" in e for e in r.errors), r.errors)
+
+    def test_tag_on_ancestor_with_stale_package_version_is_error(self):
+        self._init_git("0.1.0")
+        # Tag-Commit mit VERSION=0.2.0, aber package.json=0.1.0 (inkonsistent)
+        _write(os.path.join(self.root, "VERSION"), "0.2.0\n")
+        self._git("add", "VERSION")
+        self._git("-c", "commit.gpgsign=false", "commit", "-m", "inconsistent tag tree")
+        self._tag(self.root, "v0.2.0")
+        # main konsistent auf 0.2.0
+        self._write_version_metadata("0.2.0")
+        self._git("add", "VERSION", "package.json", "package-lock.json", "CHANGELOG.md")
+        self._git("-c", "commit.gpgsign=false", "commit", "-m", "consistent main")
+        r = check_tag(root=self.root, tag_ref="v0.2.0", verifier=self.mock_verifier)
+        self.assertFalse(r.ok)
+        self.assertTrue(any("package.json-Version" in e for e in r.errors), r.errors)
+
 
 class TagVersionProjectionBinding(TagConsistencyBase):
     def _assert_drift_is_rejected(self, path, value):
