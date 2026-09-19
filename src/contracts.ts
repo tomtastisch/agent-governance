@@ -1,5 +1,15 @@
 export const COMMANDS = ["inspect", "plan", "install", "verify", "status", "update", "uninstall", "rollback"] as const;
 export type InstallerCommand = (typeof COMMANDS)[number];
+export type PublicCommandId = InstallerCommand | "init";
+export interface PublicCommandDefinition {
+  readonly id: PublicCommandId;
+  readonly path: readonly string[];
+  readonly description: string;
+  readonly capability: "transaction" | "orchestration";
+  readonly effect: "read" | "write";
+  readonly orchestrates: boolean;
+  readonly interactive: boolean;
+}
 export const INSTALL_STATES = ["FRESH", "CURRENT", "OUTDATED", "DOWNGRADE_BLOCKED", "ABSENT", "TAMPERED", "RECOVERY_REQUIRED"] as const;
 export type InstallState = (typeof INSTALL_STATES)[number];
 export const INSTALL_PHASES = ["inspect", "plan", "backup", "stage", "activate", "verify", "rollback"] as const;

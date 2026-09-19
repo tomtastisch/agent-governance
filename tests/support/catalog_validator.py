@@ -16,7 +16,14 @@ ID_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 MANIFEST_FIELDS = frozenset(
     {"schema_version", "local_rules", "catalogs", "routing", "modules", "roles"}
 )
-CATALOG_NAMES = ("triggers", "policy_tags", "scopes", "tools")
+CATALOG_NAMES = (
+    "triggers",
+    "policy_tags",
+    "scopes",
+    "tools",
+    "commands",
+    "discovery_signals",
+)
 VOCABULARY_FIELDS = frozenset({"label", "description"})
 MODULE_FIELDS = frozenset({"path", "triggers", "dependencies"})
 ROLE_FIELDS = frozenset({"path", "triggers", "modules"})
@@ -33,6 +40,63 @@ TOOL_FIELDS = frozenset(
         "constraints",
     }
 )
+COMMAND_FIELDS = frozenset(
+    {"id", "path", "description", "capability", "effect", "orchestrates", "interactive"}
+)
+COMMAND_SEMANTICS = {
+    "inspect": (("inspect",), "transaction", "read", False, False),
+    "plan": (("plan",), "transaction", "read", False, False),
+    "install": (("install",), "transaction", "write", False, False),
+    "verify": (("verify",), "transaction", "read", False, False),
+    "status": (("status",), "transaction", "read", False, False),
+    "update": (("update",), "transaction", "write", False, False),
+    "uninstall": (("uninstall",), "transaction", "write", False, False),
+    "rollback": (("rollback",), "transaction", "write", False, False),
+    "init": (("init",), "orchestration", "write", True, True),
+}
+DISCOVERY_TOP_LEVEL_FIELDS = frozenset(
+    {
+        "schema_version",
+        "limits",
+        "confidence",
+        "candidate_classes",
+        "evidence_families",
+        "signals",
+    }
+)
+DISCOVERY_LIMIT_FIELDS = frozenset(
+    {
+        "max_depth",
+        "max_files",
+        "max_entries",
+        "max_file_bytes",
+        "max_sqlite_objects",
+        "max_sqlite_columns",
+        "max_duration_ms",
+        "max_metadata_length",
+    }
+)
+DISCOVERY_CONFIDENCE_FIELDS = frozenset(
+    {
+        "high_minimum_score",
+        "high_minimum_families",
+        "high_minimum_independent_sources",
+        "high_requires_runtime",
+        "uncertain_minimum_score",
+    }
+)
+DISCOVERY_CANDIDATE_FIELDS = frozenset({"class", "label"})
+DISCOVERY_FAMILY_FIELDS = frozenset({"default_strength", "weight"})
+DISCOVERY_SIGNAL_FIELDS = frozenset(
+    {"id", "family", "source_kinds", "keys", "minimum_matches", "strength"}
+)
+DISCOVERY_FAMILIES = frozenset(
+    {"runtime", "state", "tooling", "ai_metadata", "package_metadata", "document"}
+)
+DISCOVERY_SOURCE_KINDS = frozenset(
+    {"json", "toml", "plist", "sqlite_schema", "package_metadata"}
+)
+DISCOVERY_STRENGTHS = frozenset({"strong", "corroborating", "weak"})
 
 
 class CatalogValidationError(RuntimeError):
@@ -48,12 +112,14 @@ class CatalogContract:
     policy_tags: frozenset[str]
     scopes: frozenset[str]
     tools: Mapping[str, Mapping[str, object]]
+    commands: tuple[Mapping[str, object], ...]
+    discovery: Mapping[str, object]
 
 
 def load_catalog_contract(
     manifest_dir: Path, *, manifest: Mapping[str, object] | None = None
 ) -> CatalogContract:
-    """Lädt und validiert Manifest plus vier Kataloge relativ zu einem absoluten Root."""
+    """Lädt und validiert Manifest plus alle Kataloge relativ zu einem absoluten Root."""
     root = _manifest_root(Path(manifest_dir))
     manifest_path = root / "manifest.toml"
     if manifest is None:
@@ -94,6 +160,8 @@ def load_catalog_contract(
     policy_tags = _validate_vocabulary(parsed_catalogs["policy_tags"], "policy_tags")
     scopes = _validate_vocabulary(parsed_catalogs["scopes"], "scopes")
     tools = _validate_tools(parsed_catalogs["tools"], triggers, policy_tags, scopes)
+    commands = _validate_commands(parsed_catalogs["commands"])
+    discovery = _validate_discovery(parsed_catalogs["discovery_signals"])
     _validate_manifest_index(root, manifest_data, triggers)
     _validate_tool_routing(manifest_data, tools)
 
@@ -105,6 +173,8 @@ def load_catalog_contract(
         policy_tags=policy_tags,
         scopes=scopes,
         tools=tools,
+        commands=commands,
+        discovery=discovery,
     )
 
 
@@ -235,6 +305,150 @@ def _validate_tools(
     return tools
 
 
+def _validate_commands(catalog: Mapping[str, object]) -> tuple[Mapping[str, object], ...]:
+    _exact_fields(catalog, frozenset({"schema_version", "commands"}), "commands Top-Level")
+    if type(catalog.get("schema_version")) is not int or catalog["schema_version"] != 1:
+        raise CatalogValidationError("commands schema_version muss Integer 1 sein")
+    raw_commands = catalog.get("commands")
+    if not isinstance(raw_commands, list) or not raw_commands:
+        raise CatalogValidationError("commands muss eine nichtleere Liste sein")
+    commands: list[Mapping[str, object]] = []
+    ids: set[str] = set()
+    paths: set[tuple[str, ...]] = set()
+    for index, command in enumerate(raw_commands):
+        context = f"commands[{index}]"
+        if not isinstance(command, Mapping):
+            raise CatalogValidationError(f"{context} muss eine Tabelle sein")
+        _exact_fields(command, COMMAND_FIELDS, context)
+        command_id = _validate_id(command.get("id"), context)
+        if command_id in ids:
+            raise CatalogValidationError("commands enthält doppelte IDs")
+        raw_path = command.get("path")
+        if not isinstance(raw_path, list) or not raw_path or any(
+            not isinstance(segment, str) or re.fullmatch(r"[a-z][a-z0-9-]*", segment) is None
+            for segment in raw_path
+        ):
+            raise CatalogValidationError(f"{context}.path ist ungültig")
+        path = tuple(raw_path)
+        if path in paths:
+            raise CatalogValidationError("commands enthält doppelte Pfade")
+        description = _nonempty_text(command.get("description"), f"{context}.description")
+        if re.search(r"[\x00\r\n\x1b]", description):
+            raise CatalogValidationError(f"{context}.description enthält Steuerzeichen")
+        for field in ("capability", "effect"):
+            _nonempty_text(command.get(field), f"{context}.{field}")
+        for field in ("orchestrates", "interactive"):
+            if type(command.get(field)) is not bool:
+                raise CatalogValidationError(f"{context}.{field} muss Boolean sein")
+        expected = COMMAND_SEMANTICS.get(command_id)
+        actual = (
+            path,
+            command["capability"],
+            command["effect"],
+            command["orchestrates"],
+            command["interactive"],
+        )
+        if expected is None or actual != expected:
+            raise CatalogValidationError(f"{context} verletzt die Command-Semantik")
+        ids.add(command_id)
+        paths.add(path)
+        commands.append(command)
+    if ids != set(COMMAND_SEMANTICS):
+        raise CatalogValidationError("commands muss exakt alle öffentlichen IDs enthalten")
+    return tuple(commands)
+
+
+def _validate_discovery(catalog: Mapping[str, object]) -> Mapping[str, object]:
+    _exact_fields(catalog, DISCOVERY_TOP_LEVEL_FIELDS, "discovery_signals Top-Level")
+    if type(catalog.get("schema_version")) is not int or catalog["schema_version"] != 1:
+        raise CatalogValidationError("discovery_signals schema_version muss Integer 1 sein")
+
+    limits = catalog.get("limits")
+    if not isinstance(limits, Mapping):
+        raise CatalogValidationError("discovery_signals limits muss eine Tabelle sein")
+    _exact_fields(limits, DISCOVERY_LIMIT_FIELDS, "discovery_signals limits")
+    for field, value in limits.items():
+        _positive_integer(value, f"discovery_signals limits.{field}")
+
+    confidence = catalog.get("confidence")
+    if not isinstance(confidence, Mapping):
+        raise CatalogValidationError("discovery_signals confidence muss eine Tabelle sein")
+    _exact_fields(confidence, DISCOVERY_CONFIDENCE_FIELDS, "discovery_signals confidence")
+    for field in (
+        "high_minimum_score",
+        "high_minimum_families",
+        "high_minimum_independent_sources",
+        "uncertain_minimum_score",
+    ):
+        _positive_integer(confidence.get(field), f"discovery_signals confidence.{field}")
+    if type(confidence.get("high_requires_runtime")) is not bool:
+        raise CatalogValidationError(
+            "discovery_signals confidence.high_requires_runtime muss Boolean sein"
+        )
+    if confidence["uncertain_minimum_score"] >= confidence["high_minimum_score"]:
+        raise CatalogValidationError(
+            "discovery_signals uncertain_minimum_score muss kleiner als high_minimum_score sein"
+        )
+
+    candidate_classes = catalog.get("candidate_classes")
+    if not isinstance(candidate_classes, Mapping):
+        raise CatalogValidationError("discovery_signals candidate_classes muss eine Tabelle sein")
+    _exact_fields(
+        candidate_classes,
+        frozenset({"directory", "app_bundle"}),
+        "discovery_signals candidate_classes",
+    )
+    expected_classes = {"directory": "DIRECTORY", "app_bundle": "APP_BUNDLE"}
+    for class_id, expected_class in expected_classes.items():
+        entry = candidate_classes[class_id]
+        if not isinstance(entry, Mapping):
+            raise CatalogValidationError(f"discovery_signals candidate_classes.{class_id} muss eine Tabelle sein")
+        _exact_fields(entry, DISCOVERY_CANDIDATE_FIELDS, f"candidate_classes.{class_id}")
+        if entry.get("class") != expected_class:
+            raise CatalogValidationError(f"candidate_classes.{class_id}.class ist ungültig")
+        _nonempty_text(entry.get("label"), f"candidate_classes.{class_id}.label")
+
+    families = catalog.get("evidence_families")
+    if not isinstance(families, Mapping):
+        raise CatalogValidationError("discovery_signals evidence_families muss eine Tabelle sein")
+    _exact_fields(families, DISCOVERY_FAMILIES, "discovery_signals evidence_families")
+    for family_id, family in families.items():
+        if not isinstance(family, Mapping):
+            raise CatalogValidationError(f"evidence_families.{family_id} muss eine Tabelle sein")
+        _exact_fields(family, DISCOVERY_FAMILY_FIELDS, f"evidence_families.{family_id}")
+        if family.get("default_strength") not in DISCOVERY_STRENGTHS:
+            raise CatalogValidationError(f"evidence_families.{family_id}.default_strength ist ungültig")
+        _positive_integer(family.get("weight"), f"evidence_families.{family_id}.weight")
+
+    signals = catalog.get("signals")
+    if not isinstance(signals, list) or not signals:
+        raise CatalogValidationError("discovery_signals signals muss eine nichtleere Liste sein")
+    signal_ids: set[str] = set()
+    for index, signal in enumerate(signals):
+        context = f"discovery_signals signals[{index}]"
+        if not isinstance(signal, Mapping):
+            raise CatalogValidationError(f"{context} muss eine Tabelle sein")
+        _exact_fields(signal, DISCOVERY_SIGNAL_FIELDS, context)
+        signal_id = _validate_id(signal.get("id"), context)
+        if signal_id in signal_ids:
+            raise CatalogValidationError("discovery_signals enthält doppelte IDs")
+        signal_ids.add(signal_id)
+        if signal.get("family") not in DISCOVERY_FAMILIES:
+            raise CatalogValidationError(f"{context}.family ist unbekannt")
+        source_kinds = _nonempty_id_list(signal.get("source_kinds"), f"{context}.source_kinds")
+        unknown_sources = set(source_kinds) - DISCOVERY_SOURCE_KINDS
+        if unknown_sources:
+            raise CatalogValidationError(f"{context}.source_kinds ist unbekannt: {sorted(unknown_sources)}")
+        keys = _nonempty_id_list(signal.get("keys"), f"{context}.keys")
+        minimum_matches = _positive_integer(signal.get("minimum_matches"), f"{context}.minimum_matches")
+        if minimum_matches > len(keys):
+            raise CatalogValidationError(f"{context}.minimum_matches überschreitet keys")
+        if signal.get("strength") not in DISCOVERY_STRENGTHS:
+            raise CatalogValidationError(f"{context}.strength ist ungültig")
+
+    return catalog
+
+
 def _validate_manifest_index(
     root: Path,
     manifest: Mapping[str, object],
@@ -348,4 +562,10 @@ def _known_references(
 def _nonempty_text(value: object, context: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise CatalogValidationError(f"{context} muss ein nichtleerer String sein")
+    return value
+
+
+def _positive_integer(value: object, context: str) -> int:
+    if type(value) is not int or value <= 0:
+        raise CatalogValidationError(f"{context} muss ein positiver Integer sein")
     return value

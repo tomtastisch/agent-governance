@@ -1,0 +1,106 @@
+schema_version = 1
+
+[limits]
+max_depth = 4
+max_files = 256
+max_entries = 4096
+max_file_bytes = 262144
+max_sqlite_objects = 128
+max_sqlite_columns = 128
+max_duration_ms = 250
+max_metadata_length = 96
+
+[confidence]
+high_minimum_score = 8
+high_minimum_families = 3
+high_minimum_independent_sources = 3
+high_requires_runtime = true
+uncertain_minimum_score = 2
+
+[candidate_classes.directory]
+class = "DIRECTORY"
+label = "Directory root"
+
+[candidate_classes.app_bundle]
+class = "APP_BUNDLE"
+label = "Application bundle"
+
+[evidence_families.runtime]
+default_strength = "strong"
+weight = 4
+
+[evidence_families.state]
+default_strength = "strong"
+weight = 3
+
+[evidence_families.tooling]
+default_strength = "corroborating"
+weight = 2
+
+[evidence_families.ai_metadata]
+default_strength = "corroborating"
+weight = 2
+
+[evidence_families.package_metadata]
+default_strength = "weak"
+weight = 1
+
+[evidence_families.document]
+default_strength = "weak"
+weight = 1
+
+[[signals]]
+id = "runtime_endpoint"
+family = "runtime"
+source_kinds = ["json", "toml", "plist"]
+keys = ["transport", "command", "arguments"]
+minimum_matches = 2
+strength = "strong"
+
+[[signals]]
+id = "state_continuity"
+family = "state"
+source_kinds = ["json", "toml", "plist", "sqlite_schema"]
+keys = ["sessions", "history", "state", "events"]
+minimum_matches = 1
+strength = "strong"
+
+[[signals]]
+id = "tool_registry"
+family = "tooling"
+source_kinds = ["json", "toml", "plist", "sqlite_schema"]
+keys = ["tools", "servers", "capabilities"]
+minimum_matches = 1
+strength = "corroborating"
+
+[[signals]]
+id = "model_configuration"
+family = "ai_metadata"
+source_kinds = ["json", "toml", "plist"]
+keys = ["models", "providers", "prompts"]
+minimum_matches = 1
+strength = "corroborating"
+
+[[signals]]
+id = "package_surface"
+family = "package_metadata"
+source_kinds = ["package_metadata"]
+keys = ["bin", "engines", "dependencies", "exports"]
+minimum_matches = 1
+strength = "weak"
+
+[[signals]]
+id = "structured_document"
+family = "document"
+source_kinds = ["json", "toml", "plist"]
+keys = ["transport", "state", "tools", "models", "providers", "instructions", "rules", "prompts", "command"]
+minimum_matches = 1
+strength = "weak"
+
+[[signals]]
+id = "schema_document"
+family = "document"
+source_kinds = ["sqlite_schema"]
+keys = ["table", "view", "index", "trigger"]
+minimum_matches = 1
+strength = "weak"

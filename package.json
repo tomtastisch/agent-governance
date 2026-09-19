@@ -1,7 +1,22 @@
 {
   "name": "@tomtastisch/agent-governance",
-  "version": "1.0.1",
-  "description": "Global explicit-path transactional installer for Agent Governance",
+  "version": "1.1.0",
+  "description": "Interactive and transactional installer for Agent Governance",
+  "keywords": [
+    "agent-governance",
+    "ai-governance",
+    "governance-as-code",
+    "policy-as-code",
+    "ai-agents",
+    "coding-agents",
+    "coding-agent-governance",
+    "ai-security",
+    "developer-tools",
+    "cli",
+    "harness-agnostic",
+    "llm",
+    "installer"
+  ],
   "type": "module",
   "bin": {
     "agent-governance": "dist/cli.js"
@@ -10,6 +25,7 @@
     "dist",
     "prebuilds",
     "bundle",
+    "assets/branding/agent-governance-terminal.png",
     "docs/installer-cli-reference.md",
     "CHANGELOG.md",
     "LICENSE",
@@ -44,5 +60,9 @@
   "publishConfig": {
     "access": "public",
     "provenance": true
+  },
+  "dependencies": {
+    "@clack/prompts": "1.7.0",
+    "smol-toml": "1.8.0"
   }
 }

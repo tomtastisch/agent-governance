@@ -19,6 +19,28 @@ EXPECTED_CATALOG_PATHS = {
     "policy_tags": "catalogs/policy-tags.toml",
     "scopes": "catalogs/scopes.toml",
     "tools": "catalogs/tools.toml",
+    "commands": "catalogs/commands.toml",
+    "discovery_signals": "catalogs/discovery-signals.toml",
+}
+EXPECTED_COMMANDS = {
+    "inspect": (["inspect"], "transaction", "read", False, False),
+    "plan": (["plan"], "transaction", "read", False, False),
+    "install": (["install"], "transaction", "write", False, False),
+    "verify": (["verify"], "transaction", "read", False, False),
+    "status": (["status"], "transaction", "read", False, False),
+    "update": (["update"], "transaction", "write", False, False),
+    "uninstall": (["uninstall"], "transaction", "write", False, False),
+    "rollback": (["rollback"], "transaction", "write", False, False),
+    "init": (["init"], "orchestration", "write", True, True),
+}
+COMMAND_FIELDS = {
+    "id",
+    "path",
+    "description",
+    "capability",
+    "effect",
+    "orchestrates",
+    "interactive",
 }
 EXPECTED_TOOLS = {
     "local_git_cli",
@@ -86,11 +108,58 @@ class CatalogContract(unittest.TestCase):
         )
         self.assertEqual(set(self.contract.catalogs["scopes"]), {"schema_version", "scopes"})
         self.assertEqual(set(self.contract.catalogs["tools"]), {"schema_version", "tools"})
+        self.assertEqual(set(self.contract.catalogs["commands"]), {"schema_version", "commands"})
+        self.assertEqual(
+            set(self.contract.catalogs["discovery_signals"]),
+            {
+                "schema_version",
+                "limits",
+                "confidence",
+                "candidate_classes",
+                "evidence_families",
+                "signals",
+            },
+        )
         for catalog_name in ("triggers", "policy_tags", "scopes"):
             for item_id, item in self.contract.catalogs[catalog_name][catalog_name].items():
                 self.assertEqual(set(item), {"label", "description"}, item_id)
         for tool_id, tool in self.contract.tools.items():
             self.assertEqual(set(tool), TOOL_FIELDS, tool_id)
+        for command in self.contract.commands:
+            self.assertEqual(set(command), COMMAND_FIELDS, command.get("id"))
+
+    def test_discovery_catalog_is_generic_closed_and_bounded(self):
+        discovery = self.contract.discovery
+        self.assertEqual(set(discovery["candidate_classes"]), {"directory", "app_bundle"})
+        self.assertEqual(
+            set(discovery["evidence_families"]),
+            {"runtime", "state", "tooling", "ai_metadata", "package_metadata", "document"},
+        )
+        self.assertTrue(all(type(value) is int and value > 0 for value in discovery["limits"].values()))
+        self.assertTrue(discovery["confidence"]["high_requires_runtime"])
+        self.assertLess(
+            discovery["confidence"]["uncertain_minimum_score"],
+            discovery["confidence"]["high_minimum_score"],
+        )
+        text = (GOVERNANCE_ROOT / EXPECTED_CATALOG_PATHS["discovery_signals"]).read_text(
+            encoding="utf-8"
+        ).lower()
+        for forbidden in ("anthropic", "claude", "codex", "copilot", "cursor", "gemini", "ollama", "openai"):
+            self.assertNotIn(forbidden, text)
+
+    def test_command_catalog_defines_the_nine_public_paths_and_semantics(self):
+        actual = {
+            command["id"]: (
+                command["path"],
+                command["capability"],
+                command["effect"],
+                command["orchestrates"],
+                command["interactive"],
+            )
+            for command in self.contract.commands
+        }
+        self.assertEqual(actual, EXPECTED_COMMANDS)
+        self.assertTrue(all(command["description"].strip() for command in self.contract.commands))
 
     def test_every_module_role_and_tool_reference_is_closed(self):
         for group_name in ("modules", "roles"):
@@ -451,6 +520,82 @@ class CatalogSchemaFailures(CatalogMutationCase):
     def test_invalid_module_id_fails_closed(self):
         self.replace("manifest.toml", "[modules.invariants]", '[modules."Invalid-ID"]')
         with self.assertRaisesRegex(self.validator.CatalogValidationError, "ungültige ID"):
+            self.load()
+
+
+class CommandCatalogFailures(CatalogMutationCase):
+    def test_unknown_command_field_fails_closed(self):
+        self.replace(
+            "catalogs/commands.toml",
+            "interactive = false",
+            "interactive = false\nunexpected = true",
+        )
+        with self.assertRaisesRegex(self.validator.CatalogValidationError, "unbekannte Felder"):
+            self.load()
+
+    def test_wrong_command_type_fails_closed(self):
+        self.replace(
+            "catalogs/commands.toml",
+            "interactive = false",
+            'interactive = "false"',
+        )
+        with self.assertRaisesRegex(self.validator.CatalogValidationError, "interactive"):
+            self.load()
+
+    def test_duplicate_command_path_fails_closed(self):
+        self.replace(
+            "catalogs/commands.toml",
+            'path = ["plan"]',
+            'path = ["inspect"]',
+        )
+        with self.assertRaisesRegex(self.validator.CatalogValidationError, "doppelte Pfade"):
+            self.load()
+
+    def test_invalid_command_semantics_fail_closed(self):
+        self.replace(
+            "catalogs/commands.toml",
+            'capability = "orchestration"',
+            'capability = "transaction"',
+        )
+        with self.assertRaisesRegex(self.validator.CatalogValidationError, "Semantik"):
+            self.load()
+
+
+class DiscoveryCatalogFailures(CatalogMutationCase):
+    def test_unknown_discovery_limit_field_fails_closed(self):
+        self.replace(
+            "catalogs/discovery-signals.toml",
+            "max_depth = 4",
+            "max_depth = 4\nunexpected = true",
+        )
+        with self.assertRaisesRegex(self.validator.CatalogValidationError, "unbekannte Felder"):
+            self.load()
+
+    def test_nonpositive_discovery_limit_fails_closed(self):
+        self.replace(
+            "catalogs/discovery-signals.toml",
+            "max_files = 256",
+            "max_files = 0",
+        )
+        with self.assertRaisesRegex(self.validator.CatalogValidationError, "max_files"):
+            self.load()
+
+    def test_unknown_discovery_family_reference_fails_closed(self):
+        self.replace(
+            "catalogs/discovery-signals.toml",
+            'family = "runtime"',
+            'family = "unknown"',
+        )
+        with self.assertRaisesRegex(self.validator.CatalogValidationError, "family"):
+            self.load()
+
+    def test_unknown_discovery_source_kind_fails_closed(self):
+        self.replace(
+            "catalogs/discovery-signals.toml",
+            'source_kinds = ["json", "toml", "plist"]',
+            'source_kinds = ["network"]',
+        )
+        with self.assertRaisesRegex(self.validator.CatalogValidationError, "source_kinds"):
             self.load()
 
 

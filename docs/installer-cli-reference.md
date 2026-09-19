@@ -217,15 +217,16 @@ Alle Commands verlangen denselben expliziten Pfadvertrag.
 - `130`: serialisierte Unterbrechung durch `SIGINT`.
 - `143`: serialisierte Unterbrechung durch `SIGTERM`.
 
-## Generischer Ablauf
+## Advanced: Automation und CI
 
-Alle Schritte verwenden exakt dieselben expliziten Pfade:
+Der normale Einstieg steht im [README](../README.md). Für nicht-interaktive Automation, CI oder
+Troubleshooting verwenden die folgenden Low-Level-Commands exakt dieselben expliziten Pfade:
 
 ```sh
-npx @tomtastisch/agent-governance@latest plan --scope global --installation-root "$HOME/.agent-governance" --target-root "/absoluter/zielroot" --entry-file "EINSTIEG.md" --non-interactive --json
-npx @tomtastisch/agent-governance@latest install --scope global --installation-root "$HOME/.agent-governance" --target-root "/absoluter/zielroot" --entry-file "EINSTIEG.md" --non-interactive --json
-npx @tomtastisch/agent-governance@latest verify --scope global --installation-root "$HOME/.agent-governance" --target-root "/absoluter/zielroot" --entry-file "EINSTIEG.md" --non-interactive --json
-npx @tomtastisch/agent-governance@latest status --scope global --installation-root "$HOME/.agent-governance" --target-root "/absoluter/zielroot" --entry-file "EINSTIEG.md" --non-interactive --json
+agent-governance plan --scope global --installation-root "$HOME/.agent-governance" --target-root "/absoluter/zielroot" --entry-file "EINSTIEG.md" --non-interactive --json
+agent-governance install --scope global --installation-root "$HOME/.agent-governance" --target-root "/absoluter/zielroot" --entry-file "EINSTIEG.md" --non-interactive --json
+agent-governance verify --scope global --installation-root "$HOME/.agent-governance" --target-root "/absoluter/zielroot" --entry-file "EINSTIEG.md" --non-interactive --json
+agent-governance status --scope global --installation-root "$HOME/.agent-governance" --target-root "/absoluter/zielroot" --entry-file "EINSTIEG.md" --non-interactive --json
 ```
 
 Harness-spezifische, extern dokumentierte Rezepte stehen in den

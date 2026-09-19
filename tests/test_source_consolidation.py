@@ -98,7 +98,7 @@ def read(path: Path) -> str:
 
 
 def current_non_bundle_markdown() -> list[Path]:
-    excluded_roots = {ROOT / "docs", ROOT / "tests", BUNDLE, VENDORED_UPSTREAM}
+    excluded_roots = {ROOT / ".superpowers", ROOT / "docs", ROOT / "tests", BUNDLE, VENDORED_UPSTREAM}
     result = []
     for path in ROOT.rglob("*.md"):
         if any(root == path or root in path.parents for root in excluded_roots):
@@ -326,12 +326,12 @@ class ReleaseMetadataContract(unittest.TestCase):
         version = read(ROOT / "VERSION").strip()
         current = changelog.split(f"## [{version}]", 1)[1].split("\n## [", 1)[0]
         for term in (
-            "kompakte README",
-            "Dokumentationsarchitektur",
-            "Harness Recipes",
-            "semantische Assets",
-            "INSTALL.md",
-            "Package-, Test- und Linkbereinigung",
+            "init",
+            "npm i @tomtastisch/agent-governance",
+            "@clack/prompts",
+            "smol-toml",
+            "Package Manager",
+            "Drei-Command-Quickstart",
         ):
             self.assertIn(term, current)
         self.assertIn("**Breaking changes:** none", current)

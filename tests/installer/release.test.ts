@@ -71,6 +71,61 @@ test("release verifier rejects unknown manifest fields even when inventory diges
   await assert.rejects(verifyRelease(root), /manifest|unknown/i);
 });
 
+test("release verifier rejects a digest-bound semantically invalid discovery catalog", async () => {
+  const root = await fixture();
+  const catalogPath = join(root, "bundle", "agent-governance", "catalogs", "discovery-signals.toml");
+  const catalog = await readFile(catalogPath, "utf8");
+  const changed = catalog.replace("max_files = 256", "max_files = 0");
+  assert.notEqual(changed, catalog);
+  await writeFile(catalogPath, changed);
+  await writeInventory(root);
+
+  await assert.rejects(verifyRelease(root), /discovery|max_files|positive|invalid/i);
+});
+
+test("release verifier rejects a digest-bound semantically invalid command catalog", async () => {
+  const root = await fixture();
+  const catalogPath = join(root, "bundle", "agent-governance", "catalogs", "commands.toml");
+  const catalog = await readFile(catalogPath, "utf8");
+  const changed = catalog.replace('effect = "read"', 'effect = "write"');
+  assert.notEqual(changed, catalog);
+  await writeFile(catalogPath, changed);
+  await writeInventory(root);
+
+  await assert.rejects(verifyRelease(root), /command|semantics|invalid/i);
+});
+
+test("release verifier accepts only the legacy or complete init catalog sets", async () => {
+  const full = await fixture();
+  await assert.doesNotReject(verifyRelease(full));
+
+  const legacy = await fixture();
+  const legacyManifestPath = join(legacy, "bundle", "agent-governance", "manifest.toml");
+  const legacyManifest = (await readFile(legacyManifestPath, "utf8"))
+    .replace('commands = "catalogs/commands.toml"\n', "")
+    .replace('discovery_signals = "catalogs/discovery-signals.toml"\n', "");
+  await writeFile(legacyManifestPath, legacyManifest);
+  await Promise.all([
+    rm(join(legacy, "bundle", "agent-governance", "catalogs", "commands.toml")),
+    rm(join(legacy, "bundle", "agent-governance", "catalogs", "discovery-signals.toml")),
+  ]);
+  await writeInventory(legacy);
+  await assert.doesNotReject(verifyRelease(legacy));
+
+  for (const missing of ["discovery_signals", "commands"] as const) {
+    const partial = await fixture();
+    const manifestPath = join(partial, "bundle", "agent-governance", "manifest.toml");
+    const catalogFile = missing === "commands" ? "commands.toml" : "discovery-signals.toml";
+    const manifestLine = missing === "commands"
+      ? 'commands = "catalogs/commands.toml"\n'
+      : 'discovery_signals = "catalogs/discovery-signals.toml"\n';
+    await writeFile(manifestPath, (await readFile(manifestPath, "utf8")).replace(manifestLine, ""));
+    await rm(join(partial, "bundle", "agent-governance", "catalogs", catalogFile));
+    await writeInventory(partial);
+    await assert.rejects(verifyRelease(partial), /catalogs|missing|unknown/i, `${missing} missing`);
+  }
+});
+
 test("release verifier rejects listed but unreferenced normative bundle files", async () => {
   const root = await fixture();
   await writeFile(join(root, "bundle", "agent-governance", "modules", "shadow.md"), "unreferenced normative source\n");

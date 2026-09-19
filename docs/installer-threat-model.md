@@ -2,6 +2,14 @@
 
 > Nicht normative Sicherheitsreferenz. Der ausführbare Vertrag liegt in Code, Tests und Bundle.
 
+## Runtime-Dependency Boundary
+
+Die Paketinstallation ist eine vorgelagerte, explizite Vertrauensgrenze. `init` konsumiert nur die
+bereits installierten direkten Runtime-Abhängigkeiten und darf weder npm, pnpm, yarn oder bun
+starten noch einen Package-Manager bootstrappen, Pakete nachladen, sich selbst installieren oder
+einen Repair-Pfad ausführen. Eine fehlende deklarierte Dependency ist ein fehlerhaftes Paket und
+wird fail-closed gemeldet; sie erweitert nicht die Wirkung des Wizards.
+
 ## Assets und Trust Boundaries
 
 Geschützt werden Nutzerbytes der Entrydatei, das normative Bundle, persönliche lokale Regeln,

@@ -25,6 +25,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Breaking changes:** none
 
+## [1.1.0] — 2026-08-27
+
+### Added
+
+- Der interaktive `init`-Onboarding-Einstieg ist als einzige normale öffentliche Installation über
+  `npm i @tomtastisch/agent-governance` und `npx agent-governance init` dokumentiert.
+- Der npm-Tarball prüft nun explizit Command- und Discovery-Kataloge, Terminal-Branding und den
+  tarball-only Init-Help-Pfad.
+
+### Changed
+
+- Direkte Runtime-Imports sind mit `@clack/prompts` 1.7.0 und `smol-toml` 1.8.0 exakt im Paket und
+  Lockfile deklariert; Advanced-/Automation-/CI-Referenzen behalten die Low-Level-Commands.
+- npm-Keywords beschreiben den vorhandenen AI-Governance-, Policy-as-Code-, Security-, CLI- und
+  harness-neutralen Installerumfang ohne spätere Management-Funktionen vorwegzunehmen.
+
+### Fixed
+
+- `init` startet keinen Package Manager, keine Self-Install-, Repair- oder bedingte Nachladefunktion.
+- `OUTDATED`-Ziele verwenden den Updatepfad; der gemeinsame Freigabeschritt zeigt vorher je Ziel
+  Zustand, Mutation und Ressourcenoperationen, und Non-TTY-Aufrufe brechen vor Home-Kanonisierung ab.
+- Strukturierte Discovery öffnet Live-Dateien nichtblockierend, verwirft FIFO-Austauschrennen und
+  begrenzt Reads auch bei gleichzeitig wachsenden Dateien.
+- plist-Evidence akzeptiert nur vollständig tokenisierte, begrenzte und wohlgeformte Hierarchien
+  ohne kommentierte Signale, ungültige Entities, Attribute, Containertext oder übertiefe Strukturen.
+  Die Standard-Apple-DOCTYPE wird ausschließlich als inerte Deklaration erkannt, ohne DTD-Zugriff.
+- SQLite-Schema-Evidence erzwingt das Dateigrößenbudget und bleibt über einen nichtblockierend
+  geöffneten Descriptor an die geprüfte reguläre Datei sowie `mode=ro&immutable=1` gebunden.
+  Exakt ausgeschöpfte Schema-Grenzen bleiben vollständig; ein begrenzter zusätzlicher Datensatz
+  unterscheidet sie von tatsächlichem Überlauf.
+- Unabhängige Evidence-Quellen werden anhand der geöffneten Dateiidentität gezählt; Hardlinks
+  desselben Objekts können keine hohe Konfidenz erzeugen.
+- Das Discovery-Zeitbudget reserviert Analysezeit und verteilt die verbleibende Zeit auf Zonen
+  und Kandidaten, damit eine frühe breite HOME-Struktur spätere XDG-Ziele nicht verdrängt.
+- Der geführte Init-Prompt beendet seinen Fortschrittsindikator auch nach Discovery- oder
+  Planungsfehlern, sodass der CLI-Prozess deterministisch zurückkehrt.
+- Passive Discovery verteilt begrenzte Traversalbudgets auf Geschwister, toleriert erwartbare
+  Dateisystem-Races, erhält App-Bundle-Grenzen und bevorzugt bei Score-Gleichstand vollständige
+  Kandidaten.
+- Strukturierte Evidence erzwingt die plist-Dict-Hierarchie und liest gleichzeitig wachsende Dateien
+  nur bis zur konfigurierten Grenze plus einem Overflow-Byte; Manifestpfade lehnen Symlinks in jeder
+  Zwischenkomponente ab.
+- Der Linux-PTY-Treiber setzt für Expect ausdrücklich `C.UTF-8`, damit Suche, Multiselect und manueller
+  Fallback auch mit `TERM=linux`, `NO_COLOR` und 60×24-Zellen zuverlässig bedienbar bleiben.
+- Passive Discovery reserviert im Zonenbudget anteilig Traversalbudget, damit ein breiter Zonenroot
+  entdeckte Kandidaten nicht auf ein Nullbudget setzt, und dedupliziert kandidatenklassenbewusst,
+  damit sich DIRECTORY- und APP_BUNDLE-Sichten überlappender Zonen nicht gegenseitig verdecken.
+- Die plist-Evidence zählt jeden Strukturknoten gegen das Entry-Limit statt nur Keys, und der
+  Katalogwert `high_requires_runtime = false` wird korrekt beachtet, statt hohe Konfidenz
+  unabhängig von der Konfiguration auszuschließen.
+
+### Removed
+
+- Der frühere normale Drei-Command-Quickstart mit expliziten Pfaden.
+
+**Breaking changes:** none
+
 ## [1.0.1] — 2026-08-25
 
 ### Added

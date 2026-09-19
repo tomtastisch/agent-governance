@@ -17,13 +17,16 @@ async function allowlistedFixture(t: TestContext): Promise<{ root: string; paths
     "release.files.sha256",
     "bundle/GOVERNANCE.md",
     "bundle/agent-governance/manifest.toml",
+    "bundle/agent-governance/catalogs/commands.toml",
+    "bundle/agent-governance/catalogs/discovery-signals.toml",
+    "assets/branding/agent-governance-terminal.png",
     "docs/installer-cli-reference.md",
     "dist/cli.js",
     `prebuilds/${process.platform}-${process.arch}/agent_governance_fs.node`,
   ];
   for (const path of paths) {
     await mkdir(join(root, path, ".."), { recursive: true });
-    await writeFile(join(root, path), path === "package.json" ? "{}\n" : "fixture\n");
+    await writeFile(join(root, path), path === "package.json" ? '{"name":"@tomtastisch/agent-governance"}\n' : "fixture\n");
   }
   return { root, paths };
 }
@@ -71,6 +74,9 @@ for (const required of [
   "LICENSE",
   "CHANGELOG.md",
   "docs/installer-cli-reference.md",
+  "assets/branding/agent-governance-terminal.png",
+  "bundle/agent-governance/catalogs/commands.toml",
+  "bundle/agent-governance/catalogs/discovery-signals.toml",
 ]) {
   test(`pack verifier requires package path ${required}`, async (t) => {
     const { root, paths } = await allowlistedFixture(t);
