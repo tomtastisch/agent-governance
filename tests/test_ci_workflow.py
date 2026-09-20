@@ -421,8 +421,9 @@ class ReleaseWorkflowSecurityContract(unittest.TestCase):
         self.assertEqual(attempts, list(range(1, len(attempts) + 1)))
         self.assertGreaterEqual(
             len(attempts),
-            12,
-            "registry readback must tolerate at least 12 retries (~120s at 10s spacing)",
+            13,
+            "registry readback must tolerate at least 120s of propagation "
+            "(>=13 attempts at 10s spacing)",
         )
         self.assertIn("sleep 10", retry)
         self.assertIn(
