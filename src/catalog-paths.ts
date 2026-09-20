@@ -76,3 +76,34 @@ export function resolveSsotFile(ssotManifestPath: string, rawPath: unknown): str
   if (offset === ".." || offset.startsWith(`..${sep}`) || isAbsolute(offset)) throw new Error("ssot file path escapes the ssot root");
   return resolved;
 }
+
+export function resolveTemplatesManifestPath(releaseRoot: string = PACKAGE_RELEASE_ROOT): string {
+  const root = requireReleaseRoot(releaseRoot);
+  return resolveIndexedPath(root, ["bundle", "agent-governance", "templates", "manifest.toml"], "templates manifest");
+}
+
+export function resolveTemplateFile(templatesManifestPath: string, rawPath: unknown): string {
+  if (typeof rawPath !== "string" || rawPath.length === 0 || isAbsolute(rawPath) || rawPath.includes("\\")) {
+    throw new Error("template file path is invalid");
+  }
+  const parts = rawPath.split("/");
+  if (parts.some((part) => part === "" || part === "." || part === ".." || part === "~")) {
+    throw new Error("template file path contains traversal");
+  }
+  const templatesRoot = dirname(templatesManifestPath);
+  let current = templatesRoot;
+  for (const part of parts) {
+    current = join(current, part);
+    let metadata;
+    try {
+      metadata = lstatSync(current);
+    } catch {
+      throw new Error("template file path must reference an existing file");
+    }
+    if (metadata.isSymbolicLink()) throw new Error("template file path must not contain symlinks");
+  }
+  const resolved = requireRegularFile(current, "template file");
+  const offset = relative(templatesRoot, resolved);
+  if (offset === ".." || offset.startsWith(`..${sep}`) || isAbsolute(offset)) throw new Error("template file path escapes the templates root");
+  return resolved;
+}

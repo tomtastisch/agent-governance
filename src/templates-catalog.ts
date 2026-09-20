@@ -1,6 +1,6 @@
-import { lstatSync, readFileSync, realpathSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
-import { PACKAGE_RELEASE_ROOT } from "./catalog-paths.ts";
+import { PACKAGE_RELEASE_ROOT, resolveTemplateFile, resolveTemplatesManifestPath } from "./catalog-paths.ts";
 import { exact, ID, parseClosedToml, safeRelativePath, table, text, type TomlTable } from "./closed-toml.ts";
 
 export const TEMPLATE_CATEGORIES = ["git", "delivery", "review", "context", "communication", "external_effects"] as const;
@@ -37,7 +37,7 @@ export function parseTemplatesManifestText(content: string): TemplateIndex {
     const entry = table(raw, `templates.${id}`);
     exact(entry, TEMPLATE_FIELDS, `templates.${id}`);
     const path = safeRelativePath(entry.path, `templates.${id}.path`);
-    if (!/\.md$/i.test(path)) throw new Error(`templates.${id}.path has an invalid format`);
+    if (!/\.md$/.test(path)) throw new Error(`templates.${id}.path has an invalid format`);
     if (seenPaths.has(path)) throw new Error("templates manifest contains duplicate template paths");
     seenPaths.add(path);
     const category = entry.category;
@@ -49,61 +49,37 @@ export function parseTemplatesManifestText(content: string): TemplateIndex {
   return Object.freeze({ schemaVersion: 1, templates: Object.freeze(templates) });
 }
 
-function requireRegularFile(path: string, label: string): string {
-  let metadata;
-  try {
-    metadata = lstatSync(path);
-  } catch {
-    throw new Error(`${label} must be a readable regular file`);
-  }
-  if (metadata.isSymbolicLink() || !metadata.isFile()) throw new Error(`${label} must be a regular non-symlink file`);
-  return realpathSync(path);
-}
-
-export function resolveTemplatesManifestPath(releaseRoot: string): string {
-  let metadata;
-  try {
-    metadata = lstatSync(releaseRoot);
-  } catch {
-    throw new Error("release root must be a readable directory");
-  }
-  if (metadata.isSymbolicLink() || !metadata.isDirectory()) throw new Error("release root must be a non-symlink directory");
-  const manifestPath = join(releaseRoot, "bundle", "agent-governance", "templates", "manifest.toml");
-  return requireRegularFile(manifestPath, "templates manifest");
-}
-
-function resolveTemplateFile(templatesManifestPath: string, rawPath: string, id: string): string {
-  const parts = rawPath.split("/");
-  const templatesRoot = dirname(templatesManifestPath);
-  let current = templatesRoot;
-  for (const part of parts) {
-    current = join(current, part);
-    let metadata;
-    try {
-      metadata = lstatSync(current);
-    } catch {
-      throw new Error(`templates.${id} path must reference an existing file`);
+function assertNoOrphanTemplates(templatesRoot: string, registered: ReadonlySet<string>): void {
+  const orphans: string[] = [];
+  const walk = (directory: string): void => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const absolute = join(directory, entry.name);
+      if (entry.isSymbolicLink()) throw new Error("templates directory must not contain symlinks");
+      if (entry.isDirectory()) walk(absolute);
+      else if (entry.isFile() && entry.name.endsWith(".md")) {
+        const relativePath = relative(templatesRoot, absolute).split(sep).join("/");
+        if (!registered.has(relativePath)) orphans.push(relativePath);
+      }
     }
-    if (metadata.isSymbolicLink()) throw new Error(`templates.${id} path must not contain symlinks`);
-  }
-  const resolved = requireRegularFile(current, `templates.${id}`);
-  const offset = relative(templatesRoot, resolved);
-  if (offset === ".." || offset.startsWith(`..${sep}`) || offset.startsWith("/")) throw new Error(`templates.${id} path escapes the templates root`);
-  return resolved;
+  };
+  walk(templatesRoot);
+  if (orphans.length > 0) throw new Error(`templates contains unregistered files: ${orphans.join(", ")}`);
 }
 
 export function loadTemplateIndex(releaseRoot?: string): { index: TemplateIndex; templateFile: (id: string) => string } {
   const manifestPath = resolveTemplatesManifestPath(releaseRoot ?? PACKAGE_RELEASE_ROOT);
   const index = parseTemplatesManifestText(readFileSync(manifestPath, "utf8"));
-  for (const id of Object.keys(index.templates)) {
-    resolveTemplateFile(manifestPath, index.templates[id]!.path, id);
+  const registered = new Set(Object.values(index.templates).map((entry) => entry.path));
+  for (const entry of Object.values(index.templates)) {
+    resolveTemplateFile(manifestPath, entry.path);
   }
+  assertNoOrphanTemplates(dirname(manifestPath), registered);
   return {
     index,
     templateFile: (id) => {
       const entry = index.templates[id];
       if (entry === undefined) throw new Error(`templates manifest does not register template ${id}`);
-      return resolveTemplateFile(manifestPath, entry.path, id);
+      return resolveTemplateFile(manifestPath, entry.path);
     },
   };
 }

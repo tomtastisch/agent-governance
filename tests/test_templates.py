@@ -145,6 +145,16 @@ class TemplateRegistryContract(unittest.TestCase):
         for category in CATEGORIES:
             self.assertIn(category, index)
 
+    def test_index_module_lists_exactly_the_registry_templates(self):
+        import re
+        index = (GOVERNANCE_ROOT / "modules" / "templates.md").read_text(encoding="utf-8")
+        registry = load_registry()
+        links = re.findall(r"\[`([a-z][a-z0-9_]*)`\]\(\.\./templates/([^)]+)\)", index)
+        self.assertEqual(len(links), len(EXPECTED_TEMPLATES))
+        for template_id, rel in links:
+            self.assertIn(template_id, registry["templates"], template_id)
+            self.assertEqual(registry["templates"][template_id]["path"], rel, template_id)
+
 
 class GapAnalysisContract(unittest.TestCase):
     def test_release_checkpoint_has_full_contract(self):
@@ -274,6 +284,11 @@ class TemplateRegistryFailures(unittest.TestCase):
         path.unlink()
         path.mkdir()
         with self.assertRaisesRegex(self.validator.CatalogValidationError, "reguläre"):
+            self.load()
+
+    def test_unregistered_template_file_fails_closed(self):
+        (self.root / "templates" / "git" / "orphan.md").write_text("# orphan\n", encoding="utf-8")
+        with self.assertRaisesRegex(self.validator.CatalogValidationError, "nicht registrierte"):
             self.load()
 
     def test_fresh_consumer_resolves_all_registered_templates(self):

@@ -589,6 +589,13 @@ def _validate_templates(manifest: Mapping[str, object], root: Path) -> tuple[Pat
         seen_paths.add(raw_path)
         candidate = _regular_file(templates_dir, _index_candidate(templates_dir, raw_path, f"templates.{template_id}"), f"templates.{template_id}")
         resolved.append(candidate)
+    for candidate in sorted(templates_dir.rglob("*")):
+        if candidate.is_symlink():
+            raise CatalogValidationError("templates enthält Symlinks")
+        if candidate.is_file() and candidate.name.endswith(".md"):
+            relative_path = candidate.relative_to(templates_dir).as_posix()
+            if relative_path not in seen_paths:
+                raise CatalogValidationError("templates enthält nicht registrierte Dateien")
     return tuple(resolved)
 
 

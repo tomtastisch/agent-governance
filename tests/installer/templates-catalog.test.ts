@@ -97,3 +97,17 @@ test("runtime template resolution rejects an unknown template id", () => {
   const { templateFile } = loadTemplateIndex();
   assert.throws(() => templateFile("unknown_template"), /does not register template/i);
 });
+
+test("runtime template resolution rejects unregistered template files", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-governance-templates-orphan-"));
+  try {
+    const templatesRoot = join(root, "bundle", "agent-governance", "templates");
+    await mkdir(join(templatesRoot, "git"), { recursive: true });
+    await writeFile(join(templatesRoot, "manifest.toml"), `schema_version = 1\n\n[templates.git_commit]\npath = "git/commit.md"\ncategory = "git"\nformat = "markdown"\n`);
+    await writeFile(join(templatesRoot, "git", "commit.md"), "# commit\n");
+    await writeFile(join(templatesRoot, "git", "orphan.md"), "# orphan\n");
+    assert.throws(() => loadTemplateIndex(root), /unregistered/i);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
