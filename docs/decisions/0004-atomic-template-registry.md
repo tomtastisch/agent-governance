@@ -50,7 +50,7 @@ Schlüsseln nicht zulässig. Es gibt keine parallelen Alias-IDs.
 
 Zwei reale generische Lücken wurden ergänzt:
 
-1. `delivery/release_checkpoint` — standardisiert die Release-Nachweisform (Exact Head, Version,
+1. `delivery_release_checkpoint` — standardisiert die Release-Nachweisform (Exact Head, Version,
    Tag, Artefaktidentität, Prüf-/Publizierzustand, autorisierte nächste Aktion), implementiert
    aber keine Releaseengine.
 2. `external_effects_approval_checkpoint` — dokumentiert die Form einer bestehenden oder

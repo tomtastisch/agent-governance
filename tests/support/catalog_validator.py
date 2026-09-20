@@ -555,8 +555,8 @@ def _validate_tool_routing(
 
 def _validate_templates(manifest: Mapping[str, object], root: Path) -> tuple[Path, ...]:
     raw = manifest.get("templates")
-    if not isinstance(raw, str) or not raw:
-        raise CatalogValidationError("Manifest templates muss ein nichtleerer relativer Pfad sein")
+    if not isinstance(raw, str) or raw != "templates/manifest.toml":
+        raise CatalogValidationError("Manifest templates muss der kanonische Pfad 'templates/manifest.toml' sein")
     index_path = _index_file(root, raw, "Templates-Index")
     data = _load_toml(index_path, "Templates-Index")
     _exact_fields(data, frozenset({"schema_version", "templates"}), "Templates-Index Top-Level")

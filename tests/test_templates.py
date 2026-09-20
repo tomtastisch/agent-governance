@@ -291,6 +291,21 @@ class TemplateRegistryFailures(unittest.TestCase):
         with self.assertRaisesRegex(self.validator.CatalogValidationError, "nicht registrierte"):
             self.load()
 
+    def test_noncanonical_templates_path_fails_closed(self):
+        manifest_path = self.root / "manifest.toml"
+        text = manifest_path.read_text(encoding="utf-8")
+        self.assertIn('templates = "templates/manifest.toml"', text)
+        manifest_path.write_text(
+            text.replace(
+                'templates = "templates/manifest.toml"',
+                'templates = "alternate/manifest.toml"',
+                1,
+            ),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(self.validator.CatalogValidationError, "kanonische"):
+            self.load()
+
     def test_fresh_consumer_resolves_all_registered_templates(self):
         contract = self.load()
         self.assertTrue(contract.template_paths)
