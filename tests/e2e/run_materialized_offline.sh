@@ -26,19 +26,30 @@ root = Path(sys.argv[1])
 manifest_dir = root / "agent-governance"
 with (manifest_dir / "manifest.toml").open("rb") as handle:
     manifest = tomllib.load(handle)
-expected_catalogs = {
-    "triggers": "catalogs/triggers.toml",
-    "policy_tags": "catalogs/policy-tags.toml",
-    "scopes": "catalogs/scopes.toml",
-    "tools": "catalogs/tools.toml",
+assert manifest["ssot"] == "ssot/manifest.toml"
+ssot_path = manifest_dir / manifest["ssot"]
+ssot_path.relative_to(manifest_dir)
+assert ssot_path.is_file() and not ssot_path.is_symlink(), manifest["ssot"]
+with ssot_path.open("rb") as handle:
+    ssot = tomllib.load(handle)
+expected_domains = {
+    "routing": {
+        "triggers": "routing/triggers.toml",
+        "policy_tags": "routing/policy-tags.toml",
+        "scopes": "routing/scopes.toml",
+        "tools": "routing/tools.toml",
+    },
+    "commands": {"commands": "commands/commands.toml"},
+    "discovery": {"discovery_signals": "discovery/discovery-signals.toml"},
 }
-assert manifest["catalogs"] == expected_catalogs
-for relative in expected_catalogs.values():
-    catalog = manifest_dir / relative
-    catalog.relative_to(manifest_dir)
-    assert catalog.is_file() and not catalog.is_symlink(), relative
-    with catalog.open("rb") as handle:
-        assert tomllib.load(handle)["schema_version"] == 1, relative
+assert ssot["domains"] == expected_domains
+for entries in ssot["domains"].values():
+    for relative in entries.values():
+        catalog = ssot_path.parent / relative
+        catalog.relative_to(ssot_path.parent)
+        assert catalog.is_file() and not catalog.is_symlink(), relative
+        with catalog.open("rb") as handle:
+            assert tomllib.load(handle)["schema_version"] == 1, relative
 local = Path(os.path.normpath(manifest_dir / manifest["local_rules"]))
 local.relative_to(manifest_dir)
 assert "SYNTHETIC_LOCAL_RULE_ACTIVE" in local.read_text(encoding="utf-8")

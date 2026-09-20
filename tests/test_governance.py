@@ -100,7 +100,8 @@ class GovernanceScopeContract(unittest.TestCase):
         if tomllib is None:
             self.skipTest("tomllib requires Python 3.11+")
         data = tomllib.loads(MANIFEST.read_text(encoding="utf-8"))
-        trigger_path = MANIFEST.parent / data["catalogs"]["triggers"]
+        ssot = tomllib.loads((MANIFEST.parent / "ssot" / "manifest.toml").read_text(encoding="utf-8"))
+        trigger_path = MANIFEST.parent / "ssot" / ssot["domains"]["routing"]["triggers"]
         triggers = set(tomllib.loads(trigger_path.read_text(encoding="utf-8"))["triggers"])
         self.assertEqual(triggers & OUT_OF_SCOPE_TRIGGERS, set())
 

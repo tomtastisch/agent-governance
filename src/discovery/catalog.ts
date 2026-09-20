@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { parse } from "smol-toml";
-import { resolveCatalogPath, resolveManifestPath } from "../catalog-paths.ts";
+import { loadSsotIndex } from "../ssot-manifest.ts";
 import {
   EVIDENCE_FAMILIES,
   type CandidateClass,
@@ -103,10 +103,6 @@ function parseCatalogText(content: string, context: string): Record<string, unkn
     if (cause instanceof Error && cause.message.startsWith(`${context} `)) throw cause;
     throw new Error(`${context} is invalid TOML`, { cause });
   }
-}
-
-function parseCatalog(path: string, context: string): Record<string, unknown> {
-  return parseCatalogText(readFileSync(path, "utf8"), context);
 }
 
 function parseLimits(raw: unknown): DiscoveryLimits {
@@ -228,9 +224,10 @@ export function parseDiscoveryCatalogText(content: string): DiscoveryCatalog {
 }
 
 export function loadDiscoveryCatalog(releaseRoot?: string): DiscoveryCatalog {
-  const manifestPath = resolveManifestPath(releaseRoot);
-  const manifest = parseCatalog(manifestPath, "discovery manifest");
-  const catalogs = record(manifest.catalogs, "discovery manifest catalogs");
-  const catalogPath = resolveCatalogPath(manifestPath, catalogs.discovery_signals);
+  const ssot = loadSsotIndex(releaseRoot);
+  const entries = ssot.index.domains.discovery;
+  const keys = Object.keys(entries);
+  if (keys.length !== 1 || keys[0] !== "discovery_signals") throw new Error("discovery domain has missing or unknown fields");
+  const catalogPath = ssot.catalogFile("discovery", "discovery_signals");
   return parseDiscoveryCatalogText(readFileSync(catalogPath, "utf8"));
 }

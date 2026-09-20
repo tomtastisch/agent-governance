@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
@@ -9,28 +9,22 @@ import { loadDiscoveryCatalog } from "../../src/discovery/catalog.ts";
 const ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 
 async function catalogFixture(
-  mutate: (manifest: string, catalog: string) => [string, string],
+  mutate: (ssotManifest: string, catalog: string) => [string, string],
 ): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "agent-governance-discovery-catalog-"));
-  const manifestPath = join(root, "bundle", "agent-governance", "manifest.toml");
+  const bundleRoot = join(root, "bundle", "agent-governance");
+  await cp(join(ROOT, "bundle", "agent-governance"), bundleRoot, { recursive: true });
+  const ssotManifestPath = join(bundleRoot, "ssot", "manifest.toml");
   const catalogPath = join(
-    root,
-    "bundle",
-    "agent-governance",
-    "catalogs",
+    bundleRoot,
+    "ssot",
+    "discovery",
     "discovery-signals.toml",
   );
-  await mkdir(dirname(catalogPath), { recursive: true });
-  const sourceManifest = await readFile(
-    join(ROOT, "bundle", "agent-governance", "manifest.toml"),
-    "utf8",
-  );
-  const sourceCatalog = await readFile(
-    join(ROOT, "bundle", "agent-governance", "catalogs", "discovery-signals.toml"),
-    "utf8",
-  );
-  const [manifest, catalog] = mutate(sourceManifest, sourceCatalog);
-  await writeFile(manifestPath, manifest);
+  const sourceSsotManifest = await readFile(ssotManifestPath, "utf8");
+  const sourceCatalog = await readFile(catalogPath, "utf8");
+  const [ssotManifest, catalog] = mutate(sourceSsotManifest, sourceCatalog);
+  await writeFile(ssotManifestPath, ssotManifest);
   await writeFile(catalogPath, catalog);
   return root;
 }
@@ -101,7 +95,7 @@ test("discovery catalog rejects unknown fields, invalid limits, duplicate IDs, a
       "manifest traversal",
       (manifest, catalog) => [
         manifest.replace(
-          'discovery_signals = "catalogs/discovery-signals.toml"',
+          'discovery_signals = "discovery/discovery-signals.toml"',
           'discovery_signals = "../discovery-signals.toml"',
         ),
         catalog,

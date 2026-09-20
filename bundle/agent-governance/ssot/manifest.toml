@@ -1,0 +1,13 @@
+schema_version = 1
+
+[domains.routing]
+triggers = "routing/triggers.toml"
+policy_tags = "routing/policy-tags.toml"
+scopes = "routing/scopes.toml"
+tools = "routing/tools.toml"
+
+[domains.commands]
+commands = "commands/commands.toml"
+
+[domains.discovery]
+discovery_signals = "discovery/discovery-signals.toml"

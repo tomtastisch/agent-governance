@@ -142,10 +142,10 @@ class LocalRulesRuntime(NeutralRuntimeCase):
         result = self.session(task="read catalog contract", triggers=("analysis",))
 
         expected = {
-            self.root / "agent-governance" / "catalogs" / "triggers.toml",
-            self.root / "agent-governance" / "catalogs" / "policy-tags.toml",
-            self.root / "agent-governance" / "catalogs" / "scopes.toml",
-            self.root / "agent-governance" / "catalogs" / "tools.toml",
+            self.root / "agent-governance" / "ssot" / "routing" / "triggers.toml",
+            self.root / "agent-governance" / "ssot" / "routing" / "policy-tags.toml",
+            self.root / "agent-governance" / "ssot" / "routing" / "scopes.toml",
+            self.root / "agent-governance" / "ssot" / "routing" / "tools.toml",
         }
         self.assertLessEqual(expected, set(result.read_paths))
 

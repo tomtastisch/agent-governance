@@ -9,11 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Keine.
+- Deklarativer Governance-SSOT-Root `bundle/agent-governance/ssot/` mit genau einem geschlossenen
+  Domain-Index (`ssot/manifest.toml`), der ausschließlich die real vorhandenen Domains `routing`,
+  `commands` und `discovery` registriert.
 
 ### Changed
 
-- Keine.
+- Governance-Kataloge semantisch unverändert nach `ssot/routing/`, `ssot/commands/` und
+  `ssot/discovery/` migriert. Das Root-Manifest (Schema 3) referenziert den SSOT-Index statt einer
+  flachen `[catalogs]`-Liste; Resolver, Loader und Validatoren sind modular und domainbezogen.
 
 ### Fixed
 
@@ -21,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- Keine.
+- Flacher `catalogs/`-Authority-Pfad entfernt; es verbleibt keine parallele Legacy-Authority.
 
 **Breaking changes:** none
 

@@ -113,10 +113,10 @@ class CleanImageContract(unittest.TestCase):
     def test_offline_routing_probe_loads_all_manifest_catalogs(self):
         offline_probe = read("run_materialized_offline.sh")
         for relative in (
-            "catalogs/triggers.toml",
-            "catalogs/policy-tags.toml",
-            "catalogs/scopes.toml",
-            "catalogs/tools.toml",
+            "routing/triggers.toml",
+            "routing/policy-tags.toml",
+            "routing/scopes.toml",
+            "routing/tools.toml",
         ):
             with self.subTest(relative=relative):
                 self.assertIn(relative, offline_probe)

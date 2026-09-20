@@ -171,10 +171,10 @@ evidence = """
 Revieweridentität, Reviewreferenz, Exact-Head-SHA, Zeitpunkt und klassifizierte Findings.
 """
 fallback = """
-Die Providerwahl und ihr Fallback folgen ausschließlich [DEL-008](../modules/delivery.md#del-008--provider-routing).
+Die Providerwahl und ihr Fallback folgen ausschließlich [DEL-008](../../modules/delivery.md#del-008--provider-routing).
 """
 constraints = """
-Review bleibt read-only und folgt [DEL-009](../modules/delivery.md#del-009--finding-lifecycle).
+Review bleibt read-only und folgt [DEL-009](../../modules/delivery.md#del-009--finding-lifecycle).
 Ein Provider ist nicht die Reviewerrolle und sein Kommentar ist keine erfundene Plattformfreigabe.
 """
 
@@ -195,7 +195,7 @@ fallback = """
 Ein frischer unabhängiger SEC-Reviewer prüft denselben Exact Head mit dokumentierter Abdeckung.
 """
 constraints = """
-Der Pflichttrigger folgt [SEC-001](../modules/security.md#sec-001--risikobasiertes-security-gate).
+Der Pflichttrigger folgt [SEC-001](../../modules/security.md#sec-001--risikobasiertes-security-gate).
 Prüfung bleibt read-only; Korrektur, Tracking oder Veröffentlichung sind eigene Wirkungen.
 """
 

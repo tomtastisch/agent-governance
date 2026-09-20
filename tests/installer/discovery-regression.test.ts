@@ -207,7 +207,7 @@ test("a large early candidate cannot hide a real candidate in a later discovery 
   const largeCandidate = join(home, "wide-container");
   const realCandidate = join(config, "runtime-profile");
   const releaseRoot = await createReleaseFixture(join(fixture, "release"));
-  const catalogPath = join(releaseRoot, "bundle", "agent-governance", "catalogs", "discovery-signals.toml");
+  const catalogPath = join(releaseRoot, "bundle", "agent-governance", "ssot", "discovery", "discovery-signals.toml");
   try {
     await Promise.all([
       mkdir(largeCandidate, { recursive: true }),
@@ -245,7 +245,7 @@ test("multiple broad candidates share their early zone budget so a later real ca
   const broadCandidates = [join(home, "wide-a"), join(home, "wide-b")];
   const realCandidate = join(config, "runtime-profile");
   const releaseRoot = await createReleaseFixture(join(fixture, "release"));
-  const catalogPath = join(releaseRoot, "bundle", "agent-governance", "catalogs", "discovery-signals.toml");
+  const catalogPath = join(releaseRoot, "bundle", "agent-governance", "ssot", "discovery", "discovery-signals.toml");
   try {
     await Promise.all([
       ...broadCandidates.map((candidate) => mkdir(candidate, { recursive: true })),
@@ -284,7 +284,7 @@ test("an exhausted early zone preserves the entry budget for a later real candid
   const broadCandidates = Array.from({ length: 4 }, (_, index) => join(home, `wide-${index}`));
   const realCandidate = join(config, "runtime-profile");
   const releaseRoot = await createReleaseFixture(join(fixture, "release"));
-  const catalogPath = join(releaseRoot, "bundle", "agent-governance", "catalogs", "discovery-signals.toml");
+  const catalogPath = join(releaseRoot, "bundle", "agent-governance", "ssot", "discovery", "discovery-signals.toml");
   try {
     await Promise.all([
       ...broadCandidates.map((candidate) => mkdir(candidate, { recursive: true })),
@@ -325,7 +325,7 @@ test("empty directories in an early zone cannot hide a later real candidate", as
   const noise = join(home, "wide-empty-container");
   const realCandidate = join(config, "runtime-profile");
   const releaseRoot = await createReleaseFixture(join(fixture, "release"));
-  const catalogPath = join(releaseRoot, "bundle", "agent-governance", "catalogs", "discovery-signals.toml");
+  const catalogPath = join(releaseRoot, "bundle", "agent-governance", "ssot", "discovery", "discovery-signals.toml");
   try {
     await Promise.all([mkdir(noise, { recursive: true }), mkdir(realCandidate, { recursive: true })]);
     for (let index = 0; index < 12; index += 1) {
@@ -400,7 +400,7 @@ test("discoverCandidates uses the selected release catalog for evidence extracti
   const config = join(fixture, "config");
   const candidate = join(config, "runtime-profile");
   const releaseRoot = await createReleaseFixture(join(fixture, "release"));
-  const catalogPath = join(releaseRoot, "bundle", "agent-governance", "catalogs", "discovery-signals.toml");
+  const catalogPath = join(releaseRoot, "bundle", "agent-governance", "ssot", "discovery", "discovery-signals.toml");
   try {
     await Promise.all([mkdir(home), mkdir(candidate, { recursive: true })]);
     const source = await readFile(catalogPath, "utf8");

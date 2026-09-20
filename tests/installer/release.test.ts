@@ -73,7 +73,7 @@ test("release verifier rejects unknown manifest fields even when inventory diges
 
 test("release verifier rejects a digest-bound semantically invalid discovery catalog", async () => {
   const root = await fixture();
-  const catalogPath = join(root, "bundle", "agent-governance", "catalogs", "discovery-signals.toml");
+  const catalogPath = join(root, "bundle", "agent-governance", "ssot", "discovery", "discovery-signals.toml");
   const catalog = await readFile(catalogPath, "utf8");
   const changed = catalog.replace("max_files = 256", "max_files = 0");
   assert.notEqual(changed, catalog);
@@ -85,7 +85,7 @@ test("release verifier rejects a digest-bound semantically invalid discovery cat
 
 test("release verifier rejects a digest-bound semantically invalid command catalog", async () => {
   const root = await fixture();
-  const catalogPath = join(root, "bundle", "agent-governance", "catalogs", "commands.toml");
+  const catalogPath = join(root, "bundle", "agent-governance", "ssot", "commands", "commands.toml");
   const catalog = await readFile(catalogPath, "utf8");
   const changed = catalog.replace('effect = "read"', 'effect = "write"');
   assert.notEqual(changed, catalog);
@@ -95,35 +95,82 @@ test("release verifier rejects a digest-bound semantically invalid command catal
   await assert.rejects(verifyRelease(root), /command|semantics|invalid/i);
 });
 
-test("release verifier accepts only the legacy or complete init catalog sets", async () => {
+test("release verifier accepts only the complete three-domain SSOT index", async () => {
   const full = await fixture();
   await assert.doesNotReject(verifyRelease(full));
 
-  const legacy = await fixture();
-  const legacyManifestPath = join(legacy, "bundle", "agent-governance", "manifest.toml");
-  const legacyManifest = (await readFile(legacyManifestPath, "utf8"))
-    .replace('commands = "catalogs/commands.toml"\n', "")
-    .replace('discovery_signals = "catalogs/discovery-signals.toml"\n', "");
-  await writeFile(legacyManifestPath, legacyManifest);
-  await Promise.all([
-    rm(join(legacy, "bundle", "agent-governance", "catalogs", "commands.toml")),
-    rm(join(legacy, "bundle", "agent-governance", "catalogs", "discovery-signals.toml")),
-  ]);
-  await writeInventory(legacy);
-  await assert.doesNotReject(verifyRelease(legacy));
-
-  for (const missing of ["discovery_signals", "commands"] as const) {
+  const mutations: ReadonlyArray<[(text: string) => string, RegExp]> = [
+    [(text) => text.replace('[domains.commands]\ncommands = "commands/commands.toml"\n', ""), /domains|missing|unknown/i],
+    [(text) => text.replace('[domains.discovery]\ndiscovery_signals = "discovery/discovery-signals.toml"\n', ""), /domains|missing|unknown/i],
+    [(text) => `${text}\n[domains.future]\nplaceholder = "future/placeholder.toml"\n`, /domains|missing|unknown/i],
+  ];
+  for (const [mutate, pattern] of mutations) {
     const partial = await fixture();
-    const manifestPath = join(partial, "bundle", "agent-governance", "manifest.toml");
-    const catalogFile = missing === "commands" ? "commands.toml" : "discovery-signals.toml";
-    const manifestLine = missing === "commands"
-      ? 'commands = "catalogs/commands.toml"\n'
-      : 'discovery_signals = "catalogs/discovery-signals.toml"\n';
-    await writeFile(manifestPath, (await readFile(manifestPath, "utf8")).replace(manifestLine, ""));
-    await rm(join(partial, "bundle", "agent-governance", "catalogs", catalogFile));
+    const ssotPath = join(partial, "bundle", "agent-governance", "ssot", "manifest.toml");
+    await writeFile(ssotPath, mutate(await readFile(ssotPath, "utf8")));
     await writeInventory(partial);
-    await assert.rejects(verifyRelease(partial), /catalogs|missing|unknown/i, `${missing} missing`);
+    await assert.rejects(verifyRelease(partial), pattern);
   }
+});
+
+test("release verifier rejects a non-canonical ssot manifest path", async () => {
+  const root = await fixture();
+  const manifestPath = join(root, "bundle", "agent-governance", "manifest.toml");
+  await writeFile(manifestPath, (await readFile(manifestPath, "utf8")).replace('ssot = "ssot/manifest.toml"', 'ssot = "elsewhere/manifest.toml"'));
+  await writeInventory(root);
+  await assert.rejects(verifyRelease(root), /canonical|ssot/i);
+});
+
+test("release verifier accepts legacy schema-2 manifests for installed releases", async () => {
+  const root = await fixture();
+  const manifestRoot = join(root, "bundle", "agent-governance");
+  const manifestPath = join(manifestRoot, "manifest.toml");
+  const ssotRoot = join(manifestRoot, "ssot");
+  const catalogRoot = join(manifestRoot, "catalogs");
+  await mkdir(catalogRoot);
+  for (const [key, rel] of [
+    ["triggers", "routing/triggers.toml"],
+    ["policy_tags", "routing/policy-tags.toml"],
+    ["scopes", "routing/scopes.toml"],
+    ["tools", "routing/tools.toml"],
+    ["commands", "commands/commands.toml"],
+    ["discovery_signals", "discovery/discovery-signals.toml"],
+  ] as const) {
+    await rename(join(ssotRoot, rel), join(catalogRoot, `${key.replaceAll("_", "-")}.toml`));
+  }
+  await rm(ssotRoot, { recursive: true, force: true });
+  const legacyManifest = (await readFile(manifestPath, "utf8"))
+    .replace("schema_version = 3", "schema_version = 2")
+    .replace('ssot = "ssot/manifest.toml"\n', "")
+    .replace("[routing]", '[catalogs]\ntriggers = "catalogs/triggers.toml"\npolicy_tags = "catalogs/policy-tags.toml"\nscopes = "catalogs/scopes.toml"\ntools = "catalogs/tools.toml"\ncommands = "catalogs/commands.toml"\ndiscovery_signals = "catalogs/discovery-signals.toml"\n\n[routing]');
+  await writeFile(manifestPath, legacyManifest);
+  await writeInventory(root);
+  await assert.doesNotReject(verifyRelease(root));
+});
+
+test("release verifier accepts the legacy four-catalog schema-2 manifest", async () => {
+  const root = await fixture();
+  const manifestRoot = join(root, "bundle", "agent-governance");
+  const manifestPath = join(manifestRoot, "manifest.toml");
+  const ssotRoot = join(manifestRoot, "ssot");
+  const catalogRoot = join(manifestRoot, "catalogs");
+  await mkdir(catalogRoot);
+  for (const [key, rel] of [
+    ["triggers", "routing/triggers.toml"],
+    ["policy_tags", "routing/policy-tags.toml"],
+    ["scopes", "routing/scopes.toml"],
+    ["tools", "routing/tools.toml"],
+  ] as const) {
+    await rename(join(ssotRoot, rel), join(catalogRoot, `${key.replaceAll("_", "-")}.toml`));
+  }
+  await rm(ssotRoot, { recursive: true, force: true });
+  const legacyManifest = (await readFile(manifestPath, "utf8"))
+    .replace("schema_version = 3", "schema_version = 2")
+    .replace('ssot = "ssot/manifest.toml"\n', "")
+    .replace("[routing]", '[catalogs]\ntriggers = "catalogs/triggers.toml"\npolicy_tags = "catalogs/policy-tags.toml"\nscopes = "catalogs/scopes.toml"\ntools = "catalogs/tools.toml"\n\n[routing]');
+  await writeFile(manifestPath, legacyManifest);
+  await writeInventory(root);
+  await assert.doesNotReject(verifyRelease(root));
 });
 
 test("release verifier rejects listed but unreferenced normative bundle files", async () => {
@@ -150,16 +197,16 @@ test("release verifier rejects symlinked release and bundle roots", async () => 
 
 test("release verifier rejects TOML forms rejected by conforming parsers", async () => {
   for (const mutate of [
-    (text: string) => text.replace("schema_version = 2", "schema_version = 02"),
-    (text: string) => `${text}\n[catalogs]\n`,
+    (text: string) => text.replace("schema_version = 3", "schema_version = 03"),
+    (text: string) => `${text}\n[routing]\n`,
   ]) {
     const root = await fixture(); const manifestPath = join(root, "bundle", "agent-governance", "manifest.toml"); await writeFile(manifestPath, mutate(await readFile(manifestPath, "utf8"))); await writeInventory(root);
     await assert.rejects(verifyRelease(root), /TOML|manifest|duplicate|table/i);
   }
-  for (const replacement of ['label = "Analysis\\/invalid"', 'label = "\\ud800"', 'label = "\\udc00"']) { const escaped = await fixture(); const catalogPath = join(escaped, "bundle", "agent-governance", "catalogs", "triggers.toml"); const catalog = await readFile(catalogPath, "utf8"); const changed = catalog.replace('label = "Analysis"', replacement); assert.notEqual(changed, catalog); await writeFile(catalogPath, changed); await writeInventory(escaped); await assert.rejects(verifyRelease(escaped), /TOML|invalid/i); }
-  const multiline = await fixture(); const multilinePath = join(multiline, "bundle", "agent-governance", "catalogs", "triggers.toml"); const multilineCatalog = await readFile(multilinePath, "utf8"); await writeFile(multilinePath, multilineCatalog.replace('description = """', 'description = """\\q')); await writeInventory(multiline); await assert.rejects(verifyRelease(multiline), /TOML|invalid/i);
-  const nul = await fixture(); const nulPath = join(nul, "bundle", "agent-governance", "catalogs", "triggers.toml"); await writeFile(nulPath, (await readFile(nulPath, "utf8")).replace('description = """', 'description = """\0')); await writeInventory(nul); await assert.rejects(verifyRelease(nul), /TOML|control|invalid/i);
-  const malformed = await fixture(); const malformedPath = join(malformed, "bundle", "agent-governance", "catalogs", "triggers.toml"); const malformedBytes = await readFile(malformedPath); const label = malformedBytes.indexOf(Buffer.from("Analysis")); assert.notEqual(label, -1); malformedBytes[label] = 0xff; await writeFile(malformedPath, malformedBytes); await writeInventory(malformed); await assert.rejects(verifyRelease(malformed), /UTF-8|encoding|TOML|invalid/i);
+  for (const replacement of ['label = "Analysis\\/invalid"', 'label = "\\ud800"', 'label = "\\udc00"']) { const escaped = await fixture(); const catalogPath = join(escaped, "bundle", "agent-governance", "ssot", "routing", "triggers.toml"); const catalog = await readFile(catalogPath, "utf8"); const changed = catalog.replace('label = "Analysis"', replacement); assert.notEqual(changed, catalog); await writeFile(catalogPath, changed); await writeInventory(escaped); await assert.rejects(verifyRelease(escaped), /TOML|invalid/i); }
+  const multiline = await fixture(); const multilinePath = join(multiline, "bundle", "agent-governance", "ssot", "routing", "triggers.toml"); const multilineCatalog = await readFile(multilinePath, "utf8"); await writeFile(multilinePath, multilineCatalog.replace('description = """', 'description = """\\q')); await writeInventory(multiline); await assert.rejects(verifyRelease(multiline), /TOML|invalid/i);
+  const nul = await fixture(); const nulPath = join(nul, "bundle", "agent-governance", "ssot", "routing", "triggers.toml"); await writeFile(nulPath, (await readFile(nulPath, "utf8")).replace('description = """', 'description = """\0')); await writeInventory(nul); await assert.rejects(verifyRelease(nul), /TOML|control|invalid/i);
+  const malformed = await fixture(); const malformedPath = join(malformed, "bundle", "agent-governance", "ssot", "routing", "triggers.toml"); const malformedBytes = await readFile(malformedPath); const label = malformedBytes.indexOf(Buffer.from("Analysis")); assert.notEqual(label, -1); malformedBytes[label] = 0xff; await writeFile(malformedPath, malformedBytes); await writeInventory(malformed); await assert.rejects(verifyRelease(malformed), /UTF-8|encoding|TOML|invalid/i);
 });
 
 test("release verifier rejects invalid UTF-8 and raw controls in normative text files", async () => {
@@ -175,8 +222,18 @@ test("release verifier rejects invalid UTF-8 and raw controls in normative text 
 });
 
 test("release verifier rejects unknown formats for manifest-referenced sources", async () => {
+  {
+    const root = await fixture();
+    const ssotPath = join(root, "bundle", "agent-governance", "ssot", "manifest.toml");
+    await writeFile(ssotPath, (await readFile(ssotPath, "utf8")).replace('triggers = "routing/triggers.toml"', 'triggers = "routing/triggers.txt"'));
+    await rename(
+      join(root, "bundle", "agent-governance", "ssot", "routing", "triggers.toml"),
+      join(root, "bundle", "agent-governance", "ssot", "routing", "triggers.txt"),
+    );
+    await writeInventory(root);
+    await assert.rejects(verifyRelease(root), /format|extension|catalog|manifest/i);
+  }
   for (const [from, to, mutation] of [
-    ["catalogs/triggers.toml", "catalogs/triggers.txt", "plain"],
     ["modules/invariants.md", "modules/invariants.txt", "nul"],
     ["roles/security-review.md", "roles/security-review.txt", "malformed"],
   ] as const) {
