@@ -38,7 +38,7 @@ for (const path of paths) {
   }
 }
 const packageMetadata = JSON.parse(await readFile("package.json", "utf8"));
-const requiredPaths = ["README.md", "LICENSE", "CHANGELOG.md", "dist/cli.js", "dist/resume-toon.js", "bundle/GOVERNANCE.md", "bundle/agent-governance/manifest.toml", "docs/installer-cli-reference.md", "release.files.sha256", "VERSION", runtimeBrandingPath];
+const requiredPaths = ["README.md", "LICENSE", "CHANGELOG.md", "dist/cli.js", "dist/resume-toon.js", "dist/resume-toon.d.ts", "bundle/GOVERNANCE.md", "bundle/agent-governance/manifest.toml", "docs/installer-cli-reference.md", "release.files.sha256", "VERSION", runtimeBrandingPath];
 if (packageMetadata.name === expectedPackageName) {
   requiredPaths.push("bundle/agent-governance/catalogs/commands.toml", "bundle/agent-governance/catalogs/discovery-signals.toml");
 }

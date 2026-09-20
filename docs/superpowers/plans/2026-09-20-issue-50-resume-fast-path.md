@@ -2,9 +2,17 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Nachtrag (TOON-Runtime-Entscheidung):** Dieser Plan wurde vor der TOON-Lückenprüfung verfasst.
+> Die tatsächliche Implementierung ergänzt — entgegen der ursprünglichen Global Constraint — eine reale
+> deterministische TOON-Verarbeitung mit der Production-Dependency `@toon-format/toon` `4.1.1` und dem
+> ausgelieferten Modulpfad `src/resume-toon.ts` (öffentlicher `exports`-Subpath `./resume-toon`), weil
+> Issue #50 eine beobachtbar funktionsfähige Encode-/Decode-/Validierungs-Capability verlangt. Die
+> normative Governance (`modules/resume.md`) bleibt die einzige Fach-SSOT; der TOON-Pfad ist reine
+> deterministische Projektion.
+
 **Goal:** Einen allgemeinen, harnessneutralen, zustandsgebundenen Resume Fast-Path in die kanonische Governance integrieren, der einen unveränderten Arbeitsauftrag nach Unterbrechung fortsetzt, ohne gültige Evidence pauschal zu rekonstruieren.
 
-**Architecture:** Die Resume-Capability ist ein reiner Governance-Vertrag: ein neuer Trigger `resume_continuation`, ein neues Modul `modules/resume.md` (Regeln `RES-001`–`RES-015`) und eine strikte `Resume-Checkpoint`-Vorlage in `templates.md`. Keine Runtime, keine Dependency, keine zweite SSOT. Der Installer bleibt unberührt (ARC-002). TOON ist ausschließlich eine deterministisch abgeleitete Transport-/Projektionsschicht.
+**Architecture:** Die Resume-Capability ist ein Governance-Vertrag: ein neuer Trigger `resume_continuation`, ein neues Modul `modules/resume.md` (Regeln `RES-001`–`RES-015`) und eine strikte `Resume-Checkpoint`-Vorlage in `templates.md`. Die fachliche SSOT bleibt allein die Governance; der TOON-Pfad (`src/resume-toon.ts`, `@toon-format/toon`) ist eine deterministisch abgeleitete, ausgelieferte Transport-/Projektionsschicht ohne eigene Wahrheit und keine zweite SSOT.
 
 **Tech Stack:** Markdown-Regelwerk, TOML-Kataloge (Manifest-Schema 2), Python-`unittest`-Contract-Tests.
 
@@ -13,7 +21,7 @@
 ## Global Constraints
 
 - Sprache Deutsch für normative Prosa; IDs/Bezeichner englisch.
-- Keine neue Runtime-/Production-Dependency; Installer (`src/`) nicht anfassen.
+- Keine neue Runtime-/Production-Dependency außer der verifizierten TOON-Referenz `@toon-format/toon`; keine parallele Resume-Engine.
 - Keine parallele Resume-Engine, Checkpoint-Authority, Evidence-Authority oder Hash-Primitive.
 - Manifest-Schema 2 bleibt unverändert; `routing.unknown/ambiguous = block`.
 - Keine `<…>`-Platzhalter außerhalb von `templates.md` (Test `test_template_markers_have_one_normative_owner`).

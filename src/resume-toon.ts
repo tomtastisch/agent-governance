@@ -19,7 +19,9 @@ export interface ResumeProjection {
   readonly taskId: string;
   readonly objective: string;
   readonly scope: readonly string[];
+  /** Bindung an den exacten Stand (z. B. Git-SHA). Der Codec prüft nur Struktur (nichtleerer String); die semantische Wahrheit kommt aus den kanonischen Quellen, nicht aus der Projektion. */
   readonly exactHead: string;
+  /** Content-adressierte Bindung an den bestätigten Checkpoint; wird bei `expectedCheckpoint` fail-closed verglichen. */
   readonly checkpointFingerprint: string;
   readonly evidence: readonly ResumeEvidenceBinding[];
   readonly incompleteEvidence: readonly string[];
@@ -28,6 +30,12 @@ export interface ResumeProjection {
 }
 
 export interface DecodeResumeOptions {
+  /**
+   * Erwartete Checkpoint-Bindung. Wird sie gesetzt, prüft der Dekoder fail-closed, dass die
+   * Projektion exakt diese Bindung trägt (Schutz vor veralteten oder manipulierten Projektionen).
+   * Ohne sie erfolgt ausschließlich Schema-/Strukturvalidierung; die verbindliche Bindung gegen
+   * kanonische Sources of Truth bleibt gemäß RES-004/RES-005 Verantwortung des Aufrufers.
+   */
   readonly expectedCheckpoint?: string;
 }
 
@@ -150,11 +158,12 @@ export function validateResumeProjection(value: unknown): ResumeProjection {
 
 /**
  * Erzeugt aus einem bestätigten Resume-Zustand deterministisch eine `.toon`-Projektion.
- * Der Zustand wird vor der Kodierung validiert, sodass keine ungültige Projektion entstehen kann.
+ * Der Zustand wird zuerst validiert und kanonisiert; kodiert wird ausschließlich das
+ * kanonische, schlüsselgeordnete Objekt, sodass zwei logisch identische Zustände unabhängig
+ * von ihrer Schlüssel-Einfügereihenfolge byte-identische Ausgaben erzeugen.
  */
 export function encodeResumeProjection(state: ResumeProjection): string {
-  validateResumeProjection(state);
-  return encode(state);
+  return encode(validateResumeProjection(state));
 }
 
 /**

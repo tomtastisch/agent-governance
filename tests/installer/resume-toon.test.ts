@@ -33,6 +33,23 @@ test("identical resume state encodes byte-identically", () => {
   assert.equal(encodeResumeProjection(state), encodeResumeProjection(structuredClone(state)));
 });
 
+test("reordered keys still encode byte-identically", () => {
+  const state = sampleState();
+  const reordered: ResumeProjection = {
+    nextAtomicAction: state.nextAtomicAction,
+    openFindings: state.openFindings,
+    incompleteEvidence: state.incompleteEvidence,
+    evidence: state.evidence,
+    checkpointFingerprint: state.checkpointFingerprint,
+    exactHead: state.exactHead,
+    scope: state.scope,
+    objective: state.objective,
+    taskId: state.taskId,
+  };
+  assert.deepEqual(reordered, state);
+  assert.equal(encodeResumeProjection(state), encodeResumeProjection(reordered));
+});
+
 test("encode then decode round-trips to a semantically identical state", () => {
   const state = sampleState();
   const decoded = decodeResumeProjection(encodeResumeProjection(state));
