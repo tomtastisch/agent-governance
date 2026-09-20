@@ -155,7 +155,9 @@ class ResumeModuleContract(unittest.TestCase):
 
     def test_chat_is_transport_not_authority(self):
         self.assertIn("Chat context is transport, not authority", self.text)
-        self.assertRegex(self.text, r"(?is)vorherige Chat.+keine.+Source of Truth")
+        section = " ".join(rule_section(self.text, 5).split())
+        self.assertIn("vorherige Chat", section)
+        self.assertIn("keine erforderliche Source of Truth", section)
 
     def test_toon_is_derived_projection_not_second_ssot(self):
         self.assertIn("Token-Oriented Object Notation", self.text)
