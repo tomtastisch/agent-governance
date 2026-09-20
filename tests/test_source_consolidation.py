@@ -326,12 +326,11 @@ class ReleaseMetadataContract(unittest.TestCase):
         version = read(ROOT / "VERSION").strip()
         current = changelog.split(f"## [{version}]", 1)[1].split("\n## [", 1)[0]
         for term in (
-            "init",
-            "npm i @tomtastisch/agent-governance",
-            "@clack/prompts",
-            "smol-toml",
-            "Package Manager",
-            "Drei-Command-Quickstart",
+            "resume",
+            "resume_continuation",
+            "Token-Oriented Object Notation",
+            "@toon-format/toon",
+            "registry",
         ):
             self.assertIn(term, current)
         self.assertIn("**Breaking changes:** none", current)
