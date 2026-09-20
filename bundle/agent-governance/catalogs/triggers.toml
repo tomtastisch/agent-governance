@@ -342,3 +342,10 @@ label = "Dependency Drift"
 description = """
 Deklarierter und aufgelöster Abhängigkeitszustand müssen auf Drift verglichen werden.
 """
+
+[triggers.resume_continuation]
+label = "Resume Continuation"
+description = """
+Technische, kontextuelle oder Session-Fortsetzung eines bereits begonnenen, unveränderten
+Arbeitsauftrags ohne fachlichen Work-Item-Statuswechsel.
+"""

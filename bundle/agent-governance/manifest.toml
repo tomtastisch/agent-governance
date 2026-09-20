@@ -133,6 +133,11 @@ path = "modules/context.md"
 triggers = ["long_task", "context_handoff"]
 dependencies = ["templates"]
 
+[modules.resume]
+path = "modules/resume.md"
+triggers = ["resume_continuation"]
+dependencies = ["evidence", "delivery", "security", "invariants", "context"]
+
 [roles.architecture]
 path = "roles/architecture.md"
 triggers = ["role_architecture"]
