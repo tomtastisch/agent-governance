@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
@@ -25,15 +25,16 @@ const EXPECTED = {
   init: { path: ["init"], capability: "orchestration", effect: "write", orchestrates: true, interactive: true },
 } as const;
 
-async function catalogFixture(mutate?: (manifest: string, catalog: string) => [string, string]): Promise<string> {
+async function catalogFixture(mutate?: (ssotManifest: string, catalog: string) => [string, string]): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "agent-governance-command-catalog-"));
-  const manifestPath = join(root, "bundle", "agent-governance", "manifest.toml");
-  const catalogPath = join(root, "bundle", "agent-governance", "catalogs", "commands.toml");
-  await mkdir(dirname(catalogPath), { recursive: true });
-  let manifest = await readFile(join(ROOT, "bundle", "agent-governance", "manifest.toml"), "utf8");
-  let catalog = await readFile(join(ROOT, "bundle", "agent-governance", "catalogs", "commands.toml"), "utf8");
-  if (mutate !== undefined) [manifest, catalog] = mutate(manifest, catalog);
-  await writeFile(manifestPath, manifest);
+  const bundleRoot = join(root, "bundle", "agent-governance");
+  await cp(join(ROOT, "bundle", "agent-governance"), bundleRoot, { recursive: true });
+  const ssotManifestPath = join(bundleRoot, "ssot", "manifest.toml");
+  const catalogPath = join(bundleRoot, "ssot", "commands", "commands.toml");
+  let ssotManifest = await readFile(ssotManifestPath, "utf8");
+  let catalog = await readFile(catalogPath, "utf8");
+  if (mutate !== undefined) [ssotManifest, catalog] = mutate(ssotManifest, catalog);
+  await writeFile(ssotManifestPath, ssotManifest);
   await writeFile(catalogPath, catalog);
   return root;
 }
@@ -56,7 +57,7 @@ test("command catalog rejects unknown fields, wrong types, duplicate paths, and 
     ["duplicate path", (manifest, catalog) => [manifest, catalog.replace('path = ["plan"]', 'path = ["inspect"]')], /duplicate path/i],
     ["invalid effect", (manifest, catalog) => [manifest, catalog.replace('effect = "read"', 'effect = "write"')], /semantics/i],
     ["invalid init capability", (manifest, catalog) => [manifest, catalog.replace('capability = "orchestration"', 'capability = "transaction"')], /semantics/i],
-    ["manifest traversal", (manifest, catalog) => [manifest.replace('commands = "catalogs/commands.toml"', 'commands = "../commands.toml"'), catalog], /path|traversal/i],
+    ["manifest traversal", (manifest, catalog) => [manifest.replace('commands = "commands/commands.toml"', 'commands = "../commands.toml"'), catalog], /path|traversal/i],
   ];
   for (const [name, mutate, pattern] of mutations) {
     const root = await catalogFixture(mutate);

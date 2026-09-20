@@ -150,7 +150,7 @@ class BootstrapTestCase(unittest.TestCase):
 class FreshInstall(BootstrapTestCase):
     def test_missing_catalog_fails_preflight_without_mutation(self):
         release = self.release_copy()
-        (release / "bundle" / "agent-governance" / "catalogs" / "tools.toml").unlink()
+        (release / "bundle" / "agent-governance" / "ssot" / "routing" / "tools.toml").unlink()
         before = tree_bytes(self.allowed)
 
         with self.assertRaises(self.reference.BootstrapError):
@@ -161,7 +161,7 @@ class FreshInstall(BootstrapTestCase):
 
     def test_malformed_catalog_fails_preflight_without_mutation(self):
         release = self.release_copy()
-        tools = release / "bundle" / "agent-governance" / "catalogs" / "tools.toml"
+        tools = release / "bundle" / "agent-governance" / "ssot" / "routing" / "tools.toml"
         tools.write_text("not valid = [\n", encoding="utf-8")
         before = tree_bytes(self.allowed)
 
@@ -173,7 +173,7 @@ class FreshInstall(BootstrapTestCase):
 
     def test_active_verification_includes_closed_catalog_contract(self):
         self.run_transaction()
-        tools = self.install / "bundle" / "agent-governance" / "catalogs" / "tools.toml"
+        tools = self.install / "bundle" / "agent-governance" / "ssot" / "routing" / "tools.toml"
         tools.unlink()
 
         transaction = self.reference.BootstrapTransaction(self.request())

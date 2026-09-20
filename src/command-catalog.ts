@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { parse } from "smol-toml";
-import { resolveCatalogPath, resolveManifestPath } from "./catalog-paths.ts";
+import { loadSsotIndex } from "./ssot-manifest.ts";
 import type { PublicCommandDefinition, PublicCommandId } from "./contracts.ts";
 
 export const PUBLIC_COMMAND_IDS = ["inspect", "plan", "install", "verify", "status", "update", "uninstall", "rollback", "init"] as const;
@@ -31,10 +31,6 @@ function parseTomlText(content: string, context: string): Record<string, unknown
     if (cause instanceof Error && cause.message.startsWith(`${context} `)) throw cause;
     throw new Error(`${context} is invalid TOML`, { cause });
   }
-}
-
-function parseToml(path: string, context: string): Record<string, unknown> {
-  return parseTomlText(readFileSync(path, "utf8"), context);
 }
 
 function samePath(actual: readonly string[], expected: readonly string[]): boolean {
@@ -81,9 +77,10 @@ export function parseCommandCatalogText(content: string): readonly PublicCommand
 }
 
 export function loadCommandCatalog(releaseRoot?: string): readonly PublicCommandDefinition[] {
-  const manifestPath = resolveManifestPath(releaseRoot);
-  const manifest = parseToml(manifestPath, "command manifest");
-  const catalogs = record(manifest.catalogs, "command manifest catalogs");
-  const catalogPath = resolveCatalogPath(manifestPath, catalogs.commands);
+  const ssot = loadSsotIndex(releaseRoot);
+  const entries = ssot.index.domains.commands;
+  const keys = Object.keys(entries);
+  if (keys.length !== 1 || keys[0] !== "commands") throw new Error("commands domain has missing or unknown fields");
+  const catalogPath = ssot.catalogFile("commands", "commands");
   return parseCommandCatalogText(readFileSync(catalogPath, "utf8"));
 }

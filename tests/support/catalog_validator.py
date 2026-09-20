@@ -14,16 +14,15 @@ from typing import Mapping
 
 ID_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 MANIFEST_FIELDS = frozenset(
-    {"schema_version", "local_rules", "catalogs", "routing", "modules", "roles"}
+    {"schema_version", "local_rules", "ssot", "routing", "modules", "roles"}
 )
-CATALOG_NAMES = (
-    "triggers",
-    "policy_tags",
-    "scopes",
-    "tools",
-    "commands",
-    "discovery_signals",
-)
+SSOT_MANIFEST_FIELDS = frozenset({"schema_version", "domains"})
+SSOT_DOMAINS = ("routing", "commands", "discovery")
+SSOT_DOMAIN_CATALOGS = {
+    "routing": frozenset({"triggers", "policy_tags", "scopes", "tools"}),
+    "commands": frozenset({"commands"}),
+    "discovery": frozenset({"discovery_signals"}),
+}
 VOCABULARY_FIELDS = frozenset({"label", "description"})
 MODULE_FIELDS = frozenset({"path", "triggers", "dependencies"})
 ROLE_FIELDS = frozenset({"path", "triggers", "modules"})
@@ -130,8 +129,8 @@ def load_catalog_contract(
         manifest_data = dict(manifest)
 
     _exact_fields(manifest_data, MANIFEST_FIELDS, "Manifest Top-Level")
-    if type(manifest_data.get("schema_version")) is not int or manifest_data["schema_version"] != 2:
-        raise CatalogValidationError("Manifest schema_version muss Integer 2 sein")
+    if type(manifest_data.get("schema_version")) is not int or manifest_data["schema_version"] != 3:
+        raise CatalogValidationError("Manifest schema_version muss Integer 3 sein")
     local_rules = manifest_data.get("local_rules")
     if not isinstance(local_rules, str) or not local_rules:
         raise CatalogValidationError("Manifest local_rules muss ein nichtleerer relativer Pfad sein")
@@ -144,17 +143,33 @@ def load_catalog_contract(
     if routing.get("unknown") != "block" or routing.get("ambiguous") != "block":
         raise CatalogValidationError("Manifest routing muss unknown und ambiguous blockieren")
 
-    catalog_index = manifest_data.get("catalogs")
-    if not isinstance(catalog_index, Mapping):
-        raise CatalogValidationError("Manifest catalogs muss eine Tabelle sein")
-    _exact_fields(catalog_index, frozenset(CATALOG_NAMES), "Manifest catalogs")
+    ssot_index_path = _index_file(root, manifest_data.get("ssot"), "SSOT-Index")
+    ssot_data = _load_toml(ssot_index_path, "SSOT-Index")
+    _exact_fields(ssot_data, SSOT_MANIFEST_FIELDS, "SSOT-Index Top-Level")
+    if type(ssot_data.get("schema_version")) is not int or ssot_data["schema_version"] != 1:
+        raise CatalogValidationError("SSOT-Index schema_version muss Integer 1 sein")
+    domains = ssot_data.get("domains")
+    if not isinstance(domains, Mapping):
+        raise CatalogValidationError("SSOT-Index domains muss eine Tabelle sein")
+    _exact_fields(domains, frozenset(SSOT_DOMAINS), "SSOT-Index domains")
+    ssot_dir = ssot_index_path.parent
 
     parsed_catalogs: dict[str, Mapping[str, object]] = {}
     catalog_paths: list[Path] = []
-    for name in CATALOG_NAMES:
-        path = _catalog_file(root, catalog_index.get(name))
-        parsed_catalogs[name] = _load_toml(path, f"Katalog {name}")
-        catalog_paths.append(path)
+    seen_catalog_ids: set[str] = set()
+    for domain in SSOT_DOMAINS:
+        entries = domains.get(domain)
+        if not isinstance(entries, Mapping) or not entries:
+            raise CatalogValidationError(f"SSOT-Domain {domain} muss eine nichtleere Tabelle sein")
+        _exact_fields(entries, SSOT_DOMAIN_CATALOGS[domain], f"SSOT-Domain {domain}")
+        for catalog_id in sorted(entries):
+            _validate_id(catalog_id, f"SSOT-Domain {domain}")
+            if catalog_id in seen_catalog_ids:
+                raise CatalogValidationError("SSOT-Index enthält doppelte Katalog-IDs")
+            seen_catalog_ids.add(catalog_id)
+            path = _catalog_file(ssot_dir, entries.get(catalog_id))
+            parsed_catalogs[catalog_id] = _load_toml(path, f"Katalog {catalog_id}")
+            catalog_paths.append(path)
 
     triggers = _validate_vocabulary(parsed_catalogs["triggers"], "triggers")
     policy_tags = _validate_vocabulary(parsed_catalogs["policy_tags"], "policy_tags")

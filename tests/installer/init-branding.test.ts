@@ -54,6 +54,13 @@ async function packageFixture(t: TestContext): Promise<{ root: string; paths: st
   const paths = [
     "CHANGELOG.md", "LICENSE", "README.md", "VERSION", "package.json", "release.files.sha256",
     "bundle/GOVERNANCE.md", "bundle/agent-governance/manifest.toml", "docs/installer-cli-reference.md",
+    "bundle/agent-governance/ssot/manifest.toml",
+    "bundle/agent-governance/ssot/routing/triggers.toml",
+    "bundle/agent-governance/ssot/routing/policy-tags.toml",
+    "bundle/agent-governance/ssot/routing/scopes.toml",
+    "bundle/agent-governance/ssot/routing/tools.toml",
+    "bundle/agent-governance/ssot/commands/commands.toml",
+    "bundle/agent-governance/ssot/discovery/discovery-signals.toml",
     "dist/cli.js", "dist/resume-toon.js", "dist/resume-toon.d.ts", `prebuilds/${process.platform}-${process.arch}/agent_governance_fs.node`,
     "assets/branding/agent-governance-terminal.png",
   ];

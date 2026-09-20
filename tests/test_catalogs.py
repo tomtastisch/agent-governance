@@ -8,6 +8,7 @@ from pathlib import Path
 import shutil
 import sys
 import tempfile
+import tomllib
 import unittest
 
 
@@ -15,12 +16,12 @@ ROOT = Path(__file__).resolve().parents[1]
 GOVERNANCE_ROOT = ROOT / "bundle" / "agent-governance"
 VALIDATOR = ROOT / "tests" / "support" / "catalog_validator.py"
 EXPECTED_CATALOG_PATHS = {
-    "triggers": "catalogs/triggers.toml",
-    "policy_tags": "catalogs/policy-tags.toml",
-    "scopes": "catalogs/scopes.toml",
-    "tools": "catalogs/tools.toml",
-    "commands": "catalogs/commands.toml",
-    "discovery_signals": "catalogs/discovery-signals.toml",
+    "triggers": "ssot/routing/triggers.toml",
+    "policy_tags": "ssot/routing/policy-tags.toml",
+    "scopes": "ssot/routing/scopes.toml",
+    "tools": "ssot/routing/tools.toml",
+    "commands": "ssot/commands/commands.toml",
+    "discovery_signals": "ssot/discovery/discovery-signals.toml",
 }
 EXPECTED_COMMANDS = {
     "inspect": (["inspect"], "transaction", "read", False, False),
@@ -88,18 +89,36 @@ class CatalogContract(unittest.TestCase):
         self.validator = load_validator(self)
         self.contract = self.validator.load_catalog_contract(GOVERNANCE_ROOT)
 
-    def test_manifest_schema_two_references_exact_catalogs(self):
-        self.assertEqual(self.contract.manifest["schema_version"], 2)
-        self.assertEqual(self.contract.manifest["catalogs"], EXPECTED_CATALOG_PATHS)
+    def test_manifest_schema_three_references_exact_ssot(self):
+        self.assertEqual(self.contract.manifest["schema_version"], 3)
+        self.assertEqual(self.contract.manifest["ssot"], "ssot/manifest.toml")
         self.assertEqual(
             set(self.contract.manifest),
-            {"schema_version", "local_rules", "catalogs", "routing", "modules", "roles"},
+            {"schema_version", "local_rules", "ssot", "routing", "modules", "roles"},
         )
         self.assertEqual(
             self.contract.manifest["routing"],
             {"unknown": "block", "ambiguous": "block"},
         )
         self.assertNotIn("known_triggers", self.contract.manifest["routing"])
+        self.assertNotIn("catalogs", self.contract.manifest)
+
+    def test_ssot_index_registers_exact_domains(self):
+        ssot = tomllib.loads((GOVERNANCE_ROOT / "ssot" / "manifest.toml").read_text(encoding="utf-8"))
+        self.assertEqual(ssot["schema_version"], 1)
+        self.assertEqual(
+            ssot["domains"],
+            {
+                "routing": {
+                    "triggers": "routing/triggers.toml",
+                    "policy_tags": "routing/policy-tags.toml",
+                    "scopes": "routing/scopes.toml",
+                    "tools": "routing/tools.toml",
+                },
+                "commands": {"commands": "commands/commands.toml"},
+                "discovery": {"discovery_signals": "discovery/discovery-signals.toml"},
+            },
+        )
 
     def test_catalogs_have_closed_top_level_and_entry_fields(self):
         self.assertEqual(set(self.contract.catalogs["triggers"]), {"schema_version", "triggers"})
@@ -367,7 +386,7 @@ scopes = {scopes}
 evidence = "Probe evidence."
 fallback = "Probe fallback."
 {constraints}{extra}'''
-        path = self.root / "catalogs" / "tools.toml"
+        path = self.root / "ssot" / "routing" / "tools.toml"
         path.write_text(path.read_text(encoding="utf-8") + payload, encoding="utf-8")
 
 
@@ -451,9 +470,9 @@ class CatalogSchemaFailures(CatalogMutationCase):
 
     def test_unknown_vocabulary_field_fails_closed(self):
         for relative in (
-            "catalogs/triggers.toml",
-            "catalogs/policy-tags.toml",
-            "catalogs/scopes.toml",
+            "ssot/routing/triggers.toml",
+            "ssot/routing/policy-tags.toml",
+            "ssot/routing/scopes.toml",
         ):
             with self.subTest(relative=relative):
                 path = self.root / relative
@@ -464,7 +483,7 @@ class CatalogSchemaFailures(CatalogMutationCase):
                 path.write_text(original, encoding="utf-8")
 
     def test_unknown_catalog_top_level_field_fails_closed(self):
-        path = self.root / "catalogs" / "triggers.toml"
+        path = self.root / "ssot" / "routing" / "triggers.toml"
         path.write_text("unexpected = true\n" + path.read_text(encoding="utf-8"), encoding="utf-8")
         with self.assertRaisesRegex(self.validator.CatalogValidationError, "Top-Level"):
             self.load()
@@ -526,7 +545,7 @@ class CatalogSchemaFailures(CatalogMutationCase):
 class CommandCatalogFailures(CatalogMutationCase):
     def test_unknown_command_field_fails_closed(self):
         self.replace(
-            "catalogs/commands.toml",
+            "ssot/commands/commands.toml",
             "interactive = false",
             "interactive = false\nunexpected = true",
         )
@@ -535,7 +554,7 @@ class CommandCatalogFailures(CatalogMutationCase):
 
     def test_wrong_command_type_fails_closed(self):
         self.replace(
-            "catalogs/commands.toml",
+            "ssot/commands/commands.toml",
             "interactive = false",
             'interactive = "false"',
         )
@@ -544,7 +563,7 @@ class CommandCatalogFailures(CatalogMutationCase):
 
     def test_duplicate_command_path_fails_closed(self):
         self.replace(
-            "catalogs/commands.toml",
+            "ssot/commands/commands.toml",
             'path = ["plan"]',
             'path = ["inspect"]',
         )
@@ -553,7 +572,7 @@ class CommandCatalogFailures(CatalogMutationCase):
 
     def test_invalid_command_semantics_fail_closed(self):
         self.replace(
-            "catalogs/commands.toml",
+            "ssot/commands/commands.toml",
             'capability = "orchestration"',
             'capability = "transaction"',
         )
@@ -564,7 +583,7 @@ class CommandCatalogFailures(CatalogMutationCase):
 class DiscoveryCatalogFailures(CatalogMutationCase):
     def test_unknown_discovery_limit_field_fails_closed(self):
         self.replace(
-            "catalogs/discovery-signals.toml",
+            "ssot/discovery/discovery-signals.toml",
             "max_depth = 4",
             "max_depth = 4\nunexpected = true",
         )
@@ -573,7 +592,7 @@ class DiscoveryCatalogFailures(CatalogMutationCase):
 
     def test_nonpositive_discovery_limit_fails_closed(self):
         self.replace(
-            "catalogs/discovery-signals.toml",
+            "ssot/discovery/discovery-signals.toml",
             "max_files = 256",
             "max_files = 0",
         )
@@ -582,7 +601,7 @@ class DiscoveryCatalogFailures(CatalogMutationCase):
 
     def test_unknown_discovery_family_reference_fails_closed(self):
         self.replace(
-            "catalogs/discovery-signals.toml",
+            "ssot/discovery/discovery-signals.toml",
             'family = "runtime"',
             'family = "unknown"',
         )
@@ -591,7 +610,7 @@ class DiscoveryCatalogFailures(CatalogMutationCase):
 
     def test_unknown_discovery_source_kind_fails_closed(self):
         self.replace(
-            "catalogs/discovery-signals.toml",
+            "ssot/discovery/discovery-signals.toml",
             'source_kinds = ["json", "toml", "plist"]',
             'source_kinds = ["network"]',
         )
@@ -636,25 +655,25 @@ class CatalogPathFailures(CatalogMutationCase):
             self.load()
 
     def test_missing_catalog_fails_closed(self):
-        (self.root / "catalogs" / "tools.toml").unlink()
+        (self.root / "ssot" / "routing" / "tools.toml").unlink()
         with self.assertRaisesRegex(self.validator.CatalogValidationError, "reguläre"):
             self.load()
 
     def test_catalog_path_traversal_fails_closed(self):
         self.replace(
-            "manifest.toml",
-            'tools = "catalogs/tools.toml"',
-            'tools = "catalogs/../catalogs/tools.toml"',
+            "ssot/manifest.toml",
+            'tools = "routing/tools.toml"',
+            'tools = "../routing/tools.toml"',
         )
         with self.assertRaisesRegex(self.validator.CatalogValidationError, "Traversal"):
             self.load()
 
     def test_catalog_root_escape_fails_closed(self):
         outside = self.root.parent / "outside.toml"
-        shutil.copy2(self.root / "catalogs" / "tools.toml", outside)
+        shutil.copy2(self.root / "ssot" / "routing" / "tools.toml", outside)
         self.replace(
-            "manifest.toml",
-            'tools = "catalogs/tools.toml"',
+            "ssot/manifest.toml",
+            'tools = "routing/tools.toml"',
             'tools = "../outside.toml"',
         )
         with self.assertRaisesRegex(self.validator.CatalogValidationError, "Traversal"):
@@ -662,10 +681,10 @@ class CatalogPathFailures(CatalogMutationCase):
 
     def test_absolute_external_catalog_fails_closed(self):
         outside = self.root.parent / "outside.toml"
-        shutil.copy2(self.root / "catalogs" / "tools.toml", outside)
+        shutil.copy2(self.root / "ssot" / "routing" / "tools.toml", outside)
         self.replace(
-            "manifest.toml",
-            'tools = "catalogs/tools.toml"',
+            "ssot/manifest.toml",
+            'tools = "routing/tools.toml"',
             f'tools = "{outside}"',
         )
         with self.assertRaisesRegex(self.validator.CatalogValidationError, "Katalogpfad"):
@@ -673,7 +692,7 @@ class CatalogPathFailures(CatalogMutationCase):
 
     def test_unexpected_catalog_symlink_fails_closed(self):
         target = self.root.parent / "tools-target.toml"
-        source = self.root / "catalogs" / "tools.toml"
+        source = self.root / "ssot" / "routing" / "tools.toml"
         shutil.copy2(source, target)
         source.unlink()
         source.symlink_to(target)

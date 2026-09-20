@@ -358,7 +358,7 @@ class ToolRoutingContract(unittest.TestCase):
     def test_github_cli_required_on_unchanged(self):
         if tomllib is None:
             self.skipTest("tomllib erfordert Python 3.11+")
-        with (GOVERNANCE_ROOT / "catalogs" / "tools.toml").open("rb") as handle:
+        with (GOVERNANCE_ROOT / "ssot" / "routing" / "tools.toml").open("rb") as handle:
             tools = tomllib.load(handle)["tools"]
         self.assertEqual(tools["github_cli"]["required_on"], ["github_remote"])
 

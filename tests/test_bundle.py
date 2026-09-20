@@ -22,7 +22,7 @@ BUNDLE = ROOT / "bundle"
 BOOTSTRAP = BUNDLE / "GOVERNANCE.md"
 GOVERNANCE_ROOT = BUNDLE / "agent-governance"
 MANIFEST = GOVERNANCE_ROOT / "manifest.toml"
-CATALOG_ROOT = GOVERNANCE_ROOT / "catalogs"
+SSOT_MANIFEST = GOVERNANCE_ROOT / "ssot" / "manifest.toml"
 RULE_ID_RE = re.compile(r"(?m)^### ([A-Z][A-Z0-9-]*-\d{3}) — ")
 RULE_TOKEN_RE = re.compile(r"\b[A-Z][A-Z0-9-]*-\d{3}\b")
 MARKDOWN_LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
@@ -46,11 +46,18 @@ def load_manifest() -> dict:
         return tomllib.load(handle)
 
 
+def _ssot_catalog_relative(name: str) -> str:
+    ssot = tomllib.loads(SSOT_MANIFEST.read_text(encoding="utf-8"))
+    for entries in ssot["domains"].values():
+        if name in entries:
+            return entries[name]
+    raise KeyError(name)
+
+
 def load_catalog(name: str) -> dict:
     if tomllib is None:
         raise unittest.SkipTest("tomllib erfordert Python 3.11+")
-    manifest = load_manifest()
-    path = GOVERNANCE_ROOT / manifest["catalogs"][name]
+    path = GOVERNANCE_ROOT / "ssot" / _ssot_catalog_relative(name)
     with path.open("rb") as handle:
         return tomllib.load(handle)
 
@@ -292,9 +299,10 @@ class ManifestContract(unittest.TestCase):
 
     def test_manifest_has_only_static_index_sections(self):
         self.assertEqual(set(self.data), {
-            "schema_version", "local_rules", "catalogs", "routing", "modules", "roles"
+            "schema_version", "local_rules", "ssot", "routing", "modules", "roles"
         })
-        self.assertEqual(self.data["schema_version"], 2)
+        self.assertEqual(self.data["schema_version"], 3)
+        self.assertEqual(self.data["ssot"], "ssot/manifest.toml")
         lowered = MANIFEST.read_text(encoding="utf-8").lower()
         for term in FORBIDDEN_MANIFEST_TERMS:
             self.assertNotRegex(lowered, rf"(?<![a-z]){re.escape(term)}(?![a-z])", term)
@@ -322,13 +330,19 @@ class ManifestContract(unittest.TestCase):
 
     def test_paths_are_relative_and_resolve(self):
         manifest_root = MANIFEST.parent.resolve()
-        self.assertIn("catalogs", self.data)
+        self.assertIn("ssot", self.data)
+        ssot = tomllib.loads(SSOT_MANIFEST.read_text(encoding="utf-8"))
+        catalog_paths = [
+            f"ssot/{rel}"
+            for entries in ssot["domains"].values()
+            for rel in entries.values()
+        ]
         required_paths = [
-            *self.data["catalogs"].values(),
+            *catalog_paths,
             *(entry["path"] for entry in self.data["modules"].values()),
             *(entry["path"] for entry in self.data["roles"].values()),
         ]
-        all_paths = [*required_paths, self.data["local_rules"]]
+        all_paths = [*required_paths, self.data["local_rules"], self.data["ssot"]]
         for raw in all_paths:
             pure = PurePosixPath(raw)
             self.assertFalse(pure.is_absolute(), raw)
@@ -445,7 +459,7 @@ class ManifestContract(unittest.TestCase):
 
     def test_no_trigger_loads_every_module(self):
         modules = self.data["modules"]
-        self.assertIn("catalogs", self.data)
+        self.assertIn("ssot", self.data)
         for trigger in load_catalog("triggers")["triggers"]:
             selected = {
                 name for name, entry in modules.items() if trigger in entry["triggers"]
@@ -488,10 +502,10 @@ class ToolRoutingContract(unittest.TestCase):
             "keine Autorisierung",
             "Provider",
             "fail-closed",
-            "catalogs/tools.toml",
-            "catalogs/triggers.toml",
-            "catalogs/policy-tags.toml",
-            "catalogs/scopes.toml",
+            "ssot/routing/tools.toml",
+            "ssot/routing/triggers.toml",
+            "ssot/routing/policy-tags.toml",
+            "ssot/routing/scopes.toml",
         ):
             self.assertIn(term, self.text)
 
@@ -504,7 +518,7 @@ class ToolRoutingContract(unittest.TestCase):
         self.assertIn("apm audit --ci", joined)
 
     def test_catalog_does_not_model_tool_installation_or_availability(self):
-        catalog = (CATALOG_ROOT / "tools.toml").read_text(encoding="utf-8")
+        catalog = (GOVERNANCE_ROOT / "ssot" / "routing" / "tools.toml").read_text(encoding="utf-8")
         self.assertNotRegex(
             catalog,
             r"(?im)^\s*(?:installed|available|connected|authenticated|version_on_host|"

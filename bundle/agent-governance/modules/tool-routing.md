@@ -10,12 +10,12 @@ Aufruf, Ergebnis und Evidenzumfang folgen
 
 ### TOL-002 — Katalogautorität und geschlossene Referenzen
 
-Der vom Manifest referenzierte [Toolkatalog](../catalogs/tools.toml) ist die einzige
+Der vom Manifest referenzierte [Toolkatalog](../ssot/routing/tools.toml) ist die einzige
 maschinenlesbare SSOT für Toolprofile und ihr Trigger-Routing. Seine `required_on`- und
 `useful_on`-Werte verweisen ausschließlich auf IDs aus dem
-[Triggerkatalog](../catalogs/triggers.toml), `policy_tags` ausschließlich auf IDs aus dem
-[Policy-Tag-Katalog](../catalogs/policy-tags.toml) und `scopes` ausschließlich auf IDs aus dem
-[Scope-Katalog](../catalogs/scopes.toml). Unbekannte IDs, Felder oder Referenzen scheitern
+[Triggerkatalog](../ssot/routing/triggers.toml), `policy_tags` ausschließlich auf IDs aus dem
+[Policy-Tag-Katalog](../ssot/routing/policy-tags.toml) und `scopes` ausschließlich auf IDs aus dem
+[Scope-Katalog](../ssot/routing/scopes.toml). Unbekannte IDs, Felder oder Referenzen scheitern
 fail-closed; es gibt keine freie Interpretation oder automatische Ergänzung.
 
 ### TOL-003 — Wirkung, Scope und Autorisierung

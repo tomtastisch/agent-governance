@@ -26,7 +26,7 @@ class NeutralHarnessContract(unittest.TestCase):
 
 class NeutralHarnessRouting(NeutralRuntimeCase):
     def test_every_required_tool_trigger_loads_tool_routing_semantics(self):
-        tools_path = self.root / "agent-governance" / "catalogs" / "tools.toml"
+        tools_path = self.root / "agent-governance" / "ssot" / "routing" / "tools.toml"
         tools = tomllib.loads(tools_path.read_text(encoding="utf-8"))["tools"]
         required_triggers = {
             trigger

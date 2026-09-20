@@ -22,54 +22,57 @@ function requireReleaseRoot(releaseRoot: string): string {
   return realpathSync(releaseRoot);
 }
 
-export function resolveManifestPath(releaseRoot: string = PACKAGE_RELEASE_ROOT): string {
-  const root = requireReleaseRoot(releaseRoot);
-  const parts = ["bundle", "agent-governance", "manifest.toml"] as const;
-  let current = root;
+function resolveIndexedPath(releaseRoot: string, parts: readonly string[], label: string): string {
+  let current = releaseRoot;
   for (const [index, part] of parts.entries()) {
     current = join(current, part);
     let metadata;
     try {
       metadata = lstatSync(current);
     } catch {
-      throw new Error("command manifest path must exist");
+      throw new Error(`${label} path must exist`);
     }
-    if (metadata.isSymbolicLink()) throw new Error("command manifest path must not contain symlinks");
-    const isManifest = index === parts.length - 1;
-    if ((isManifest && !metadata.isFile()) || (!isManifest && !metadata.isDirectory())) {
-      throw new Error("command manifest path has an invalid component type");
+    if (metadata.isSymbolicLink()) throw new Error(`${label} path must not contain symlinks`);
+    const isLeaf = index === parts.length - 1;
+    if ((isLeaf && !metadata.isFile()) || (!isLeaf && !metadata.isDirectory())) {
+      throw new Error(`${label} path has an invalid component type`);
     }
   }
   const resolved = realpathSync(current);
-  const offset = relative(root, resolved);
+  const offset = relative(releaseRoot, resolved);
   if (offset === ".." || offset.startsWith(`..${sep}`) || isAbsolute(offset)) {
-    throw new Error("command manifest path escapes release root");
+    throw new Error(`${label} path escapes release root`);
   }
   return resolved;
 }
 
-export function resolveCatalogPath(manifestPath: string, rawPath: unknown): string {
+export function resolveManifestPath(releaseRoot: string = PACKAGE_RELEASE_ROOT): string {
+  const root = requireReleaseRoot(releaseRoot);
+  return resolveIndexedPath(root, ["bundle", "agent-governance", "manifest.toml"], "command manifest");
+}
+
+export function resolveSsotFile(ssotManifestPath: string, rawPath: unknown): string {
   if (typeof rawPath !== "string" || rawPath.length === 0 || isAbsolute(rawPath) || rawPath.includes("\\")) {
-    throw new Error("command catalog path is invalid");
+    throw new Error("ssot file path is invalid");
   }
   const parts = rawPath.split("/");
   if (parts.some((part) => part === "" || part === "." || part === ".." || part === "~")) {
-    throw new Error("command catalog path contains traversal");
+    throw new Error("ssot file path contains traversal");
   }
-  const manifestRoot = dirname(manifestPath);
-  let current = manifestRoot;
+  const ssotRoot = dirname(ssotManifestPath);
+  let current = ssotRoot;
   for (const part of parts) {
     current = join(current, part);
     let metadata;
     try {
       metadata = lstatSync(current);
     } catch {
-      throw new Error("command catalog path must reference an existing file");
+      throw new Error("ssot file path must reference an existing file");
     }
-    if (metadata.isSymbolicLink()) throw new Error("command catalog path must not contain symlinks");
+    if (metadata.isSymbolicLink()) throw new Error("ssot file path must not contain symlinks");
   }
-  const resolved = requireRegularFile(current, "command catalog");
-  const offset = relative(manifestRoot, resolved);
-  if (offset === ".." || offset.startsWith(`..${sep}`) || isAbsolute(offset)) throw new Error("command catalog path escapes manifest root");
+  const resolved = requireRegularFile(current, "ssot file");
+  const offset = relative(ssotRoot, resolved);
+  if (offset === ".." || offset.startsWith(`..${sep}`) || isAbsolute(offset)) throw new Error("ssot file path escapes the ssot root");
   return resolved;
 }

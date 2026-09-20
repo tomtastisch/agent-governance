@@ -16,7 +16,7 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.11 ist Repositoryvert
 ROOT = Path(__file__).resolve().parents[1]
 GOVERNANCE_ROOT = ROOT / "bundle" / "agent-governance"
 MANIFEST = GOVERNANCE_ROOT / "manifest.toml"
-TRIGGERS = GOVERNANCE_ROOT / "catalogs" / "triggers.toml"
+TRIGGERS = GOVERNANCE_ROOT / "ssot" / "routing" / "triggers.toml"
 RESUME = GOVERNANCE_ROOT / "modules" / "resume.md"
 TEMPLATES = GOVERNANCE_ROOT / "modules" / "templates.md"
 

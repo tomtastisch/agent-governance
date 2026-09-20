@@ -84,10 +84,11 @@ immer geladenen Bootstrap-Vertrags; Unklarheit über einen Treffer wird nach
 ## Deterministisches Modulrouting
 
 1. Lies den statischen Manifest-Index vollständig.
-2. Löse die vier dort bezeichneten Kataloge relativ zum beibehaltenen absoluten
-   Manifestverzeichnis auf und validiere ihre geschlossenen Schemen und Referenzen vollständig.
+2. Löse den vom Manifest referenzierten SSOT-Index `ssot/manifest.toml` relativ zum beibehaltenen
+   absoluten Manifestverzeichnis auf und validiere dessen geschlossenen Domain-Index sowie alle
+   dort registrierten Katalogdateien vollständig.
 3. Wende [GOV-006](#gov-006--security-vorklassifikation) an und klassifiziere die tatsächlich
-   angefragte Arbeit in einen oder mehrere der in `catalogs/triggers.toml` definierten Trigger.
+   angefragte Arbeit in einen oder mehrere der in `ssot/routing/triggers.toml` definierten Trigger.
 4. Lade nur Module, deren `triggers` exakt getroffen wurden, anschließend deren deklarierte
    `dependencies` in topologischer Reihenfolge. Mehrfach gewählte Module werden einmal geladen.
 5. Lade eine Rolle nur, wenn ihr eigener Rollentrigger getroffen wurde; lade dann ausschließlich
