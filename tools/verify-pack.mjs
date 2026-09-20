@@ -37,7 +37,7 @@ for (const path of paths) {
     throw new Error(`forbidden runtime path: ${path}`);
   }
 }
-const requiredPaths = ["README.md", "LICENSE", "CHANGELOG.md", "dist/cli.js", "dist/resume-toon.js", "dist/resume-toon.d.ts", "bundle/GOVERNANCE.md", "bundle/agent-governance/manifest.toml", "bundle/agent-governance/ssot/manifest.toml", "bundle/agent-governance/ssot/routing/triggers.toml", "bundle/agent-governance/ssot/routing/policy-tags.toml", "bundle/agent-governance/ssot/routing/scopes.toml", "bundle/agent-governance/ssot/routing/tools.toml", "bundle/agent-governance/ssot/commands/commands.toml", "bundle/agent-governance/ssot/discovery/discovery-signals.toml", "docs/installer-cli-reference.md", "release.files.sha256", "VERSION", runtimeBrandingPath];
+const requiredPaths = ["README.md", "LICENSE", "CHANGELOG.md", "dist/cli.js", "dist/resume-toon.js", "dist/resume-toon.d.ts", "bundle/GOVERNANCE.md", "bundle/agent-governance/manifest.toml", "bundle/agent-governance/templates/manifest.toml", "bundle/agent-governance/ssot/manifest.toml", "bundle/agent-governance/ssot/routing/triggers.toml", "bundle/agent-governance/ssot/routing/policy-tags.toml", "bundle/agent-governance/ssot/routing/scopes.toml", "bundle/agent-governance/ssot/routing/tools.toml", "bundle/agent-governance/ssot/commands/commands.toml", "bundle/agent-governance/ssot/discovery/discovery-signals.toml", "docs/installer-cli-reference.md", "release.files.sha256", "VERSION", runtimeBrandingPath];
 for (const required of requiredPaths) {
   if (!paths.includes(required)) throw new Error(`missing tarball path: ${required}`);
 }

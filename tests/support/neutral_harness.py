@@ -120,6 +120,7 @@ class NeutralHarness:
             raise NeutralHarnessError(f"Governance-Kataloge sind ungültig: {error}") from error
 
         read_paths.extend(contract.catalog_paths)
+        read_paths.extend(contract.template_paths)
         chain = ["bootstrap", "manifest", "catalogs"]
         manifest = contract.manifest
         local_path = self._local_rules_path(manifest)

@@ -5,140 +5,50 @@
 Eine strikte Vorlage ist nur für wiederkehrende Vorgänge verbindlich, bei denen freie Form
 Identität, Evidenz oder Übergabeinformation regelmäßig verliert. Alle anderen Interaktionen
 folgen einem strukturierten Mindestvertrag. Semantische Regeln bleiben in ihren Fachmodulen;
-diese Datei ist alleinige SSOT für Form und Pflichtfelder.
+die atomaren Template-Dateien unter `templates/` sind — registriert über
+[`templates/manifest.toml`](../templates/manifest.toml) — die alleinige SSOT für Form und
+Pflichtfelder.
 
-## Strikte Vorlagen
+## Kanonische Registry
 
-### Commit
+Genau eine geschlossene Registry registriert jeden wiederverwendbaren generischen Formvertrag
+genau einmal: [`templates/manifest.toml`](../templates/manifest.toml). Jeder Eintrag trägt eine
+stabile Template-ID, einen relativen Pfad, eine semantische Kategorie und ein Format. Konsumenten
+lösen Templates bevorzugt über die stabile ID auf, nicht über den Dateipfad.
 
-```text
-<type>(<scope>): <imperative summary>
+## Kategorien und atomare Templates
 
-<optional body: context, breaking/security impact, non-obvious decision>
-```
+### git
 
-`type` ist ein fachlicher Änderungstyp wie `feat`, `fix`, `refactor`, `docs`, `test` oder
-`chore`; eine Agentenmarke ist kein Typ. Der Body entfällt, wenn der Header die atomare
-Änderung nach [DEL-004](delivery.md#del-004--atomare-historie) vollständig erklärt.
+- [`git_commit`](../templates/git/commit.md) — atomare Commitform
+- [`git_branch`](../templates/git/branch.md) — Branchnamenform
 
-### Branch
+### delivery
 
-```text
-<type>/<scope>/<short-topic>
-```
+- [`delivery_push_pr_checkpoint`](../templates/delivery/push-pr-checkpoint.md) — Push-/PR-Checkpoint
+- [`delivery_pull_request`](../templates/delivery/pull-request.md) — PR-Beschreibung und Reviewevidenz
+- [`delivery_release_checkpoint`](../templates/delivery/release-checkpoint.md) — Release-Nachweisform
 
-Alle Segmente sind klein geschrieben, kurz und fachlich. Ein ausdrücklich vorgegebener
-Branchname hat Vorrang; ein Agentenname ersetzt weder Typ noch Scope.
+### review
 
-### Push-/PR-Checkpoint
+- [`review_finding`](../templates/review/finding.md) — generisches QA-/SEC-/ARCH-Finding
 
-```text
-Branch: <branch>
-Local HEAD: <Exact-Head-SHA>
-Remote branch HEAD: <Exact-Head-SHA>
-PR: <repository>#<number> -> <base>
-PR head: <Exact-Head-SHA>
-Checks: <command-or-check-id> = <result>
-Review role: <QA|SEC|ARCH>
-Review provider: <provider>
-Review reference: <review-id-or-object>
-Review Exact Head: <Exact-Head-SHA>
-Review result: <state>
-Open findings: <count and classifications>
-```
+### context
 
-Die drei SHAs müssen vor einer Exact-Head-Aussage gleich sein. Ergebnisse folgen
-[DEL-002](delivery.md#del-002--exakter-stand).
+- [`context_handoff`](../templates/context/handoff.md) — Kontextübergabe
 
-### PR-Beschreibung und Reviewevidenz
+### communication
 
-```text
-Ziel: <bounded outcome>
-Scope: <included / excluded>
+- [`communication_status`](../templates/communication/status.md) — Antwort und Status
+- [`communication_tool_error_blocker`](../templates/communication/tool-error-blocker.md) — Toolfehler und Blocker
+- [`communication_completion`](../templates/communication/completion.md) — Abschlussaussage
 
-| Teilaufgabe | Commit-SHA | Tests | Reviewerrolle | Provider | Reviewreferenz / Head | Findings | Status |
-|---|---|---|---|---|---|---|---|
-| <task> | <sha> | <checks> | <role> | <provider> | <id> / <sha> | <classes> | <state> |
+### external_effects
 
-Risiken/Blocker: <none or precise remainder>
-Nicht autorisiert: <merge/tag/release or task-specific boundary>
-```
+- [`external_effects_approval_checkpoint`](../templates/external-effects/approval-checkpoint.md) — Freigabe-/Autorisierungscheckpoint
 
-Die Tabelle wird fortgeführt, nicht durch Review-Rohtranskripte ersetzt.
+## Domain-spezifische Templates
 
-### QA-/SEC-Finding
-
-```text
-Rolle: <QA|SEC|ARCH>
-Provider: <provider>
-Exact Head: <Exact-Head-SHA>
-Finding: <id> — <blocking-valid|nonblocking-valid|invalid|not-applicable>
-Ort: <file/object/rule>
-Evidenz: <reproduction or authoritative reference>
-Auswirkung: <bounded consequence>
-Abhilfe/Begründung: <minimal fix or technical rationale>
-Re-Review: <required|not required> — <reference or pending>
-```
-
-Klassifikation und Re-Review richten sich nach
-[DEL-009](delivery.md#del-009--finding-lifecycle).
-
-### Kontextübergabe
-
-```text
-Ziel und Scope: <current bounded objective>
-Kanonische SSOT: <paths/objects and precedence>
-Exact state: <branch, head, PR or artifact identity>
-Entscheidungen: <accepted decisions and superseded decisions>
-Evidenz: <checks/reviews with result and identity>
-Offene Findings/Blocker: <classified list>
-Nächster sicherer Schritt: <one actionable continuation>
-Nicht übernehmen: <stale, secret or out-of-scope context>
-```
-
-### Resume-Checkpoint
-
-```text
-Auftrag: <task-id> — <bounded objective>
-Scope: <included / excluded>
-Task-Identität: <task_identity fingerprint>
-Scope-Identität: <scope_identity fingerprint>
-Repository/Worktree/Branch: <repository> <worktree> <branch>
-Exact state: <branch> <head-SHA> <clean|dirty>
-Dirty state: <staged / unstaged / untracked fingerprints>
-Kanonische SSOT: <paths/objects and precedence>
-Abgeschlossene Evidence:
-| Evidence-ID | Binding-Fingerprints | Ergebnis |
-| <id> | <fingerprints> | <REUSE|INVALIDATE> |
-Unvollständige Evidence: <INCOMPLETE Liste>
-Offene Findings/Blocker: <classified list>
-Nächste atomare Aktion: <one actionable continuation>
-TOON-Projektion: <deterministisch abgeleitete .toon-Referenz>
-Nicht übernehmen: <stale, secret oder out-of-scope>
-```
-
-## Strukturierte Verträge
-
-### Antwort und Status
-
-Eine sichtbare Arbeitsantwort nennt zuerst, was umgesetzt oder geprüft wurde, dann aktuellen
-Status, Evidenz und verbleibende Risiken. Bei längeren Aufgaben folgt eine kumulative
-Fortschrittsliste mit höchstens einem aktiven Schritt. Statuswörter bezeichnen nur den durch
-Nachweise gedeckten Scope.
-
-Die vier Teile werden ausdrücklich benannt. Wenn keine bekannten Risiken verbleiben, lautet
-das letzte Feld `Verbleibende Risiken: keine`.
-
-### Toolfehler und Blocker
-
-Die Meldung enthält betroffenen Schritt, tatsächlichen Aufruf oder Prüfpfad, beobachtetes
-Ergebnis, fachliche Auswirkung, bereits ausgeschöpfte sichere Alternative und die kleinste
-notwendige Entscheidung. Ein Toolfehler blockiert nicht automatisch unabhängige Arbeit und
-wird nie als positiver Nachweis umgedeutet.
-
-### Abschlussaussage
-
-Ein Abschluss nennt Gegenstand, Exact Head oder Artefaktidentität, ausgeführte Gates,
-Ergebnisse, offene Risiken und autorisierte nächste Entscheidung. Er verwendet „abgeschlossen“
-oder gleichwertige Sprache nur, wenn [EVD-004](evidence.md#evd-004--abschlussnachweis) erfüllt
-ist; andernfalls endet er mit genau dem verbleibenden Blocker.
+Domain-spezifische Formverträge gehören ihren Fachdomains und sind nicht Teil der generischen
+Registry. Der domain-spezifische Resume-Checkpoint liegt im
+[Resume-Modul](resume.md#resume-checkpoint).

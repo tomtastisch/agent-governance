@@ -17,6 +17,8 @@ async function allowlistedFixture(t: TestContext): Promise<{ root: string; paths
     "release.files.sha256",
     "bundle/GOVERNANCE.md",
     "bundle/agent-governance/manifest.toml",
+    "bundle/agent-governance/templates/manifest.toml",
+    "bundle/agent-governance/templates/git/commit.md",
     "bundle/agent-governance/ssot/manifest.toml",
     "bundle/agent-governance/ssot/routing/triggers.toml",
     "bundle/agent-governance/ssot/routing/policy-tags.toml",

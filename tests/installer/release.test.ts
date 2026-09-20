@@ -139,9 +139,11 @@ test("release verifier accepts legacy schema-2 manifests for installed releases"
     await rename(join(ssotRoot, rel), join(catalogRoot, `${key.replaceAll("_", "-")}.toml`));
   }
   await rm(ssotRoot, { recursive: true, force: true });
+  await rm(join(manifestRoot, "templates"), { recursive: true, force: true });
   const legacyManifest = (await readFile(manifestPath, "utf8"))
-    .replace("schema_version = 3", "schema_version = 2")
+    .replace("schema_version = 4", "schema_version = 2")
     .replace('ssot = "ssot/manifest.toml"\n', "")
+    .replace('templates = "templates/manifest.toml"\n', "")
     .replace("[routing]", '[catalogs]\ntriggers = "catalogs/triggers.toml"\npolicy_tags = "catalogs/policy-tags.toml"\nscopes = "catalogs/scopes.toml"\ntools = "catalogs/tools.toml"\ncommands = "catalogs/commands.toml"\ndiscovery_signals = "catalogs/discovery-signals.toml"\n\n[routing]');
   await writeFile(manifestPath, legacyManifest);
   await writeInventory(root);
@@ -164,9 +166,11 @@ test("release verifier accepts the legacy four-catalog schema-2 manifest", async
     await rename(join(ssotRoot, rel), join(catalogRoot, `${key.replaceAll("_", "-")}.toml`));
   }
   await rm(ssotRoot, { recursive: true, force: true });
+  await rm(join(manifestRoot, "templates"), { recursive: true, force: true });
   const legacyManifest = (await readFile(manifestPath, "utf8"))
-    .replace("schema_version = 3", "schema_version = 2")
+    .replace("schema_version = 4", "schema_version = 2")
     .replace('ssot = "ssot/manifest.toml"\n', "")
+    .replace('templates = "templates/manifest.toml"\n', "")
     .replace("[routing]", '[catalogs]\ntriggers = "catalogs/triggers.toml"\npolicy_tags = "catalogs/policy-tags.toml"\nscopes = "catalogs/scopes.toml"\ntools = "catalogs/tools.toml"\n\n[routing]');
   await writeFile(manifestPath, legacyManifest);
   await writeInventory(root);
@@ -197,7 +201,7 @@ test("release verifier rejects symlinked release and bundle roots", async () => 
 
 test("release verifier rejects TOML forms rejected by conforming parsers", async () => {
   for (const mutate of [
-    (text: string) => text.replace("schema_version = 3", "schema_version = 03"),
+    (text: string) => text.replace("schema_version = 4", "schema_version = 03"),
     (text: string) => `${text}\n[routing]\n`,
   ]) {
     const root = await fixture(); const manifestPath = join(root, "bundle", "agent-governance", "manifest.toml"); await writeFile(manifestPath, mutate(await readFile(manifestPath, "utf8"))); await writeInventory(root);

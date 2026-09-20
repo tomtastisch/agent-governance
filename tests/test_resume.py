@@ -18,7 +18,7 @@ GOVERNANCE_ROOT = ROOT / "bundle" / "agent-governance"
 MANIFEST = GOVERNANCE_ROOT / "manifest.toml"
 TRIGGERS = GOVERNANCE_ROOT / "ssot" / "routing" / "triggers.toml"
 RESUME = GOVERNANCE_ROOT / "modules" / "resume.md"
-TEMPLATES = GOVERNANCE_ROOT / "modules" / "templates.md"
+TEMPLATES = GOVERNANCE_ROOT / "modules" / "resume.md"
 
 RESUME_TRIGGER = "resume_continuation"
 RESUME_RULE_COUNT = 15
@@ -199,10 +199,7 @@ class ResumeTemplateContract(unittest.TestCase):
         self.text = TEMPLATES.read_text(encoding="utf-8")
 
     def test_resume_checkpoint_is_a_strict_template(self):
-        strict = self.text.split("## Strikte Vorlagen", 1)[1].split(
-            "## Strukturierte Verträge", 1
-        )[0]
-        self.assertIn("### Resume-Checkpoint", strict)
+        self.assertIn("## Resume-Checkpoint", self.text)
 
     def test_resume_checkpoint_binds_identity_and_evidence(self):
         for field in (

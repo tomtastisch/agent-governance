@@ -1,0 +1,56 @@
+schema_version = 1
+
+[templates.git_commit]
+path = "git/commit.md"
+category = "git"
+format = "markdown"
+
+[templates.git_branch]
+path = "git/branch.md"
+category = "git"
+format = "markdown"
+
+[templates.delivery_push_pr_checkpoint]
+path = "delivery/push-pr-checkpoint.md"
+category = "delivery"
+format = "markdown"
+
+[templates.delivery_pull_request]
+path = "delivery/pull-request.md"
+category = "delivery"
+format = "markdown"
+
+[templates.delivery_release_checkpoint]
+path = "delivery/release-checkpoint.md"
+category = "delivery"
+format = "markdown"
+
+[templates.review_finding]
+path = "review/finding.md"
+category = "review"
+format = "markdown"
+
+[templates.context_handoff]
+path = "context/handoff.md"
+category = "context"
+format = "markdown"
+
+[templates.communication_status]
+path = "communication/status.md"
+category = "communication"
+format = "markdown"
+
+[templates.communication_tool_error_blocker]
+path = "communication/tool-error-blocker.md"
+category = "communication"
+format = "markdown"
+
+[templates.communication_completion]
+path = "communication/completion.md"
+category = "communication"
+format = "markdown"
+
+[templates.external_effects_approval_checkpoint]
+path = "external-effects/approval-checkpoint.md"
+category = "external_effects"
+format = "markdown"

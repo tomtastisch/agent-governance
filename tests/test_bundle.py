@@ -299,10 +299,11 @@ class ManifestContract(unittest.TestCase):
 
     def test_manifest_has_only_static_index_sections(self):
         self.assertEqual(set(self.data), {
-            "schema_version", "local_rules", "ssot", "routing", "modules", "roles"
+            "schema_version", "local_rules", "ssot", "templates", "routing", "modules", "roles"
         })
-        self.assertEqual(self.data["schema_version"], 3)
+        self.assertEqual(self.data["schema_version"], 4)
         self.assertEqual(self.data["ssot"], "ssot/manifest.toml")
+        self.assertEqual(self.data["templates"], "templates/manifest.toml")
         lowered = MANIFEST.read_text(encoding="utf-8").lower()
         for term in FORBIDDEN_MANIFEST_TERMS:
             self.assertNotRegex(lowered, rf"(?<![a-z]){re.escape(term)}(?![a-z])", term)
@@ -342,7 +343,7 @@ class ManifestContract(unittest.TestCase):
             *(entry["path"] for entry in self.data["modules"].values()),
             *(entry["path"] for entry in self.data["roles"].values()),
         ]
-        all_paths = [*required_paths, self.data["local_rules"], self.data["ssot"]]
+        all_paths = [*required_paths, self.data["local_rules"], self.data["ssot"], self.data["templates"]]
         for raw in all_paths:
             pure = PurePosixPath(raw)
             self.assertFalse(pure.is_absolute(), raw)
@@ -599,8 +600,14 @@ class ReviewContract(unittest.TestCase):
 
 class TemplateContract(unittest.TestCase):
     def setUp(self):
-        self.path = GOVERNANCE_ROOT / "modules" / "templates.md"
-        self.text = self.path.read_text(encoding="utf-8")
+        self.index = GOVERNANCE_ROOT / "modules" / "templates.md"
+        self.text = self.index.read_text(encoding="utf-8")
+        self.templates_root = GOVERNANCE_ROOT / "templates"
+
+    def _template(self, relative: str) -> str:
+        path = self.templates_root / relative
+        self.assertTrue(path.is_file(), relative)
+        return path.read_text(encoding="utf-8")
 
     def test_manifest_routes_templates_without_global_import(self):
         module = load_manifest()["modules"]["templates"]
@@ -617,46 +624,42 @@ class TemplateContract(unittest.TestCase):
         for role in ("quality_assurance", "security_review"):
             self.assertIn("templates", manifest["roles"][role]["modules"])
 
-    def test_strict_templates_cover_drift_prone_operations(self):
-        strict = self.text.split("## Strikte Vorlagen", 1)[1].split(
-            "## Strukturierte Verträge", 1
-        )[0]
-        for heading in (
-            "### Commit", "### Branch", "### Push-/PR-Checkpoint",
-            "### PR-Beschreibung und Reviewevidenz", "### QA-/SEC-Finding",
-            "### Kontextübergabe",
-        ):
-            self.assertIn(heading, strict)
-        self.assertIn("<type>(<scope>): <imperative summary>", strict)
-        self.assertIn("<type>/<scope>/<short-topic>", strict)
-        self.assertIn("<Exact-Head-SHA>", strict)
-        self.assertNotIn("provider-or-role", strict)
+    def test_atomized_templates_cover_drift_prone_operations(self):
+        commit = self._template("git/commit.md")
+        self.assertIn("<type>(<scope>): <imperative summary>", commit)
+        branch = self._template("git/branch.md")
+        self.assertIn("<type>/<scope>/<short-topic>", branch)
+        checkpoint = self._template("delivery/push-pr-checkpoint.md")
+        self.assertIn("<Exact-Head-SHA>", checkpoint)
+        self.assertNotIn("provider-or-role", checkpoint)
         for field in (
             "Review role:", "Review provider:", "Review reference:",
             "Review Exact Head:",
         ):
-            self.assertIn(field, strict)
+            self.assertIn(field, checkpoint)
 
     def test_free_form_interactions_use_structured_contracts(self):
-        structured = self.text.split("## Strukturierte Verträge", 1)[1]
-        for heading in (
-            "### Antwort und Status", "### Toolfehler und Blocker",
-            "### Abschlussaussage",
+        for relative in (
+            "communication/status.md",
+            "communication/tool-error-blocker.md",
+            "communication/completion.md",
         ):
-            self.assertIn(heading, structured)
+            text = self._template(relative)
+            self.assertIn("## Form", text)
+            self.assertIn("## Nicht verantwortlich", text)
 
     def test_status_contract_explicitly_reports_when_no_risks_remain(self):
-        status = self.text.split("### Antwort und Status", 1)[1].split(
-            "\n### ", 1
-        )[0]
+        status = self._template("communication/status.md")
         self.assertIn("`Verbleibende Risiken: keine`", status)
 
     def test_template_markers_have_one_normative_owner(self):
+        template_files = [p for p in (GOVERNANCE_ROOT / "templates").rglob("*.md")]
+        self.assertTrue(template_files)
         owners = {
             path for path in normative_files()
             if re.search(r"<[A-Za-z][^>\n]+>", path.read_text(encoding="utf-8"))
         }
-        self.assertEqual(owners, {self.path})
+        self.assertEqual(owners, {GOVERNANCE_ROOT / "modules" / "resume.md"})
 
 
 class ContextContinuityContract(unittest.TestCase):
