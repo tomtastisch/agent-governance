@@ -129,7 +129,7 @@ function readAliases(raw: unknown, label: string): string[] {
   if (!Array.isArray(raw)) fail(`${label} must be an array`);
   const result: string[] = [];
   for (const item of raw) {
-    if (typeof item !== "string" || item.trim() === "" || /[\0\r\n]/.test(item)) {
+    if (typeof item !== "string" || item.trim() === "" || /[\x00\x1b\r\n]/.test(item)) {
       fail(`${label} contains an invalid alias`);
     }
     result.push(item);
