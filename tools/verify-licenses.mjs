@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 
 const packageJson = JSON.parse(await readFile("package.json", "utf8"));
 const lock = JSON.parse(await readFile("package-lock.json", "utf8"));
-const runtimeDependencies = { "@clack/prompts": "1.7.0", "smol-toml": "1.8.0" };
+const runtimeDependencies = { "@clack/prompts": "1.7.0", "@toon-format/toon": "4.1.1", "smol-toml": "1.8.0" };
 if (packageJson.license !== "Apache-2.0" || JSON.stringify(packageJson.dependencies) !== JSON.stringify(runtimeDependencies)) {
   throw new Error("package must remain Apache-2.0 with the exact direct runtime dependency contract");
 }

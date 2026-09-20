@@ -3,18 +3,21 @@
 > Historische Evidenz - nicht normativ. Maßgeblich sind Lockfiles, Paketartefakte und der geprüfte
 > Exact Head des Pull Requests.
 
-## Runtime-Dependency-Projektion 1.1.0
+## Runtime-Dependency-Projektion 1.2.0
 
 `package.json.dependencies` und `package-lock.json` sind die einzige Runtime-Dependency-SSOT.
-Die zwei direkten, exakt gepinnten Runtime-Pakete sind `@clack/prompts` `1.7.0` (MIT) für den
-interaktiven Prompt-Stack und `smol-toml` `1.8.0` (BSD-3-Clause) für die direkt importierten
-Command- und Discovery-Kataloge. Der Lock löst exakt `11 = 1 Root + 7 Production ohne Root + 3 Development`
-Paketdatensätze auf (sieben Production-Pakete ohne Root: zwei direkt, fünf transitiv). Alle
+Die drei direkten, exakt gepinnten Runtime-Pakete sind `@clack/prompts` `1.7.0` (MIT) für den
+interaktiven Prompt-Stack, `@toon-format/toon` `4.1.1` (MIT) für die deterministische
+Resume-TOON-Projektion und `smol-toml` `1.8.0` (BSD-3-Clause) für die direkt importierten
+Command- und Discovery-Kataloge. Der Lock löst exakt `12 = 1 Root + 8 Production ohne Root + 3 Development`
+Paketdatensätze auf (acht Production-Pakete ohne Root: drei direkt, fünf transitiv). Alle
 Integrity- und Registry-URLs stehen unverändert im Lockfile; `npm audit --audit-level=high`, der
 License-Allowlist-Check und der echte Tarball-Consumer sind Releasegates.
 
 Die Registry-Integritäten der direkten Pins sind für `@clack/prompts` exakt
-`sha512-y7/yvZ2TPAnR9+jnc00klvNNLkJiXFFrQA/hlLCcxA9a2A4zQIOimyFQ9XfwYKiGD1fb5GY8vbKIIgO8d5Tb2A==`
+`sha512-y7/yvZ2TPAnR9+jnc00klvNNLkJiXFFrQA/hlLCcxA9a2A4zQIOimyFQ9XfwYKiGD1fb5GY8vbKIIgO8d5Tb2A==`,
+für `@toon-format/toon` exakt
+`sha512-SGCkS7IjVpwRmGPgnY8ENKpAf0EdAnZDOQkvFW0d2cgOpdn9FEFl7sTgryESyypXrWr0YajHGpwsAUX4zw9ZvA==`
 und für `smol-toml` exakt
 `sha512-kCZr2V3ch9i00x8zXRhjUNVcjG9ijES5dDudkXvUVCT5QlJNQWElSJdZqyPemffHoLNUYwOcou0Fy+ojN0uHSQ==`.
 Die Projekte sind jeweils über ihre veröffentlichten Repository-URLs nachverfolgbar; Maintenance,
@@ -32,13 +35,13 @@ oder lädt keine Pakete nach und startet weder npm, pnpm, yarn noch bun.
 
 ## Eigene Paketabhängigkeiten
 
-Der Installer besitzt genau zwei direkte Third-Party-Runtime-Abhängigkeiten:
-`@clack/prompts` `1.7.0` und `smol-toml` `1.8.0`. Die schmale repository-eigene
-Node-API-C-Komponente nutzt ausschließlich OS- und stabile Node-API-Symbole; sie wird für
-Darwin/Linux auf arm64/x64 im Releaseworkflow gebaut und als vier Prebuilds im gleichen
-provenance-gebundenen npm-Tarball ausgeliefert. Exakt gelockte Entwicklungsabhängigkeiten sind
-TypeScript `5.9.2` und `@types/node` `24.3.0`; die Lockfile-Projektion umfasst wie oben beschrieben
-11 Datensätze. Der lokale `npm audit --audit-level=high` meldete bei der Einführung null bekannte
+Der Installer besitzt genau drei direkte Third-Party-Runtime-Abhängigkeiten:
+`@clack/prompts` `1.7.0`, `@toon-format/toon` `4.1.1` und `smol-toml` `1.8.0`. Die schmale
+repository-eigene Node-API-C-Komponente nutzt ausschließlich OS- und stabile Node-API-Symbole;
+sie wird für Darwin/Linux auf arm64/x64 im Releaseworkflow gebaut und als vier Prebuilds im
+gleichen provenance-gebundenen npm-Tarball ausgeliefert. Exakt gelockte Entwicklungsabhängigkeiten
+sind TypeScript `5.9.2` und `@types/node` `24.3.0`; die Lockfile-Projektion umfasst wie oben
+beschrieben 12 Datensätze. Der lokale `npm audit --audit-level=high` meldete bei der Einführung null bekannte
 Schwachstellen. Die direkten und Entwicklungsabhängigkeiten stammen aus der npm-Registry, ihre
 Integritätswerte stehen in `package-lock.json`; Entwicklungsabhängigkeiten werden nicht in das
 Laufzeitpaket gebündelt. Repository und Paket verwenden Apache-2.0.

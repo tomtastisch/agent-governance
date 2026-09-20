@@ -9,7 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Keine.
+- Zustandsgebundener Resume Fast-Path mit Trigger `resume_continuation`, Modul
+  `modules/resume.md` (Regeln `RES-001`–`RES-015`) und strikter `Resume-Checkpoint`-Vorlage:
+  Evidence-Reuse und -Invalidation an getrennten Identitäten/Fingerprints, strikte
+  `INCOMPLETE`-/`PASS`-Trennung, Duplicate-Execution Guard, Dirty-Worktree-Identität,
+  Fresh-Chat-Resume, TOON-Projektion (Token-Oriented Object Notation) und Progressive Context
+  Loading ohne zweite State-/Checkpoint-/Evidence-Source of Truth.
+- Reale, deterministische TOON-Verarbeitung als öffentlicher Modulpfad
+  `@tomtastisch/agent-governance/resume-toon`: striktes Encode/Decode mit Domänenvalidierung
+  (erlaubte Felder, Struktur, Checkpoint-Bindung, Freshness/Staleness, fail-closed, keine
+  Secrets) über die offizielle Referenzimplementierung `@toon-format/toon` `4.1.1` (MIT).
+- Live Release-/Registry-Verifikation (`python3 tools/release_check.py registry`) gegen die
+  tatsächlich veröffentlichte npm-Version (`dist-tags.latest`), die veröffentlichte Versionsliste
+  und das aktuelle GitHub Latest Release — die Zielversion wird nie aus dem lokalen `package.json`
+  allein abgeleitet.
 
 ### Changed
 

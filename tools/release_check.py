@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Deterministische Release-Metadaten-Validierung des Repositorys.
 
-Vier Modi — alle read-only:
+Fünf Modi — alle read-only:
   tree         Repository-/Tree-Konsistenz (VERSION, CHANGELOG, Dokumentlinks)
   docs-remote  Kanonische Dokumentziele auf GitHub main (benötigt Netzwerk und gh CLI)
+  registry     Live-Registry-/Release-Verifikation (benötigt Netzwerk, npm und gh CLI)
   tag          Tag-Konsistenz (benötigt Git-Historie, Tag-Ref und optional erwarteten Commit)
   release      GitHub-Release-Konsistenz (benötigt Netzwerk und gh CLI)
 
@@ -61,6 +62,7 @@ GITHUB_HOST = "github.com"
 GITHUB_OWNER = "tomtastisch"
 GITHUB_REPOSITORY = "agent-governance"
 GITHUB_CURRENT_REF = "main"
+PACKAGE_NAME = "@tomtastisch/agent-governance"
 
 STATUS_OK = 0
 STATUS_FAIL = 1
@@ -211,6 +213,30 @@ class GhRunner:
             return json.loads(result.stdout), None
         except json.JSONDecodeError:
             return None, f"gh api {endpoint}: ungültige JSON-Antwort"
+
+    @staticmethod
+    def latest_release(root, timeout=30):
+        """Read-only: gh api releases/latest. Gibt (data: dict|None, error: str|None)."""
+        endpoint = f"repos/{GITHUB_OWNER}/{GITHUB_REPOSITORY}/releases/latest"
+        return GhRunner.api_content(endpoint, root, timeout=timeout)
+
+
+class NpmRunner:
+    """Wrapper für npm-registry-Aufrufe — in Tests austauschbar."""
+
+    @staticmethod
+    def view(args, root, timeout=30):
+        """Read-only: npm view --json. Gibt (stdout, stderr, returncode)."""
+        try:
+            result = subprocess.run(
+                ["npm", "view", PACKAGE_NAME, *args, "--json"],
+                cwd=root, capture_output=True, text=True, timeout=timeout
+            )
+        except FileNotFoundError:
+            return "", "npm CLI nicht verfügbar", 1
+        except subprocess.TimeoutExpired:
+            return "", f"npm view {PACKAGE_NAME}: Timeout", 1
+        return result.stdout.strip(), result.stderr.strip(), result.returncode
 
 
 # ── Hilfsfunktionen ──
@@ -922,6 +948,87 @@ def _resolve_target_commitish(target, root):
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# Registry-/Release-Verifikation (Level B, live)
+# ═══════════════════════════════════════════════════════════════════════
+
+def _parse_npm_scalar(output, field, r):
+    """Parst einen npm-view JSON-Skalar (String) fail-closed."""
+    try:
+        value = json.loads(output)
+    except json.JSONDecodeError:
+        r.add_error(f"npm {field} ist kein gültiges JSON")
+        return None
+    if not isinstance(value, str) or not value.strip():
+        r.add_error(f"npm {field} muss ein nichtleerer String sein")
+        return None
+    return value
+
+
+def check_registry(root=None, npm=None, gh=None):
+    """Bestimmt den öffentlichen Veröffentlichungszustand live gegen die npm-Registry.
+
+    Read-only. Liest die tatsächlich veröffentlichte `dist-tags.latest`-Version, die
+    veröffentlichte Versionsliste und das aktuelle GitHub Latest Release und prüft die lokale
+    `VERSION` fail-closed dagegen. Die Zielversion darf niemals ausschließlich aus dem lokalen
+    `package.json` stammen und darf weder bereits veröffentlicht noch nicht größer als die
+    veröffentlichte stabile Version sein.
+    """
+    if root is None:
+        root = ROOT
+    r = CheckResult()
+    version = _check_version_release_metadata(root, r)
+    if version is None or not r.ok:
+        return r
+
+    npm_runner = npm or NpmRunner
+
+    latest_out, latest_err, latest_code = npm_runner.view(["dist-tags.latest"], root)
+    if latest_code != 0:
+        r.add_error(f"npm dist-tags.latest nicht auflösbar: {latest_err[:160]}")
+        return r
+    latest = _parse_npm_scalar(latest_out, "dist-tags.latest", r)
+    if latest is None:
+        return r
+    latest_valid = _is_valid_semver(latest)
+    if not latest_valid:
+        r.add_error(f"npm dist-tags.latest ist kein gültiges SemVer: {latest}")
+
+    versions_out, versions_err, versions_code = npm_runner.view(["versions"], root)
+    if versions_code != 0:
+        r.add_error(f"npm versions nicht auflösbar: {versions_err[:160]}")
+    else:
+        try:
+            parsed = json.loads(versions_out)
+        except json.JSONDecodeError:
+            r.add_error("npm versions ist kein gültiges JSON")
+        else:
+            if not isinstance(parsed, list):
+                r.add_error("npm versions muss eine JSON-Liste sein")
+            else:
+                published = [str(item) for item in parsed]
+                if version in published:
+                    r.add_error(f"Version {version} ist bereits auf npm veröffentlicht")
+
+    if latest_valid and _semver_cmp(version, latest) <= 0:
+        r.add_error(
+            f"Version {version} ist nicht größer als die veröffentlichte npm-Version {latest}"
+        )
+
+    gh_runner = gh or GhRunner
+    release_data, release_error = gh_runner.latest_release(root)
+    if release_error:
+        r.add_error(f"GitHub Latest Release nicht auflösbar: {release_error[:160]}")
+    elif not isinstance(release_data, dict):
+        r.add_error("GitHub Latest Release ist kein JSON-Objekt")
+    else:
+        tag_name = release_data.get("tag_name")
+        if not isinstance(tag_name, str) or not tag_name:
+            r.add_error("GitHub Latest Release besitzt keinen tag_name")
+
+    return r
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # CLI
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -929,6 +1036,7 @@ def main():
     if len(sys.argv) < 2:
         print("usage: python3 tools/release_check.py tree", file=sys.stderr)
         print("       python3 tools/release_check.py docs-remote", file=sys.stderr)
+        print("       python3 tools/release_check.py registry", file=sys.stderr)
         print("       python3 tools/release_check.py tag [TAG_NAME] [EXPECTED_COMMIT]", file=sys.stderr)
         print("       python3 tools/release_check.py release [TAG_NAME]", file=sys.stderr)
         return STATUS_FAIL
@@ -938,6 +1046,8 @@ def main():
         result = check_tree()
     elif mode == "docs-remote":
         result = check_docs_remote()
+    elif mode == "registry":
+        result = check_registry()
     elif mode == "tag":
         tag_ref = sys.argv[2] if len(sys.argv) > 2 else None
         expected_commit = sys.argv[3] if len(sys.argv) > 3 else None

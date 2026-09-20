@@ -22,6 +22,8 @@ async function allowlistedFixture(t: TestContext): Promise<{ root: string; paths
     "assets/branding/agent-governance-terminal.png",
     "docs/installer-cli-reference.md",
     "dist/cli.js",
+    "dist/resume-toon.js",
+    "dist/resume-toon.d.ts",
     `prebuilds/${process.platform}-${process.arch}/agent_governance_fs.node`,
   ];
   for (const path of paths) {
@@ -75,6 +77,9 @@ for (const required of [
   "CHANGELOG.md",
   "docs/installer-cli-reference.md",
   "assets/branding/agent-governance-terminal.png",
+  "dist/cli.js",
+  "dist/resume-toon.js",
+  "dist/resume-toon.d.ts",
   "bundle/agent-governance/catalogs/commands.toml",
   "bundle/agent-governance/catalogs/discovery-signals.toml",
 ]) {

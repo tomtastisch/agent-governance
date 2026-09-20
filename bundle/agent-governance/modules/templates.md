@@ -96,6 +96,27 @@ Nächster sicherer Schritt: <one actionable continuation>
 Nicht übernehmen: <stale, secret or out-of-scope context>
 ```
 
+### Resume-Checkpoint
+
+```text
+Auftrag: <task-id> — <bounded objective>
+Scope: <included / excluded>
+Task-Identität: <task_identity fingerprint>
+Scope-Identität: <scope_identity fingerprint>
+Repository/Worktree/Branch: <repository> <worktree> <branch>
+Exact state: <branch> <head-SHA> <clean|dirty>
+Dirty state: <staged / unstaged / untracked fingerprints>
+Kanonische SSOT: <paths/objects and precedence>
+Abgeschlossene Evidence:
+| Evidence-ID | Binding-Fingerprints | Ergebnis |
+| <id> | <fingerprints> | <REUSE|INVALIDATE> |
+Unvollständige Evidence: <INCOMPLETE Liste>
+Offene Findings/Blocker: <classified list>
+Nächste atomare Aktion: <one actionable continuation>
+TOON-Projektion: <deterministisch abgeleitete .toon-Referenz>
+Nicht übernehmen: <stale, secret oder out-of-scope>
+```
+
 ## Strukturierte Verträge
 
 ### Antwort und Status
