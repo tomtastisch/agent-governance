@@ -141,7 +141,9 @@ aliases = []
 # Titelmarker sind eine zusätzliche Projektion, niemals eine zweite fachliche Authority.
 # Formalisiert wird ausschließlich der real weiterhin genutzte, eindeutig aus der
 # Classification-SSOT ableitbare Horizontmarker. Weitere Legacy-Marker ([CLI], [WORKFLOW], …)
-# erkennt der read-only Diagnoseparser, sie sind aber kein kanonischer Projektionsvertrag.
+# erkennt der read-only Diagnoseparser `parseTitleMarkers` (src/work-items.ts) zur Migration und
+# Diagnose; sie sind jedoch kein kanonischer Projektionsvertrag und werden nicht auf
+# Classification-IDs abgebildet.
 [title_markers.horizon_future]
 classification = "horizon.future"
 marker = "[FUTURE]"

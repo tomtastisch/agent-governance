@@ -830,6 +830,17 @@ class WorkItemClassificationFailures(CatalogMutationCase):
         with self.assertRaisesRegex(self.validator.CatalogValidationError, "unbekannte Klassifikations-ID"):
             self.load()
 
+    def test_alias_before_name_collision_fails_closed(self):
+        # area_github deklariert den Alias "github-hardening"; ein späterer kanonischer Name
+        # mit demselben Wert muss als Kollision abgelehnt werden.
+        self.replace(
+            "ssot/work-items/projections/github-labels.toml",
+            'name = "ssot"',
+            'name = "github-hardening"',
+        )
+        with self.assertRaisesRegex(self.validator.CatalogValidationError, "kollidiert"):
+            self.load()
+
 
 if __name__ == "__main__":
     unittest.main()

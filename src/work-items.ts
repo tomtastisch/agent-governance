@@ -215,7 +215,6 @@ export function parseProjectionsText(content: string, index: ClassificationIndex
   const rawProjections = table(root.projections, "label projections");
   if (Object.keys(rawProjections).length === 0) fail("label projections must not be empty");
   const projections: Record<string, LabelProjection> = {};
-  const nameToClassification = new Map<string, string>();
   const classificationToProjection = new Map<string, string>();
   const occupiedNames = new Set<string>();
   for (const [projectionId, raw] of Object.entries(rawProjections)) {
@@ -223,12 +222,11 @@ export function parseProjectionsText(content: string, index: ClassificationIndex
     const entry = table(raw, `projections.${projectionId}`);
     exact(entry, ["classification", "name", "description", "color", "aliases"], `projections.${projectionId}`);
     const classification = readClassificationReference(entry.classification, `projections.${projectionId}.classification`);
-    if (index.classifications[classification] === undefined) fail(`unknown projection classification: ${classification}`);
+    if (!Object.hasOwn(index.classifications, classification)) fail(`unknown projection classification: ${classification}`);
     if (classificationToProjection.has(classification)) fail(`duplicate projection for classification: ${classification}`);
     classificationToProjection.set(classification, projectionId);
     const name = text(entry.name, `projections.${projectionId}.name`);
-    if (nameToClassification.has(name)) fail(`projection collision on label name: ${name}`);
-    nameToClassification.set(name, classification);
+    if (occupiedNames.has(name)) fail(`projection collision on label name: ${name}`);
     occupiedNames.add(name);
     const color = text(entry.color, `projections.${projectionId}.color`);
     if (!COLOR_PATTERN.test(color)) fail(`projections.${projectionId}.color is invalid`);
@@ -255,7 +253,7 @@ export function parseProjectionsText(content: string, index: ClassificationIndex
     const entry = table(raw, `title_markers.${markerId}`);
     exact(entry, ["classification", "marker"], `title_markers.${markerId}`);
     const classification = readClassificationReference(entry.classification, `title_markers.${markerId}.classification`);
-    if (index.classifications[classification] === undefined) fail(`unknown title marker classification: ${classification}`);
+    if (!Object.hasOwn(index.classifications, classification)) fail(`unknown title marker classification: ${classification}`);
     const marker = text(entry.marker, `title_markers.${markerId}.marker`);
     if (markerToClassification.has(marker)) fail(`title marker collision: ${marker}`);
     markerToClassification.set(marker, classification);
@@ -287,8 +285,8 @@ export function loadWorkItemSsot(releaseRoot?: string): WorkItemSsot {
 }
 
 export function resolveClassification(index: ClassificationIndex, id: string): ClassificationValue {
-  const value = index.classifications[id];
-  if (value === undefined) fail(`unknown classification ID: ${id}`);
+  if (!Object.hasOwn(index.classifications, id)) fail(`unknown classification ID: ${id}`);
+  const value = index.classifications[id]!;
   return value;
 }
 
@@ -308,7 +306,7 @@ export function validateWorkItemClassification(index: ClassificationIndex, ids: 
     if (values.length > 1 && (dimension.cardinality === "one" || dimension.cardinality === "at_most_one")) {
       violations.push(Object.freeze({ dimension: dimensionId, cardinality: dimension.cardinality, values: Object.freeze([...values]) }));
     }
-    if (values.length === 0 && dimension.cardinality === "one") {
+    if (values.length === 0 && (dimension.cardinality === "one" || dimension.cardinality === "many")) {
       violations.push(Object.freeze({ dimension: dimensionId, cardinality: dimension.cardinality, values: Object.freeze([]) }));
     }
   }
@@ -391,6 +389,20 @@ export function classifyTitleMarkers(projections: ProjectionIndex, title: string
     if (classification !== undefined) ids.add(classification);
   }
   return Object.freeze([...ids].sort());
+}
+
+/**
+ * Read-only Diagnoseparser für Legacy-Titelmarker. Erkennt alle `[UPPERCASE]`-Marker eines
+ * Titels, bildet sie aber NICHT auf Classification-IDs ab: Titelmarker sind Menschenoberfläche
+ * und Projektion, niemals eine fachliche Authority. Diese Funktion dient ausschließlich der
+ * Migration und Diagnose bestehender Titel.
+ */
+export function parseTitleMarkers(title: string): readonly string[] {
+  const markers = new Set<string>();
+  const re = /\[([A-Z][A-Z0-9_-]*)\]/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(title)) !== null) markers.add(match[0]!);
+  return Object.freeze([...markers].sort());
 }
 
 export function detectProjectionDrift(index: ClassificationIndex, a: readonly string[], b: readonly string[]): readonly ProjectionDrift[] {

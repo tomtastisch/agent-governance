@@ -579,7 +579,6 @@ def _validate_work_item_projections(
     projections = catalog.get("projections")
     if not isinstance(projections, Mapping) or not projections:
         raise CatalogValidationError("work_items projections muss eine nichtleere Tabelle sein")
-    seen_names: set[str] = set()
     seen_classifications: set[str] = set()
     occupied_names: set[str] = set()
     for projection_id, projection in projections.items():
@@ -598,11 +597,10 @@ def _validate_work_item_projections(
             )
         seen_classifications.add(classification)
         name = _nonempty_text(projection.get("name"), f"projections.{projection_id}.name")
-        if name in seen_names:
+        if name in occupied_names:
             raise CatalogValidationError(
                 f"projections.{projection_id} kollidiert mit einem Labelnamen: {name}"
             )
-        seen_names.add(name)
         occupied_names.add(name)
         _nonempty_text(projection.get("description"), f"projections.{projection_id}.description")
         color = projection.get("color")

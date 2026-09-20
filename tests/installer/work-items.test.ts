@@ -9,6 +9,7 @@ import {
   loadWorkItemSsot,
   parseClassificationsText,
   parseProjectionsText,
+  parseTitleMarkers,
   resolveClassification,
   validateWorkItemClassification,
   type GitHubLabel,
@@ -116,6 +117,13 @@ test("invalid (unregistered) value fails closed", () => {
   assert.throws(() => resolveClassification(index, "type.unknown"), /unknown classification ID/i);
 });
 
+test("resolveClassification rejects prototype and constructor keys fail-closed", () => {
+  const index = parseClassificationsText(MINIMAL_CLASSIFICATIONS);
+  assert.throws(() => resolveClassification(index, "__proto__"), /unknown classification ID/i);
+  assert.throws(() => resolveClassification(index, "constructor"), /unknown classification ID/i);
+  assert.throws(() => validateWorkItemClassification(index, ["__proto__"]), /unknown classification ID/i);
+});
+
 test("cardinality violation in a single-value dimension is reported as invalid", () => {
   const index = parseClassificationsText(MINIMAL_CLASSIFICATIONS);
   const result = validateWorkItemClassification(index, ["type.feature", "type.fix"]);
@@ -126,6 +134,12 @@ test("cardinality accepts multiple values in a many dimension", () => {
   const { classifications } = loadWorkItemSsot();
   const result = validateWorkItemClassification(classifications, ["area.cli", "area.github", "type.feature"]);
   assert.deepEqual(result.violations, []);
+});
+
+test("empty many dimension is a cardinality violation", () => {
+  const { classifications } = loadWorkItemSsot();
+  const result = validateWorkItemClassification(classifications, ["type.feature"]);
+  assert.ok(result.violations.some((v) => v.dimension === "area" && v.cardinality === "many"));
 });
 
 test("projection collision on the same label name fails closed", () => {
@@ -176,6 +190,31 @@ classification = "type.feature"
 marker = "[T]"
 `;
   assert.throws(() => parseProjectionsText(duplicate, index), /duplicate projection/i);
+});
+
+test("an alias declared before a canonical name is still a projection collision", () => {
+  const index = parseClassificationsText(MINIMAL_CLASSIFICATIONS);
+  const collision = `schema_version = 1
+
+[projections.a]
+classification = "type.feature"
+name = "one"
+description = "a"
+color = "000000"
+aliases = ["shared"]
+
+[projections.b]
+classification = "type.fix"
+name = "shared"
+description = "b"
+color = "111111"
+aliases = []
+
+[title_markers.t]
+classification = "type.feature"
+marker = "[T]"
+`;
+  assert.throws(() => parseProjectionsText(collision, index), /collision/i);
 });
 
 test("unknown projection classification fails closed", () => {
@@ -287,6 +326,13 @@ test("title markers derive deterministically from the classification SSOT", () =
   assert.deepEqual(deriveTitleMarkers(projections, ["horizon.future", "area.cli"]), ["[FUTURE]"]);
   assert.deepEqual(deriveTitleMarkers(projections, ["area.cli"]), []);
   assert.deepEqual(classifyTitleMarkers(projections, "[FUTURE][CLI] Work-Item"), ["horizon.future"]);
+});
+
+test("legacy title markers are read-only diagnostic, never classification authority", () => {
+  const { projections } = loadWorkItemSsot();
+  assert.deepEqual(parseTitleMarkers("[FUTURE][CLI][WORKFLOW] x"), ["[CLI]", "[FUTURE]", "[WORKFLOW]"]);
+  assert.deepEqual(classifyTitleMarkers(projections, "[FUTURE][CLI][WORKFLOW] x"), ["horizon.future"]);
+  assert.deepEqual(parseTitleMarkers("keine marker"), []);
 });
 
 test("title markers are a projection, never a second authority", () => {
