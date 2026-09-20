@@ -118,6 +118,47 @@ def _run_registry_retry_with_failed_reads(readback: str) -> int:
         return result.returncode
 
 
+def _run_registry_retry_with_dist_json(readback: str, dist_json: str) -> int:
+    run_block = textwrap.dedent(_run_blocks(readback)[0])
+    retry = run_block.split("PACKAGE_VERSION=", 1)[1].split("VERIFY_ROOT=", 1)[0]
+    script = f"PACKAGE_VERSION={retry}"
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        (root / "package.json").write_text(
+            '{"version":"1.0.0"}\n', encoding="utf-8"
+        )
+        commands = root / "commands"
+        commands.mkdir()
+        npm = commands / "npm"
+        npm.write_text(
+            "#!/bin/sh\n"
+            "case \"$3\" in\n"
+            "  version|dist-tags.latest) printf '%s\\n' '1.0.0' ;;\n"
+            "  dist) printf '%s\\n' \"$REGISTRY_DIST_JSON\" ;;\n"
+            "  *) exit 1 ;;\n"
+            "esac\n",
+            encoding="utf-8",
+        )
+        npm.chmod(0o700)
+        sleep = commands / "sleep"
+        sleep.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        sleep.chmod(0o700)
+        result = subprocess.run(
+            ["/bin/sh", "-eu", "-c", script],
+            cwd=root,
+            env={
+                **os.environ,
+                "NPM_DIST_TAG": "latest",
+                "REGISTRY_DIST_JSON": dist_json,
+                "PATH": f"{commands}:{os.environ['PATH']}",
+            },
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return result.returncode
+
+
 class ReleaseWorkflowSecurityContract(unittest.TestCase):
     def test_remote_document_gate_runs_only_after_main_or_release_publication(self):
         self.assertIn("\n  docs-remote:\n", CI_WORKFLOW)
@@ -407,6 +448,39 @@ class ReleaseWorkflowSecurityContract(unittest.TestCase):
             0,
             "registry readback must fail closed after the final failed attempt",
         )
+
+    def test_trusted_publish_accepts_only_one_complete_dist_record(self):
+        workflow = PUBLISH_PATH.read_text(encoding="utf-8")
+        readback = workflow.split(
+            "      - name: Read back registry metadata, dist-tag, provenance, and signatures\n",
+            1,
+        )[1]
+        complete = {
+            "integrity": "sha512-test",
+            "shasum": "0123456789abcdef",
+            "attestations": {
+                "provenance": {"predicateType": "https://slsa.dev/provenance/v1"}
+            },
+        }
+        cases = (
+            (complete, True),
+            ([complete], True),
+            ([], False),
+            ([complete, complete], False),
+            ({"integrity": "sha512-test"}, False),
+            ("malformed", False),
+        )
+        for registry_dist, accepted in cases:
+            with self.subTest(registry_dist=registry_dist):
+                result = _run_registry_retry_with_dist_json(
+                    readback, json.dumps(registry_dist)
+                )
+                self.assertEqual(
+                    result == 0,
+                    accepted,
+                    "readback must accept npm's object and singleton-array forms "
+                    "only when the sole dist record is complete",
+                )
 
     def test_trusted_publish_retry_window_extends_registry_propagation_and_stays_bounded(self):
         workflow = PUBLISH_PATH.read_text(encoding="utf-8")
