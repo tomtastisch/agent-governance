@@ -123,16 +123,18 @@ Truth des Resume-Vertrags.
 
 ### RES-013 — TOON-Projektion
 
-Für die Wiederaufnahme durch eine LLM darf der bestätigte Resume-Zustand als kompakte,
-deterministisch erzeugbare Projektion im Format Token-Oriented Object Notation (TOON) bereitgestellt
-werden. Der Datenfluss bleibt: kanonische Sources of Truth, Checkpoint-Auflösung, Identitäts- und
-Gültigkeitsprüfung, minimaler Resume-Kontext, deterministische TOON-Projektion, neuer LLM-Kontext.
-TOON besitzt keine eigene Wahrheit, erfindet keinen Zustand, ersetzt keine kanonische
-Checkpointdatei und ist keine zweite State-, Checkpoint- oder Evidence-Source of Truth. Manipulierte,
-beschädigte, veraltete oder nicht eindeutig zum Checkpoint passende Projektionen werden fail-closed
-abgelehnt. Die konkrete Syntax und Formatversion benennt die erzeugende Runtime eindeutig; dieser
-Vertrag verlangt die strikte Validierung von Ein- und Ausgabe. Es wird keine eigene allgemeine
-TOON-Implementierung und keine neue Dependency eingeführt.
+Der bestätigte Resume-Zustand wird für die Wiederaufnahme durch eine LLM als kompakte,
+deterministisch erzeugbare Projektion im Format Token-Oriented Object Notation (TOON) kodiert und
+beim Einlesen strikt dekodiert und fail-closed validiert. Der Datenfluss bleibt: kanonische Sources
+of Truth, Checkpoint-Auflösung, Identitäts- und Gültigkeitsprüfung, minimaler Resume-Kontext,
+deterministische TOON-Projektion, neuer LLM-Kontext. Die Formatkodierung nutzt die offizielle
+Referenzimplementierung; eine eigene allgemeine TOON-Implementierung wird nicht gebaut. Die
+Domänenvalidierung verantwortet weiterhin erlaubte Felder, erwartete Struktur, Checkpoint-Bindung,
+State- und Evidence-Identität, Freshness und Staleness. TOON besitzt keine eigene Wahrheit, erfindet
+keinen Zustand, ersetzt keine kanonische Checkpointdatei und ist keine zweite State-, Checkpoint-
+oder Evidence-Source of Truth. Manipulierte, beschädigte, veraltete oder nicht eindeutig zum
+Checkpoint passende Projektionen werden fail-closed abgelehnt; unbekannte oder geheime Felder werden
+zurückgewiesen.
 
 ### RES-014 — Progressive Context Loading
 

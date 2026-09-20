@@ -54,6 +54,40 @@ verify_output=$("$consumer/node_modules/.bin/agent-governance" verify "${common[
 node -e 'for (const value of process.argv.slice(1)) { const parsed=JSON.parse(value); if(parsed.outcome!=="SUCCESS") process.exit(1) }' "$install_output" "$verify_output"
 test -f "$target_root/AGENTS.md"
 
+cat > "$consumer/use-resume-toon.mjs" <<'EOF'
+import {
+  decodeResumeProjection,
+  encodeResumeProjection,
+} from "@tomtastisch/agent-governance/resume-toon";
+
+const head = "a".repeat(40);
+const state = {
+  taskId: "task-1",
+  objective: "Resume Fast-Path",
+  scope: ["bundle"],
+  exactHead: head,
+  checkpointFingerprint: "cp-1",
+  evidence: [{ id: "qa", bindings: [head], status: "REUSE" }],
+  incompleteEvidence: [],
+  openFindings: [],
+  nextAtomicAction: "gates ausführen",
+};
+
+const first = encodeResumeProjection(state);
+const second = encodeResumeProjection(structuredClone(state));
+if (first !== second) {
+  console.error("encode is not deterministic");
+  process.exit(1);
+}
+const decoded = decodeResumeProjection(first, { expectedCheckpoint: "cp-1" });
+if (decoded.taskId !== "task-1" || decoded.evidence[0].status !== "REUSE") {
+  console.error("round-trip lost resume state");
+  process.exit(1);
+}
+console.log("toon_consumer=PASS");
+EOF
+node "$consumer/use-resume-toon.mjs"
+
 missing_native_consumer="$fixture_root/missing-native-consumer"
 missing_native_target="$fixture_root/missing-native-target"
 mkdir -p -- "$missing_native_consumer" "$missing_native_target"
