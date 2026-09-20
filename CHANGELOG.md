@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Keine.
+
+### Changed
+
+- Keine.
+
+### Fixed
+
+- Keine.
+
+### Removed
+
+- Keine.
+
+**Breaking changes:** none
+
+## [1.4.0] — 2026-09-20
+
+### Added
+
 - Kanonische, statische Work-Item-Klassifikations-SSOT
   `bundle/agent-governance/ssot/work-items/classifications.toml` als vierte Domain `work_items` im
   SSOT-Index. Stabile IDs der Form `dimension.value` (z. B. `type.refactor`, `semver.patch`) mit
