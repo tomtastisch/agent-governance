@@ -91,9 +91,13 @@ for (const required of [
   "dist/cli.js",
   "dist/resume-toon.js",
   "dist/resume-toon.d.ts",
+  "dist/work-items.js",
+  "dist/work-items.d.ts",
   "bundle/agent-governance/ssot/manifest.toml",
   "bundle/agent-governance/ssot/commands/commands.toml",
   "bundle/agent-governance/ssot/discovery/discovery-signals.toml",
+  "bundle/agent-governance/ssot/work-items/classifications.toml",
+  "bundle/agent-governance/ssot/work-items/projections/github-labels.toml",
 ]) {
   test(`pack verifier requires package path ${required}`, async (t) => {
     const { root, paths } = await allowlistedFixture(t);
