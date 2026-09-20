@@ -9,7 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Keine.
+- Zustandsgebundener Resume Fast-Path mit Trigger `resume_continuation`, Modul
+  `modules/resume.md` (Regeln `RES-001`–`RES-015`) und strikter `Resume-Checkpoint`-Vorlage:
+  Evidence-Reuse und -Invalidation an getrennten Identitäten/Fingerprints, strikte
+  `INCOMPLETE`-/`PASS`-Trennung, Duplicate-Execution Guard, Dirty-Worktree-Identität,
+  Fresh-Chat-Resume, TOON-Projektion (Token-Oriented Object Notation) und Progressive Context
+  Loading ohne zweite State-/Checkpoint-/Evidence-Source of Truth.
 
 ### Changed
 
