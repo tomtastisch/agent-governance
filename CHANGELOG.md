@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   atomaren Formverträge liegen unter `templates/`. Die domain-spezifische Resume-Checkpoint-Form
   verbleibt beim Resume-Owner `modules/resume.md`. Das Root-Manifest (schema_version 4) referenziert
   zusätzlich die Template-Registry.
+- `DEL-008` (Provider-Routing) präzisiert: ein Ausfall des bevorzugten Review-Providers
+  (`fail-closed(provider)`) schließt nur diesen Providerpfad und erzwingt bei vorhandenem
+  autorisiertem fachlich gleichwertigem Fallback dessen Ausführung; der gesamte Prüfworkflow
+  blockiert erst, wenn kein gültiger Fallback verfügbar ist oder auch dieser keinen Nachweis liefert.
 
 ### Fixed
 

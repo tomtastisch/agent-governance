@@ -342,6 +342,39 @@ class DeliveryContract(unittest.TestCase):
         self.assertIn("`unknown`", self.delivery)
         self.assertRegex(self.delivery, r"frischer\s+unabhängiger read-only")
 
+    def test_del_008_provider_failure_closes_only_the_provider_path(self):
+        self.assertIn("fail-closed(provider)", self.delivery)
+        self.assertIn("fail-closed(workflow)", self.delivery)
+        self.assertRegex(
+            self.delivery,
+            r"(?is)fail-closed\(provider\).+nicht.+fail-closed\(workflow\)",
+        )
+        self.assertRegex(self.delivery, r"(?is)ausschließlich diesen Providerpfad")
+        self.assertRegex(self.delivery, r"(?is)kein positiver Nachweis")
+        self.assertRegex(
+            self.delivery,
+            r"(?is)Quoten-, Billing- oder Restbudgetzahlen werden nicht erfunden",
+        )
+        self.assertRegex(
+            self.delivery,
+            r"(?is)autorisierter fachlich gleichwertiger Fallback.+geroutet und ausgeführt",
+        )
+        self.assertRegex(self.delivery, r"(?is)blockiert erst, wenn kein.+Fallback")
+        self.assertRegex(
+            self.delivery,
+            r"(?is)auch der Fallback den erforderlichen Nachweis nicht liefert",
+        )
+
+    def test_review_evidence_is_bound_to_the_exact_reviewed_head(self):
+        self.assertRegex(self.delivery, r"(?is)nur für den exakt bezeichneten Commit")
+        self.assertRegex(
+            self.delivery, r"(?is)Ändert sich der Stand nach einer Prüfung.+erneut"
+        )
+        self.assertRegex(
+            self.delivery,
+            r"(?is)inhaltlichen\s+Korrektur.+neuen Exact Head erneut",
+        )
+
     def test_del_010_defines_opt_in_parallel_qa(self):
         block = self.del_010_block()
         self.assertRegex(block, r"(?is)nicht standardmäßig")

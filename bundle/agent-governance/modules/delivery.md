@@ -63,12 +63,17 @@ Bei einem GitHub-Repository ist GitHub Copilot der bevorzugte QA-Provider, wenn 
 PR-Reviewpfad einen Review mit Revieweridentität und Exact-Head-SHA liefert und auf demselben
 Exact Head ein gültiges repository-natives Copilot-QA-Binding
 (`.github/copilot-instructions.md`) mit auflösbaren kanonischen QA-/Delivery-Referenzen
-vorhanden ist. Fehlt das Binding oder sind seine Referenzen nicht auflösbar, gilt der
-Copilot-Pfad für dieses Gate fail-closed als nicht verwendbar. Ein frischer
-unabhängiger read-only Reviewer ist der QA-Fallback, sobald der Providerzustand `no` oder
-`unknown` lautet oder das Binding ungültig ist; Quoten-, Billing- oder Restbudgetzahlen werden
-nicht erfunden und ein bestätigtes Negativergebnis wird nicht mit Retry-Spam verfolgt. Eine
-SEC-Rolle bleibt bei ihrem Risikotrigger zusätzlich erforderlich und prüft denselben Exact Head.
+vorhanden ist. Ein nicht nutzbarer oder bestätigt fehlgeschlagener Providerpfad — fehlendes
+oder nicht auflösbares Binding, Providerzustand `no` oder `unknown` oder ein bestätigter
+Quota-, Billing-, Provider- oder Toolausfall — schließt ausschließlich diesen Providerpfad,
+niemals das gesamte Gate: `fail-closed(provider)` ist nicht `fail-closed(workflow)`.
+Quoten-, Billing- oder Restbudgetzahlen werden nicht erfunden; ein bestätigter Quota-, Billing-,
+Provider- oder Toolausfall ist kein positiver Nachweis. Existiert
+ein autorisierter fachlich gleichwertiger Fallback — ein frischer unabhängiger read-only
+Reviewer —, wird dorthin geroutet und ausgeführt. Der Prüfworkflow blockiert erst, wenn kein
+gültiger Fallback verfügbar ist oder auch der Fallback den erforderlichen Nachweis nicht liefert.
+Ein bestätigtes Negativergebnis wird nicht mit Retry-Spam verfolgt. Eine SEC-Rolle bleibt bei
+ihrem Risikotrigger zusätzlich erforderlich und prüft denselben Exact Head.
 
 ### DEL-009 — Finding-Lifecycle
 
