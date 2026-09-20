@@ -408,6 +408,30 @@ class ReleaseWorkflowSecurityContract(unittest.TestCase):
             "registry readback must fail closed after the final failed attempt",
         )
 
+    def test_trusted_publish_retry_window_extends_registry_propagation_and_stays_bounded(self):
+        workflow = PUBLISH_PATH.read_text(encoding="utf-8")
+        readback = workflow.split(
+            "      - name: Read back registry metadata, dist-tag, provenance, and signatures\n",
+            1,
+        )[1]
+        retry = readback.split("          for ATTEMPT", 1)[1].split("          done", 1)[0]
+        header = re.search(r"\bin ([0-9 ]+); do\b", retry)
+        self.assertIsNotNone(header, "retry loop header missing or malformed")
+        attempts = [int(value) for value in header.group(1).split()]
+        self.assertEqual(attempts, list(range(1, len(attempts) + 1)))
+        self.assertGreaterEqual(
+            len(attempts),
+            13,
+            "registry readback must tolerate at least 120s of propagation "
+            "(>=13 attempts at 10s spacing)",
+        )
+        self.assertIn("sleep 10", retry)
+        self.assertIn(
+            f'test "$ATTEMPT" = {len(attempts)} && exit 1',
+            retry,
+            "readback must stay bounded and fail closed on the final attempt",
+        )
+
     def test_one_time_npm_bootstrap_is_rc2_only_and_secret_is_step_scoped(self):
         self.assertTrue(
             BOOTSTRAP_PUBLISH_PATH.is_file(),

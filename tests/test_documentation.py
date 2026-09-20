@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import hashlib
 import json
 import re
 import shutil
@@ -342,6 +343,36 @@ class ReadmeEntryContract(unittest.TestCase):
             "82b014a1-7278-4be4-a665-37dae365c850.png",
         ):
             self.assertNotIn(stale, "\n".join((README, architecture_doc)))
+
+    def test_branding_assets_are_the_new_icon_and_unchanged_terminal(self):
+        """Catches a stale, duplicate, or wrongly replaced branding asset."""
+        branding = ROOT / "assets" / "branding"
+        self.assertEqual(
+            {p.name for p in branding.iterdir() if p.is_file()},
+            {"agent-governance-icon.png", "agent-governance-terminal.png"},
+        )
+        icon = (branding / "agent-governance-icon.png").read_bytes()
+        terminal = (branding / "agent-governance-terminal.png").read_bytes()
+        for name, data in (("icon", icon), ("terminal", terminal)):
+            with self.subTest(asset=name):
+                self.assertTrue(
+                    data.startswith(b"\x89PNG\r\n\x1a\n"),
+                    f"{name} is not a PNG",
+                )
+        width = int.from_bytes(icon[16:20], "big")
+        height = int.from_bytes(icon[20:24], "big")
+        self.assertEqual(width, height, "icon must be square")
+        self.assertGreater(width, 0)
+        self.assertEqual(
+            hashlib.sha256(icon).hexdigest(),
+            "80e7fa1971f1425d782bea71a541d8b86188e34db87f5bb89431ab7da7dec270",
+            "icon must contain the newly provided project image",
+        )
+        self.assertEqual(
+            hashlib.sha256(terminal).hexdigest(),
+            "76f1bbe5b7022a59a0341379bdbdc731a515d8b31023bf4bc8c40d50bb4684b9",
+            "terminal branding must remain unchanged",
+        )
 
     def test_overview_graphic_belongs_to_how_it_works(self):
         """Catches the sole overview drifting into the problem or benefit narrative."""
