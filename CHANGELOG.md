@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Keine.
+
+### Changed
+
+- Keine.
+
+### Fixed
+
+- Keine.
+
+### Removed
+
+- Keine.
+
+**Breaking changes:** none
+
+## [1.3.0] — 2026-09-20
+
+### Added
+
 - Kanonische, geschlossene Template-Registry `bundle/agent-governance/templates/manifest.toml`, die
   jeden wiederverwendbaren generischen Formvertrag genau einmal mit stabiler Template-ID
   registriert. Zwei zuvor fehlende generische Verträge wurden ergänzt: `delivery/release-checkpoint`
