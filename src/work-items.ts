@@ -100,6 +100,7 @@ export interface ProjectionDrift {
 
 const ID_PATTERN = /^[a-z][a-z0-9_]*$/;
 const COLOR_PATTERN = /^[0-9A-Fa-f]{6}$/;
+const MARKER_PATTERN = /^\[[A-Z][A-Z0-9_-]*\]$/;
 
 function fail(message: string): never {
   throw new Error(`work-item classification is invalid: ${message}`);
@@ -255,6 +256,7 @@ export function parseProjectionsText(content: string, index: ClassificationIndex
     const classification = readClassificationReference(entry.classification, `title_markers.${markerId}.classification`);
     if (!Object.hasOwn(index.classifications, classification)) fail(`unknown title marker classification: ${classification}`);
     const marker = text(entry.marker, `title_markers.${markerId}.marker`);
+    if (!MARKER_PATTERN.test(marker)) fail(`title_markers.${markerId}.marker is not a recognizable bracket marker`);
     if (markerToClassification.has(marker)) fail(`title marker collision: ${marker}`);
     markerToClassification.set(marker, classification);
     titleMarkers[markerId] = Object.freeze({ id: markerId, classification, marker });

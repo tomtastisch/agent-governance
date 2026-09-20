@@ -92,6 +92,12 @@ test("unknown dimension fails closed", () => {
   assert.throws(() => parseClassificationsText(unknown), /unknown dimension/i);
 });
 
+test("prototype and constructor table keys fail closed during parsing", () => {
+  assert.throws(() => parseClassificationsText(`${MINIMAL_CLASSIFICATIONS}\n[dimensions.constructor]\nlabel = "X"\ncardinality = "one"\ndescription = "Y"\n`), /conflicting|duplicate/i);
+  assert.throws(() => parseClassificationsText(`${MINIMAL_CLASSIFICATIONS}\n[classifications.constructor.value]\nlabel = "X"\ndescription = "Y"\n`), /conflicting|duplicate/i);
+  assert.throws(() => parseClassificationsText("schema_version = 1\n\n[dimensions.__proto__]\nlabel = \"X\"\ncardinality = \"one\"\ndescription = \"Y\"\n"), /unsupported TOML syntax/i);
+});
+
 test("a dimension without classification values fails closed", () => {
   const missing = `schema_version = 1
 
@@ -333,6 +339,24 @@ test("legacy title markers are read-only diagnostic, never classification author
   assert.deepEqual(parseTitleMarkers("[FUTURE][CLI][WORKFLOW] x"), ["[CLI]", "[FUTURE]", "[WORKFLOW]"]);
   assert.deepEqual(classifyTitleMarkers(projections, "[FUTURE][CLI][WORKFLOW] x"), ["horizon.future"]);
   assert.deepEqual(parseTitleMarkers("keine marker"), []);
+});
+
+test("title marker projection rejects non-recognizable marker grammar", () => {
+  const index = parseClassificationsText(MINIMAL_CLASSIFICATIONS);
+  const bad = `schema_version = 1
+
+[projections.semver_patch]
+classification = "semver.patch"
+name = "semver:patch"
+description = "Patch"
+color = "0E8A16"
+aliases = []
+
+[title_markers.t]
+classification = "type.feature"
+marker = "[future]"
+`;
+  assert.throws(() => parseProjectionsText(bad, index), /recognizable bracket marker/i);
 });
 
 test("title markers are a projection, never a second authority", () => {

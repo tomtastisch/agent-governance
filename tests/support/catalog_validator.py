@@ -112,6 +112,7 @@ WORK_ITEM_PROJECTION_FIELDS = frozenset(
 )
 WORK_ITEM_TITLE_MARKER_FIELDS = frozenset({"classification", "marker"})
 WORK_ITEM_COLOR_RE = re.compile(r"^[0-9A-Fa-f]{6}$")
+WORK_ITEM_MARKER_RE = re.compile(r"^\[[A-Z][A-Z0-9_-]*\]$")
 
 
 class CatalogValidationError(RuntimeError):
@@ -629,6 +630,10 @@ def _validate_work_item_projections(
                 f"title_markers.{marker_id}.classification ist eine unbekannte Klassifikations-ID"
             )
         marker_text = _nonempty_text(marker.get("marker"), f"title_markers.{marker_id}.marker")
+        if WORK_ITEM_MARKER_RE.fullmatch(marker_text) is None:
+            raise CatalogValidationError(
+                f"title_markers.{marker_id}.marker ist kein erkennbarer Bracket-Marker"
+            )
         if marker_text in seen_markers:
             raise CatalogValidationError(f"title_markers.{marker_id} kollidiert mit einem Marker")
         seen_markers.add(marker_text)
