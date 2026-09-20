@@ -55,7 +55,7 @@ verbindliche Freshness-Policy folgt
 Der Resume-Zustand wird aus persistenten kanonischen Quellen beziehungsweise daraus deterministisch
 ableitbaren Checkpoints aufgelöst. Der vorherige Chat ist Arbeitskontext, aber keine erforderliche
 Source of Truth. Die verbindliche Form ist die
-[Resume-Checkpoint](templates.md#resume-checkpoint)-Vorlage; deren Semantik folgt
+[Resume-Checkpoint](#resume-checkpoint)-Vorlage; deren Semantik folgt
 [CTX-002](context.md#ctx-002--sitzungsledger-und-checkpoints). Persistiert werden keine
 vollständigen Chattranskripte und keine ungefilterten Logs.
 
@@ -153,6 +153,33 @@ normalen Workflow zurückgefallen; es wird weder probabilistisch fortgesetzt noc
 LLM-Memory als Identitätsnachweis verwendet. Wiederholtes Resume bei unverändertem Zustand erzeugt
 keine zunehmende Rekonstruktion und keine doppelte externe Wirkung. Der Fallback bleibt
 [GOV-004](../../GOVERNANCE.md#gov-004--fail-closed).
+
+## Resume-Checkpoint
+
+Domain-spezifische Form der Wiederaufnahme, Owner ist diese Resume-Capability
+([RES-005](#res-005--checkpoint-auflösung-und-kanonische-wahrheit)). Sie ist bewusst kein
+generisches `context/handoff`-Template: Resume bindet zusätzlich Task-/Scope-Identität, Dirty-State,
+die Evidence-Bindungsmatrix (`REUSE`/`RERUN`/`INVALIDATE`/`INCOMPLETE`) und die TOON-Projektion,
+die der generische Handoff-Vertrag nicht ausdrückt.
+
+```text
+Auftrag: <task-id> — <bounded objective>
+Scope: <included / excluded>
+Task-Identität: <task_identity fingerprint>
+Scope-Identität: <scope_identity fingerprint>
+Repository/Worktree/Branch: <repository> <worktree> <branch>
+Exact state: <branch> <head-SHA> <clean|dirty>
+Dirty state: <staged / unstaged / untracked fingerprints>
+Kanonische SSOT: <paths/objects and precedence>
+Abgeschlossene Evidence:
+| Evidence-ID | Binding-Fingerprints | Ergebnis |
+| <id> | <fingerprints> | <REUSE|INVALIDATE> |
+Unvollständige Evidence: <INCOMPLETE Liste>
+Offene Findings/Blocker: <classified list>
+Nächste atomare Aktion: <one actionable continuation>
+TOON-Projektion: <deterministisch abgeleitete .toon-Referenz>
+Nicht übernehmen: <stale, secret oder out-of-scope>
+```
 
 ## Grenzen
 

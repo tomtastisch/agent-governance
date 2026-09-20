@@ -1,10 +1,11 @@
 import { lstat, readFile, realpath } from "node:fs/promises";
 import { join } from "node:path";
-import { exact, ID, idList, parseClosedToml, safeRelativePath, table, type TomlTable } from "./closed-toml.ts";
+import { exact, ID, idList, parseClosedToml, safeRelativePath, table, type TomlTable, type TomlValue } from "./closed-toml.ts";
 import { parseSsotManifestText } from "./ssot-manifest.ts";
 import { parseRoutingCatalogs, type RoutingCatalogs } from "./routing-catalog.ts";
 import { parseDiscoveryCatalogText } from "./discovery/catalog.ts";
 import { parseCommandCatalogText } from "./command-catalog.ts";
+import { parseTemplatesManifestText } from "./templates-catalog.ts";
 
 const CORE_CATALOGS = ["triggers", "policy_tags", "scopes", "tools"] as const;
 const OPTIONAL_CATALOGS = ["commands", "discovery_signals"] as const;
@@ -100,6 +101,18 @@ async function readLegacyCatalogs(manifestRoot: string, catalogs: TomlTable, inv
   };
 }
 
+async function readTemplates(manifestRoot: string, rawPath: TomlValue | undefined, inventory: ReadonlyMap<string, string>, referencedPaths: Set<string>): Promise<void> {
+  const templatesPath = safeRelativePath(rawPath, "release manifest templates path");
+  if (templatesPath !== "templates/manifest.toml") throw new Error("release manifest templates path must be canonical");
+  referencedPaths.add(templatesPath);
+  const templatesIndex = parseTemplatesManifestText(await safeIndexedFile(manifestRoot, templatesPath, inventory, "templates manifest"));
+  for (const entry of Object.values(templatesIndex.templates)) {
+    const templatePath = `templates/${entry.path}`;
+    referencedPaths.add(templatePath);
+    await safeIndexedFile(manifestRoot, templatePath, inventory, `template ${entry.id}`);
+  }
+}
+
 function validateIndex(manifestRoot: string, manifest: TomlTable, inventory: ReadonlyMap<string, string>, routing: RoutingCatalogs, referencedPaths: Set<string>): Promise<void> {
   const routingTable = table(manifest.routing, "release manifest routing"); exact(routingTable, ["unknown", "ambiguous"], "release manifest routing");
   if (routingTable.unknown !== "block" || routingTable.ambiguous !== "block") throw new Error("release manifest routing must fail closed");
@@ -144,12 +157,13 @@ export async function validateGovernanceContract(manifestRoot: string, manifestT
   const referencedPaths = new Set<string>();
 
   let routing: RoutingCatalogs;
-  if (manifest.schema_version === 3) {
-    exact(manifest, ["schema_version", "local_rules", "ssot", "routing", "modules", "roles"], "release manifest");
+  if (manifest.schema_version === 4) {
+    exact(manifest, ["schema_version", "local_rules", "ssot", "templates", "routing", "modules", "roles"], "release manifest");
     const ssotPath = safeRelativePath(manifest.ssot, "release manifest ssot path");
     if (ssotPath !== "ssot/manifest.toml") throw new Error("release manifest ssot path must be canonical");
     referencedPaths.add(ssotPath);
     routing = validateCatalogs(await readSsotCatalogs(manifestRoot, ssotPath, inventory, referencedPaths));
+    await readTemplates(manifestRoot, manifest.templates, inventory, referencedPaths);
   } else if (manifest.schema_version === 2) {
     exact(manifest, ["schema_version", "local_rules", "catalogs", "routing", "modules", "roles"], "release manifest");
     routing = validateCatalogs(await readLegacyCatalogs(manifestRoot, table(manifest.catalogs, "release manifest catalogs"), inventory, referencedPaths));

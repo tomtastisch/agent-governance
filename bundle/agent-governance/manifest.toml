@@ -1,6 +1,7 @@
-schema_version = 3
+schema_version = 4
 local_rules = "local/user-rules.md"
 ssot = "ssot/manifest.toml"
+templates = "templates/manifest.toml"
 
 [routing]
 unknown = "block"

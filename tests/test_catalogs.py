@@ -89,12 +89,13 @@ class CatalogContract(unittest.TestCase):
         self.validator = load_validator(self)
         self.contract = self.validator.load_catalog_contract(GOVERNANCE_ROOT)
 
-    def test_manifest_schema_three_references_exact_ssot(self):
-        self.assertEqual(self.contract.manifest["schema_version"], 3)
+    def test_manifest_schema_four_references_exact_ssot_and_templates(self):
+        self.assertEqual(self.contract.manifest["schema_version"], 4)
         self.assertEqual(self.contract.manifest["ssot"], "ssot/manifest.toml")
+        self.assertEqual(self.contract.manifest["templates"], "templates/manifest.toml")
         self.assertEqual(
             set(self.contract.manifest),
-            {"schema_version", "local_rules", "ssot", "routing", "modules", "roles"},
+            {"schema_version", "local_rules", "ssot", "templates", "routing", "modules", "roles"},
         )
         self.assertEqual(
             self.contract.manifest["routing"],

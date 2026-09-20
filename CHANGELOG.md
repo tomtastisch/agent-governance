@@ -9,11 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Keine.
+- Kanonische, geschlossene Template-Registry `bundle/agent-governance/templates/manifest.toml`, die
+  jeden wiederverwendbaren generischen Formvertrag genau einmal mit stabiler Template-ID
+  registriert. Zwei zuvor fehlende generische Verträge wurden ergänzt: `delivery/release-checkpoint`
+  (Release-Nachweisform) und `external-effects/approval-checkpoint` (Freigabe-/Autorisierungsform).
 
 ### Changed
 
-- Keine.
+- Das Sammelmodul `modules/templates.md` ist auf eine rein erklärende Übersicht reduziert; die
+  atomaren Formverträge liegen unter `templates/`. Die domain-spezifische Resume-Checkpoint-Form
+  verbleibt beim Resume-Owner `modules/resume.md`. Das Root-Manifest (schema_version 4) referenziert
+  zusätzlich die Template-Registry.
+- `DEL-008` (Provider-Routing) präzisiert: ein Ausfall des bevorzugten Review-Providers
+  (`fail-closed(provider)`) schließt nur diesen Providerpfad und erzwingt bei vorhandenem
+  autorisiertem fachlich gleichwertigem Fallback dessen Ausführung; der gesamte Prüfworkflow
+  blockiert erst, wenn kein gültiger Fallback verfügbar ist oder auch dieser keinen Nachweis liefert.
 
 ### Fixed
 

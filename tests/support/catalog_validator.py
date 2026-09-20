@@ -14,7 +14,7 @@ from typing import Mapping
 
 ID_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 MANIFEST_FIELDS = frozenset(
-    {"schema_version", "local_rules", "ssot", "routing", "modules", "roles"}
+    {"schema_version", "local_rules", "ssot", "templates", "routing", "modules", "roles"}
 )
 SSOT_MANIFEST_FIELDS = frozenset({"schema_version", "domains"})
 SSOT_DOMAINS = ("routing", "commands", "discovery")
@@ -97,6 +97,12 @@ DISCOVERY_SOURCE_KINDS = frozenset(
 )
 DISCOVERY_STRENGTHS = frozenset({"strong", "corroborating", "weak"})
 
+TEMPLATE_CATEGORIES = frozenset(
+    {"git", "delivery", "review", "context", "communication", "external_effects"}
+)
+TEMPLATE_FIELDS = frozenset({"path", "category", "format"})
+TEMPLATE_FORMATS = frozenset({"markdown"})
+
 
 class CatalogValidationError(RuntimeError):
     """Ein geschlossener Katalog-, Pfad- oder Referenzvertrag ist verletzt."""
@@ -107,6 +113,7 @@ class CatalogContract:
     manifest: Mapping[str, object]
     catalogs: Mapping[str, Mapping[str, object]]
     catalog_paths: tuple[Path, ...]
+    template_paths: tuple[Path, ...]
     triggers: frozenset[str]
     policy_tags: frozenset[str]
     scopes: frozenset[str]
@@ -129,8 +136,8 @@ def load_catalog_contract(
         manifest_data = dict(manifest)
 
     _exact_fields(manifest_data, MANIFEST_FIELDS, "Manifest Top-Level")
-    if type(manifest_data.get("schema_version")) is not int or manifest_data["schema_version"] != 3:
-        raise CatalogValidationError("Manifest schema_version muss Integer 3 sein")
+    if type(manifest_data.get("schema_version")) is not int or manifest_data["schema_version"] != 4:
+        raise CatalogValidationError("Manifest schema_version muss Integer 4 sein")
     local_rules = manifest_data.get("local_rules")
     if not isinstance(local_rules, str) or not local_rules:
         raise CatalogValidationError("Manifest local_rules muss ein nichtleerer relativer Pfad sein")
@@ -179,11 +186,13 @@ def load_catalog_contract(
     discovery = _validate_discovery(parsed_catalogs["discovery_signals"])
     _validate_manifest_index(root, manifest_data, triggers)
     _validate_tool_routing(manifest_data, tools)
+    template_paths = _validate_templates(manifest_data, root)
 
     return CatalogContract(
         manifest=manifest_data,
         catalogs=parsed_catalogs,
         catalog_paths=tuple(catalog_paths),
+        template_paths=template_paths,
         triggers=triggers,
         policy_tags=policy_tags,
         scopes=scopes,
@@ -542,6 +551,52 @@ def _validate_tool_routing(
         raise CatalogValidationError(
             "Tool-Routing-Trigger müssen tool_selection und alle required_on-Trigger abdecken"
         )
+
+
+def _validate_templates(manifest: Mapping[str, object], root: Path) -> tuple[Path, ...]:
+    raw = manifest.get("templates")
+    if not isinstance(raw, str) or raw != "templates/manifest.toml":
+        raise CatalogValidationError("Manifest templates muss der kanonische Pfad 'templates/manifest.toml' sein")
+    index_path = _index_file(root, raw, "Templates-Index")
+    data = _load_toml(index_path, "Templates-Index")
+    _exact_fields(data, frozenset({"schema_version", "templates"}), "Templates-Index Top-Level")
+    if type(data.get("schema_version")) is not int or data["schema_version"] != 1:
+        raise CatalogValidationError("Templates-Index schema_version muss Integer 1 sein")
+    entries = data.get("templates")
+    if not isinstance(entries, Mapping) or not entries:
+        raise CatalogValidationError("templates muss eine nichtleere Tabelle sein")
+    templates_dir = index_path.parent
+    seen_paths: set[str] = set()
+    resolved: list[Path] = []
+    for template_id, entry in entries.items():
+        _validate_id(template_id, "templates")
+        if not isinstance(entry, Mapping):
+            raise CatalogValidationError(f"templates.{template_id} muss eine Tabelle sein")
+        _exact_fields(entry, TEMPLATE_FIELDS, f"templates.{template_id}")
+        if entry.get("category") not in TEMPLATE_CATEGORIES:
+            raise CatalogValidationError(f"templates.{template_id}.category ist unbekannt")
+        if entry.get("format") not in TEMPLATE_FORMATS:
+            raise CatalogValidationError(f"templates.{template_id}.format ist ungültig")
+        raw_path = entry.get("path")
+        if not isinstance(raw_path, str) or not raw_path or Path(raw_path).is_absolute() or "\\" in raw_path:
+            raise CatalogValidationError(f"templates.{template_id}.path ist ungültig")
+        if any(part in {"", ".", "..", "~"} for part in raw_path.split("/")):
+            raise CatalogValidationError(f"templates.{template_id}.path enthält Traversal")
+        if not raw_path.endswith(".md"):
+            raise CatalogValidationError(f"templates.{template_id}.path hat ein ungültiges Format")
+        if raw_path in seen_paths:
+            raise CatalogValidationError("templates enthält doppelte Pfade")
+        seen_paths.add(raw_path)
+        candidate = _regular_file(templates_dir, _index_candidate(templates_dir, raw_path, f"templates.{template_id}"), f"templates.{template_id}")
+        resolved.append(candidate)
+    for candidate in sorted(templates_dir.rglob("*")):
+        if candidate.is_symlink():
+            raise CatalogValidationError("templates enthält Symlinks")
+        if candidate.is_file() and candidate.name.endswith(".md"):
+            relative_path = candidate.relative_to(templates_dir).as_posix()
+            if relative_path not in seen_paths:
+                raise CatalogValidationError("templates enthält nicht registrierte Dateien")
+    return tuple(resolved)
 
 
 def _validate_id(value: object, context: str) -> str:
