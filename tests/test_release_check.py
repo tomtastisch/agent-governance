@@ -28,7 +28,7 @@ import tools.release_check as release_check  # noqa: E402
 
 from tools.release_check import (  # noqa: E402
     CheckResult, GitRunner, GhRunner,
-    check_tree, check_tag, check_release,
+    check_tree, check_tag, check_release, check_registry,
     _is_valid_semver, _split_changelog_sections, _parse_section,
     _semver_cmp, _resolve_target_commitish,
     REQUIRED_CATEGORIES,
@@ -1451,6 +1451,92 @@ class CurrentRepoState(unittest.TestCase):
         self.assertEqual(package_lock["version"], version)
         self.assertEqual(package_lock["packages"][""]["version"], version)
         self.assertTrue(r.ok, r.errors)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Level B: Registry-/Release-Verifikation (live, injizierte Runner)
+# ═══════════════════════════════════════════════════════════════════════
+
+class _NpmStub:
+    def __init__(self, latest="9.9.9", versions=("9.9.7", "9.9.8", "9.9.9"), error=None):
+        self.latest = latest
+        self.versions = list(versions)
+        self.error = error
+
+    def view(self, args, root):
+        if self.error:
+            return "", self.error, 1
+        if args == ["dist-tags.latest"]:
+            return json.dumps(self.latest), "", 0
+        if args == ["versions"]:
+            return json.dumps(self.versions), "", 0
+        return "", f"unexpected npm args: {args}", 1
+
+
+class _GhStub:
+    def __init__(self, tag_name="v9.9.9", error=None):
+        self.tag_name = tag_name
+        self.error = error
+
+    def latest_release(self, root):
+        if self.error:
+            return None, self.error
+        return {"tag_name": self.tag_name}, None
+
+
+class RegistryLiveCheck(unittest.TestCase):
+    def setUp(self):
+        self.d = tempfile.TemporaryDirectory()
+        self.root = self.d.name
+        _write(os.path.join(self.root, "VERSION"), "9.9.10\n")
+        _write(
+            os.path.join(self.root, "CHANGELOG.md"),
+            "## [Unreleased]\n### Added\n- Keine.\n### Changed\n- Keine.\n"
+            "### Fixed\n- Keine.\n### Removed\n- Keine.\n\n**Breaking changes:** none\n\n"
+            "## [9.9.10] — 2026-09-20\n### Added\n- resume\n### Changed\n- Keine.\n"
+            "### Fixed\n- Keine.\n### Removed\n- Keine.\n\n**Breaking changes:** none\n",
+        )
+        _write_documentation_tree(self.root)
+
+    def tearDown(self):
+        self.d.cleanup()
+
+    def test_unpublished_minor_above_latest_is_ok(self):
+        r = check_registry(root=self.root, npm=_NpmStub(), gh=_GhStub())
+        self.assertTrue(r.ok, r.errors)
+
+    def test_already_published_version_is_rejected(self):
+        r = check_registry(
+            root=self.root,
+            npm=_NpmStub(versions=("9.9.7", "9.9.8", "9.9.9", "9.9.10")),
+            gh=_GhStub(),
+        )
+        self.assertFalse(r.ok)
+        self.assertTrue(any("bereits" in e for e in r.errors))
+
+    def test_version_not_above_latest_is_rejected(self):
+        r = check_registry(root=self.root, npm=_NpmStub(latest="9.9.11"), gh=_GhStub())
+        self.assertFalse(r.ok)
+        self.assertTrue(any("nicht größer" in e for e in r.errors))
+
+    def test_npm_unavailable_fails_closed(self):
+        r = check_registry(root=self.root, npm=_NpmStub(error="registry down"), gh=_GhStub())
+        self.assertFalse(r.ok)
+        self.assertTrue(any("dist-tags.latest" in e for e in r.errors))
+
+    def test_invalid_latest_semver_fails_closed(self):
+        r = check_registry(root=self.root, npm=_NpmStub(latest="not-a-version"), gh=_GhStub())
+        self.assertFalse(r.ok)
+        self.assertTrue(any("SemVer" in e for e in r.errors))
+
+    def test_gh_latest_release_unavailable_fails_closed(self):
+        r = check_registry(
+            root=self.root,
+            npm=_NpmStub(),
+            gh=_GhStub(error="gh CLI nicht verfügbar"),
+        )
+        self.assertFalse(r.ok)
+        self.assertTrue(any("GitHub Latest Release" in e for e in r.errors))
 
 
 if __name__ == "__main__":

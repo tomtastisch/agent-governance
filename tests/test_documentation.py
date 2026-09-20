@@ -267,6 +267,19 @@ class ReadmeEntryContract(unittest.TestCase):
             with self.subTest(badge=badge):
                 self.assertIn(badge, README)
 
+    def test_npm_badge_is_version_free_and_has_no_second_manual_version(self):
+        """Ebene A (offline): Der dynamische npm-Badge darf keine hart codierte Version tragen."""
+        package_name = PACKAGE["name"]
+        npm_badge_url = f"https://img.shields.io/npm/v/{package_name}?style=flat-square"
+        self.assertIn(npm_badge_url, README)
+        self.assertNotRegex(
+            npm_badge_url,
+            r"/v/@?[^/?]*(?:\d+\.\d+\.\d+|@latest|@next)",
+        )
+        badge_line = next(line for line in README.splitlines() if "img.shields.io/npm/v/" in line)
+        self.assertNotRegex(badge_line, r"\d+\.\d+\.\d+")
+        self.assertNotIn(f"{package_name}@", badge_line)
+
     def test_quickstart_has_the_only_normal_two_command_installation_path(self):
         """Catches a return to a second normal explicit-path quickstart."""
         section = README.split("## Schnellstart", 1)[1].split("\n## ", 1)[0]
