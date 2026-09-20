@@ -46,7 +46,9 @@ Bei einem möglichen Resume-Fall wird nicht der vollständige normale Projekt-Pr
 sondern ausschließlich das geprüft, was den letzten Checkpoint tatsächlich invalidieren könnte:
 erwartetes Repository, Worktree und Branch, aktueller Exact Head, Clean-/Dirty-Status, Ziel- und
 Scope-Identität, letzter aktiver Task und relevante laufende Prozesse. Signatur-, Remote-, Auth-
-und andere freshness-sensitive Zustände werden nur bei fachlichem Bedarf erneut gelesen.
+und andere freshness-sensitive Zustände werden nur bei fachlichem Bedarf erneut gelesen; die
+verbindliche Freshness-Policy folgt
+[RES-009](#res-009--freshness-sensitive-evidence).
 
 ### RES-005 — Checkpoint-Auflösung und kanonische Wahrheit
 
@@ -128,8 +130,9 @@ Gültigkeitsprüfung, minimaler Resume-Kontext, deterministische TOON-Projektion
 TOON besitzt keine eigene Wahrheit, erfindet keinen Zustand, ersetzt keine kanonische
 Checkpointdatei und ist keine zweite State-, Checkpoint- oder Evidence-Source of Truth. Manipulierte,
 beschädigte, veraltete oder nicht eindeutig zum Checkpoint passende Projektionen werden fail-closed
-abgelehnt; Syntax und Formatversion sind eindeutig definiert und Ein- und Ausgabe strikt validiert.
-Es wird keine eigene allgemeine TOON-Implementierung und keine neue Dependency eingeführt.
+abgelehnt. Die konkrete Syntax und Formatversion benennt die erzeugende Runtime eindeutig; dieser
+Vertrag verlangt die strikte Validierung von Ein- und Ausgabe. Es wird keine eigene allgemeine
+TOON-Implementierung und keine neue Dependency eingeführt.
 
 ### RES-014 — Progressive Context Loading
 

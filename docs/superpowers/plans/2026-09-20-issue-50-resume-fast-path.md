@@ -31,7 +31,7 @@
 
 - [ ] **Step 1: Fehlschlagenden Test schreiben**
 
-`tests/test_resume.py` neu anlegen (siehe Task 2). Zuerst den Test `test_resume_continuation_trigger_is_wired_to_exactly_the_resume_module` schreiben, der `resume_continuation` im Katalog und exakt im `modules.resume`-Eintrag erwartet.
+`tests/test_resume.py` neu anlegen (siehe Task 2). Zuerst den Test `test_resume_module_is_wired_exactly_once` schreiben, der `resume_continuation` im Katalog und exakt im `modules.resume`-Eintrag erwartet.
 
 - [ ] **Step 2: Test ausführen und Fehlschlag bestätigen**
 
@@ -126,7 +126,7 @@ git commit -m "feat(resume): add resume fast-path module and contract tests"
 
 - [ ] **Step 1: Fehlschlagenden Test schreiben**
 
-`tests/test_resume.py::test_resume_checkpoint_template_is_strict_and_single_owned` erwartet in `templates.md` eine `### Resume-Checkpoint`-Überschrift unter `## Strikte Vorlagen` und referenzierte Pflichtfelder.
+`tests/test_resume.py::test_resume_checkpoint_is_a_strict_template` erwartet in `templates.md` eine `### Resume-Checkpoint`-Überschrift unter `## Strikte Vorlagen` und referenzierte Pflichtfelder.
 
 - [ ] **Step 2: Test ausführen und Fehlschlag bestätigen**
 

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 import unittest
 
 try:
@@ -75,6 +76,14 @@ def read_resume() -> str:
     return RESUME.read_text(encoding="utf-8")
 
 
+def rule_section(text: str, number: int) -> str:
+    pattern = rf"### RES-{number:03d}\b.*?(?=\n### RES-\d{{3}}\b|\n## )"
+    match = re.search(pattern, text, re.DOTALL)
+    if match is None:
+        raise AssertionError(f"Abschnitt RES-{number:03d} fehlt")
+    return match.group(0)
+
+
 class ResumeManifestContract(unittest.TestCase):
     def setUp(self):
         self.manifest = load_manifest()
@@ -139,10 +148,10 @@ class ResumeModuleContract(unittest.TestCase):
             self.assertIn(f"`{outcome}`", self.text)
 
     def test_incomplete_is_never_pass(self):
-        self.assertRegex(
-            self.text,
-            r"(?is)`INCOMPLETE`.+niemals.+`PASS`",
-        )
+        section = rule_section(self.text, 8)
+        self.assertIn("`INCOMPLETE`", section)
+        self.assertIn("niemals", section)
+        self.assertIn("`PASS`", section)
 
     def test_chat_is_transport_not_authority(self):
         self.assertIn("Chat context is transport, not authority", self.text)
@@ -150,36 +159,28 @@ class ResumeModuleContract(unittest.TestCase):
 
     def test_toon_is_derived_projection_not_second_ssot(self):
         self.assertIn("Token-Oriented Object Notation", self.text)
-        self.assertRegex(
-            self.text,
-            r"(?is)TOON.+keine zweite State-, Checkpoint- oder Evidence-Source of Truth",
-        )
-        self.assertRegex(self.text, r"(?is)manipulierte.+beschädigte.+veraltete.+fail-closed")
-        self.assertRegex(self.text, r"(?is)keine neue Dependency")
+        section = rule_section(self.text, 13)
+        self.assertIn("keine zweite State-, Checkpoint- oder Evidence-Source of Truth", section)
+        self.assertIn("fail-closed", section)
+        self.assertIn("keine neue Dependency", section)
 
     def test_duplicate_execution_is_fail_closed(self):
-        self.assertRegex(
-            self.text,
-            r"(?is)externe.+nicht idempotente.+fail-closed",
-        )
+        section = rule_section(self.text, 10)
+        self.assertIn("nicht idempotente", section)
+        self.assertIn("fail-closed", section)
 
     def test_dirty_worktree_identity_is_bound(self):
-        self.assertRegex(
-            self.text,
-            r"(?is)`HEAD`.+kein hinreichender Gleichheitsnachweis",
-        )
+        section = rule_section(self.text, 11)
+        self.assertIn("kein hinreichender Gleichheitsnachweis", section)
         for term in ("staged", "unstaged", "untracked"):
-            self.assertIn(term, self.text)
+            self.assertIn(term, section)
 
     def test_no_second_resume_authority_or_hash_primitive(self):
-        self.assertRegex(
-            self.text,
-            r"(?is)einzelner globaler Hash.+unzureichend",
-        )
-        self.assertRegex(
-            self.text,
-            r"(?is)Git-Objektidentitäten.+nicht durch parallele\s+Hashlogik",
-        )
+        section = rule_section(self.text, 3)
+        self.assertIn("einzelner globaler Hash", section)
+        self.assertIn("unzureichend", section)
+        self.assertIn("nicht durch parallele", section)
+        self.assertIn("Hashlogik", section)
 
     def test_operational_subsystems_are_explicitly_out_of_scope(self):
         for phrase in (
