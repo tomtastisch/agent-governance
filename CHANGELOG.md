@@ -9,7 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Keine.
+- Kanonische, statische Work-Item-Klassifikations-SSOT
+  `bundle/agent-governance/ssot/work-items/classifications.toml` als vierte Domain `work_items` im
+  SSOT-Index. Stabile IDs der Form `dimension.value` (z. B. `type.refactor`, `semver.patch`) mit
+  expliziter Cardinality je Dimension (`type`=one, `area`=many, `horizon`/`semver`=at_most_one).
+  Die bestehende `policy_tags`-Domain (`read`, `write`) bleibt semantisch getrennt.
+- Getrennte GitHub-Labelprojektion
+  `bundle/agent-governance/ssot/work-items/projections/github-labels.toml` mit managed
+  Projektionen, optionalen Legacy-Aliasen (`github-hardening`, `terminal-ux`) und dem einzigen
+  formalisierten Titelmarker `[FUTURE]`. Ein deterministischer read-only Projection-Plan
+  (`NOOP`, `CREATE`, `UPDATE`, `CONFLICT`, `UNMANAGED`, `CANDIDATE`) klassifiziert das
+  GitHub-Inventar ohne Mutation.
+- Öffentliche Auflösung über den Paketexport `@tomtastisch/agent-governance/work-items`
+  (Loader, Validierung, Projektionsplan, Titelmarker- und Driftauflösung).
 
 ### Changed
 

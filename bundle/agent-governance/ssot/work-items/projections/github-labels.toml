@@ -1,0 +1,149 @@
+# GitHub-Label- und Titelmarker-Projektionen der Work-Item-Klassifikation.
+#
+# Projektion != fachliche Identität. Der kanonische Classifier ist ausschließlich
+# `classifications.toml`. Diese Datei bildet stabile Classification-IDs deterministisch auf
+# GitHub-Labels und — wo real weiterhin sinnvoll — auf Titelmarker ab. Eine Änderung eines
+# Anzeigenamens hier ändert die kanonische ID nicht.
+#
+# Alle Einträge unter [projections.*] sind managed: Agent Governance besitzt den
+# Projektionsvertrag und darf bei einer später autorisierten Mutation Existenz, Name,
+# Beschreibung und Farbe gegen diese SSOT prüfen. Unmanaged ist eine Klassifikation des
+# read-only GitHub-Inventars, kein hier deklariertes Feld. Diese Datei führt niemals selbst
+# eine GitHub-Mutation aus.
+schema_version = 1
+
+[projections.semver_major]
+classification = "semver.major"
+name = "semver:major"
+description = "Erfordert voraussichtlich eine nicht rückwärtskompatible Major-Version"
+color = "B60205"
+aliases = []
+
+[projections.semver_minor]
+classification = "semver.minor"
+name = "semver:minor"
+description = "Erfordert voraussichtlich eine neue rückwärtskompatible Funktionalität"
+color = "1D76DB"
+aliases = []
+
+[projections.semver_patch]
+classification = "semver.patch"
+name = "semver:patch"
+description = "Erfordert voraussichtlich eine rückwärtskompatible Korrektur oder Dokumentationsänderung"
+color = "0E8A16"
+aliases = []
+
+[projections.semver_none]
+classification = "semver.none"
+name = "semver:none"
+description = "Erfordert voraussichtlich keine neue Paketversion"
+color = "6E7781"
+aliases = []
+
+[projections.semver_pending]
+classification = "semver.pending"
+name = "semver:pending"
+description = "SemVer-Auswirkung ist noch nicht ausreichend geklärt"
+color = "D4C5F9"
+aliases = []
+
+[projections.horizon_future]
+classification = "horizon.future"
+name = "future"
+description = "Planned future capability outside the current release scope"
+color = "808080"
+aliases = []
+
+[projections.area_cli]
+classification = "area.cli"
+name = "cli"
+description = "LLM-unabhängige CLI, öffentliche Commands und Command-SSOT"
+color = "5319E7"
+aliases = []
+
+[projections.area_installer]
+classification = "area.installer"
+name = "installer"
+description = "Installer-Transaktionen und Zielverwaltung"
+color = "E99695"
+aliases = []
+
+[projections.area_runtime]
+classification = "area.runtime"
+name = "runtime"
+description = "Laufzeitbetrieb und Governance-Prüfung zur Laufzeit"
+color = "C5DEF5"
+aliases = []
+
+[projections.area_workflow]
+classification = "area.workflow"
+name = "workflow"
+description = "Work-Item-, Delivery- und Lifecycle-Verträge"
+color = "FBCA04"
+aliases = []
+
+[projections.area_github]
+classification = "area.github"
+name = "github"
+description = "GitHub-Integration, Repository-Härtung und Rulesets"
+color = "1E5AA8"
+aliases = ["github-hardening"]
+
+[projections.area_enforcement]
+classification = "area.enforcement"
+name = "enforcement"
+description = "Programmatic fail-closed enforcement of critical governance rules"
+color = "E10600"
+aliases = []
+
+[projections.area_templates]
+classification = "area.templates"
+name = "templates"
+description = "Formverträge und Template-Registry"
+color = "BFD4F2"
+aliases = []
+
+[projections.area_ssot]
+classification = "area.ssot"
+name = "ssot"
+description = "Kanonische deklarative Quellen und Registry-Ordnung"
+color = "0E8A16"
+aliases = []
+
+[projections.area_tools]
+classification = "area.tools"
+name = "tools"
+description = "Tool-/Capability-Verwaltung und Tool-Routing"
+color = "7057FF"
+aliases = []
+
+[projections.area_docs]
+classification = "area.docs"
+name = "docs"
+description = "Dokumentationsbestand und -struktur"
+color = "0075CA"
+aliases = []
+
+[projections.area_ux]
+classification = "area.ux"
+name = "ux"
+description = "Terminal-Identität, Visualisierung und Interaktion"
+color = "62CBCC"
+aliases = ["terminal-ux"]
+
+[projections.area_quality]
+classification = "area.quality"
+name = "quality"
+description = "Qualitätssicherung, Auditierung und Redundanzprüfung"
+color = "A2EEEF"
+aliases = []
+
+# Titelmarker sind eine zusätzliche Projektion, niemals eine zweite fachliche Authority.
+# Formalisiert wird ausschließlich der real weiterhin genutzte, eindeutig aus der
+# Classification-SSOT ableitbare Horizontmarker. Weitere Legacy-Marker ([CLI], [WORKFLOW], …)
+# erkennt der read-only Diagnoseparser `parseTitleMarkers` (src/work-items.ts) zur Migration und
+# Diagnose; sie sind jedoch kein kanonischer Projektionsvertrag und werden nicht auf
+# Classification-IDs abgebildet.
+[title_markers.horizon_future]
+classification = "horizon.future"
+marker = "[FUTURE]"

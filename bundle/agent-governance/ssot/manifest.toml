@@ -11,3 +11,7 @@ commands = "commands/commands.toml"
 
 [domains.discovery]
 discovery_signals = "discovery/discovery-signals.toml"
+
+[domains.work_items]
+classifications = "work-items/classifications.toml"
+github_labels = "work-items/projections/github-labels.toml"

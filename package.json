@@ -25,6 +25,10 @@
     "./resume-toon": {
       "types": "./dist/resume-toon.d.ts",
       "default": "./dist/resume-toon.js"
+    },
+    "./work-items": {
+      "types": "./dist/work-items.d.ts",
+      "default": "./dist/work-items.js"
     }
   },
   "files": [

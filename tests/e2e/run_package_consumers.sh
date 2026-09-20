@@ -88,6 +88,37 @@ console.log("toon_consumer=PASS");
 EOF
 node "$consumer/use-resume-toon.mjs"
 
+cat > "$consumer/use-work-items.mjs" <<'EOF'
+import {
+  buildLabelProjectionPlan,
+  loadWorkItemSsot,
+  resolveClassification,
+  validateWorkItemClassification,
+} from "@tomtastisch/agent-governance/work-items";
+
+const { classifications, projections } = loadWorkItemSsot();
+const refactor = resolveClassification(classifications, "type.refactor");
+if (refactor.id !== "type.refactor" || refactor.dimension !== "type") {
+  console.error("classification resolution failed");
+  process.exit(1);
+}
+const plan = buildLabelProjectionPlan(projections, [
+  { name: "semver:patch", color: "0E8A16", description: "Erfordert voraussichtlich eine rückwärtskompatible Korrektur oder Dokumentationsänderung" },
+]);
+const entry = plan.entries.find((value) => value.labelName === "semver:patch");
+if (entry === undefined || entry.action !== "NOOP" || entry.classification !== "semver.patch") {
+  console.error("projection plan failed");
+  process.exit(1);
+}
+const validation = validateWorkItemClassification(classifications, ["area.cli", "area.github", "type.feature"]);
+if (validation.violations.length !== 0) {
+  console.error("cardinality validation failed");
+  process.exit(1);
+}
+console.log("work_items_consumer=PASS");
+EOF
+node "$consumer/use-work-items.mjs"
+
 missing_native_consumer="$fixture_root/missing-native-consumer"
 missing_native_target="$fixture_root/missing-native-target"
 mkdir -p -- "$missing_native_consumer" "$missing_native_target"

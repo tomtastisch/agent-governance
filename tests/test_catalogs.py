@@ -22,6 +22,8 @@ EXPECTED_CATALOG_PATHS = {
     "tools": "ssot/routing/tools.toml",
     "commands": "ssot/commands/commands.toml",
     "discovery_signals": "ssot/discovery/discovery-signals.toml",
+    "classifications": "ssot/work-items/classifications.toml",
+    "github_labels": "ssot/work-items/projections/github-labels.toml",
 }
 EXPECTED_COMMANDS = {
     "inspect": (["inspect"], "transaction", "read", False, False),
@@ -118,6 +120,10 @@ class CatalogContract(unittest.TestCase):
                 },
                 "commands": {"commands": "commands/commands.toml"},
                 "discovery": {"discovery_signals": "discovery/discovery-signals.toml"},
+                "work_items": {
+                    "classifications": "work-items/classifications.toml",
+                    "github_labels": "work-items/projections/github-labels.toml",
+                },
             },
         )
 
@@ -344,6 +350,68 @@ class CatalogContract(unittest.TestCase):
         )
         for forbidden_field in ("required_when", "useful_when", "conditions", "situations", "events"):
             self.assertNotRegex(text, rf"(?m)^\s*{forbidden_field}\s*=")
+
+
+class WorkItemClassificationContract(unittest.TestCase):
+    def setUp(self):
+        self.validator = load_validator(self)
+        self.contract = self.validator.load_catalog_contract(GOVERNANCE_ROOT)
+
+    def test_classification_dimensions_and_cardinality(self):
+        dimensions = self.contract.work_item_classifications["dimensions"]
+        self.assertEqual(set(dimensions), {"type", "area", "horizon", "semver"})
+        self.assertEqual(dimensions["type"]["cardinality"], "one")
+        self.assertEqual(dimensions["area"]["cardinality"], "many")
+        self.assertEqual(dimensions["horizon"]["cardinality"], "at_most_one")
+        self.assertEqual(dimensions["semver"]["cardinality"], "at_most_one")
+
+    def test_classification_values_form_stable_ids(self):
+        classifications = self.contract.work_item_classifications["classifications"]
+        ids = {
+            f"{dimension}.{value}"
+            for dimension, values in classifications.items()
+            for value in values
+        }
+        self.assertIn("type.refactor", ids)
+        self.assertIn("semver.patch", ids)
+        self.assertIn("horizon.future", ids)
+
+    def test_policy_tags_are_not_work_item_classifications(self):
+        classifications = self.contract.work_item_classifications["classifications"]
+        ids = {
+            f"{dimension}.{value}"
+            for dimension, values in classifications.items()
+            for value in values
+        }
+        self.assertNotIn("read", ids)
+        self.assertNotIn("write", ids)
+
+    def test_projection_references_are_closed(self):
+        classifications = self.contract.work_item_classifications["classifications"]
+        ids = {
+            f"{dimension}.{value}"
+            for dimension, values in classifications.items()
+            for value in values
+        }
+        projections = self.contract.work_item_projections["projections"]
+        for projection in projections.values():
+            self.assertIn(projection["classification"], ids)
+
+    def test_managed_projections_cover_semver_and_future(self):
+        projections = self.contract.work_item_projections["projections"]
+        names = {projection["name"] for projection in projections.values()}
+        for name in ("semver:major", "semver:minor", "semver:patch", "semver:none", "semver:pending", "future"):
+            self.assertIn(name, names)
+
+    def test_no_lifecycle_state_in_classification(self):
+        classifications = self.contract.work_item_classifications["classifications"]
+        ids = {
+            f"{dimension}.{value}"
+            for dimension, values in classifications.items()
+            for value in values
+        }
+        for lifecycle in ("in_progress", "blocked", "completed", "superseded", "work_started"):
+            self.assertFalse(any(lifecycle in item for item in ids), lifecycle)
 
 
 class CatalogMutationCase(unittest.TestCase):
@@ -729,6 +797,48 @@ class CatalogPathFailures(CatalogMutationCase):
         module.unlink()
         module.symlink_to(outside)
         with self.assertRaisesRegex(self.validator.CatalogValidationError, "Symlink"):
+            self.load()
+
+
+class WorkItemClassificationFailures(CatalogMutationCase):
+    def test_unknown_dimension_fails_closed(self):
+        path = self.root / "ssot" / "work-items" / "classifications.toml"
+        original = path.read_text(encoding="utf-8")
+        path.write_text(
+            original
+            + '\n[classifications.missing.value]\nlabel = "X"\ndescription = "Y"\n',
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(self.validator.CatalogValidationError, "unbekannte Dimension"):
+            self.load()
+
+    def test_projection_collision_fails_closed(self):
+        self.replace(
+            "ssot/work-items/projections/github-labels.toml",
+            'name = "semver:minor"',
+            'name = "semver:major"',
+        )
+        with self.assertRaisesRegex(self.validator.CatalogValidationError, "kollidiert"):
+            self.load()
+
+    def test_unknown_projection_classification_fails_closed(self):
+        self.replace(
+            "ssot/work-items/projections/github-labels.toml",
+            'classification = "semver.major"',
+            'classification = "semver.unknown"',
+        )
+        with self.assertRaisesRegex(self.validator.CatalogValidationError, "unbekannte Klassifikations-ID"):
+            self.load()
+
+    def test_alias_before_name_collision_fails_closed(self):
+        # area_github deklariert den Alias "github-hardening"; ein späterer kanonischer Name
+        # mit demselben Wert muss als Kollision abgelehnt werden.
+        self.replace(
+            "ssot/work-items/projections/github-labels.toml",
+            'name = "ssot"',
+            'name = "github-hardening"',
+        )
+        with self.assertRaisesRegex(self.validator.CatalogValidationError, "kollidiert"):
             self.load()
 
 

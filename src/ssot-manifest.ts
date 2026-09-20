@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { parseClosedToml, exact, safeRelativePath, table } from "./closed-toml.ts";
 import { resolveManifestPath, resolveSsotFile } from "./catalog-paths.ts";
 
-export const SSOT_DOMAIN_IDS = ["routing", "commands", "discovery"] as const;
+export const SSOT_DOMAIN_IDS = ["routing", "commands", "discovery", "work_items"] as const;
 export type SsotDomainId = (typeof SSOT_DOMAIN_IDS)[number];
 
 export interface SsotIndex {

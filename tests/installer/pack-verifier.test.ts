@@ -26,11 +26,15 @@ async function allowlistedFixture(t: TestContext): Promise<{ root: string; paths
     "bundle/agent-governance/ssot/routing/tools.toml",
     "bundle/agent-governance/ssot/commands/commands.toml",
     "bundle/agent-governance/ssot/discovery/discovery-signals.toml",
+    "bundle/agent-governance/ssot/work-items/classifications.toml",
+    "bundle/agent-governance/ssot/work-items/projections/github-labels.toml",
     "assets/branding/agent-governance-terminal.png",
     "docs/installer-cli-reference.md",
     "dist/cli.js",
     "dist/resume-toon.js",
     "dist/resume-toon.d.ts",
+    "dist/work-items.js",
+    "dist/work-items.d.ts",
     `prebuilds/${process.platform}-${process.arch}/agent_governance_fs.node`,
   ];
   for (const path of paths) {
@@ -87,9 +91,13 @@ for (const required of [
   "dist/cli.js",
   "dist/resume-toon.js",
   "dist/resume-toon.d.ts",
+  "dist/work-items.js",
+  "dist/work-items.d.ts",
   "bundle/agent-governance/ssot/manifest.toml",
   "bundle/agent-governance/ssot/commands/commands.toml",
   "bundle/agent-governance/ssot/discovery/discovery-signals.toml",
+  "bundle/agent-governance/ssot/work-items/classifications.toml",
+  "bundle/agent-governance/ssot/work-items/projections/github-labels.toml",
 ]) {
   test(`pack verifier requires package path ${required}`, async (t) => {
     const { root, paths } = await allowlistedFixture(t);
