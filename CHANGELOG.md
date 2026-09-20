@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Keine.
+
+### Changed
+
+- Keine.
+
+### Fixed
+
+- Keine.
+
+### Removed
+
+- Keine.
+
+**Breaking changes:** none
+
+## [1.2.0] — 2026-09-20
+
+### Added
+
 - Zustandsgebundener Resume Fast-Path mit Trigger `resume_continuation`, Modul
   `modules/resume.md` (Regeln `RES-001`–`RES-015`) und strikter `Resume-Checkpoint`-Vorlage:
   Evidence-Reuse und -Invalidation an getrennten Identitäten/Fingerprints, strikte

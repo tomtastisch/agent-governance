@@ -1,6 +1,6 @@
 {
   "name": "@tomtastisch/agent-governance",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Interactive and transactional installer for Agent Governance",
   "keywords": [
     "agent-governance",
