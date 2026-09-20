@@ -149,14 +149,14 @@ jobs:
         run: |
           PACKAGE_VERSION=$(node -p "require('./package.json').version")
           PACKAGE_SPEC="@tomtastisch/agent-governance@$PACKAGE_VERSION"
-          for ATTEMPT in 1 2 3 4 5 6; do
+          for ATTEMPT in 1 2 3 4 5 6 7 8 9 10 11 12; do
             if test "$(npm view "$PACKAGE_SPEC" version --registry=https://registry.npmjs.org 2>/dev/null)" = "$PACKAGE_VERSION" \
               && test "$(npm view @tomtastisch/agent-governance "dist-tags.$NPM_DIST_TAG" --registry=https://registry.npmjs.org 2>/dev/null)" = "$PACKAGE_VERSION" \
               && npm view "$PACKAGE_SPEC" dist --json --registry=https://registry.npmjs.org > registry-dist.json \
               && node -e "const d=require('./registry-dist.json');if(!d.integrity||!d.shasum||d.attestations?.provenance?.predicateType!=='https://slsa.dev/provenance/v1')process.exit(1)"; then
               break
             fi
-            test "$ATTEMPT" = 6 && exit 1
+            test "$ATTEMPT" = 12 && exit 1
             sleep 10
           done
           VERIFY_ROOT="$RUNNER_TEMP/npm-signature-readback"
