@@ -171,7 +171,7 @@ export function parseClassificationsText(content: string): ClassificationIndex {
   const valuesByDimension: Record<string, Record<string, ClassificationValue>> = {};
   for (const [dimensionId, rawValues] of Object.entries(rawClassifications)) {
     validateDimensionId(dimensionId);
-    if (dimensions[dimensionId] === undefined) fail(`unknown dimension referenced by classifications: ${dimensionId}`);
+    if (!Object.hasOwn(dimensions, dimensionId)) fail(`unknown dimension referenced by classifications: ${dimensionId}`);
     const valueTable = table(rawValues, `classifications.${dimensionId}`);
     if (Object.keys(valueTable).length === 0) fail(`classifications.${dimensionId} must not be empty`);
     const bucket: Record<string, ClassificationValue> = {};
@@ -180,7 +180,7 @@ export function parseClassificationsText(content: string): ClassificationIndex {
       const entry = table(raw, `classifications.${dimensionId}.${valueId}`);
       exact(entry, ["label", "description"], `classifications.${dimensionId}.${valueId}`);
       const id = `${dimensionId}.${valueId}`;
-      if (classifications[id] !== undefined) fail(`duplicate classification ID: ${id}`);
+      if (Object.hasOwn(classifications, id)) fail(`duplicate classification ID: ${id}`);
       const value: ClassificationValue = Object.freeze({
         id,
         dimension: dimensionId,
@@ -195,7 +195,7 @@ export function parseClassificationsText(content: string): ClassificationIndex {
   }
 
   for (const dimensionId of Object.keys(dimensions)) {
-    if (valuesByDimension[dimensionId] === undefined) {
+    if (!Object.hasOwn(valuesByDimension, dimensionId)) {
       fail(`dimension has no classification values: ${dimensionId}`);
     }
   }
