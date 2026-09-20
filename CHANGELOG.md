@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Keine.
+
+### Changed
+
+- Keine.
+
+### Fixed
+
+- Keine.
+
+### Removed
+
+- Keine.
+
+**Breaking changes:** none
+
+## [1.2.1] — 2026-09-20
+
+### Added
+
 - Deklarativer Governance-SSOT-Root `bundle/agent-governance/ssot/` mit genau einem geschlossenen
   Domain-Index (`ssot/manifest.toml`), der ausschließlich die real vorhandenen Domains `routing`,
   `commands` und `discovery` registriert.

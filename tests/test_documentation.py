@@ -741,11 +741,11 @@ class ReleaseMetadataContract(unittest.TestCase):
         self.assertIn(PACKAGE["license"], README)
         current = CHANGELOG.split(f"## [{VERSION}]", 1)[1].split("\n## [", 1)[0]
         for term in (
-            "resume",
-            "resume_continuation",
-            "Token-Oriented Object Notation",
-            "@toon-format/toon",
-            "registry",
+            "ssot",
+            "routing",
+            "Domain-Index",
+            "catalogs",
+            "Schema 3",
         ):
             self.assertIn(term, current)
         self.assertIn("**Breaking changes:** none", current)
