@@ -22,15 +22,21 @@ commands = "commands/commands.toml"
 
 [domains.discovery]
 discovery_signals = "discovery/discovery-signals.toml"
+
+[domains.work_items]
+classifications = "work-items/classifications.toml"
+github_labels = "work-items/projections/github-labels.toml"
 `;
 
-test("ssot manifest accepts exactly the three registered domains", () => {
+test("ssot manifest accepts exactly the four registered domains", () => {
   const index = parseSsotManifestText(VALID);
   assert.equal(index.schemaVersion, 1);
-  assert.deepEqual(Object.keys(index.domains).sort(), ["commands", "discovery", "routing"]);
+  assert.deepEqual(Object.keys(index.domains).sort(), ["commands", "discovery", "routing", "work_items"]);
   assert.equal(index.domains.routing.triggers, "routing/triggers.toml");
   assert.equal(index.domains.commands.commands, "commands/commands.toml");
   assert.equal(index.domains.discovery.discovery_signals, "discovery/discovery-signals.toml");
+  assert.equal(index.domains.work_items.classifications, "work-items/classifications.toml");
+  assert.equal(index.domains.work_items.github_labels, "work-items/projections/github-labels.toml");
 });
 
 const rejections: ReadonlyArray<[string, string, RegExp]> = [
@@ -67,7 +73,7 @@ test("ssot resolution is deterministic and independent of directory enumeration"
 test("the canonical ssot tree registers only the real domains with no legacy or future placeholders", async () => {
   const ssotRoot = join(GOVERNANCE_ROOT, "ssot");
   const entries = (await readdir(ssotRoot, { withFileTypes: true })).map((entry) => entry.name).sort();
-  assert.deepEqual(entries, ["commands", "discovery", "manifest.toml", "routing"]);
+  assert.deepEqual(entries, ["commands", "discovery", "manifest.toml", "routing", "work-items"]);
   const legacyCatalogRoot = join(GOVERNANCE_ROOT, "catalogs");
   await assert.rejects(readdir(legacyCatalogRoot), /ENOENT/);
   const rootManifest = await readFile(join(GOVERNANCE_ROOT, "manifest.toml"), "utf8");

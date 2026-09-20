@@ -17,11 +17,12 @@ MANIFEST_FIELDS = frozenset(
     {"schema_version", "local_rules", "ssot", "templates", "routing", "modules", "roles"}
 )
 SSOT_MANIFEST_FIELDS = frozenset({"schema_version", "domains"})
-SSOT_DOMAINS = ("routing", "commands", "discovery")
+SSOT_DOMAINS = ("routing", "commands", "discovery", "work_items")
 SSOT_DOMAIN_CATALOGS = {
     "routing": frozenset({"triggers", "policy_tags", "scopes", "tools"}),
     "commands": frozenset({"commands"}),
     "discovery": frozenset({"discovery_signals"}),
+    "work_items": frozenset({"classifications", "github_labels"}),
 }
 VOCABULARY_FIELDS = frozenset({"label", "description"})
 MODULE_FIELDS = frozenset({"path", "triggers", "dependencies"})
@@ -103,6 +104,15 @@ TEMPLATE_CATEGORIES = frozenset(
 TEMPLATE_FIELDS = frozenset({"path", "category", "format"})
 TEMPLATE_FORMATS = frozenset({"markdown"})
 
+WORK_ITEM_DIMENSION_FIELDS = frozenset({"label", "cardinality", "description"})
+WORK_ITEM_CLASSIFICATION_FIELDS = frozenset({"label", "description"})
+WORK_ITEM_CARDINALITIES = frozenset({"one", "many", "at_most_one", "zero_or_more"})
+WORK_ITEM_PROJECTION_FIELDS = frozenset(
+    {"classification", "name", "description", "color", "aliases"}
+)
+WORK_ITEM_TITLE_MARKER_FIELDS = frozenset({"classification", "marker"})
+WORK_ITEM_COLOR_RE = re.compile(r"^[0-9A-Fa-f]{6}$")
+
 
 class CatalogValidationError(RuntimeError):
     """Ein geschlossener Katalog-, Pfad- oder Referenzvertrag ist verletzt."""
@@ -120,6 +130,8 @@ class CatalogContract:
     tools: Mapping[str, Mapping[str, object]]
     commands: tuple[Mapping[str, object], ...]
     discovery: Mapping[str, object]
+    work_item_classifications: Mapping[str, object]
+    work_item_projections: Mapping[str, object]
 
 
 def load_catalog_contract(
@@ -184,6 +196,12 @@ def load_catalog_contract(
     tools = _validate_tools(parsed_catalogs["tools"], triggers, policy_tags, scopes)
     commands = _validate_commands(parsed_catalogs["commands"])
     discovery = _validate_discovery(parsed_catalogs["discovery_signals"])
+    work_item_classifications = _validate_work_item_classifications(
+        parsed_catalogs["classifications"]
+    )
+    work_item_projections = _validate_work_item_projections(
+        parsed_catalogs["github_labels"], work_item_classifications
+    )
     _validate_manifest_index(root, manifest_data, triggers)
     _validate_tool_routing(manifest_data, tools)
     template_paths = _validate_templates(manifest_data, root)
@@ -199,6 +217,8 @@ def load_catalog_contract(
         tools=tools,
         commands=commands,
         discovery=discovery,
+        work_item_classifications=work_item_classifications,
+        work_item_projections=work_item_projections,
     )
 
 
@@ -473,6 +493,151 @@ def _validate_discovery(catalog: Mapping[str, object]) -> Mapping[str, object]:
     return catalog
 
 
+def _work_item_classification_ids(catalog: Mapping[str, object]) -> frozenset[str]:
+    """Liefert die stabilen kanonischen IDs `dimension.value` der Classification-SSOT."""
+    classifications = catalog.get("classifications")
+    if not isinstance(classifications, Mapping):
+        raise CatalogValidationError("work_items classifications muss eine Tabelle sein")
+    ids: set[str] = set()
+    for dimension_id, values in classifications.items():
+        if not isinstance(values, Mapping):
+            raise CatalogValidationError(
+                f"classifications.{dimension_id} muss eine Tabelle sein"
+            )
+        for value_id in values:
+            ids.add(f"{dimension_id}.{value_id}")
+    return frozenset(ids)
+
+
+def _validate_work_item_classifications(catalog: Mapping[str, object]) -> Mapping[str, object]:
+    _exact_fields(
+        catalog, frozenset({"schema_version", "dimensions", "classifications"}),
+        "work_items classifications Top-Level",
+    )
+    if type(catalog.get("schema_version")) is not int or catalog["schema_version"] != 1:
+        raise CatalogValidationError("work_items classifications schema_version muss Integer 1 sein")
+
+    dimensions = catalog.get("dimensions")
+    if not isinstance(dimensions, Mapping) or not dimensions:
+        raise CatalogValidationError("work_items dimensions muss eine nichtleere Tabelle sein")
+    for dimension_id, dimension in dimensions.items():
+        _validate_id(dimension_id, "work_items dimensions")
+        if not isinstance(dimension, Mapping):
+            raise CatalogValidationError(f"dimensions.{dimension_id} muss eine Tabelle sein")
+        _exact_fields(dimension, WORK_ITEM_DIMENSION_FIELDS, f"dimensions.{dimension_id}")
+        _nonempty_text(dimension.get("label"), f"dimensions.{dimension_id}.label")
+        if dimension.get("cardinality") not in WORK_ITEM_CARDINALITIES:
+            raise CatalogValidationError(f"dimensions.{dimension_id}.cardinality ist unbekannt")
+        _nonempty_text(dimension.get("description"), f"dimensions.{dimension_id}.description")
+
+    classifications = catalog.get("classifications")
+    if not isinstance(classifications, Mapping) or not classifications:
+        raise CatalogValidationError("work_items classifications muss eine nichtleere Tabelle sein")
+    known_dimensions = set(dimensions)
+    for dimension_id, values in classifications.items():
+        _validate_id(dimension_id, "work_items classifications")
+        if dimension_id not in known_dimensions:
+            raise CatalogValidationError(
+                f"classifications.{dimension_id} referenziert eine unbekannte Dimension"
+            )
+        if not isinstance(values, Mapping) or not values:
+            raise CatalogValidationError(
+                f"classifications.{dimension_id} muss eine nichtleere Tabelle sein"
+            )
+        for value_id, value in values.items():
+            _validate_id(value_id, f"classifications.{dimension_id}")
+            if not isinstance(value, Mapping):
+                raise CatalogValidationError(
+                    f"classifications.{dimension_id}.{value_id} muss eine Tabelle sein"
+                )
+            _exact_fields(
+                value, WORK_ITEM_CLASSIFICATION_FIELDS,
+                f"classifications.{dimension_id}.{value_id}",
+            )
+            _nonempty_text(value.get("label"), f"classifications.{dimension_id}.{value_id}.label")
+            _nonempty_text(
+                value.get("description"),
+                f"classifications.{dimension_id}.{value_id}.description",
+            )
+    for dimension_id in known_dimensions:
+        if dimension_id not in classifications:
+            raise CatalogValidationError(f"dimension {dimension_id} besitzt keine Klassifikationswerte")
+    return catalog
+
+
+def _validate_work_item_projections(
+    catalog: Mapping[str, object], classifications: Mapping[str, object]
+) -> Mapping[str, object]:
+    _exact_fields(
+        catalog, frozenset({"schema_version", "projections", "title_markers"}),
+        "work_items github_labels Top-Level",
+    )
+    if type(catalog.get("schema_version")) is not int or catalog["schema_version"] != 1:
+        raise CatalogValidationError("work_items github_labels schema_version muss Integer 1 sein")
+
+    known_ids = _work_item_classification_ids(classifications)
+    projections = catalog.get("projections")
+    if not isinstance(projections, Mapping) or not projections:
+        raise CatalogValidationError("work_items projections muss eine nichtleere Tabelle sein")
+    seen_names: set[str] = set()
+    seen_classifications: set[str] = set()
+    occupied_names: set[str] = set()
+    for projection_id, projection in projections.items():
+        _validate_id(projection_id, "work_items projections")
+        if not isinstance(projection, Mapping):
+            raise CatalogValidationError(f"projections.{projection_id} muss eine Tabelle sein")
+        _exact_fields(projection, WORK_ITEM_PROJECTION_FIELDS, f"projections.{projection_id}")
+        classification = projection.get("classification")
+        if not isinstance(classification, str) or classification not in known_ids:
+            raise CatalogValidationError(
+                f"projections.{projection_id}.classification ist eine unbekannte Klassifikations-ID"
+            )
+        if classification in seen_classifications:
+            raise CatalogValidationError(
+                f"projections.{projection_id} dupliziert eine Klassifikations-ID"
+            )
+        seen_classifications.add(classification)
+        name = _nonempty_text(projection.get("name"), f"projections.{projection_id}.name")
+        if name in seen_names:
+            raise CatalogValidationError(
+                f"projections.{projection_id} kollidiert mit einem Labelnamen: {name}"
+            )
+        seen_names.add(name)
+        occupied_names.add(name)
+        _nonempty_text(projection.get("description"), f"projections.{projection_id}.description")
+        color = projection.get("color")
+        if not isinstance(color, str) or WORK_ITEM_COLOR_RE.fullmatch(color) is None:
+            raise CatalogValidationError(f"projections.{projection_id}.color ist ungültig")
+        aliases = _alias_list(projection.get("aliases"), f"projections.{projection_id}.aliases")
+        for alias in aliases:
+            if alias in occupied_names:
+                raise CatalogValidationError(
+                    f"projections.{projection_id}.aliases kollidiert mit einem Namen: {alias}"
+                )
+            occupied_names.add(alias)
+
+    title_markers = catalog.get("title_markers")
+    if not isinstance(title_markers, Mapping):
+        raise CatalogValidationError("work_items title_markers muss eine Tabelle sein")
+    seen_markers: set[str] = set()
+    for marker_id, marker in title_markers.items():
+        _validate_id(marker_id, "work_items title_markers")
+        if not isinstance(marker, Mapping):
+            raise CatalogValidationError(f"title_markers.{marker_id} muss eine Tabelle sein")
+        _exact_fields(marker, WORK_ITEM_TITLE_MARKER_FIELDS, f"title_markers.{marker_id}")
+        classification = marker.get("classification")
+        if not isinstance(classification, str) or classification not in known_ids:
+            raise CatalogValidationError(
+                f"title_markers.{marker_id}.classification ist eine unbekannte Klassifikations-ID"
+            )
+        marker_text = _nonempty_text(marker.get("marker"), f"title_markers.{marker_id}.marker")
+        if marker_text in seen_markers:
+            raise CatalogValidationError(f"title_markers.{marker_id} kollidiert mit einem Marker")
+        seen_markers.add(marker_text)
+    return catalog
+
+
+
 def _validate_manifest_index(
     root: Path,
     manifest: Mapping[str, object],
@@ -633,6 +798,18 @@ def _nonempty_text(value: object, context: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise CatalogValidationError(f"{context} muss ein nichtleerer String sein")
     return value
+
+
+def _alias_list(value: object, context: str) -> tuple[str, ...]:
+    if not isinstance(value, list):
+        raise CatalogValidationError(f"{context} muss eine Liste sein")
+    result = tuple(value)
+    for alias in result:
+        if not isinstance(alias, str) or not alias.strip() or re.search(r"[\x00\r\n\x1b]", alias):
+            raise CatalogValidationError(f"{context} enthält einen ungültigen Alias")
+    if len(result) != len(set(result)):
+        raise CatalogValidationError(f"{context} enthält doppelte Aliase")
+    return result
 
 
 def _positive_integer(value: object, context: str) -> int:

@@ -1,0 +1,152 @@
+# Kanonische Work-Item-Klassifikations-SSOT.
+#
+# Diese Datei definiert ausschließlich statische Klassifikation („was das Work Item ist“).
+# Dynamische Lifecycle-Zustände (draft, ready, in_progress, blocked, completed, superseded …)
+# gehören nicht hierher. Tool-/Effect-Tags (policy_tags: read, write) sind eine getrennte
+# Domain und werden hier weder wiederverwendet noch umgedeutet.
+#
+# Stabile ID: <dimension>.<value>, z. B. `type.refactor` oder `semver.patch`. Sie ist
+# unabhängig von plattformbezogenen Anzeigenamen (GitHub-Label `semver:patch`).
+#
+# Cardinality je Dimension: one | many | at_most_one | zero_or_more.
+schema_version = 1
+
+[dimensions.type]
+label = "Type"
+cardinality = "one"
+description = """
+Beschreibt die Art des Work Items.
+"""
+
+[dimensions.area]
+label = "Area"
+cardinality = "many"
+description = """
+Beschreibt den fachlichen beziehungsweise technischen Ownership-Bereich. Ein Work Item kann
+mehrere Bereiche berühren.
+"""
+
+[dimensions.horizon]
+label = "Horizon"
+cardinality = "at_most_one"
+description = """
+Beschreibt den zeitlichen Planungshorizont. `current` ist der implizite Default, wenn kein
+Horizont gesetzt ist.
+"""
+
+[dimensions.semver]
+label = "SemVer Impact"
+cardinality = "at_most_one"
+description = """
+Beschreibt die erwartete beziehungsweise klassifizierte öffentliche Versionsauswirkung. Diese
+Klassifikation ersetzt keine abschließende Releasebewertung gegen den tatsächlich gelieferten
+öffentlichen Vertrag.
+"""
+
+[classifications.type.feature]
+label = "Feature"
+description = "Neue Funktionalität oder Fähigkeit."
+
+[classifications.type.fix]
+label = "Fix"
+description = "Korrektur eines fehlerhaften Verhaltens."
+
+[classifications.type.refactor]
+label = "Refactor"
+description = "Interne Strukturänderung bei beabsichtigt gleichbleibendem Verhalten."
+
+[classifications.type.hardening]
+label = "Hardening"
+description = "Härtung, Konsolidierung oder Absicherung ohne neue fachliche Fähigkeit."
+
+[classifications.type.workflow]
+label = "Workflow"
+description = "Änderung an Arbeits-, Liefer- oder Reviewprozessen."
+
+[classifications.type.documentation]
+label = "Documentation"
+description = "Dokumentationsänderung ohne Verhaltensänderung."
+
+[classifications.type.testing]
+label = "Testing"
+description = "Testverträge, Fixtures oder Prüfinfrastruktur."
+
+[classifications.type.maintenance]
+label = "Maintenance"
+description = "Wartung, Abhängigkeiten, Chores oder Release-Hausarbeit."
+
+[classifications.area.cli]
+label = "CLI"
+description = "LLM-unabhängige CLI, öffentliche Commands und Command-SSOT."
+
+[classifications.area.installer]
+label = "Installer"
+description = "Installer-Transaktionen und Zielverwaltung."
+
+[classifications.area.runtime]
+label = "Runtime"
+description = "Laufzeitbetrieb und Governance-Prüfung zur Laufzeit."
+
+[classifications.area.workflow]
+label = "Workflow"
+description = "Work-Item-, Delivery- und Lifecycle-Verträge."
+
+[classifications.area.github]
+label = "GitHub"
+description = "GitHub-Integration, Repository-Härtung und Rulesets."
+
+[classifications.area.enforcement]
+label = "Enforcement"
+description = "Programmatische fail-closed Durchsetzung kritischer Governance-Regeln."
+
+[classifications.area.templates]
+label = "Templates"
+description = "Formverträge und Template-Registry."
+
+[classifications.area.ssot]
+label = "SSOT"
+description = "Kanonische deklarative Quellen und Registry-Ordnung."
+
+[classifications.area.tools]
+label = "Tools"
+description = "Tool-/Capability-Verwaltung und Tool-Routing."
+
+[classifications.area.docs]
+label = "Documentation"
+description = "Dokumentationsbestand und -struktur."
+
+[classifications.area.ux]
+label = "Terminal UX"
+description = "Terminal-Identität, Visualisierung und Interaktion."
+
+[classifications.area.quality]
+label = "Quality"
+description = "Qualitätssicherung, Auditierung und Redundanzprüfung."
+
+[classifications.horizon.current]
+label = "Current"
+description = "Gehört zum aktuell freigegebenen beziehungsweise unmittelbar anstehenden Umfang."
+
+[classifications.horizon.future]
+label = "Future"
+description = "Geplante Fähigkeit außerhalb des aktuellen Release-Umfangs."
+
+[classifications.semver.major]
+label = "Major"
+description = "Erfordert voraussichtlich eine nicht rückwärtskompatible Major-Version."
+
+[classifications.semver.minor]
+label = "Minor"
+description = "Erfordert voraussichtlich eine neue rückwärtskompatible Funktionalität."
+
+[classifications.semver.patch]
+label = "Patch"
+description = "Erfordert voraussichtlich eine rückwärtskompatible Korrektur oder Dokumentationsänderung."
+
+[classifications.semver.none]
+label = "None"
+description = "Erfordert voraussichtlich keine neue Paketversion."
+
+[classifications.semver.pending]
+label = "Pending"
+description = "SemVer-Auswirkung ist noch nicht ausreichend geklärt."

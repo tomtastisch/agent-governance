@@ -6,6 +6,7 @@ import { parseRoutingCatalogs, type RoutingCatalogs } from "./routing-catalog.ts
 import { parseDiscoveryCatalogText } from "./discovery/catalog.ts";
 import { parseCommandCatalogText } from "./command-catalog.ts";
 import { parseTemplatesManifestText } from "./templates-catalog.ts";
+import { parseClassificationsText, parseProjectionsText } from "./work-items.ts";
 
 const CORE_CATALOGS = ["triggers", "policy_tags", "scopes", "tools"] as const;
 const OPTIONAL_CATALOGS = ["commands", "discovery_signals"] as const;
@@ -19,6 +20,8 @@ interface CatalogTexts {
   readonly tools: string;
   readonly commands?: string;
   readonly discovery?: string;
+  readonly classifications?: string;
+  readonly githubLabels?: string;
 }
 
 function known(values: readonly string[], vocabulary: ReadonlySet<string>, label: string): void {
@@ -59,6 +62,9 @@ function validateCatalogs(texts: CatalogTexts): RoutingCatalogs {
   });
   if (texts.commands !== undefined) parseCommandCatalogText(texts.commands);
   if (texts.discovery !== undefined) parseDiscoveryCatalogText(texts.discovery);
+  if (texts.classifications !== undefined && texts.githubLabels !== undefined) {
+    parseProjectionsText(texts.githubLabels, parseClassificationsText(texts.classifications));
+  }
   return routing;
 }
 
@@ -70,6 +76,8 @@ async function readSsotCatalogs(manifestRoot: string, ssotPath: string, inventor
   exactCatalogKeys(commandEntries, ["commands"], "commands domain");
   const discoveryEntries = ssotIndex.domains.discovery;
   exactCatalogKeys(discoveryEntries, ["discovery_signals"], "discovery domain");
+  const workItemsEntries = ssotIndex.domains.work_items;
+  exactCatalogKeys(workItemsEntries, ["classifications", "github_labels"], "work_items domain");
   async function read(relative: string, label: string): Promise<string> {
     const path = `ssot/${relative}`;
     referencedPaths.add(path);
@@ -82,6 +90,8 @@ async function readSsotCatalogs(manifestRoot: string, ssotPath: string, inventor
     tools: await read(routingEntries.tools!, "tools catalog"),
     commands: await read(commandEntries.commands!, "commands catalog"),
     discovery: await read(discoveryEntries.discovery_signals!, "discovery catalog"),
+    classifications: await read(workItemsEntries.classifications!, "classifications catalog"),
+    githubLabels: await read(workItemsEntries.github_labels!, "github labels projection catalog"),
   };
 }
 
