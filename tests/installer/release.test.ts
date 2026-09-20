@@ -113,6 +113,66 @@ test("release verifier accepts only the complete three-domain SSOT index", async
   }
 });
 
+test("release verifier rejects a non-canonical ssot manifest path", async () => {
+  const root = await fixture();
+  const manifestPath = join(root, "bundle", "agent-governance", "manifest.toml");
+  await writeFile(manifestPath, (await readFile(manifestPath, "utf8")).replace('ssot = "ssot/manifest.toml"', 'ssot = "elsewhere/manifest.toml"'));
+  await writeInventory(root);
+  await assert.rejects(verifyRelease(root), /canonical|ssot/i);
+});
+
+test("release verifier accepts legacy schema-2 manifests for installed releases", async () => {
+  const root = await fixture();
+  const manifestRoot = join(root, "bundle", "agent-governance");
+  const manifestPath = join(manifestRoot, "manifest.toml");
+  const ssotRoot = join(manifestRoot, "ssot");
+  const catalogRoot = join(manifestRoot, "catalogs");
+  await mkdir(catalogRoot);
+  for (const [key, rel] of [
+    ["triggers", "routing/triggers.toml"],
+    ["policy_tags", "routing/policy-tags.toml"],
+    ["scopes", "routing/scopes.toml"],
+    ["tools", "routing/tools.toml"],
+    ["commands", "commands/commands.toml"],
+    ["discovery_signals", "discovery/discovery-signals.toml"],
+  ] as const) {
+    await rename(join(ssotRoot, rel), join(catalogRoot, `${key.replaceAll("_", "-")}.toml`));
+  }
+  await rm(ssotRoot, { recursive: true, force: true });
+  const legacyManifest = (await readFile(manifestPath, "utf8"))
+    .replace("schema_version = 3", "schema_version = 2")
+    .replace('ssot = "ssot/manifest.toml"\n', "")
+    .replace("[routing]", '[catalogs]\ntriggers = "catalogs/triggers.toml"\npolicy_tags = "catalogs/policy-tags.toml"\nscopes = "catalogs/scopes.toml"\ntools = "catalogs/tools.toml"\ncommands = "catalogs/commands.toml"\ndiscovery_signals = "catalogs/discovery-signals.toml"\n\n[routing]');
+  await writeFile(manifestPath, legacyManifest);
+  await writeInventory(root);
+  await assert.doesNotReject(verifyRelease(root));
+});
+
+test("release verifier accepts the legacy four-catalog schema-2 manifest", async () => {
+  const root = await fixture();
+  const manifestRoot = join(root, "bundle", "agent-governance");
+  const manifestPath = join(manifestRoot, "manifest.toml");
+  const ssotRoot = join(manifestRoot, "ssot");
+  const catalogRoot = join(manifestRoot, "catalogs");
+  await mkdir(catalogRoot);
+  for (const [key, rel] of [
+    ["triggers", "routing/triggers.toml"],
+    ["policy_tags", "routing/policy-tags.toml"],
+    ["scopes", "routing/scopes.toml"],
+    ["tools", "routing/tools.toml"],
+  ] as const) {
+    await rename(join(ssotRoot, rel), join(catalogRoot, `${key.replaceAll("_", "-")}.toml`));
+  }
+  await rm(ssotRoot, { recursive: true, force: true });
+  const legacyManifest = (await readFile(manifestPath, "utf8"))
+    .replace("schema_version = 3", "schema_version = 2")
+    .replace('ssot = "ssot/manifest.toml"\n', "")
+    .replace("[routing]", '[catalogs]\ntriggers = "catalogs/triggers.toml"\npolicy_tags = "catalogs/policy-tags.toml"\nscopes = "catalogs/scopes.toml"\ntools = "catalogs/tools.toml"\n\n[routing]');
+  await writeFile(manifestPath, legacyManifest);
+  await writeInventory(root);
+  await assert.doesNotReject(verifyRelease(root));
+});
+
 test("release verifier rejects listed but unreferenced normative bundle files", async () => {
   const root = await fixture();
   await writeFile(join(root, "bundle", "agent-governance", "modules", "shadow.md"), "unreferenced normative source\n");

@@ -43,6 +43,7 @@ export function loadSsotIndex(releaseRoot?: string): { index: SsotIndex; catalog
   const manifestPath = resolveManifestPath(releaseRoot);
   const manifest = parseClosedToml(readFileSync(manifestPath, "utf8"), "release manifest");
   const ssotRelative = safeRelativePath(manifest.ssot, "release manifest ssot path");
+  if (ssotRelative !== "ssot/manifest.toml") throw new Error("release manifest ssot path must be canonical");
   const ssotManifestPath = resolveSsotFile(manifestPath, ssotRelative);
   const index = parseSsotManifestText(readFileSync(ssotManifestPath, "utf8"));
   return {

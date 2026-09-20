@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { readdir, readFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -72,4 +73,17 @@ test("the canonical ssot tree registers only the real domains with no legacy or 
   const rootManifest = await readFile(join(GOVERNANCE_ROOT, "manifest.toml"), "utf8");
   assert.doesNotMatch(rootManifest, /\[catalogs\]/);
   assert.match(rootManifest, /ssot = "ssot\/manifest\.toml"/);
+});
+
+test("runtime ssot resolution rejects a non-canonical ssot manifest path", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-governance-ssot-canonical-"));
+  try {
+    const bundleRoot = join(root, "bundle", "agent-governance");
+    await cp(GOVERNANCE_ROOT, bundleRoot, { recursive: true });
+    const manifestPath = join(bundleRoot, "manifest.toml");
+    await writeFile(manifestPath, (await readFile(manifestPath, "utf8")).replace('ssot = "ssot/manifest.toml"', 'ssot = "elsewhere/manifest.toml"'));
+    assert.throws(() => loadSsotIndex(root), /canonical/i);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
