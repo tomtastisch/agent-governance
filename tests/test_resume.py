@@ -161,10 +161,10 @@ class ResumeModuleContract(unittest.TestCase):
 
     def test_toon_is_derived_projection_not_second_ssot(self):
         self.assertIn("Token-Oriented Object Notation", self.text)
-        section = rule_section(self.text, 13)
+        section = " ".join(rule_section(self.text, 13).split())
         self.assertIn("keine zweite State-, Checkpoint- oder Evidence-Source of Truth", section)
         self.assertIn("fail-closed", section)
-        self.assertIn("keine neue Dependency", section)
+        self.assertIn("eine eigene allgemeine TOON-Implementierung wird nicht gebaut", section)
 
     def test_duplicate_execution_is_fail_closed(self):
         section = rule_section(self.text, 10)
