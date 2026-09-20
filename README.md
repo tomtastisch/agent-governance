@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/tomtastisch/agent-governance/main/assets/branding/agent-governance-icon.png" alt="Agent Governance" width="96">
+  <img src="https://raw.githubusercontent.com/tomtastisch/agent-governance/main/assets/branding/agent-governance-icon.png" alt="Agent Governance" width="160">
 </p>
 
 # Agent Governance
