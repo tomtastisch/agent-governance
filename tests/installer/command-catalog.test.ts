@@ -93,3 +93,31 @@ test("public handler registry and help are derived from the command SSOT", () =>
     assert.equal(commandHelp.includes(`agent-governance ${command.path.join(" ")}`), true, command.id);
   }
 });
+
+test("CLI reference options match rendered command help", async () => {
+  const optionPattern = /(?:^|[^\w-])(--[a-z][a-z0-9-]*|-[A-Za-z0-9]+)(?![\w-])/g;
+  const extractOptions = (text: string): string[] => [
+    ...new Set([...text.matchAll(optionPattern)].map((match) => match[1]!)),
+  ].sort();
+  const renderedOptions = (id: Parameters<typeof renderCommandHelp>[0]): string[] => {
+    const options = renderCommandHelp(id).split("\nOptions:\n", 2)[1];
+    assert.notEqual(options, undefined, id);
+    return extractOptions(options!);
+  };
+
+  const reference = await readFile(join(ROOT, "docs", "installer-cli-reference.md"), "utf8");
+  const optionSection = reference.split("## Options- und Keyword-Referenz", 2)[1]?.split("\n## Exitverhalten", 1)[0];
+  assert.notEqual(optionSection, undefined);
+  const optionHeadings = [...optionSection!.matchAll(/^### (.+)$/gm)].map((match) => match[1]!);
+  const documentedTransactionOptions = extractOptions(optionHeadings.join("\n"));
+
+  const initSection = reference.split("### `init`", 2)[1]?.split("\n### `", 1)[0];
+  assert.notEqual(initSection, undefined);
+  assert.deepEqual(extractOptions(initSection!), renderedOptions("init"));
+
+  const transactionCommands = loadCommandCatalog().filter(({ capability }) => capability === "transaction");
+  assert.notEqual(transactionCommands.length, 0);
+  for (const command of transactionCommands) {
+    assert.deepEqual(renderedOptions(command.id), documentedTransactionOptions, command.id);
+  }
+});

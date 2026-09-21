@@ -20,7 +20,6 @@ VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 CLI_REFERENCE_PATH = ROOT / "docs" / "installer-cli-reference.md"
 HARNESS_RECIPES_PATH = ROOT / "docs" / "harness-recipes.md"
 INIT_ORCHESTRATOR = (ROOT / "src" / "init" / "orchestrator.ts").read_text(encoding="utf-8")
-PUBLIC_COMMANDS_SOURCE = (ROOT / "src" / "public-commands.ts").read_text(encoding="utf-8")
 PACKAGE = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
 PACKAGE_LOCK = json.loads((ROOT / "package-lock.json").read_text(encoding="utf-8"))
 GOVERNANCE_MANIFEST = tomllib.loads(
@@ -722,53 +721,6 @@ class InstallerCliReferenceContract(unittest.TestCase):
         self.assertIn("Hilfeoptionen", init_section)
         for option in ("--help", "-h"):
             self.assertIn(f"`{option}`", init_section)
-
-    def test_reference_options_follow_runtime_command_help(self):
-        """Bindet Init- und Transaktionsoptionen an die gerenderte Runtime-Hilfe."""
-        options_match = re.search(
-            r'const options = command\.capability === "orchestration"\s*'
-            r'\? \[(.*?)\]\s*:\s*\[(.*?)\];',
-            PUBLIC_COMMANDS_SOURCE,
-            re.DOTALL,
-        )
-        self.assertIsNotNone(options_match)
-
-        option_pattern = r"(?<![\w-])(?:--[a-z][a-z0-9-]*|-[A-Za-z0-9]+)(?![\w-])"
-
-        def source_options(group):
-            string_literals = re.findall(r'(?m)^\s*("(?:[^"\\]|\\.)*")', group)
-            self.assertTrue(string_literals)
-            rendered = "\n".join(json.loads(literal) for literal in string_literals)
-            return re.findall(option_pattern, rendered)
-
-        init_options = source_options(options_match.group(1))
-        transaction_options = source_options(options_match.group(2))
-
-        transaction_commands = [
-            command["id"]
-            for command in COMMAND_CATALOG["commands"]
-            if command["capability"] == "transaction"
-        ]
-        self.assertTrue(transaction_commands)
-
-        reference = CLI_REFERENCE_PATH.read_text(encoding="utf-8")
-        option_section = reference.split("## Options- und Keyword-Referenz", 1)[1].split(
-            "\n## Exitverhalten", 1
-        )[0]
-        option_headings = re.findall(r"(?m)^### (.+)$", option_section)
-        documented_transaction_options = [
-            option
-            for heading in option_headings
-            for option in re.findall(option_pattern, heading)
-        ]
-        self.assertEqual(
-            sorted(documented_transaction_options),
-            sorted(transaction_options),
-        )
-
-        init_section = reference.split("### `init`", 1)[1].split("\n### `", 1)[0]
-        documented_init_options = re.findall(option_pattern, init_section)
-        self.assertEqual(sorted(documented_init_options), sorted(init_options))
 
     def test_reference_is_the_only_packaged_docs_file(self):
         self.assertIn("docs/installer-cli-reference.md", PACKAGE["files"])
