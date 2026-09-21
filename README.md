@@ -37,9 +37,9 @@ npx agent-governance init
 ```
 
 Der Wizard nutzt passive, nicht mutierende Discovery zur Auswahlunterstützung; sie ist keine
-automatische Zielannahme, keine implizite Harness-Mutation und keine fachliche Authority, und erst
-nach bewusster Auswahl und Bestätigung plant, installiert und verifiziert `init` die expliziten
-Ziele.
+automatische Zielannahme, keine implizite Harness-Mutation und keine fachliche Authority; nach
+bewusster Auswahl ermittelt `init` Status und Plan für die expliziten Ziele, und erst nach
+gemeinsamer Bestätigung installiert oder aktualisiert es diese und verifiziert das Ergebnis.
 Für Advanced-Automation, CI und manuelle Diagnose erklären die
 [CLI-Referenz](https://github.com/tomtastisch/agent-governance/blob/main/docs/installer-cli-reference.md)
 und [Harness-Rezepte](https://github.com/tomtastisch/agent-governance/blob/main/docs/harness-recipes.md)

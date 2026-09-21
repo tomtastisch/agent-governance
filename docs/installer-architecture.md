@@ -7,15 +7,17 @@
 
 Der normale öffentliche Einstieg ist exakt `npm i @tomtastisch/agent-governance` gefolgt von
 `npx agent-governance init`. `init` orchestriert ausschließlich die vorhandene Transaktion
-`plan -> install|update -> verify`; Runtime-Abhängigkeiten werden vorab durch die deklarativen
+`status -> plan -> [Bestätigung] -> install|update -> verify`; Runtime-Abhängigkeiten werden vorab
+durch die deklarativen
 `package.json.dependencies` und das Lockfile geliefert. Der Init-Pfad startet weder npm, pnpm,
 yarn oder bun noch einen Package-Manager-Bootstrap und enthält keinen Self-Install-, Repair- oder
 bedingten Nachladepfad. Fehlt eine direkte Runtime-Abhängigkeit, schlägt das Paket fail-closed fehl.
 
 Vor der Transaktion nutzt `init` eine begrenzte, passive und nicht mutierende Discovery als
 Auswahlunterstützung. Sie klassifiziert generische lokale Evidenz ohne Produktnamen, trifft keine
-automatische Zielannahme, mutiert keinen Harness und besitzt keine fachliche Authority. Erst die
-bewusste Auswahl und Bestätigung erzeugt explizite Transaktionsziele.
+automatische Zielannahme, mutiert keinen Harness und besitzt keine fachliche Authority. Die
+bewusste Auswahl erzeugt explizite Transaktionsziele; Status und Pläne werden für alle Ziele vor
+einer gemeinsamen Bestätigung ermittelt. Erst diese Bestätigung autorisiert die Mutation.
 
 ## Architektur
 

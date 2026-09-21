@@ -330,11 +330,14 @@ class ReadmeEntryContract(unittest.TestCase):
             "keine automatische Zielannahme",
             "keine implizite Harness-Mutation",
             "keine fachliche Authority",
-            "Auswahl und Bestätigung",
         ):
             with self.subTest(claim=claim):
                 self.assertIn(claim, normalized)
         self.assertNotIn("führt keine Harness-Erkennung durch", normalized)
+        self.assertRegex(
+            normalized,
+            r"Auswahl.+Status und Plan.+Bestätigung.+installiert oder aktualisiert.+verifiziert",
+        )
 
     def test_public_surface_follows_package_and_registry_authorities(self):
         """Erkennt Drift der README-Oberfläche gegenüber Paket und Registern."""
@@ -852,18 +855,29 @@ class InstallerArchitectureReferenceContract(unittest.TestCase):
         )
 
     def test_architecture_covers_install_and_update_init_paths(self):
-        """Hält den dokumentierten Init-Ablauf mit beiden Runtime-Mutationen vollständig."""
+        """Bindet den dokumentierten Init-Ablauf vollständig an die Runtime-Reihenfolge."""
         architecture = (ROOT / "docs" / "installer-architecture.md").read_text(encoding="utf-8")
+        orchestrator_code = re.sub(
+            r"//[^\n]*|/\*.*?\*/",
+            "",
+            INIT_ORCHESTRATOR,
+            flags=re.DOTALL,
+        )
         called = {
-            command["id"]: INIT_ORCHESTRATOR.find(f".{command['id']}(")
+            command["id"]: match.start()
             for command in COMMAND_CATALOG["commands"]
-            if f".{command['id']}(" in INIT_ORCHESTRATOR
+            if (
+                match := re.search(
+                    rf"(?:\btransaction|\bitem\.transaction)\.{re.escape(command['id'])}\(",
+                    orchestrator_code,
+                )
+            )
         }
-        mutations = [
+        mutations = sorted(
             command["id"]
             for command in COMMAND_CATALOG["commands"]
             if command["effect"] == "write" and command["id"] in called
-        ]
+        )
         self.assertGreater(len(mutations), 1)
         first_mutation = min(called[command] for command in mutations)
         last_mutation = max(called[command] for command in mutations)
@@ -872,15 +886,31 @@ class InstallerArchitectureReferenceContract(unittest.TestCase):
             for command in COMMAND_CATALOG["commands"]
             if command["effect"] == "read" and command["id"] in called
         ]
-        before = max(
+        before = sorted(
             (command for command in read_commands if called[command] < first_mutation),
             key=called.__getitem__,
         )
-        after = min(
+        after = sorted(
             (command for command in read_commands if called[command] > last_mutation),
             key=called.__getitem__,
         )
-        self.assertIn(f"{before} -> {'|'.join(mutations)} -> {after}", architecture)
+        confirmation = orchestrator_code.find("dependencies.prompt.confirm(")
+        self.assertGreater(confirmation, called[before[-1]])
+        self.assertLess(confirmation, first_mutation)
+        runtime_flow = " -> ".join(
+            [*before, "[Bestätigung]", "|".join(mutations), *after]
+        )
+
+        def documented_flow(document):
+            flows = re.findall(r"`([^`\n]*\[Bestätigung\][^`\n]*)`", document)
+            self.assertEqual(len(flows), 1)
+            return flows[0]
+
+        self.assertEqual(documented_flow(architecture), runtime_flow)
+        self.assertEqual(
+            documented_flow(CLI_REFERENCE_PATH.read_text(encoding="utf-8")),
+            runtime_flow,
+        )
 
     def test_architecture_retains_the_managed_block_recovery_contract(self):
         """Catches loss of durable managed-block and retained-recovery semantics after migration."""

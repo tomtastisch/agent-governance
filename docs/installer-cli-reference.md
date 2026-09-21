@@ -36,7 +36,7 @@ nimmt nur Hilfeoptionen an und orchestriert Auswahl und Transaktionen getrennt.
 - **Art:** interaktiv und nach Bestätigung mutierend.
 - **Optionen:** Nur die Hilfeoptionen `--help` und `-h`; keine Transaktionsoptionen.
 - **Zweck:** Unterstützt die Auswahl expliziter Ziele und orchestriert für jedes Ziel
-  `plan -> install|update -> verify`.
+  `status -> plan -> [Bestätigung] -> install|update -> verify`.
 - **Ausgangszustand:** Ein TTY und mindestens ein bewusst ausgewähltes Ziel; ohne TTY wird der
   Aufruf vor Discovery, Prompt und Mutation abgelehnt.
 - **Prüft:** Begrenzte generische Kandidaten, manuelle Eingaben, Zielstatus und vollständige Pläne
