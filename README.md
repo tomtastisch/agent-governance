@@ -4,26 +4,28 @@
 
 # Agent Governance
 
-Agent Governance installiert versionierte, harness-neutrale Regeln kontrolliert, überprüfbar und reversibel an expliziten globalen Zielpfaden.
+Agent Governance verbindet harness-neutrale Regeln mit sicherer Installation und deterministischen Verträgen für Resume, Work Items und Sources of Truth.
 
 [![npm](https://img.shields.io/npm/v/@tomtastisch/agent-governance?style=flat-square)](https://www.npmjs.com/package/@tomtastisch/agent-governance) [![CI](https://github.com/tomtastisch/agent-governance/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/tomtastisch/agent-governance/actions/workflows/ci.yml) [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-0D9BF2?style=flat-square)](https://github.com/tomtastisch/agent-governance/blob/main/LICENSE)
 
 ## Was ist Agent Governance?
 
-Das Projekt verbindet den kanonischen Governance-Bestand mit einem providerneutralen,
-adapterlosen Installer. Er verwaltet ausschließlich seinen Markdownblock im bewusst gewählten
-Einstieg.
+Das Projekt liefert ein geschlossenes Governance-Bundle, einen providerneutralen, adapterlosen
+Installer und öffentliche Paketoberflächen für zustandsgebundenes Resume und
+Work-Item-Klassifikation. Normative Regeln bleiben im Bundle; README und technische Referenzen
+erklären und projizieren diesen Stand.
 
 ## Warum Agent Governance?
 
-Agent-Harnesses unterscheiden sich in ihren globalen Einstiegspunkten. Der Installer hält die
-Verantwortung deshalb bei expliziten Pfaden und einem einheitlichen, überprüfbaren Bundle statt
-bei Harness-Erkennung, Adaptern oder impliziten Zielannahmen.
+Agent-Harnesses unterscheiden sich in ihren globalen Einstiegspunkten. Agent Governance hält
+Mutation und fachliche Zielentscheidung deshalb bei expliziten Pfaden und bewusster Bestätigung;
+passive Discovery unterstützt nur die Auswahl.
 
-- Konsistente Regeln über mehrere Harnesses hinweg
-- Weniger Konfigurationsdrift durch einen zentralen Governance-Bestand
+- Konsistente Regeln und weniger Konfigurationsdrift über mehrere Harnesses hinweg
 - Nachvollziehbare, verifizierbare und reversible Installation
 - Keine stillen Harness-Mutationen oder impliziten Zielpfade
+- Zustandsgebundenes Resume und kanonische Work-Item-Klassifikation
+- Deklarative SSOT-Domains, Template-Registry und Governance-Modulrouting
 
 ## Schnellstart
 
@@ -34,8 +36,11 @@ npm i @tomtastisch/agent-governance
 npx agent-governance init
 ```
 
-Der Wizard prüft die Umgebung, lässt Ziele auswählen und führt erst nach Bestätigung Install und
-Verify aus. Für Advanced-Automation, CI und manuelle Diagnose erklären die
+Der Wizard nutzt passive, nicht mutierende Discovery zur Auswahlunterstützung; sie ist keine
+automatische Zielannahme, keine implizite Harness-Mutation und keine fachliche Authority, und erst
+nach bewusster Auswahl und Bestätigung plant, installiert und verifiziert `init` die expliziten
+Ziele.
+Für Advanced-Automation, CI und manuelle Diagnose erklären die
 [CLI-Referenz](https://github.com/tomtastisch/agent-governance/blob/main/docs/installer-cli-reference.md)
 und [Harness-Rezepte](https://github.com/tomtastisch/agent-governance/blob/main/docs/harness-recipes.md)
 den expliziten Pfadvertrag.
@@ -43,8 +48,19 @@ den expliziten Pfadvertrag.
 ## Wie funktioniert es?
 
 Der Installer prüft ein geschlossenes, versioniertes Bundle, sichert den bestehenden Einstieg und
-verwaltet genau seinen eigenen Markdownblock. Die Details zu Commands, Lifecycle, Recovery,
-Sicherheitsgrenzen und Datenstrukturen liegen jeweils bei ihrer zuständigen Referenz.
+verwaltet genau seinen eigenen Markdownblock. Der Export `resume-toon` projiziert den Vertrag des
+[Resume-Moduls](https://github.com/tomtastisch/agent-governance/blob/main/bundle/agent-governance/modules/resume.md);
+`work-items` projiziert die SSOT-Domain `work_items`. Template-Registry und
+Governance-Modulrouting sind getrennte, manifestgebundene Oberflächen.
+
+### Öffentliche Oberfläche
+
+- CLI: `agent-governance`
+- Paketexport: `@tomtastisch/agent-governance/resume-toon`
+- Paketexport: `@tomtastisch/agent-governance/work-items`
+- SSOT-Domains: `routing`, `commands`, `discovery`, `work_items`
+- Template-Registry: [`templates/manifest.toml`](https://github.com/tomtastisch/agent-governance/blob/main/bundle/agent-governance/templates/manifest.toml)
+- Governance-Modulrouting: [`manifest.toml`](https://github.com/tomtastisch/agent-governance/blob/main/bundle/agent-governance/manifest.toml)
 
 ![Übersicht: Agent Governance verbindet klare Regeln, Toolwahl, Grenzen und nachvollziehbare Ergebnisse.](https://raw.githubusercontent.com/tomtastisch/agent-governance/main/assets/diagrams/governance-overview.png)
 

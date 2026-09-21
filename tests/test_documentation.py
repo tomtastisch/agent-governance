@@ -9,6 +9,7 @@ import json
 import re
 import shutil
 import tempfile
+import tomllib
 import unittest
 
 
@@ -18,8 +19,20 @@ CHANGELOG = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
 VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 CLI_REFERENCE_PATH = ROOT / "docs" / "installer-cli-reference.md"
 HARNESS_RECIPES_PATH = ROOT / "docs" / "harness-recipes.md"
+INIT_ORCHESTRATOR = (ROOT / "src" / "init" / "orchestrator.ts").read_text(encoding="utf-8")
 PACKAGE = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
 PACKAGE_LOCK = json.loads((ROOT / "package-lock.json").read_text(encoding="utf-8"))
+GOVERNANCE_MANIFEST = tomllib.loads(
+    (ROOT / "bundle" / "agent-governance" / "manifest.toml").read_text(encoding="utf-8")
+)
+SSOT_MANIFEST = tomllib.loads(
+    (ROOT / "bundle" / "agent-governance" / GOVERNANCE_MANIFEST["ssot"]).read_text(encoding="utf-8")
+)
+COMMAND_CATALOG = tomllib.loads(
+    (ROOT / "bundle" / "agent-governance" / GOVERNANCE_MANIFEST["ssot"]).parent.joinpath(
+        SSOT_MANIFEST["domains"]["commands"]["commands"]
+    ).read_text(encoding="utf-8")
+)
 
 # These are deliberately explicit: historical records may retain old examples, but a newly
 # added Markdown document must enter the current-document scan instead of being silently ignored.
@@ -304,6 +317,72 @@ class ReadmeEntryContract(unittest.TestCase):
         self.assertIn("Harness", after_commands)
         self.assertNotIn("](docs/", after_commands)
         self.assertEqual(len(re.findall(r"[.!?](?:\s|$)", after_commands)), 2)
+
+    def test_quickstart_distinguishes_passive_discovery_from_target_authority(self):
+        """Bindet die Init-Erklärung an passive Discovery und explizit bestätigte Ziele."""
+        section = README.split("## Schnellstart", 1)[1].split("\n## ", 1)[0]
+        after_commands = section.split("```", 2)[2]
+        normalized = " ".join(after_commands.split())
+        for claim in (
+            "passive, nicht mutierende Discovery",
+            "Auswahlunterstützung",
+            "keine automatische Zielannahme",
+            "keine implizite Harness-Mutation",
+            "keine fachliche Authority",
+            "Auswahl und Bestätigung",
+        ):
+            with self.subTest(claim=claim):
+                self.assertIn(claim, normalized)
+        self.assertNotIn("führt keine Harness-Erkennung durch", normalized)
+
+    def test_public_surface_follows_package_and_registry_authorities(self):
+        """Erkennt Drift der README-Oberfläche gegenüber Paket und Registern."""
+        self.assertIn("### Öffentliche Oberfläche", README)
+        section = README.split("### Öffentliche Oberfläche", 1)[1].split("\n## ", 1)[0]
+        surface_lines = [line for line in section.splitlines() if line.startswith("- ")]
+        manifest_root = "bundle/agent-governance"
+        blob_main = f"{self.BLOB_MAIN}/{manifest_root}"
+        expected = [
+            *(f"- CLI: `{name}`" for name in PACKAGE["bin"]),
+            *(
+                f"- Paketexport: `{PACKAGE['name']}{export_name[1:]}`"
+                for export_name in PACKAGE["exports"]
+            ),
+            "- SSOT-Domains: "
+            + ", ".join(f"`{domain}`" for domain in SSOT_MANIFEST["domains"]),
+            f"- Template-Registry: [`{GOVERNANCE_MANIFEST['templates']}`]"
+            f"({blob_main}/{GOVERNANCE_MANIFEST['templates']})",
+            f"- Governance-Modulrouting: [`manifest.toml`]({blob_main}/manifest.toml)",
+        ]
+        self.assertEqual(sorted(surface_lines), sorted(expected))
+
+    def test_package_description_covers_derived_public_capabilities(self):
+        """Erkennt npm-Metadaten, die nur einen Teil der öffentlichen Oberfläche beschreiben."""
+        description = PACKAGE["description"].lower()
+        def assert_term(term):
+            self.assertRegex(description, rf"(?<![\w-]){re.escape(term)}(?![\w-])")
+
+        if PACKAGE["bin"]:
+            assert_term("cli")
+        if any(command["interactive"] for command in COMMAND_CATALOG["commands"]):
+            assert_term("interactive")
+        if any(command["capability"] == "transaction" for command in COMMAND_CATALOG["commands"]):
+            assert_term("transactional")
+        for export_name in PACKAGE["exports"]:
+            assert_term(export_name.removeprefix("./"))
+        if SSOT_MANIFEST["domains"]:
+            assert_term("ssot")
+        if GOVERNANCE_MANIFEST["templates"]:
+            assert_term("template registry")
+        if GOVERNANCE_MANIFEST["modules"]:
+            assert_term("module routing")
+
+    def test_readme_assigns_resume_and_work_items_to_their_real_owners(self):
+        """Verhindert, dass Template-Registry oder SSOT pauschal fremde Verträge besitzen."""
+        resume_path = GOVERNANCE_MANIFEST["modules"]["resume"]["path"]
+        self.assertIn(f"bundle/agent-governance/{resume_path}", README)
+        self.assertIn("SSOT-Domain `work_items`", README)
+        self.assertNotIn("SSOT- und Template-Register bleiben deren Authorities", README)
 
     def test_readme_navigates_to_current_reference_owners_on_main(self):
         """Catches relative or historical links instead of durable current-reference navigation."""
@@ -602,6 +681,16 @@ class CurrentDocumentationBoundaryContract(unittest.TestCase):
 
 
 class InstallerCliReferenceContract(unittest.TestCase):
+    def test_reference_command_sections_follow_command_ssot(self):
+        """Erkennt fehlende oder erfundene Commands in der CLI-Referenz."""
+        reference = CLI_REFERENCE_PATH.read_text(encoding="utf-8")
+        command_section = reference.split("## Command-Referenz", 1)[1].split(
+            "\n## Options- und Keyword-Referenz", 1
+        )[0]
+        documented = set(re.findall(r"(?m)^### `([^`]+)`$", command_section))
+        authoritative = {" ".join(command["path"]) for command in COMMAND_CATALOG["commands"]}
+        self.assertEqual(documented, authoritative)
+
     def test_reference_is_linked_complete_and_non_normative(self):
         self.assertTrue(CLI_REFERENCE_PATH.is_file())
         reference = CLI_REFERENCE_PATH.read_text(encoding="utf-8")
@@ -621,6 +710,14 @@ class InstallerCliReferenceContract(unittest.TestCase):
         self.assertNotIn("--harness", reference)
         self.assertRegex(reference, r"(?i)kein cwd-Fallback")
         self.assertRegex(reference, r"(?i)kein implizites (?:Default-)?Ziel")
+
+    def test_init_reference_covers_all_help_options(self):
+        """Verhindert, dass die Kurzform der Hilfe als ungültige Init-Option dokumentiert wird."""
+        reference = CLI_REFERENCE_PATH.read_text(encoding="utf-8")
+        init_section = reference.split("### `init`", 1)[1].split("\n### `", 1)[0]
+        self.assertIn("Hilfeoptionen", init_section)
+        for option in ("--help", "-h"):
+            self.assertIn(f"`{option}`", init_section)
 
     def test_reference_is_the_only_packaged_docs_file(self):
         self.assertIn("docs/installer-cli-reference.md", PACKAGE["files"])
@@ -705,6 +802,37 @@ class InstallerArchitectureReferenceContract(unittest.TestCase):
             "`npm i @tomtastisch/agent-governance` gefolgt von\n`npx agent-governance init`",
             architecture,
         )
+
+    def test_architecture_covers_install_and_update_init_paths(self):
+        """Hält den dokumentierten Init-Ablauf mit beiden Runtime-Mutationen vollständig."""
+        architecture = (ROOT / "docs" / "installer-architecture.md").read_text(encoding="utf-8")
+        called = {
+            command["id"]: INIT_ORCHESTRATOR.find(f".{command['id']}(")
+            for command in COMMAND_CATALOG["commands"]
+            if f".{command['id']}(" in INIT_ORCHESTRATOR
+        }
+        mutations = [
+            command["id"]
+            for command in COMMAND_CATALOG["commands"]
+            if command["effect"] == "write" and command["id"] in called
+        ]
+        self.assertGreater(len(mutations), 1)
+        first_mutation = min(called[command] for command in mutations)
+        last_mutation = max(called[command] for command in mutations)
+        read_commands = [
+            command["id"]
+            for command in COMMAND_CATALOG["commands"]
+            if command["effect"] == "read" and command["id"] in called
+        ]
+        before = max(
+            (command for command in read_commands if called[command] < first_mutation),
+            key=called.__getitem__,
+        )
+        after = min(
+            (command for command in read_commands if called[command] > last_mutation),
+            key=called.__getitem__,
+        )
+        self.assertIn(f"{before} -> {'|'.join(mutations)} -> {after}", architecture)
 
     def test_architecture_retains_the_managed_block_recovery_contract(self):
         """Catches loss of durable managed-block and retained-recovery semantics after migration."""

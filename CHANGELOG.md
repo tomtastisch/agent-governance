@@ -13,11 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Keine.
+- README und Package-Metadaten bilden die öffentliche CLI-, Export-, SSOT- und Template-Oberfläche
+  kompakt ab; die CLI-Referenz dokumentiert `init` und seine passive Discovery getrennt vom
+  expliziten Pfadvertrag der Transaktionscommands.
 
 ### Fixed
 
-- Keine.
+- Deterministische Dokumentationsverträge binden Command-Abschnitte, Paketexporte, SSOT-Domains,
+  Template-Registry und Discovery-Aussagen an ihre bestehenden Authorities und blockieren Drift in
+  der vorhandenen CI-Konsistenzsuite.
 
 ### Removed
 
