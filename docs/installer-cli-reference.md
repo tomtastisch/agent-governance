@@ -225,6 +225,15 @@ nimmt nur Hilfeoptionen an und orchestriert Auswahl und Transaktionen getrennt.
 - **Beispiel:** `--non-interactive`.
 - **Fehlanwendung:** Den Schalter als Erlaubnis für implizite Pfade verstehen.
 
+### `--help` / `-h`
+
+- **Pflicht:** Nein.
+- **Typ:** Alternative boolesche Hilfeschalter ohne Wert.
+- **Zweck:** Zeigt die command-spezifische Hilfe vor Pfadprüfung oder Transaktionszugriff.
+- **Sicherheit:** Führt keine Discovery, Transaktion oder Mutation aus.
+- **Beispiel:** `install --help` oder `init -h`.
+- **Fehlanwendung:** Weitere Optionen mit einem Hilfeaufruf kombinieren.
+
 ## Exitverhalten
 
 - `0`: Erfolg.
