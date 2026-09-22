@@ -1,7 +1,7 @@
 import { lstat, readFile, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { exact, ID, idList, parseClosedToml, safeRelativePath, table, type TomlTable, type TomlValue } from "./closed-toml.ts";
-import { parseSsotManifestText } from "./ssot-manifest.ts";
+import { parseInstalledSsotManifestText, parseSsotManifestText } from "./ssot-manifest.ts";
 import { parseRoutingCatalogs, type RoutingCatalogs } from "./routing-catalog.ts";
 import { parseDiscoveryCatalogText } from "./discovery/catalog.ts";
 import { parseCommandCatalogText } from "./command-catalog.ts";
@@ -68,8 +68,9 @@ function validateCatalogs(texts: CatalogTexts): RoutingCatalogs {
   return routing;
 }
 
-async function readSsotCatalogs(manifestRoot: string, ssotPath: string, inventory: ReadonlyMap<string, string>, referencedPaths: Set<string>): Promise<CatalogTexts> {
-  const ssotIndex = parseSsotManifestText(await safeIndexedFile(manifestRoot, ssotPath, inventory, "ssot manifest"));
+async function readSsotCatalogs(manifestRoot: string, ssotPath: string, inventory: ReadonlyMap<string, string>, referencedPaths: Set<string>, installed: boolean): Promise<CatalogTexts> {
+  const ssotText = await safeIndexedFile(manifestRoot, ssotPath, inventory, "ssot manifest");
+  const ssotIndex = installed ? parseInstalledSsotManifestText(ssotText) : parseSsotManifestText(ssotText);
   const routingEntries = ssotIndex.domains.routing;
   exactCatalogKeys(routingEntries, ["triggers", "policy_tags", "scopes", "tools"], "routing domain");
   const commandEntries = ssotIndex.domains.commands;
@@ -77,7 +78,7 @@ async function readSsotCatalogs(manifestRoot: string, ssotPath: string, inventor
   const discoveryEntries = ssotIndex.domains.discovery;
   exactCatalogKeys(discoveryEntries, ["discovery_signals"], "discovery domain");
   const workItemsEntries = ssotIndex.domains.work_items;
-  exactCatalogKeys(workItemsEntries, ["classifications", "github_labels"], "work_items domain");
+  if (workItemsEntries !== undefined) exactCatalogKeys(workItemsEntries, ["classifications", "github_labels"], "work_items domain");
   async function read(relative: string, label: string): Promise<string> {
     const path = `ssot/${relative}`;
     referencedPaths.add(path);
@@ -90,8 +91,10 @@ async function readSsotCatalogs(manifestRoot: string, ssotPath: string, inventor
     tools: await read(routingEntries.tools!, "tools catalog"),
     commands: await read(commandEntries.commands!, "commands catalog"),
     discovery: await read(discoveryEntries.discovery_signals!, "discovery catalog"),
-    classifications: await read(workItemsEntries.classifications!, "classifications catalog"),
-    githubLabels: await read(workItemsEntries.github_labels!, "github labels projection catalog"),
+    ...(workItemsEntries === undefined ? {} : {
+      classifications: await read(workItemsEntries.classifications!, "classifications catalog"),
+      githubLabels: await read(workItemsEntries.github_labels!, "github labels projection catalog"),
+    }),
   };
 }
 
@@ -160,7 +163,7 @@ function validateIndex(manifestRoot: string, manifest: TomlTable, inventory: Rea
   return Promise.all([...moduleChecks, ...roleChecks]).then(() => undefined);
 }
 
-export async function validateGovernanceContract(manifestRoot: string, manifestText: string, inventory: ReadonlyMap<string, string>): Promise<{ localRulesPath: string; referencedPaths: ReadonlySet<string> }> {
+async function validateContract(manifestRoot: string, manifestText: string, inventory: ReadonlyMap<string, string>, installed: boolean): Promise<{ localRulesPath: string; referencedPaths: ReadonlySet<string> }> {
   const manifest = parseClosedToml(manifestText, "release manifest");
   const localRules = safeRelativePath(manifest.local_rules, "release manifest local rules path");
   if (!/\.md$/i.test(localRules)) throw new Error("release manifest local rules path is invalid");
@@ -172,7 +175,7 @@ export async function validateGovernanceContract(manifestRoot: string, manifestT
     const ssotPath = safeRelativePath(manifest.ssot, "release manifest ssot path");
     if (ssotPath !== "ssot/manifest.toml") throw new Error("release manifest ssot path must be canonical");
     referencedPaths.add(ssotPath);
-    routing = validateCatalogs(await readSsotCatalogs(manifestRoot, ssotPath, inventory, referencedPaths));
+    routing = validateCatalogs(await readSsotCatalogs(manifestRoot, ssotPath, inventory, referencedPaths, installed));
     await readTemplates(manifestRoot, manifest.templates, inventory, referencedPaths);
   } else if (manifest.schema_version === 2) {
     exact(manifest, ["schema_version", "local_rules", "catalogs", "routing", "modules", "roles"], "release manifest");
@@ -183,4 +186,12 @@ export async function validateGovernanceContract(manifestRoot: string, manifestT
 
   await validateIndex(manifestRoot, manifest, inventory, routing, referencedPaths);
   return { localRulesPath: localRules, referencedPaths };
+}
+
+export function validateGovernanceContract(manifestRoot: string, manifestText: string, inventory: ReadonlyMap<string, string>): Promise<{ localRulesPath: string; referencedPaths: ReadonlySet<string> }> {
+  return validateContract(manifestRoot, manifestText, inventory, false);
+}
+
+export function validateInstalledGovernanceContract(manifestRoot: string, manifestText: string, inventory: ReadonlyMap<string, string>): Promise<{ localRulesPath: string; referencedPaths: ReadonlySet<string> }> {
+  return validateContract(manifestRoot, manifestText, inventory, true);
 }

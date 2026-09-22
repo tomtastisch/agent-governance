@@ -17,7 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Keine.
+- Cross-Version-Updates validieren installierte ältere Releases gegen deren bekannte geschlossene
+  Governance-Contract-Variante, während Paket-, Staging-, Digest-, Receipt- und Tamper-Prüfungen
+  unverändert strikt bleiben. Dadurch wird ein unverändertes v1.3.0-Release unter einer neueren CLI
+  als `OUTDATED` statt fälschlich als `TAMPERED` klassifiziert.
 
 ### Removed
 

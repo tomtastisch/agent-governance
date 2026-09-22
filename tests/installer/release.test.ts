@@ -3,9 +3,9 @@ import { mkdir, readFile, rename, rm, symlink, truncate, writeFile } from "node:
 import { join } from "node:path";
 import test from "node:test";
 
-import { verifyRelease } from "../../src/release.ts";
+import { verifyInstalledRelease, verifyRelease } from "../../src/release.ts";
 import { createTestRoot } from "../fixtures/installer/workspace.ts";
-import { createReleaseFixture, writeInventory } from "../fixtures/installer/release.ts";
+import { createPublishedV130ReleaseFixture, createReleaseFixture, writeInventory } from "../fixtures/installer/release.ts";
 
 async function fixture(): Promise<string> {
   const root = await createTestRoot("agent-governance-release-");
@@ -19,6 +19,22 @@ test("release verifier accepts complete digest-bound fixture", async () => {
   assert.equal(result.fileCount > 3, true);
   assert.match(result.governanceDigest, /^[0-9a-f]{64}$/);
   assert.match(result.manifestDigest, /^[0-9a-f]{64}$/);
+});
+
+test("installed release verifier accepts the recognized v1.3.0 contract without weakening current release verification", async () => {
+  const root = await createTestRoot("agent-governance-release-v130-");
+  await createPublishedV130ReleaseFixture(root);
+  await assert.rejects(verifyRelease(root), /domains|missing|unknown/i);
+  assert.equal((await verifyInstalledRelease(root)).version, "1.3.0");
+});
+
+test("installed release verifier rejects unknown future SSOT domains", async () => {
+  const root = await createTestRoot("agent-governance-release-future-domain-");
+  await createPublishedV130ReleaseFixture(root);
+  const ssotPath = join(root, "bundle", "agent-governance", "ssot", "manifest.toml");
+  await writeFile(ssotPath, `${await readFile(ssotPath, "utf8")}\n[domains.future]\nunknown = "future/unknown.toml"\n`);
+  await writeInventory(root);
+  await assert.rejects(verifyInstalledRelease(root), /domains|missing|unknown/i);
 });
 
 test("release verifier rejects manipulated bundled file", async () => {
@@ -95,7 +111,7 @@ test("release verifier rejects a digest-bound semantically invalid command catal
   await assert.rejects(verifyRelease(root), /command|semantics|invalid/i);
 });
 
-test("release verifier accepts only the complete three-domain SSOT index", async () => {
+test("release verifier accepts only the complete current SSOT index", async () => {
   const full = await fixture();
   await assert.doesNotReject(verifyRelease(full));
 
