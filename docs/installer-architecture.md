@@ -18,6 +18,10 @@ bedingten Nachladepfad. Fehlt eine direkte Runtime-Abhängigkeit, schlägt das P
 nur ein geschlossenes, digestgebundenes Bundle; der Targetvalidator akzeptiert nur explizite
 kanonische Pfade ohne Symlinks oder Escape; die Transaktion aktiviert Release-Metadaten und genau
 einen generischen Markdown-Block. Keine Schicht kennt Harnessnamen oder produktspezifische Dateien.
+Der Paket- und Stagingpfad validiert ausschließlich den aktuellen semantischen Governance-Contract.
+Bereits installierte Releases verwenden denselben Byte-, Inventar-, Pfad- und Digestverifier, aber
+eine explizite geschlossene Liste historisch veröffentlichter Contract-Varianten. Unbekannte
+zukünftige Varianten und jede Inhaltsabweichung bleiben fail-closed.
 
 Die aktive Installation verwendet `releases/<version>/bundle`, pro explizitem Ziel eine atomar
 ersetzte `bindings/<binding-id>/current.json` und `backups/<binding-id>/<transaction-id>`. Der

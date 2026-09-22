@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { lstat, readFile, readdir, realpath } from "node:fs/promises";
 import { isAbsolute, join, normalize, relative, sep } from "node:path";
-import { validateGovernanceContract } from "./governance-contract.ts";
+import { validateGovernanceContract, validateInstalledGovernanceContract } from "./governance-contract.ts";
 
 const REQUIRED = [
   "VERSION",
@@ -51,7 +51,7 @@ function validateNormativeText(content: Buffer, path: string): void {
   if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(text)) throw new Error(`normative text contains a raw control character: ${path}`);
 }
 
-export async function verifyRelease(releaseRoot: string): Promise<VerifiedRelease> {
+async function verifyReleaseWithContract(releaseRoot: string, installed: boolean): Promise<VerifiedRelease> {
   if (!isAbsolute(releaseRoot)) {
     throw new Error("release root must be absolute");
   }
@@ -100,7 +100,8 @@ export async function verifyRelease(releaseRoot: string): Promise<VerifiedReleas
   await walk(join(releaseRoot, "bundle"));
   const expectedBundleFiles = [...entries.keys()].filter((path) => path.startsWith("bundle/")).sort();
   let manifest: string; try { manifest = new TextDecoder("utf-8", { fatal: true }).decode(await safeRegularFile(join(releaseRoot, "bundle", "agent-governance", "manifest.toml"))); } catch { throw new Error("release manifest contains invalid UTF-8 encoding"); }
-  const contract = await validateGovernanceContract(join(releaseRoot, "bundle", "agent-governance"), manifest, entries);
+  const validateContract = installed ? validateInstalledGovernanceContract : validateGovernanceContract;
+  const contract = await validateContract(join(releaseRoot, "bundle", "agent-governance"), manifest, entries);
   const localRelative = contract.localRulesPath;
   const knownInventoryFiles = new Set([
     "bundle/GOVERNANCE.md",
@@ -127,4 +128,12 @@ export async function verifyRelease(releaseRoot: string): Promise<VerifiedReleas
     localRulesPath: localRelative,
     inventory: entries,
   };
+}
+
+export function verifyRelease(releaseRoot: string): Promise<VerifiedRelease> {
+  return verifyReleaseWithContract(releaseRoot, false);
+}
+
+export function verifyInstalledRelease(releaseRoot: string): Promise<VerifiedRelease> {
+  return verifyReleaseWithContract(releaseRoot, true);
 }

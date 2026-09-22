@@ -8,7 +8,7 @@ import { assertIdentity, captureIdentity, validateAllowedPath, type PathIdentity
 import { installManagedBlock, removeManagedBlock, verifyManagedBlock, type GovernanceBinding } from "./managed-block.ts";
 import { probeNativeFilesystemCapability, secureCreateDirectory, secureCreateNoReplace, secureRemoveDirectory, secureRemoveFile, secureRenameDirectoryNoReplace, secureRenameNoReplace, secureWriteFile, type FileSnapshotIdentity } from "./native-filesystem.ts";
 import { planInstallation } from "./planner.ts";
-import { verifyRelease, type VerifiedRelease } from "./release.ts";
+import { verifyInstalledRelease, verifyRelease, type VerifiedRelease } from "./release.ts";
 import { SignalCoordinator, SignalInterruption, type SignalSource } from "./signals.ts";
 import { inspectTarget, type TargetInspection } from "./target.ts";
 
@@ -91,7 +91,7 @@ export class InstallerTransaction {
     let current: CurrentMetadata; try { current = this.parseCurrent(currentBytes); } catch { return { target, release, binding, entry, state: "TAMPERED" }; }
     try {
       if (current.schemaVersion !== 1 || current.installationRoot !== this.request.installationRoot || current.targetRoot !== this.request.targetRoot || current.entryFile !== this.request.entryFile || !SEMVER.test(current.version)) throw new Error("current metadata mismatch");
-      const installed = await verifyRelease(join(this.request.installationRoot, "releases", current.version)); const installedLocalRules = await optionalCanonicalLocalRules(join(this.request.installationRoot, "releases", current.version, "bundle", "agent-governance", installed.localRulesPath)); const installedBinding = this.binding(installed); const expected: CurrentMetadata = { schemaVersion: 1, ...installedBinding, targetRoot: this.request.targetRoot, entryFile: this.request.entryFile };
+      const installed = await verifyInstalledRelease(join(this.request.installationRoot, "releases", current.version)); const installedLocalRules = await optionalCanonicalLocalRules(join(this.request.installationRoot, "releases", current.version, "bundle", "agent-governance", installed.localRulesPath)); const installedBinding = this.binding(installed); const expected: CurrentMetadata = { schemaVersion: 1, ...installedBinding, targetRoot: this.request.targetRoot, entryFile: this.request.entryFile };
       for (const key of Object.keys(expected) as (keyof CurrentMetadata)[]) if (current[key] !== expected[key]) throw new Error("current metadata mismatch");
       verifyManagedBlock(entry, installedBinding); const comparison = compareSemver(release.version, installed.version); if (comparison === 0 && release.bundleDigest !== installed.bundleDigest) throw new Error("release content changed without a version change");
       return { target, release, binding, current, ...(installedLocalRules === undefined ? {} : { installedLocalRules }), entry, state: comparison === 0 ? "CURRENT" : comparison > 0 ? "OUTDATED" : "DOWNGRADE_BLOCKED" };
@@ -125,7 +125,7 @@ export class InstallerTransaction {
   private async localRulesMutation(context: Context): Promise<LocalRulesMutation | undefined> {
     const releasePath = join(this.request.installationRoot, "releases", context.release.version); const targetPath = join(releasePath, "bundle", "agent-governance", context.release.localRulesPath); const previous = await optionalCanonicalLocalRules(targetPath); let source: Buffer | undefined;
     if (this.request.localRules !== undefined) source = await readCanonicalLocalRules(this.request.localRules, () => this.request.onCheckpoint?.("afterLocalRulesSourceOpen"));
-    else if (context.current !== undefined && context.current.version !== context.release.version) { if (previous !== undefined) return undefined; const installed = await verifyRelease(join(this.request.installationRoot, "releases", context.current.version)); const liveSource = await optionalCanonicalLocalRules(join(this.request.installationRoot, "releases", context.current.version, "bundle", "agent-governance", installed.localRulesPath)); if (!matchesSnapshot(liveSource, context.installedLocalRules)) throw new Error("local rules changed since inspection"); source = liveSource; }
+    else if (context.current !== undefined && context.current.version !== context.release.version) { if (previous !== undefined) return undefined; const installed = await verifyInstalledRelease(join(this.request.installationRoot, "releases", context.current.version)); const liveSource = await optionalCanonicalLocalRules(join(this.request.installationRoot, "releases", context.current.version, "bundle", "agent-governance", installed.localRulesPath)); if (!matchesSnapshot(liveSource, context.installedLocalRules)) throw new Error("local rules changed since inspection"); source = liveSource; }
     if (source === undefined) return undefined; return { targetPath, source, ...(previous === undefined ? {} : { previous }) };
   }
   private async prepareRelease(release: VerifiedRelease, backupRoot: string, backupRootIdentity: PathIdentity, operation: "install" | "update" | "uninstall"): Promise<PreparedRelease> {
