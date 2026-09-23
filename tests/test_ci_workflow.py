@@ -497,9 +497,9 @@ class ReleaseWorkflowSecurityContract(unittest.TestCase):
         self.assertEqual(attempts, list(range(1, len(attempts) + 1)))
         self.assertGreaterEqual(
             len(attempts),
-            13,
-            "immediate metadata readback must tolerate at least 120s of propagation "
-            "(>=13 attempts at 10s spacing)",
+            30,
+            "immediate metadata readback must tolerate npm's async publish processing "
+            "(>=300s at 30 attempts x 10s spacing)",
         )
         self.assertIn("sleep 10", retry)
         self.assertIn(
