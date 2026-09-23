@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { installManagedBlock, type GovernanceBinding } from "../../src/managed-block.ts";
+import { verifyInstalledRelease } from "../../src/release.ts";
 import { InstallerTransaction } from "../../src/transaction.ts";
 import { createPublishedV130ReleaseFixture, createReleaseFixture } from "../fixtures/installer/release.ts";
 import { createTestRoot } from "../fixtures/installer/workspace.ts";
@@ -124,6 +125,7 @@ test("newer CLI rejects a new release version carrying the historical three-doma
   await mkdir(targetRoot);
   await materializePublishedV130Installation({ root, targetRoot, installationRoot, entry });
   await rewriteInstalledVersion(installationRoot, "9.9.9");
+  await assert.rejects(verifyInstalledRelease(join(installationRoot, "releases", "1.3.0")), /ssot manifest domains/);
   const currentRelease = await createReleaseFixture(join(root, "package-1.4.0"), "1.4.0");
   const update = new InstallerTransaction({ targetRoot, entryFile: "AGENTS.md", scope: "global", installationRoot, releaseRoot: currentRelease, dryRun: false, nonInteractive: true });
 
