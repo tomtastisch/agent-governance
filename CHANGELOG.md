@@ -13,6 +13,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Keine.
+
+### Fixed
+
+- Keine.
+
+### Removed
+
+- Keine.
+
+**Breaking changes:** none
+
+## [1.4.2] — 2026-09-23
+
+### Added
+
+- Keine.
+
+### Changed
+
 - Governance-Modulrouting für lokale Arbeit: Verification-Regeln sind von späteren
   Delivery-/Review-Gates getrennt; Tool-Routing und Templates laden keine fachlich
   unverbundenen Security-/Delivery-Module. Safety-Kernel, Security-Vorklassifikation,
