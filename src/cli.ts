@@ -13,6 +13,7 @@ import type { InitOptions, InitPrompt, InitResult } from "./init/types.ts";
 import { InstallerTransaction } from "./transaction.ts";
 import { loadCommandCatalog } from "./command-catalog.ts";
 import { PUBLIC_COMMAND_HANDLERS, renderCommandHelp, renderGlobalHelp } from "./public-commands.ts";
+import { createTerminalTheme } from "./terminal/theme.ts";
 
 type Writer = (value: string) => void;
 export interface CliDependencies {
@@ -62,8 +63,9 @@ export async function runCli(argv: readonly string[], out: Writer = console.log,
   try { definitions = loadCommandCatalog(); }
   catch (cause) { error(JSON.stringify({ schemaVersion: 1, outcome: "UNSAFE_STATE", error: (cause as Error).message })); return EXIT_CODES.UNSAFE_STATE; }
   const publicCommands = definitions.map(({ id }) => id);
-  if (argv.length === 1 && isHelp(argv[0])) { out(renderGlobalHelp(definitions)); return EXIT_CODES.SUCCESS; }
-  if (argv.length === 2 && publicCommands.includes(argv[0] as PublicCommandId) && isHelp(argv[1])) { out(renderCommandHelp(argv[0] as PublicCommandId, definitions)); return EXIT_CODES.SUCCESS; }
+  const helpTheme = createTerminalTheme();
+  if (argv.length === 1 && isHelp(argv[0])) { out(renderGlobalHelp(definitions, helpTheme)); return EXIT_CODES.SUCCESS; }
+  if (argv.length === 2 && publicCommands.includes(argv[0] as PublicCommandId) && isHelp(argv[1])) { out(renderCommandHelp(argv[0] as PublicCommandId, definitions, helpTheme)); return EXIT_CODES.SUCCESS; }
   let parsed: ReturnType<typeof parse>; try { parsed = parse(argv, publicCommands); } catch (cause) { error(JSON.stringify({ schemaVersion: 1, outcome: "INVALID_INVOCATION", error: (cause as Error).message })); return EXIT_CODES.INVALID_INVOCATION; }
   try {
     let transaction: InstallerTransaction | undefined;

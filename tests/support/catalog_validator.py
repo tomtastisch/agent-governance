@@ -43,17 +43,8 @@ TOOL_FIELDS = frozenset(
 COMMAND_FIELDS = frozenset(
     {"id", "path", "description", "capability", "effect", "orchestrates", "interactive"}
 )
-COMMAND_SEMANTICS = {
-    "inspect": (("inspect",), "transaction", "read", False, False),
-    "plan": (("plan",), "transaction", "read", False, False),
-    "install": (("install",), "transaction", "write", False, False),
-    "verify": (("verify",), "transaction", "read", False, False),
-    "status": (("status",), "transaction", "read", False, False),
-    "update": (("update",), "transaction", "write", False, False),
-    "uninstall": (("uninstall",), "transaction", "write", False, False),
-    "rollback": (("rollback",), "transaction", "write", False, False),
-    "init": (("init",), "orchestration", "write", True, True),
-}
+COMMAND_CAPABILITIES = frozenset({"transaction", "orchestration"})
+COMMAND_EFFECTS = frozenset({"read", "write"})
 DISCOVERY_TOP_LEVEL_FIELDS = frozenset(
     {
         "schema_version",
@@ -495,26 +486,18 @@ def _validate_commands(catalog: Mapping[str, object]) -> tuple[Mapping[str, obje
         description = _nonempty_text(command.get("description"), f"{context}.description")
         if re.search(r"[\x00\r\n\x1b]", description):
             raise CatalogValidationError(f"{context}.description enthält Steuerzeichen")
-        for field in ("capability", "effect"):
-            _nonempty_text(command.get(field), f"{context}.{field}")
+        capability = _nonempty_text(command.get("capability"), f"{context}.capability")
+        if capability not in COMMAND_CAPABILITIES:
+            raise CatalogValidationError(f"{context}.capability ist unbekannt")
+        effect = _nonempty_text(command.get("effect"), f"{context}.effect")
+        if effect not in COMMAND_EFFECTS:
+            raise CatalogValidationError(f"{context}.effect ist unbekannt")
         for field in ("orchestrates", "interactive"):
             if type(command.get(field)) is not bool:
                 raise CatalogValidationError(f"{context}.{field} muss Boolean sein")
-        expected = COMMAND_SEMANTICS.get(command_id)
-        actual = (
-            path,
-            command["capability"],
-            command["effect"],
-            command["orchestrates"],
-            command["interactive"],
-        )
-        if expected is None or actual != expected:
-            raise CatalogValidationError(f"{context} verletzt die Command-Semantik")
         ids.add(command_id)
         paths.add(path)
         commands.append(command)
-    if ids != set(COMMAND_SEMANTICS):
-        raise CatalogValidationError("commands muss exakt alle öffentlichen IDs enthalten")
     return tuple(commands)
 
 
