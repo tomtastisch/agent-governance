@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import { lstat, readFile, readdir, realpath } from "node:fs/promises";
 import { isAbsolute, join, normalize, relative, sep } from "node:path";
-import { parseClosedToml } from "./closed-toml.ts";
 import { validateGovernanceContract, validateInstalledGovernanceContract } from "./governance-contract.ts";
 
 const REQUIRED = [
@@ -10,8 +9,7 @@ const REQUIRED = [
   "bundle/agent-governance/manifest.toml",
 ] as const;
 const DIGEST_LINE = /^([0-9a-f]{64})  ([^\0\r\n]+)$/;
-// Published three-domain SSOT contracts, bound to their root manifest schema.
-const HISTORICAL_CONTRACT_SCHEMAS = new Map<string, number>([["1.2.1", 3], ["1.3.0", 4]]);
+const HISTORICAL_CONTRACT_VERSIONS = new Set(["1.3.0"]);
 
 export interface VerifiedRelease {
   readonly version: string;
@@ -107,9 +105,7 @@ async function verifyReleaseWithContract(releaseRoot: string, installed: boolean
   if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(version)) {
     throw new Error("invalid release version");
   }
-  const historicalSchema = HISTORICAL_CONTRACT_SCHEMAS.get(version);
-  const historical = installed && historicalSchema !== undefined && parseClosedToml(manifest, "release manifest").schema_version === historicalSchema;
-  const validateContract = historical ? validateInstalledGovernanceContract : validateGovernanceContract;
+  const validateContract = installed && HISTORICAL_CONTRACT_VERSIONS.has(version) ? validateInstalledGovernanceContract : validateGovernanceContract;
   const contract = await validateContract(join(releaseRoot, "bundle", "agent-governance"), manifest, entries);
   const localRelative = contract.localRulesPath;
   const knownInventoryFiles = new Set([

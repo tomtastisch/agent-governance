@@ -45,16 +45,3 @@ export async function createPublishedV130ReleaseFixture(releaseRoot: string): Pr
   if (!actualInventory.equals(publishedInventory)) throw new Error("v1.3.0 release fixture differs from the published inventory");
   return releaseRoot;
 }
-
-export async function createPublishedV121ReleaseFixture(releaseRoot: string): Promise<string> {
-  await createPublishedV130ReleaseFixture(releaseRoot);
-  // Overlay the changed files from published tag v1.2.1 (8da3e47b882276ff3012c5a5c4ace1b744fce08a).
-  const fixtureRoot = join(repositoryRoot, "tests", "fixtures", "installer", "releases", "v1.2.1");
-  await rm(join(releaseRoot, "bundle", "agent-governance", "templates"), { recursive: true });
-  await cp(fixtureRoot, releaseRoot, { recursive: true });
-  await writeInventory(releaseRoot);
-  const actualInventory = await readFile(join(releaseRoot, "release.files.sha256"));
-  const publishedInventory = await readFile(join(fixtureRoot, "release.files.sha256"));
-  if (!actualInventory.equals(publishedInventory)) throw new Error("v1.2.1 release fixture differs from the published inventory");
-  return releaseRoot;
-}
