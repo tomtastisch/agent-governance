@@ -90,6 +90,7 @@ class InstallerPackageContract(unittest.TestCase):
         ):
             self.assertIn(value, workflow)
         self.assertIn("tests/e2e/run_installer_fixture.sh", workflow)
+        self.assertIn("tests/e2e/run_release_verifier_fixture.sh", workflow)
         self.assertNotIn("$HOME/.codex", workflow)
 
     def test_ci_installs_the_real_pty_driver_before_linux_installer_tests(self):
@@ -111,6 +112,15 @@ class InstallerPackageContract(unittest.TestCase):
         self.assertIn("mktemp -d", runner)
         self.assertIn("--dry-run", runner)
         self.assertIn("dist/cli.js", runner)
+        self.assertNotIn("$HOME/.codex", runner)
+
+    def test_release_verifier_fixture_tolerates_benign_metadata_and_stays_fail_closed(self):
+        runner = (ROOT / "tests" / "e2e" / "run_release_verifier_fixture.sh").read_text(encoding="utf-8")
+        self.assertIn("mktemp -d", runner)
+        self.assertIn("dist/cli.js", runner)
+        self.assertIn(".DS_Store", runner)
+        self.assertIn("stray.md", runner)
+        self.assertIn("release_verifier_benign_metadata=PASS", runner)
         self.assertNotIn("$HOME/.codex", runner)
 
     def test_package_consumers_cover_tarball_npx_and_pnpm_dlx(self):

@@ -3,9 +3,9 @@ import { mkdir, readFile, rename, rm, symlink, truncate, writeFile } from "node:
 import { join } from "node:path";
 import test from "node:test";
 
-import { verifyInstalledRelease, verifyRelease } from "../../src/release.ts";
+import { verifyRelease } from "../../src/release.ts";
 import { createTestRoot } from "../fixtures/installer/workspace.ts";
-import { createPublishedV130ReleaseFixture, createReleaseFixture, writeInventory } from "../fixtures/installer/release.ts";
+import { createReleaseFixture, writeInventory } from "../fixtures/installer/release.ts";
 
 async function fixture(): Promise<string> {
   const root = await createTestRoot("agent-governance-release-");
@@ -21,20 +21,23 @@ test("release verifier accepts complete digest-bound fixture", async () => {
   assert.match(result.manifestDigest, /^[0-9a-f]{64}$/);
 });
 
-test("installed release verifier accepts the recognized v1.3.0 contract without weakening current release verification", async () => {
-  const root = await createTestRoot("agent-governance-release-v130-");
-  await createPublishedV130ReleaseFixture(root);
+test("release verifier rejects the historical three-domain SSOT contract", async () => {
+  const root = await fixture();
+  const ssotPath = join(root, "bundle", "agent-governance", "ssot", "manifest.toml");
+  const ssot = await readFile(ssotPath, "utf8");
+  const changed = ssot.replace('[domains.work_items]\nclassifications = "work-items/classifications.toml"\ngithub_labels = "work-items/projections/github-labels.toml"\n', "");
+  assert.notEqual(changed, ssot);
+  await writeFile(ssotPath, changed);
+  await writeInventory(root);
   await assert.rejects(verifyRelease(root), /domains|missing|unknown/i);
-  assert.equal((await verifyInstalledRelease(root)).version, "1.3.0");
 });
 
-test("installed release verifier rejects unknown future SSOT domains", async () => {
-  const root = await createTestRoot("agent-governance-release-future-domain-");
-  await createPublishedV130ReleaseFixture(root);
+test("release verifier rejects unknown future SSOT domains", async () => {
+  const root = await fixture();
   const ssotPath = join(root, "bundle", "agent-governance", "ssot", "manifest.toml");
   await writeFile(ssotPath, `${await readFile(ssotPath, "utf8")}\n[domains.future]\nunknown = "future/unknown.toml"\n`);
   await writeInventory(root);
-  await assert.rejects(verifyInstalledRelease(root), /domains|missing|unknown/i);
+  await assert.rejects(verifyRelease(root), /domains|missing|unknown/i);
 });
 
 test("release verifier rejects manipulated bundled file", async () => {
@@ -53,6 +56,22 @@ test("release verifier rejects additional unlisted normative bundle files", asyn
   const root = await fixture();
   await writeFile(join(root, "bundle", "unexpected.md"), "shadow rules\n");
   await assert.rejects(verifyRelease(root), /additional|unlisted|inventory/);
+});
+
+test("release verifier tolerates benign OS metadata files but still rejects other stray files", async () => {
+  for (const name of [".DS_Store", "Thumbs.db", "desktop.ini"]) {
+    const root = await fixture();
+    await writeFile(join(root, "bundle", name), "os metadata\n");
+    await assert.doesNotReject(verifyRelease(root), name);
+    await writeFile(join(root, "bundle", "agent-governance", name), "os metadata\n");
+    await assert.doesNotReject(verifyRelease(root), `nested ${name}`);
+  }
+});
+
+test("release verifier still rejects a symlink named like a benign OS metadata file", async () => {
+  const root = await fixture();
+  await symlink(join(root, "VERSION"), join(root, "bundle", ".DS_Store"));
+  await assert.rejects(verifyRelease(root), /symlink/);
 });
 
 test("release verifier rejects missing required files and oversized inventory entries", async () => {

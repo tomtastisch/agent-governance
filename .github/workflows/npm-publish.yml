@@ -143,7 +143,7 @@ jobs:
         env:
           NPM_DIST_TAG: ${{ inputs.dist_tag }}
         run: npm publish --access public --tag "$NPM_DIST_TAG"
-      - name: Read back registry metadata, dist-tag, provenance, and signatures
+      - name: Verify immediate publish metadata (fail-closed)
         env:
           NPM_DIST_TAG: ${{ inputs.dist_tag }}
         run: |
@@ -153,11 +153,45 @@ jobs:
             if test "$(npm view "$PACKAGE_SPEC" version --registry=https://registry.npmjs.org 2>/dev/null)" = "$PACKAGE_VERSION" \
               && test "$(npm view @tomtastisch/agent-governance "dist-tags.$NPM_DIST_TAG" --registry=https://registry.npmjs.org 2>/dev/null)" = "$PACKAGE_VERSION" \
               && npm view "$PACKAGE_SPEC" dist --json --registry=https://registry.npmjs.org > registry-dist.json \
-              && node -e "const r=require('./registry-dist.json');const d=Array.isArray(r)?(r.length===1?r[0]:null):r;if(!d||typeof d!=='object'||!d.integrity||!d.shasum||d.attestations?.provenance?.predicateType!=='https://slsa.dev/provenance/v1')process.exit(1)"; then
+              && node -e "const r=require('./registry-dist.json');const d=Array.isArray(r)?(r.length===1?r[0]:null):r;if(!d||typeof d!=='object'||!d.integrity||!d.shasum)process.exit(1)"; then
               break
             fi
             test "$ATTEMPT" = 13 && exit 1
             sleep 10
+          done
+
+  verify-provenance:
+    name: Verify post-publish provenance and signatures (read-only)
+    if: github.ref == 'refs/heads/main'
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      NPM_DIST_TAG: ${{ inputs.dist_tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: refs/heads/main
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "26"
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - name: Install exact provenance-capable npm CLI
+        run: npm install --global npm@12.0.2 --ignore-scripts
+      - name: Verify SLSA provenance and registry signatures (read-only)
+        run: |
+          PACKAGE_VERSION="${RELEASE_TAG#v}"
+          PACKAGE_SPEC="@tomtastisch/agent-governance@$PACKAGE_VERSION"
+          for ATTEMPT in 1 2 3 4 5 6 7 8 9 10; do
+            npm view "$PACKAGE_SPEC" dist --json --registry=https://registry.npmjs.org > registry-dist.json
+            if node -e "const r=require('./registry-dist.json');const d=Array.isArray(r)?(r.length===1?r[0]:null):r;if(!d||typeof d!=='object'||d.attestations?.provenance?.predicateType!=='https://slsa.dev/provenance/v1')process.exit(1)"; then
+              break
+            fi
+            test "$ATTEMPT" = 10 && exit 1
+            sleep 30
           done
           VERIFY_ROOT="$RUNNER_TEMP/npm-signature-readback"
           mkdir "$VERIFY_ROOT"
