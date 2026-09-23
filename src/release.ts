@@ -9,6 +9,7 @@ const REQUIRED = [
   "bundle/agent-governance/manifest.toml",
 ] as const;
 const DIGEST_LINE = /^([0-9a-f]{64})  ([^\0\r\n]+)$/;
+const HISTORICAL_CONTRACT_VERSIONS = new Set(["1.3.0"]);
 
 export interface VerifiedRelease {
   readonly version: string;
@@ -100,7 +101,11 @@ async function verifyReleaseWithContract(releaseRoot: string, installed: boolean
   await walk(join(releaseRoot, "bundle"));
   const expectedBundleFiles = [...entries.keys()].filter((path) => path.startsWith("bundle/")).sort();
   let manifest: string; try { manifest = new TextDecoder("utf-8", { fatal: true }).decode(await safeRegularFile(join(releaseRoot, "bundle", "agent-governance", "manifest.toml"))); } catch { throw new Error("release manifest contains invalid UTF-8 encoding"); }
-  const validateContract = installed ? validateInstalledGovernanceContract : validateGovernanceContract;
+  const version = (await safeRegularFile(join(releaseRoot, "VERSION"))).toString("utf8").trim();
+  if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(version)) {
+    throw new Error("invalid release version");
+  }
+  const validateContract = installed && HISTORICAL_CONTRACT_VERSIONS.has(version) ? validateInstalledGovernanceContract : validateGovernanceContract;
   const contract = await validateContract(join(releaseRoot, "bundle", "agent-governance"), manifest, entries);
   const localRelative = contract.localRulesPath;
   const knownInventoryFiles = new Set([
@@ -114,10 +119,6 @@ async function verifyReleaseWithContract(releaseRoot: string, installed: boolean
   const normativeBundleFiles = actualBundleFiles.filter((path) => path !== allowedLocal).sort();
   if (normativeBundleFiles.join("\0") !== expectedBundleFiles.join("\0")) {
     throw new Error("release bundle contains additional or unlisted inventory files");
-  }
-  const version = (await safeRegularFile(join(releaseRoot, "VERSION"))).toString("utf8").trim();
-  if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(version)) {
-    throw new Error("invalid release version");
   }
   return {
     version,

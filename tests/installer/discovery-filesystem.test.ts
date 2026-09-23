@@ -349,13 +349,15 @@ test("sibling candidates share the entry budget before a wide first sibling exha
 test("a zone root wider than its entry budget still traverses discovered candidates", async () => {
   const fixture = await syntheticEnvironment();
   const limits = { ...LIMITS, maxEntries: 10, maxFiles: 6 };
-  const target = join(fixture.xdgConfig, "0-target");
-  const targetFile = join(target, "runtime.json");
+  const directoryCount = limits.maxEntries + 1;
   try {
-    await mkdir(target);
-    await writeFile(targetFile, "{}");
+    // Every possible enumeration prefix contains candidates, regardless of opendir order.
     await Promise.all(
-      Array.from({ length: 9 }, (_, index) => writeFile(join(fixture.xdgConfig, `zz-${index}.json`), "{}")),
+      Array.from({ length: directoryCount }, async (_, index) => {
+        const candidate = join(fixture.xdgConfig, `candidate-${index}`);
+        await mkdir(candidate);
+        await writeFile(join(candidate, "runtime.json"), "{}");
+      }),
     );
 
     const candidates = await enumerateCandidates(
@@ -364,7 +366,11 @@ test("a zone root wider than its entry budget still traverses discovered candida
       () => 0,
     );
 
-    assert.deepEqual(candidates.find(({ root }) => root === target)?.files, [targetFile]);
+    assert.ok(candidates.length > 0 && candidates.length < directoryCount);
+    for (const candidate of candidates) {
+      assert.deepEqual(candidate.files, [join(candidate.root, "runtime.json")]);
+    }
+    assert.equal(candidates.reduce((count, candidate) => count + candidate.entriesVisited, candidates.length) <= limits.maxEntries, true);
   } finally {
     await rm(fixture.root, { recursive: true, force: true });
   }
