@@ -152,3 +152,35 @@ test("rollback recovers a valid historical release from a split receipt", async 
   assert.equal((await transaction.status()).state, "RECOVERY_REQUIRED");
   assert.equal((await transaction.rollback()).state, "ABSENT");
 });
+
+test("rollback rejects a historical release under a different version directory before mutation", async () => {
+  const root = await createTestRoot("agent-governance-cross-version-rollback-mismatch-");
+  const targetRoot = join(root, "target");
+  const installationRoot = join(root, "installation");
+  const entry = join(targetRoot, "AGENTS.md");
+  await mkdir(targetRoot);
+  const currentRelease = await createReleaseFixture(join(root, "package-1.4.0"), "1.4.0");
+  const request = { targetRoot, entryFile: "AGENTS.md", scope: "global" as const, installationRoot, releaseRoot: currentRelease, dryRun: false, nonInteractive: true };
+  await new InstallerTransaction(request).install();
+  const published = await createPublishedV130ReleaseFixture(join(root, "published-1.3.0"));
+  const installed = join(installationRoot, "releases", "1.4.0");
+  await rm(join(installed, "bundle"), { recursive: true });
+  await cp(published, installed, { recursive: true });
+  assert.equal((await verifyInstalledRelease(installed)).version, "1.3.0");
+
+  const bindingIds = await readdir(join(installationRoot, "bindings"));
+  assert.equal(bindingIds.length, 1);
+  const bindingRoot = join(installationRoot, "bindings", bindingIds[0]!);
+  const receiptPath = join(bindingRoot, "last-transaction.json");
+  const receipt = JSON.parse(await readFile(receiptPath, "utf8")) as Record<string, unknown>;
+  await writeFile(join(String(receipt.backupRoot), "receipt.json"), `${JSON.stringify({ ...receipt, status: "PREPARED" })}\n`);
+  const protectedPaths = [entry, join(bindingRoot, "current.json"), receiptPath, join(String(receipt.backupRoot), "receipt.json")];
+  const before = await Promise.all(protectedPaths.map((path) => readFile(path)));
+  let reachedEntryMutation = false;
+  const transaction = new InstallerTransaction({ ...request, onCheckpoint: (checkpoint) => { if (checkpoint === "beforeRollbackEntry") reachedEntryMutation = true; } });
+  assert.equal((await transaction.status()).state, "RECOVERY_REQUIRED");
+  await assert.rejects(transaction.rollback(), /installed release version does not match its directory/);
+  assert.equal(reachedEntryMutation, false);
+  assert.deepEqual(await Promise.all(protectedPaths.map((path) => readFile(path))), before);
+  await access(installed);
+});
