@@ -170,13 +170,15 @@ async function validateContract(manifestRoot: string, manifestText: string, inve
   const referencedPaths = new Set<string>();
 
   let routing: RoutingCatalogs;
-  if (manifest.schema_version === 4) {
-    exact(manifest, ["schema_version", "local_rules", "ssot", "templates", "routing", "modules", "roles"], "release manifest");
+  if (manifest.schema_version === 4 || installed && manifest.schema_version === 3) {
+    const fields = ["schema_version", "local_rules", "ssot", "routing", "modules", "roles"];
+    if (manifest.schema_version === 4) fields.push("templates");
+    exact(manifest, fields, "release manifest");
     const ssotPath = safeRelativePath(manifest.ssot, "release manifest ssot path");
     if (ssotPath !== "ssot/manifest.toml") throw new Error("release manifest ssot path must be canonical");
     referencedPaths.add(ssotPath);
     routing = validateCatalogs(await readSsotCatalogs(manifestRoot, ssotPath, inventory, referencedPaths, installed));
-    await readTemplates(manifestRoot, manifest.templates, inventory, referencedPaths);
+    if (manifest.schema_version === 4) await readTemplates(manifestRoot, manifest.templates, inventory, referencedPaths);
   } else if (manifest.schema_version === 2) {
     exact(manifest, ["schema_version", "local_rules", "catalogs", "routing", "modules", "roles"], "release manifest");
     routing = validateCatalogs(await readLegacyCatalogs(manifestRoot, table(manifest.catalogs, "release manifest catalogs"), inventory, referencedPaths));
