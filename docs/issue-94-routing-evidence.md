@@ -93,3 +93,70 @@ diesen Snapshot deterministisch statt vom laufenden Bundle abzuleiten.
 Jeder Marker ist durch einen konkreten Test in `tests/test_routing_performance.py` oder einen
 Mess-/Shadow-Lauf belegt; siehe Testnamen für die Zuordnung. Kein Marker wurde ohne reale
 Evidence auf `PASS` gesetzt.
+
+## Phase 2 — Lazy Domain Loading
+
+### Messung des verbleibenden festen Overheads
+
+Für `bare_analysis` (nur `analysis` → nur `evidence`) lud der PR-#100-Stand 13 Dateien mit
+54.855 Bytes. Davon waren 32.419 Bytes Domänenkataloge, die für eine reine Analyse fachlich
+irrelevant sind: Tools (13.541), Scopes (3.315), Policy-Tags (449), Commands (1.854),
+Discovery (2.334), Work-Items (9.435) und Template-Index (1.491). Die Hypothese „der
+wesentliche verbleibende Overhead entsteht durch den vor dem Routing vollständig geladenen
+Katalogzustand“ ist damit bestätigt; die Gegenhypothese (vollständige Katalogverarbeitung
+für eine sichere Routingentscheidung zwingend) ist widerlegt.
+
+### Umsetzung
+
+`load_routing_index` lädt nur Manifest, SSOT-Index und Trigger-Katalog; `load_tool_domain`
+lädt Tools/Policy-Tags/Scopes erst bei `tool_routing`, `load_template_index` den
+Template-Index erst bei `templates`. Commands, Discovery und Work-Items gehören nicht zur
+Auftrags-Klassifikation und werden beim Modulrouting nicht geladen. GOVERNANCE.md Schritt 2
+und 4 beschreiben dieses faule Domänenladen; ein dann benötigter, aber ungültiger Katalog
+hält die abhängige Entscheidung nach GOV-004 an. Die Installer-Integrity-Prüfung des
+vollständigen Bundles bleibt unverändert und verifiziert weiterhin alle Kataloge beim
+Installieren/Aktivieren.
+
+### Baseline PR #100 vs. Phase 2 (identische Fälle)
+
+| Fall | PR #100 | Phase 2 | Δ |
+|---|---:|---:|---:|
+| bare analysis | 54.855 | 23.162 | −31.693 |
+| read-only Analyse | 57.387 | 42.999 | −14.388 |
+| lokale Implementierung | 66.086 | 53.189 | −12.897 |
+| lokaler Test | 64.072 | 51.175 | −12.897 |
+| normales Tool-Routing | 57.387 | 42.999 | −14.388 |
+| Statusbericht | 57.199 | 26.997 | −30.202 |
+| Context-Handoff | 59.476 | 29.274 | −30.202 |
+
+### Small-Task-Korpus
+
+| Small Task | Trigger | Dateien | Bytes |
+|---|---|---:|---:|
+| Git-Status lesen | `git_repository` | 9 | 42.999 |
+| Dokumentationssuche | `documentation` | 9 | 31.338 |
+| gezielter Test | `testing` | 13 | 51.175 |
+
+Jeder Small Task behält den vollständigen Safety Kernel, lädt keine irrelevanten Domänen und
+keine Promotion-/Release-Gates (gepinnt durch `LazyDomainLoading`).
+
+### Projektions-Entscheidung (nicht eingeführt)
+
+Eine kompakte Runtime-Projektion wurde **nicht** eingeführt. Nach dem Lazy-Domain-Loading
+besteht der verbleibende feste Anteil aus dem immer aktiven Safety Kernel
+(`GOVERNANCE.md`, GOV-001…006, nicht lazy-fähig), dem für GOV-006-Klassifikation benötigten
+Trigger-Vokabular (`triggers.toml`, 9.784 Bytes, ohne Duplikation nicht projizierbar) und dem
+Manifest-Graph (3.571 Bytes). Eine Projektion könnte nur den Manifest-Graph ersetzen
+(~2 KB Ersparnis), würde aber eine zweite abgeleitete Routing-Struktur mit Generator-,
+Drift- und Integrity-Bindung erzeugen — unverhältnismäßig gegenüber dem Nutzen und nahe an
+der im Issue untersagten parallelen Policy-SSOT. Der Nachweis der Nicht-Reduzierbarkeit ist
+damit evidenzbasiert erbracht.
+
+### Modell-/Subagent-Routing
+
+Das im Auftrag genannte kleine Worker-Modell (`opencode/nemotron-3.5-lightning-free`) ist im
+aktuellen Harness nicht verfügbar; es wurden keine funktionalen Abhängigkeiten darauf
+erzeugt. Der Hauptpfad (`high`) bleibt für alle fachlichen, Security- und
+Governance-Entscheidungen allein verantwortlich; Subagenten (nur Explore/General/Scout)
+wurden ausschließlich für unabhängige, read-only Reviews genutzt.
+

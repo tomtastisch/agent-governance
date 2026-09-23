@@ -7,16 +7,30 @@ import statistics
 import time
 from unittest.mock import patch
 
-from tests.support.catalog_validator import load_catalog_contract
+from tests.support.catalog_validator import (
+    load_routing_index,
+    load_template_index,
+    load_tool_domain,
+)
 from tests.support.neutral_harness import NeutralHarness
+
+
+def _loaded_module_names(manifest, module_paths) -> set[str]:
+    paths = set(module_paths)
+    return {
+        name for name, entry in manifest["modules"].items()
+        if entry.get("path") in paths
+    }
 
 
 def measure_route(bundle: Path, triggers: list[str], repetitions: int = 5) -> dict:
     """Misst echte Inhaltsreads; Pfadvalidierung ist kein geladener Instruktionstext.
 
-    Die semantische Klassifikation ist ein expliziter Testinput. Dieser Adapter
-    klassifiziert keine Sprache und entscheidet weder Autorisierung noch Gates.
-    Private lokale Nutzerregeln werden nie gelesen oder vermessen.
+    Modelliert das faule Domänenladen: Nur Manifest, SSOT-Index und Trigger-Katalog
+    werden immer geladen; Tools-/Scope-/Policy-Tag- und Template-Kataloge nur, wenn
+    ein tatsächlich geladenes Modul sie benötigt. Die semantische Klassifikation ist
+    ein expliziter Testinput; dieser Adapter klassifiziert keine Sprache und entscheidet
+    weder Autorisierung noch Gates. Private lokale Nutzerregeln werden nie gelesen.
     """
     bundle = bundle.resolve(strict=True)
     if repetitions < 1:
@@ -49,12 +63,19 @@ def measure_route(bundle: Path, triggers: list[str], repetitions: int = 5) -> di
         started = time.perf_counter_ns()
         with patch.object(Path, "open", record_open):
             (bundle / "GOVERNANCE.md").read_bytes()
-            contract = load_catalog_contract(bundle / "agent-governance")
+            routing_index = load_routing_index(bundle / "agent-governance")
             # _resolve_routes benötigt nur manifest_dir. Kein Provider, Effekt,
             # lokaler Zustand oder alternativer Graphalgorithmus wird angelegt.
             harness = object.__new__(NeutralHarness)
             harness.manifest_dir = bundle / "agent-governance"
-            modules, roles, paths = harness._resolve_routes(contract.manifest, contract.triggers, triggers)
+            modules, roles, paths = harness._resolve_routes(
+                routing_index.manifest, routing_index.triggers, triggers
+            )
+            module_names = _loaded_module_names(routing_index.manifest, modules)
+            if "tool_routing" in module_names:
+                load_tool_domain(routing_index)
+            if "templates" in module_names:
+                load_template_index(routing_index)
             for path in paths:
                 path.read_bytes()
         elapsed.append((time.perf_counter_ns() - started) / 1_000_000)

@@ -86,8 +86,12 @@ immer geladenen Bootstrap-Vertrags; Unklarheit über einen Treffer wird nach
 
 1. Lies den statischen Manifest-Index vollständig.
 2. Löse den vom Manifest referenzierten SSOT-Index `ssot/manifest.toml` relativ zum beibehaltenen
-   absoluten Manifestverzeichnis auf und validiere dessen geschlossenen Domain-Index sowie alle
-   dort registrierten Katalogdateien vollständig.
+   absoluten Manifestverzeichnis auf, validiere dessen geschlossenen Domain-Index und lade den
+   Trigger-Katalog `ssot/routing/triggers.toml` vollständig. Weitere Domänenkataloge (Tools,
+   Policy-Tags, Scopes, Commands, Discovery, Work-Items) und der Template-Index werden erst
+   geladen und vollständig validiert, wenn ein tatsächlich geladenes Modul sie benötigt. Die
+   Commands-, Discovery- und Work-Item-Domänen gehören nicht zur Auftrags-Klassifikation und
+   werden während des Modulroutings nicht geladen.
 3. Wende [GOV-006](#gov-006--security-vorklassifikation) an und klassifiziere den unmittelbar
    anstehenden Arbeitsschritt in einen oder mehrere der in `ssot/routing/triggers.toml`
    definierten Trigger. Vor einem Wechsel von Scope, Risiko, Wirkung oder Lieferphase wird
@@ -96,6 +100,10 @@ immer geladenen Bootstrap-Vertrags; Unklarheit über einen Treffer wird nach
    bleiben erforderlich, auch wenn ihr Modul erst beim entsprechenden Schritt geladen wird.
 4. Lade nur Module, deren `triggers` exakt getroffen wurden, anschließend deren deklarierte
    `dependencies` in topologischer Reihenfolge. Mehrfach gewählte Module werden einmal geladen.
+   Ein geladenes Modul lädt dabei nur die von ihm benötigten Domänenkataloge: `tool_routing`
+   lädt Tools-, Policy-Tag- und Scope-Katalog, `templates` den Template-Index. Ein dann
+   benötigter, aber ungültiger oder nicht auflösbarer Katalog hält die von seiner Evidenz
+   abhängige Entscheidung nach [GOV-004](#gov-004--fail-closed) an.
 5. Lade eine Rolle nur, wenn ihr eigener Rollentrigger getroffen wurde; lade dann ausschließlich
    die dort genannten Module und den Rollenpfad.
 6. Bei unbekannter oder mehrdeutiger Klassifikation sowie bei unbekannten Katalogreferenzen gilt
