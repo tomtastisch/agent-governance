@@ -12,7 +12,7 @@ import { createTestRoot } from "../fixtures/installer/workspace.ts";
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const require = createRequire(import.meta.url);
 
-test("the 1.4.0 real init path never starts a package manager or dependency repair process", async (t) => {
+test("the 1.4.1 real init path never starts a package manager or dependency repair process", async (t) => {
   const root = await createTestRoot("agent-governance-init-dependency-boundary-");
   const home = join(root, "home");
   const targetRoot = join(root, "target");
@@ -81,7 +81,7 @@ test("the 1.4.0 real init path never starts a package manager or dependency repa
   assert.match(output.join("\n"), /"command":"init"/u);
   assert.match(await readFile(join(targetRoot, "AGENTS.md"), "utf8"), /AGENT_GOVERNANCE_MANAGED_V1/u);
   await access(join(installationRoot, "bindings"));
-  assert.equal((await readFile(join(repositoryRoot, "VERSION"), "utf8")).trim(), "1.4.0");
+  assert.equal((await readFile(join(repositoryRoot, "VERSION"), "utf8")).trim(), "1.4.1");
 });
 
 test("the default init setup intercepts forbidden processes before CLI and prompt imports", () => {

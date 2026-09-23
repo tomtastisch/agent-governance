@@ -326,16 +326,23 @@ class ReleaseMetadataContract(unittest.TestCase):
         version = read(ROOT / "VERSION").strip()
         current = changelog.split(f"## [{version}]", 1)[1].split("\n## [", 1)[0]
         for term in (
+            "Cross-Version-Updates",
+            "OUTDATED",
+            "TAMPERED",
+        ):
+            self.assertIn(term, current)
+        self.assertIn("**Breaking changes:** none", current)
+        recovery_patch = changelog.split("## [0.4.1]", 1)[1].split("\n## [", 1)[0]
+        self.assertIn("**Breaking changes:** none", recovery_patch)
+        work_item_release = changelog.split("## [1.4.0]", 1)[1].split("\n## [", 1)[0]
+        for term in (
             "Work-Item-Klassifikations-SSOT",
             "work-items/classifications.toml",
             "work-items/projections/github-labels.toml",
             "Projection-Plan",
             "@tomtastisch/agent-governance/work-items",
         ):
-            self.assertIn(term, current)
-        self.assertIn("**Breaking changes:** none", current)
-        recovery_patch = changelog.split("## [0.4.1]", 1)[1].split("\n## [", 1)[0]
-        self.assertIn("**Breaking changes:** none", recovery_patch)
+            self.assertIn(term, work_item_release)
         historical = changelog.split("## [0.4.0]", 1)[1].split("\n## [", 1)[0]
         self.assertIn("**Breaking changes:** present", historical)
         self.assertIn("**BREAKING:**", historical)
