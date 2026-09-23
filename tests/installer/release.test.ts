@@ -118,16 +118,16 @@ test("release verifier rejects a digest-bound semantically invalid discovery cat
   await assert.rejects(verifyRelease(root), /discovery|max_files|positive|invalid/i);
 });
 
-test("release verifier rejects a digest-bound semantically invalid command catalog", async () => {
+test("release verifier rejects a digest-bound invalid command catalog vocabulary", async () => {
   const root = await fixture();
   const catalogPath = join(root, "bundle", "agent-governance", "ssot", "commands", "commands.toml");
   const catalog = await readFile(catalogPath, "utf8");
-  const changed = catalog.replace('effect = "read"', 'effect = "write"');
+  const changed = catalog.replace('effect = "read"', 'effect = "delete"');
   assert.notEqual(changed, catalog);
   await writeFile(catalogPath, changed);
   await writeInventory(root);
 
-  await assert.rejects(verifyRelease(root), /command|semantics|invalid/i);
+  await assert.rejects(verifyRelease(root), /command|effect|invalid/i);
 });
 
 test("release verifier accepts only the complete current SSOT index", async () => {

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 import shutil
 import sys
@@ -15,6 +16,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 GOVERNANCE_ROOT = ROOT / "bundle" / "agent-governance"
 VALIDATOR = ROOT / "tests" / "support" / "catalog_validator.py"
+PUBLIC_COMMANDS_ORACLE = ROOT / "tests" / "contracts" / "public-commands.json"
 EXPECTED_CATALOG_PATHS = {
     "triggers": "ssot/routing/triggers.toml",
     "policy_tags": "ssot/routing/policy-tags.toml",
@@ -24,17 +26,6 @@ EXPECTED_CATALOG_PATHS = {
     "discovery_signals": "ssot/discovery/discovery-signals.toml",
     "classifications": "ssot/work-items/classifications.toml",
     "github_labels": "ssot/work-items/projections/github-labels.toml",
-}
-EXPECTED_COMMANDS = {
-    "inspect": (["inspect"], "transaction", "read", False, False),
-    "plan": (["plan"], "transaction", "read", False, False),
-    "install": (["install"], "transaction", "write", False, False),
-    "verify": (["verify"], "transaction", "read", False, False),
-    "status": (["status"], "transaction", "read", False, False),
-    "update": (["update"], "transaction", "write", False, False),
-    "uninstall": (["uninstall"], "transaction", "write", False, False),
-    "rollback": (["rollback"], "transaction", "write", False, False),
-    "init": (["init"], "orchestration", "write", True, True),
 }
 COMMAND_FIELDS = {
     "id",
@@ -84,6 +75,14 @@ def load_validator(case: unittest.TestCase):
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def load_public_command_oracle(case: unittest.TestCase):
+    case.assertTrue(PUBLIC_COMMANDS_ORACLE.is_file(), "public-commands.json fehlt")
+    data = json.loads(PUBLIC_COMMANDS_ORACLE.read_text(encoding="utf-8"))
+    commands = data["commands"]
+    case.assertIsInstance(commands, list)
+    return commands
 
 
 class CatalogContract(unittest.TestCase):
@@ -173,18 +172,20 @@ class CatalogContract(unittest.TestCase):
         for forbidden in ("anthropic", "claude", "codex", "copilot", "cursor", "gemini", "ollama", "openai"):
             self.assertNotIn(forbidden, text)
 
-    def test_command_catalog_defines_the_nine_public_paths_and_semantics(self):
-        actual = {
-            command["id"]: (
-                command["path"],
-                command["capability"],
-                command["effect"],
-                command["orchestrates"],
-                command["interactive"],
-            )
+    def test_command_catalog_matches_the_independent_public_command_oracle(self):
+        oracle = load_public_command_oracle(self)
+        actual = [
+            {
+                "id": command["id"],
+                "path": command["path"],
+                "capability": command["capability"],
+                "effect": command["effect"],
+                "orchestrates": command["orchestrates"],
+                "interactive": command["interactive"],
+            }
             for command in self.contract.commands
-        }
-        self.assertEqual(actual, EXPECTED_COMMANDS)
+        ]
+        self.assertEqual(actual, oracle)
         self.assertTrue(all(command["description"].strip() for command in self.contract.commands))
 
     def test_every_module_role_and_tool_reference_is_closed(self):
@@ -639,13 +640,13 @@ class CommandCatalogFailures(CatalogMutationCase):
         with self.assertRaisesRegex(self.validator.CatalogValidationError, "doppelte Pfade"):
             self.load()
 
-    def test_invalid_command_semantics_fail_closed(self):
+    def test_invalid_command_capability_fails_closed(self):
         self.replace(
             "ssot/commands/commands.toml",
             'capability = "orchestration"',
-            'capability = "transaction"',
+            'capability = "execute"',
         )
-        with self.assertRaisesRegex(self.validator.CatalogValidationError, "Semantik"):
+        with self.assertRaisesRegex(self.validator.CatalogValidationError, "capability"):
             self.load()
 
 

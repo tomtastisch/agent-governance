@@ -1,0 +1,13 @@
+{
+  "commands": [
+    { "id": "inspect", "path": ["inspect"], "capability": "transaction", "effect": "read", "orchestrates": false, "interactive": false },
+    { "id": "plan", "path": ["plan"], "capability": "transaction", "effect": "read", "orchestrates": false, "interactive": false },
+    { "id": "install", "path": ["install"], "capability": "transaction", "effect": "write", "orchestrates": false, "interactive": false },
+    { "id": "verify", "path": ["verify"], "capability": "transaction", "effect": "read", "orchestrates": false, "interactive": false },
+    { "id": "status", "path": ["status"], "capability": "transaction", "effect": "read", "orchestrates": false, "interactive": false },
+    { "id": "update", "path": ["update"], "capability": "transaction", "effect": "write", "orchestrates": false, "interactive": false },
+    { "id": "uninstall", "path": ["uninstall"], "capability": "transaction", "effect": "write", "orchestrates": false, "interactive": false },
+    { "id": "rollback", "path": ["rollback"], "capability": "transaction", "effect": "write", "orchestrates": false, "interactive": false },
+    { "id": "init", "path": ["init"], "capability": "orchestration", "effect": "write", "orchestrates": true, "interactive": true }
+  ]
+}

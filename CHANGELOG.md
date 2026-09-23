@@ -13,7 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Keine.
+- Command-SSOT (`ssot/commands/commands.toml`) ist die einzige produktive
+  Command-Semantik-Authority; die Schattenkopien `EXPECTED_SEMANTICS` und
+  `PUBLIC_COMMAND_IDS` sind entfernt. Ein sprachneutrales Test-Oracle
+  (`tests/contracts/public-commands.json`) und ein geordneter Drift-Test binden die
+  öffentlichen Commands gegen die SSOT; Handler-Registry und SSOT werden bidirektional
+  auf Deckung geprüft (#88, SemVer: patch).
+- Globale und command-spezifische `--help`-Ausgabe verwenden die gemeinsame
+  Terminal-Theme-Infrastruktur (TTY, `NO_COLOR`, `TERM=dumb`, ANSI-freie Ausgabe,
+  korrekte Ausrichtung) statt einer zweiten Farb-/ANSI-Logik (#88, SemVer: patch).
 
 ### Fixed
 
