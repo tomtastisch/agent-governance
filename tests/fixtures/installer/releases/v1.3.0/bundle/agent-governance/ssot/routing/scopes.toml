@@ -1,0 +1,99 @@
+schema_version = 1
+
+[scopes.repository]
+label = "Repository"
+description = """
+Versionskontrollierter Repositoryinhalt und lokaler Repositoryzustand. Der Scope beschreibt nur
+die Ressourcenklasse und keine Autorisierung für eine konkrete Ressource.
+"""
+
+[scopes.github]
+label = "GitHub"
+description = """
+GitHub-Repositorys, Pull Requests, Reviews, Checks, Actions und andere GitHubobjekte. Der Scope
+beschreibt nur die Ressourcenklasse und keine Autorisierung für eine konkrete Ressource.
+"""
+
+[scopes.documentation]
+label = "Documentation"
+description = """
+Hersteller-, Projekt- oder andere autoritative Dokumentationsquellen. Der Scope beschreibt nur
+die Ressourcenklasse und keine Autorisierung für eine konkrete Ressource.
+"""
+
+[scopes.work_tracking]
+label = "Work Tracking"
+description = """
+Issues, Projekte, Initiativen, Arbeitsstatus und Akzeptanzkriterien. Der Scope beschreibt nur die
+Ressourcenklasse und keine Autorisierung für eine konkrete Ressource.
+"""
+
+[scopes.database]
+label = "Database"
+description = """
+PostgreSQL-Daten, Schemen, Migrationen und Datenbankregeln. Der Scope beschreibt nur die
+Ressourcenklasse und keine Autorisierung für eine konkrete Ressource.
+"""
+
+[scopes.authentication]
+label = "Authentication"
+description = """
+Identitäten, Authentifizierungszustand und zugehörige Backendgrenzen. Der Scope beschreibt nur die
+Ressourcenklasse und keine Autorisierung für eine konkrete Ressource.
+"""
+
+[scopes.storage]
+label = "Storage"
+description = """
+Objektspeicher, Buckets und gespeicherte Objekte. Der Scope beschreibt nur die Ressourcenklasse
+und keine Autorisierung für eine konkrete Ressource.
+"""
+
+[scopes.realtime]
+label = "Realtime"
+description = """
+Echtzeitkanäle, Abonnements und Realtime-Datenflüsse. Der Scope beschreibt nur die
+Ressourcenklasse und keine Autorisierung für eine konkrete Ressource.
+"""
+
+[scopes.edge_functions]
+label = "Edge Functions"
+description = """
+Edge-Function-Quellcode, Konfiguration und Ausführung. Der Scope beschreibt nur die
+Ressourcenklasse und keine Autorisierung für eine konkrete Ressource.
+"""
+
+[scopes.marketing_data]
+label = "Marketing Data"
+description = """
+Marketing-, Ads-, Commerce- und plattformübergreifende Kanalmetriken. Der Scope beschreibt nur die
+Ressourcenklasse und keine Autorisierung für eine konkrete Ressource.
+"""
+
+[scopes.structured_data]
+label = "Structured Data"
+description = """
+Strukturierte oder tabellenförmige Daten und daraus berechnete Kennzahlen. Der Scope beschreibt
+nur die Ressourcenklasse und keine Autorisierung für eine konkrete Ressource.
+"""
+
+[scopes.analytics_artifacts]
+label = "Analytics Artifacts"
+description = """
+Berechnungen, Analyseergebnisse, Berichte und Diagramme. Der Scope beschreibt nur die
+Ressourcenklasse und keine Autorisierung für eine konkrete Ressource.
+"""
+
+[scopes.canonical_memory]
+label = "Canonical Memory"
+description = """
+Ein ausdrücklich ausgewähltes kanonisches Memory-Bundle. Der Scope beschreibt nur die
+Ressourcenklasse und keine Autorisierung für eine konkrete Ressource.
+"""
+
+[scopes.agent_packages]
+label = "Agent Packages"
+description = """
+Agent-Pakete, Agent-Skills, deklarative Abhängigkeiten, Provenienz und Lockzustand. Der Scope
+beschreibt nur die Ressourcenklasse und keine Autorisierung für eine konkrete Ressource.
+"""

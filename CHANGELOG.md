@@ -13,7 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Keine.
+- Governance-Modulrouting für lokale Arbeit: Verification-Regeln sind von späteren
+  Delivery-/Review-Gates getrennt; Tool-Routing und Templates laden keine fachlich
+  unverbundenen Security-/Delivery-Module. Safety-Kernel, Security-Vorklassifikation,
+  externe Autorisierung und unabhängige QA/SEC bleiben erforderlich (#94, SemVer: patch).
+- Governance lädt SSOT-Domänenkataloge (Tools, Policy-Tags, Scopes, Commands, Discovery,
+  Work-Items, Templates) erst, wenn ein geladenes Modul sie benötigt; kleine Aufgaben
+  verarbeiten keinen irrelevanten Katalogzustand (#94, SemVer: patch).
 
 ### Fixed
 

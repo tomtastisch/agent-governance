@@ -37,6 +37,7 @@ RELATIVE_TRAVERSAL_RE = re.compile(
 EXPECTED_BINDING_PATHS = (
     "bundle/agent-governance/roles/quality-assurance.md",
     "bundle/agent-governance/modules/delivery.md",
+    "bundle/agent-governance/modules/verification.md",
     "bundle/agent-governance/modules/tool-routing.md",
 )
 EXPECTED_BINDING_RULE_IDS = ("DEL-002", "DEL-003", "DEL-007", "DEL-008", "DEL-009", "TOL-004")
@@ -366,9 +367,10 @@ class DeliveryContract(unittest.TestCase):
         )
 
     def test_review_evidence_is_bound_to_the_exact_reviewed_head(self):
-        self.assertRegex(self.delivery, r"(?is)nur für den exakt bezeichneten Commit")
+        verification = (GOVERNANCE_ROOT / "modules" / "verification.md").read_text(encoding="utf-8")
+        self.assertRegex(verification, r"(?is)nur für den exakt bezeichneten Commit")
         self.assertRegex(
-            self.delivery, r"(?is)Ändert sich der Stand nach einer Prüfung.+erneut"
+            verification, r"(?is)Ändert sich der Stand nach einer Prüfung.+erneut"
         )
         self.assertRegex(
             self.delivery,

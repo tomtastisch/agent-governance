@@ -7,7 +7,7 @@ Freigabe.
 ## Ablauf
 
 1. Löse den Prüfgegenstand als exakten Stand gemäß
-   [DEL-002](../modules/delivery.md#del-002--exakter-stand) auf.
+   [DEL-002](../modules/verification.md#del-002--exakter-stand) auf.
 2. Bestätige Rolle, Risiko und Provider-Evidenz nach
    [DEL-007](../modules/delivery.md#del-007--reviewentscheidung) und
    [DEL-008](../modules/delivery.md#del-008--provider-routing).

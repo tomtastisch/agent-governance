@@ -223,6 +223,121 @@ def load_catalog_contract(
     )
 
 
+@dataclass(frozen=True)
+class RoutingIndex:
+    """Minimaler Routingzustand für Klassifikation und Modulauflösung.
+
+    Enthält ausschließlich das Manifest, den Trigger-Katalog und aufgeschobene
+    Katalogpfade. Es ist kein vollständiger Katalogvertrag und trifft keine
+    fachliche oder Autorisierungsentscheidung.
+    """
+
+    manifest: Mapping[str, object]
+    triggers: frozenset[str]
+    root: Path
+    ssot_dir: Path
+    catalog_paths: Mapping[str, Path]
+
+
+def load_routing_index(
+    manifest_dir: Path, *, manifest: Mapping[str, object] | None = None
+) -> RoutingIndex:
+    """Lädt nur Manifest, SSOT-Index und Trigger-Katalog (fail-closed).
+
+    Die übrigen Domänenkataloge (Tools, Policy-Tags, Scopes, Commands, Discovery,
+    Work-Items, Templates) werden erst über die passenden Lazy-Loader geladen,
+    wenn ein tatsächlich geladenes Modul sie benötigt.
+    """
+    root = _manifest_root(Path(manifest_dir))
+    manifest_path = root / "manifest.toml"
+    if manifest is None:
+        manifest_data = _load_toml(_regular_file(root, manifest_path, "Manifest"), "Manifest")
+    else:
+        if not isinstance(manifest, Mapping):
+            raise CatalogValidationError("Manifest muss eine Tabelle sein")
+        manifest_data = dict(manifest)
+
+    _exact_fields(manifest_data, MANIFEST_FIELDS, "Manifest Top-Level")
+    if type(manifest_data.get("schema_version")) is not int or manifest_data["schema_version"] != 4:
+        raise CatalogValidationError("Manifest schema_version muss Integer 4 sein")
+    local_rules = manifest_data.get("local_rules")
+    if not isinstance(local_rules, str) or not local_rules:
+        raise CatalogValidationError("Manifest local_rules muss ein nichtleerer relativer Pfad sein")
+    _optional_index_path(root, local_rules, "local_rules")
+
+    routing = manifest_data.get("routing")
+    if not isinstance(routing, Mapping):
+        raise CatalogValidationError("Manifest routing muss eine Tabelle sein")
+    _exact_fields(routing, frozenset({"unknown", "ambiguous"}), "Manifest routing")
+    if routing.get("unknown") != "block" or routing.get("ambiguous") != "block":
+        raise CatalogValidationError("Manifest routing muss unknown und ambiguous blockieren")
+
+    ssot_index_path = _index_file(root, manifest_data.get("ssot"), "SSOT-Index")
+    ssot_data = _load_toml(ssot_index_path, "SSOT-Index")
+    _exact_fields(ssot_data, SSOT_MANIFEST_FIELDS, "SSOT-Index Top-Level")
+    if type(ssot_data.get("schema_version")) is not int or ssot_data["schema_version"] != 1:
+        raise CatalogValidationError("SSOT-Index schema_version muss Integer 1 sein")
+    domains = ssot_data.get("domains")
+    if not isinstance(domains, Mapping):
+        raise CatalogValidationError("SSOT-Index domains muss eine Tabelle sein")
+    _exact_fields(domains, frozenset(SSOT_DOMAINS), "SSOT-Index domains")
+    ssot_dir = ssot_index_path.parent
+
+    catalog_paths: dict[str, Path] = {}
+    seen_catalog_ids: set[str] = set()
+    for domain in SSOT_DOMAINS:
+        entries = domains.get(domain)
+        if not isinstance(entries, Mapping) or not entries:
+            raise CatalogValidationError(f"SSOT-Domain {domain} muss eine nichtleere Tabelle sein")
+        _exact_fields(entries, SSOT_DOMAIN_CATALOGS[domain], f"SSOT-Domain {domain}")
+        for catalog_id in sorted(entries):
+            _validate_id(catalog_id, f"SSOT-Domain {domain}")
+            if catalog_id in seen_catalog_ids:
+                raise CatalogValidationError("SSOT-Index enthält doppelte Katalog-IDs")
+            seen_catalog_ids.add(catalog_id)
+            catalog_paths[catalog_id] = _index_candidate(
+                ssot_dir, entries.get(catalog_id), f"Katalog {catalog_id}"
+            )
+
+    triggers_path = _regular_file(ssot_dir, catalog_paths["triggers"], "Katalog triggers")
+    triggers = _validate_vocabulary(_load_toml(triggers_path, "Katalog triggers"), "triggers")
+    _validate_manifest_index(root, manifest_data, triggers)
+    return RoutingIndex(
+        manifest=manifest_data,
+        triggers=triggers,
+        root=root,
+        ssot_dir=ssot_dir,
+        catalog_paths=catalog_paths,
+    )
+
+
+def load_tool_domain(routing_index: RoutingIndex) -> Mapping[str, Mapping[str, object]]:
+    """Lädt und validiert Tools-, Policy-Tag- und Scope-Kataloge (fail-closed)."""
+    ssot_dir = routing_index.ssot_dir
+    paths = routing_index.catalog_paths
+    policy_tags = _validate_vocabulary(
+        _load_toml(_regular_file(ssot_dir, paths["policy_tags"], "Katalog policy_tags"), "Katalog policy_tags"),
+        "policy_tags",
+    )
+    scopes = _validate_vocabulary(
+        _load_toml(_regular_file(ssot_dir, paths["scopes"], "Katalog scopes"), "Katalog scopes"),
+        "scopes",
+    )
+    tools = _validate_tools(
+        _load_toml(_regular_file(ssot_dir, paths["tools"], "Katalog tools"), "Katalog tools"),
+        routing_index.triggers,
+        policy_tags,
+        scopes,
+    )
+    _validate_tool_routing(routing_index.manifest, tools)
+    return {"policy_tags": policy_tags, "scopes": scopes, "tools": tools}
+
+
+def load_template_index(routing_index: RoutingIndex) -> tuple[Path, ...]:
+    """Lädt und validiert den Template-Index (fail-closed)."""
+    return _validate_templates(routing_index.manifest, routing_index.root)
+
+
 def _manifest_root(path: Path) -> Path:
     if not path.is_absolute() or path.is_symlink() or not path.is_dir():
         raise CatalogValidationError("Manifestverzeichnis muss absolut, vorhanden und linkfrei sein")

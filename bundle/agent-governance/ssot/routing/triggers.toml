@@ -58,12 +58,19 @@ Der Auftrag verändert oder prüft erklärende Dokumentation.
 label = "Release"
 description = """
 Der Auftrag betrifft versionierte Liefer- oder Releasegates.
+Dies umfasst PR-/Review-Promotion, Integration, Releasevorbereitung, Package-Publishing und
+die Entscheidung oder Aussage „lieferbar“, „merge-ready“ oder „release-ready“.
+Lokale Implementierung oder Verifikation allein löst diese Lieferentscheidung nicht aus.
 """
 
 [triggers.external_effect]
 label = "External Effect"
 description = """
-Eine geplante Aktion kann persistenten oder nach außen wirkenden Zustand verändern.
+Eine geplante Aktion verändert externen Zustand oder wirkt destruktiv beziehungsweise ist
+schwer rückgängig zu machen. Normale reversible lokale Umsetzung im bereits autorisierten
+Scope wird über implementation, refactoring, testing oder documentation geroutet.
+GOV-003 gilt für jede persistente Wirkung weiterhin; unklare Wirkungsgrenzen blockieren
+nach GOV-004 die betroffene Aktion.
 """
 
 [triggers.security_sensitive_change]
