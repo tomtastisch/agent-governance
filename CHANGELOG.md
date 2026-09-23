@@ -25,6 +25,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Breaking changes:** none
 
+## [1.4.3] — 2026-09-23
+
+### Added
+
+- Keine.
+
+### Changed
+
+- Keine.
+
+### Fixed
+
+- Trusted npm Publish trennt den Publish-Erfolg von der eventual-consistenten
+  Post-Publish-Provenance-Verifikation; ein separater read-only `verify-provenance`-Job
+  prüft SLSA-v1-Provenance und Registry-Signaturen und publisht niemals erneut
+  (#103, SemVer: patch).
+- Release-Verifikation ignoriert eine geschlossene Allowlist benigner OS-Metadaten
+  (`.DS_Store`, `Thumbs.db`, `desktop.ini`), statt eine intakte Installation fälschlich
+  als `TAMPERED` zu klassifizieren (#103, SemVer: patch).
+
+### Removed
+
+- Die temporäre v1.3.0-Kompatibilitätsbrücke (`HISTORICAL_CONTRACT_VERSIONS`,
+  `validateInstalledGovernanceContract`, `parseInstalledSsotManifestText`,
+  `verifyInstalledRelease`) samt zugehörigem Fixture ist entfernt (#103, SemVer: patch).
+
+**Breaking changes:** none
+
 ## [1.4.2] — 2026-09-23
 
 ### Added
