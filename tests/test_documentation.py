@@ -741,9 +741,9 @@ class ReleaseMetadataContract(unittest.TestCase):
         self.assertIn(PACKAGE["license"], README)
         current = CHANGELOG.split(f"## [{VERSION}]", 1)[1].split("\n## [", 1)[0]
         for term in (
-            "verify-provenance",
-            "Kompatibilitätsbrücke",
-            ".DS_Store",
+            "Command-SSOT",
+            "Test-Oracle",
+            "Terminal-Theme-Infrastruktur",
         ):
             self.assertIn(term, current)
         self.assertIn("**Breaking changes:** none", current)

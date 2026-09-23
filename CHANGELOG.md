@@ -13,6 +13,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Keine.
+
+### Fixed
+
+- Keine.
+
+### Removed
+
+- Keine.
+
+**Breaking changes:** none
+
+## [1.4.4] — 2026-09-23
+
+### Added
+
+- Keine.
+
+### Changed
+
 - Command-SSOT (`ssot/commands/commands.toml`) ist die einzige produktive
   Command-Semantik-Authority; die Schattenkopien `EXPECTED_SEMANTICS` und
   `PUBLIC_COMMAND_IDS` sind entfernt. Ein sprachneutrales Test-Oracle
