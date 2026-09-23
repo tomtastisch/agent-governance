@@ -46,6 +46,11 @@ Der Installer prüft ein geschlossenes, versioniertes Bundle, sichert den besteh
 verwaltet genau seinen eigenen Markdownblock. Die Details zu Commands, Lifecycle, Recovery,
 Sicherheitsgrenzen und Datenstrukturen liegen jeweils bei ihrer zuständigen Referenz.
 
+Die Governance lädt Module für den unmittelbar anstehenden Arbeitsschritt. Lokale
+Verifikation und spätere Liefer-/Reviewentscheidungen haben getrennte Modulabschlüsse;
+Sicherheitsinvarianten bleiben ständig aktiv. Vor einer neuen Wirkung oder Lieferphase
+wird erneut klassifiziert und der erforderliche Regelbestand geladen.
+
 ![Übersicht: Agent Governance verbindet klare Regeln, Toolwahl, Grenzen und nachvollziehbare Ergebnisse.](https://raw.githubusercontent.com/tomtastisch/agent-governance/main/assets/diagrams/governance-overview.png)
 
 ## Dokumentation

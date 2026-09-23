@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -34,11 +34,10 @@ export async function createReleaseFixture(releaseRoot: string, version = "1.0.0
 }
 
 export async function createPublishedV130ReleaseFixture(releaseRoot: string): Promise<string> {
-  await createReleaseFixture(releaseRoot, "1.3.0");
-  const manifestRoot = join(releaseRoot, "bundle", "agent-governance");
+  await mkdir(releaseRoot, { recursive: true });
   const fixtureRoot = join(repositoryRoot, "tests", "fixtures", "installer", "releases", "v1.3.0");
-  await rm(join(manifestRoot, "ssot", "work-items"), { recursive: true, force: true });
-  await writeFile(join(manifestRoot, "ssot", "manifest.toml"), await readFile(join(fixtureRoot, "ssot-manifest.toml")));
+  await cp(join(fixtureRoot, "bundle"), join(releaseRoot, "bundle"), { recursive: true });
+  await writeFile(join(releaseRoot, "VERSION"), "1.3.0\n");
   await writeInventory(releaseRoot);
   const actualInventory = await readFile(join(releaseRoot, "release.files.sha256"));
   const publishedInventory = await readFile(join(fixtureRoot, "release.files.sha256"));

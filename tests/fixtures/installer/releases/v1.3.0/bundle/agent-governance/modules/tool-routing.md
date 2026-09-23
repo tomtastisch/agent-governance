@@ -36,7 +36,7 @@ nach [GOV-004](../../GOVERNANCE.md#gov-004--fail-closed) ausschließlich die von
 abhängige Entscheidung. Ein Fallback muss fachlich gleichwertig, nachvollziehbar und innerhalb
 derselben Read-only- oder Autorisierungsgrenze bleiben.
 
-Vor der Wahl eines unabhängigen Reviewproviders wird mit `quality_review` beziehungsweise
-`security_review` neu geroutet. Der dadurch geladene Delivery-Vertrag ist die Authority für
-Providerwahl und Finding-Lifecycle. Das Laden eines Providers oder Verfahrens belegt weder
-einen ausgeführten Review noch ein bestandenes Gate.
+Die Wahl eines unabhängigen Reviewproviders folgt
+[DEL-008](delivery.md#del-008--provider-routing); Findings werden ausschließlich nach
+[DEL-009](delivery.md#del-009--finding-lifecycle) klassifiziert und behandelt. Das Laden eines
+Providers oder Verfahrens belegt weder einen ausgeführten Review noch ein bestandenes Gate.

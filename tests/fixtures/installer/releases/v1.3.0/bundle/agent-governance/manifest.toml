@@ -44,8 +44,8 @@ path = "modules/architecture.md"
 triggers = ["architecture", "refactoring"]
 dependencies = ["evidence"]
 
-[modules.verification]
-path = "modules/verification.md"
+[modules.delivery]
+path = "modules/delivery.md"
 triggers = [
   "implementation",
   "refactoring",
@@ -54,16 +54,11 @@ triggers = [
   "release",
   "quality_review",
 ]
-dependencies = ["evidence", "invariants"]
-
-[modules.delivery]
-path = "modules/delivery.md"
-triggers = ["release", "quality_review"]
-dependencies = ["verification"]
+dependencies = ["evidence"]
 
 [modules.security]
 path = "modules/security.md"
-triggers = ["security_sensitive_change", "security_review", "external_effect"]
+triggers = ["security_sensitive_change", "security_review"]
 dependencies = ["evidence", "delivery"]
 
 [modules.tool_routing]
@@ -110,7 +105,7 @@ triggers = [
   "tool_selection",
   "work_status_tracking",
 ]
-dependencies = ["evidence"]
+dependencies = ["security"]
 
 [modules.templates]
 path = "modules/templates.md"
@@ -125,7 +120,7 @@ triggers = [
   "context_handoff",
   "status_reporting",
 ]
-dependencies = ["evidence"]
+dependencies = ["delivery"]
 
 [modules.context]
 path = "modules/context.md"

@@ -467,14 +467,16 @@ class ManifestContract(unittest.TestCase):
             }
             self.assertNotEqual(selected, set(modules), trigger)
 
-    def test_refactoring_route_includes_delivery_gates(self):
+    def test_refactoring_route_includes_local_verification_without_promotion(self):
         modules = self.data["modules"]
         selected = [
             name for name, entry in modules.items()
             if "refactoring" in entry["triggers"]
         ]
         closure = resolve_module_closure(modules, selected)
-        self.assertIn("delivery", closure)
+        self.assertIn("verification", closure)
+        self.assertIn("invariants", closure)
+        self.assertNotIn("delivery", closure)
 
     def test_tool_routing_has_closed_trigger_scope(self):
         module = self.data["modules"]["tool_routing"]
@@ -487,7 +489,7 @@ class ManifestContract(unittest.TestCase):
             set(module["triggers"]),
             {"tool_selection", *required_triggers},
         )
-        self.assertEqual(module["dependencies"], ["security"])
+        self.assertEqual(module["dependencies"], ["evidence"])
 
 
 class ToolRoutingContract(unittest.TestCase):
@@ -588,8 +590,11 @@ class ReviewContract(unittest.TestCase):
         )
 
     def test_tool_catalog_delegates_review_semantics_to_delivery_ssot(self):
-        self.assertIn("[DEL-008]", self.tools)
-        self.assertIn("[DEL-009]", self.tools)
+        profile = load_catalog("tools")["tools"]["independent_review_provider"]
+        self.assertIn("[DEL-008]", profile["fallback"])
+        self.assertIn("[DEL-009]", profile["constraints"])
+        self.assertIn("`quality_review`", self.tools)
+        self.assertIn("`security_review`", self.tools)
 
     def test_security_tool_trigger_delegates_to_security_ssot(self):
         entry = load_catalog("tools")["tools"]["security_diff_scan"]
@@ -619,7 +624,7 @@ class TemplateContract(unittest.TestCase):
                 "status_reporting",
             },
         )
-        self.assertEqual(module["dependencies"], ["delivery"])
+        self.assertEqual(module["dependencies"], ["evidence"])
         manifest = load_manifest()
         for role in ("quality_assurance", "security_review"):
             self.assertIn("templates", manifest["roles"][role]["modules"])

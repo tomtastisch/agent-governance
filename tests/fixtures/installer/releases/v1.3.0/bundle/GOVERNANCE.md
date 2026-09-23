@@ -77,8 +77,7 @@ Hash oder anderer Fingerprint veröffentlicht werden.
 Vor dem Modulrouting gilt `security_sensitive_change`, sobald eine Änderung Security-Regeln,
 Authentifizierung, Autorisierung, Secrets, Berechtigungen, Trust Boundaries,
 Prompt-Injection-Grenzen, externe Schreibwirkungen, Review-Freigaberegeln,
-Tool-Berechtigungen oder Fail-closed-Regeln berührt. Dazu gehören auch Änderungen an
-Abhängigkeiten, Governance-Regeln und Release-/Publishing-Sicherheit. Diese Vorklassifikation ist Teil des
+Tool-Berechtigungen oder Fail-closed-Regeln berührt. Diese Vorklassifikation ist Teil des
 immer geladenen Bootstrap-Vertrags; Unklarheit über einen Treffer wird nach
 [GOV-004](#gov-004--fail-closed) aufgelöst.
 
@@ -88,12 +87,8 @@ immer geladenen Bootstrap-Vertrags; Unklarheit über einen Treffer wird nach
 2. Löse den vom Manifest referenzierten SSOT-Index `ssot/manifest.toml` relativ zum beibehaltenen
    absoluten Manifestverzeichnis auf und validiere dessen geschlossenen Domain-Index sowie alle
    dort registrierten Katalogdateien vollständig.
-3. Wende [GOV-006](#gov-006--security-vorklassifikation) an und klassifiziere den unmittelbar
-   anstehenden Arbeitsschritt in einen oder mehrere der in `ssot/routing/triggers.toml`
-   definierten Trigger. Vor einem Wechsel von Scope, Risiko, Wirkung oder Lieferphase wird
-   erneut klassifiziert und vor der davon abhängigen Aktion nachgeladen. Bereits erkannte
-   Security-Relevanz bleibt für die betroffene Änderung wirksam. Noch ausstehende Gates
-   bleiben erforderlich, auch wenn ihr Modul erst beim entsprechenden Schritt geladen wird.
+3. Wende [GOV-006](#gov-006--security-vorklassifikation) an und klassifiziere die tatsächlich
+   angefragte Arbeit in einen oder mehrere der in `ssot/routing/triggers.toml` definierten Trigger.
 4. Lade nur Module, deren `triggers` exakt getroffen wurden, anschließend deren deklarierte
    `dependencies` in topologischer Reihenfolge. Mehrfach gewählte Module werden einmal geladen.
 5. Lade eine Rolle nur, wenn ihr eigener Rollentrigger getroffen wurde; lade dann ausschließlich

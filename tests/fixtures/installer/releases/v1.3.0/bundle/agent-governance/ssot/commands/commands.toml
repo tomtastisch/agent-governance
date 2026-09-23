@@ -1,0 +1,82 @@
+schema_version = 1
+
+[[commands]]
+id = "inspect"
+path = ["inspect"]
+description = "Prüft Ziel und Installationszustand ohne Änderungen."
+capability = "transaction"
+effect = "read"
+orchestrates = false
+interactive = false
+
+[[commands]]
+id = "plan"
+path = ["plan"]
+description = "Erstellt einen read-only Installationsplan."
+capability = "transaction"
+effect = "read"
+orchestrates = false
+interactive = false
+
+[[commands]]
+id = "install"
+path = ["install"]
+description = "Installiert die Governance transaktional und verifiziert das Ergebnis."
+capability = "transaction"
+effect = "write"
+orchestrates = false
+interactive = false
+
+[[commands]]
+id = "verify"
+path = ["verify"]
+description = "Verifiziert die aktive Governance-Installation."
+capability = "transaction"
+effect = "read"
+orchestrates = false
+interactive = false
+
+[[commands]]
+id = "status"
+path = ["status"]
+description = "Zeigt den aktuellen Governance-Installationsstatus."
+capability = "transaction"
+effect = "read"
+orchestrates = false
+interactive = false
+
+[[commands]]
+id = "update"
+path = ["update"]
+description = "Aktualisiert die Governance-Installation transaktional."
+capability = "transaction"
+effect = "write"
+orchestrates = false
+interactive = false
+
+[[commands]]
+id = "uninstall"
+path = ["uninstall"]
+description = "Entfernt die Governance-Installation transaktional."
+capability = "transaction"
+effect = "write"
+orchestrates = false
+interactive = false
+
+[[commands]]
+id = "rollback"
+path = ["rollback"]
+description = "Stellt den vorherigen Installationszustand transaktional wieder her."
+capability = "transaction"
+effect = "write"
+orchestrates = false
+interactive = false
+
+[[commands]]
+id = "init"
+path = ["init"]
+description = "Führt interaktiv durch Prüfung, Zielauswahl und Einrichtung."
+capability = "orchestration"
+effect = "write"
+orchestrates = true
+interactive = true

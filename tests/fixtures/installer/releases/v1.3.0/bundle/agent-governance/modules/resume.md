@@ -3,7 +3,7 @@
 Dieses Modul definiert den zustandsgebundenen Resume Fast-Path für bereits begonnene,
 unveränderte Arbeitsaufträge. Es ergänzt die Kontextkontinuität
 ([CTX-001](context.md#ctx-001--kanonische-arbeitswahrheit)) und die Liefergrenzen
-([DEL-002](verification.md#del-002--exakter-stand)) um eine präzise, bindungsbasierte
+([DEL-002](delivery.md#del-002--exakter-stand)) um eine präzise, bindungsbasierte
 Wiederaufnahme. Grundprinzipien:
 
 ```text
@@ -110,7 +110,7 @@ dürfen wiederholt werden. Externe Wirkungen bleiben an
 unstaged und untracked Inhalte werden deterministisch mitgebunden; zwei unterschiedliche relevante
 Dirty-Zustände dürfen nicht denselben Resume-Zustand erhalten. Symlink-, Race-, Pfad- und
 TOCTOU-Grenzen folgen [SEC-003](security.md#sec-003--unvertrauenswürdige-eingaben) und
-[DEL-002](verification.md#del-002--exakter-stand).
+[DEL-002](delivery.md#del-002--exakter-stand).
 
 ### RES-012 — Context-Compaction und Fresh-Chat-Resume
 

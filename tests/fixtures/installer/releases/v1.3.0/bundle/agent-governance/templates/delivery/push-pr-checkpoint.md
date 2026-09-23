@@ -9,7 +9,7 @@
 
 Dieser Vertrag hält den Liefer- und Reviewzustand eines Push-/PR-Schritts als einen exakten,
 überprüfbaren Checkpoint fest. Er erzwingt die Gleichheit der drei relevanten SHAs, bevor eine
-Exact-Head-Aussage zulässig ist (siehe [DEL-002](../../modules/verification.md#del-002--exakter-stand)).
+Exact-Head-Aussage zulässig ist (siehe [DEL-002](../../modules/delivery.md#del-002--exakter-stand)).
 
 ## Pflichtfelder
 

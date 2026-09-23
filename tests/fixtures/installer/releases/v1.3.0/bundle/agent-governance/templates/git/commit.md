@@ -10,7 +10,7 @@
 Dieser Vertrag standardisiert die atomare Commitform, damit eine einzelne fachlich kohärente
 Änderung eine stabile, maschinell prüfbare Zusammenfassung erhält. Er beschreibt ausschließlich
 die Form des Commit, nicht die Historie- oder Signaturregeln (siehe
-[DEL-004](../../modules/verification.md#del-004--atomare-historie)).
+[DEL-004](../../modules/delivery.md#del-004--atomare-historie)).
 
 ## Pflichtfelder
 
@@ -37,4 +37,4 @@ Eine Agentenmarke ist kein Änderungstyp.
 
 - Commit-Historie umschreiben,
 - Signatur-/Signieranforderungen prüfen,
-- atomare Änderungsgrenzen durchsetzen (dies leistet [DEL-004](../../modules/verification.md#del-004--atomare-historie)).
+- atomare Änderungsgrenzen durchsetzen (dies leistet [DEL-004](../../modules/delivery.md#del-004--atomare-historie)).

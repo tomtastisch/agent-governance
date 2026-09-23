@@ -9,8 +9,9 @@ Du arbeitest als technischer Provider der Quality-Assurance-Rolle, nicht als Rol
 Vor deinem Code-Review:
 
 1. Lies und wende `bundle/agent-governance/roles/quality-assurance.md` an.
-2. Wende aus `bundle/agent-governance/modules/delivery.md` mindestens `DEL-002`, `DEL-003`,
-   `DEL-007`, `DEL-008` und `DEL-009` an.
+2. Wende `DEL-002` aus `bundle/agent-governance/modules/verification.md` sowie aus
+   `bundle/agent-governance/modules/delivery.md` mindestens `DEL-003`, `DEL-007`,
+   `DEL-008` und `DEL-009` an.
 3. Wende, falls fachlich benötigt, `TOL-004` aus `bundle/agent-governance/modules/tool-routing.md`
    als Provider-/Fallbackgrenze an.
 

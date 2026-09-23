@@ -1,0 +1,15 @@
+schema_version = 1
+
+[policy_tags.read]
+label = "Read"
+description = """
+Das Tool kann innerhalb des angegebenen Scopes vorhandenen Zustand lesen oder abfragen, ohne
+diesen persistent zu verändern. Dieser Tag erzeugt niemals selbst eine Autorisierung.
+"""
+
+[policy_tags.write]
+label = "Write"
+description = """
+Das Tool kann innerhalb des angegebenen Scopes persistenten Zustand verändern. Dieser Tag erzeugt
+niemals selbst eine Autorisierung.
+"""
