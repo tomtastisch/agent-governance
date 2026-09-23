@@ -16,6 +16,46 @@ from tests.test_routing_performance import (
 )
 
 
+class ShadowBaselineError(RuntimeError):
+    """Fail-closed: die aufgezeichnete Baseline lässt sich nicht an den vorgesehenen Git-Stand binden."""
+
+
+def verify_baseline_git_binding(baseline_head: str, head: str = "HEAD") -> None:
+    """Schlägt fehl, wenn die aufgezeichnete Baseline-SHA kein echter Vorfahre von head ist.
+
+    Eine veraltete oder editierte Baseline darf keinen Vergleich mit Exit 0 erzeugen.
+    """
+    try:
+        subprocess.run(
+            ["git", "cat-file", "-e", f"{baseline_head}^{{commit}}"],
+            check=True, capture_output=True, text=True,
+        )
+    except subprocess.CalledProcessError as error:
+        raise ShadowBaselineError(f"baseline head is not a valid commit: {baseline_head}") from error
+    result = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", baseline_head, head], capture_output=True
+    )
+    if result.returncode != 0:
+        raise ShadowBaselineError(
+            f"baseline head {baseline_head} is not an ancestor of {head}; baseline is stale or edited"
+        )
+
+
+def unexplained_semantic_changes(changed, current_rules, expected_changes):
+    """Geänderte Regeln sind nur erklärt, wenn sie dem ausdrücklich erwarteten Nach-Änderungs-Vertrag entsprechen.
+
+    Eine weitere inhaltliche Abweichung — auch an GOV-006 oder TOL-004 — ist ungeklärt.
+    """
+    unexplained = []
+    for rule in changed:
+        if rule in expected_changes:
+            if semantic_text(current_rules[rule]) != semantic_text(expected_changes[rule]):
+                unexplained.append(rule)
+        else:
+            unexplained.append(rule)
+    return sorted(unexplained)
+
+
 def compare_route(name, old, new, rules):
     old_rules = {rule for rule, value in BASELINE["rules"].items() if value["path"] in old["files"]}
     removed_rules = old_rules - rules.keys()
@@ -36,7 +76,9 @@ def compare_route(name, old, new, rules):
     missing = sorted(required - rules.keys())
     changed = sorted(rule for rule in old_rules & rules.keys()
                      if semantic_text(rules[rule]) != semantic_text(BASELINE["rules"][rule]["text"]))
-    unexplained_changes = sorted(set(changed) - {"GOV-006", "TOL-004"})
+    unexplained_changes = unexplained_semantic_changes(
+        changed, rules, BASELINE.get("expected_changes", {})
+    )
     reasons = {}
     for module in set(old["modules"]) - set(new["modules"]):
         if module == "modules/security.md" and not (required & SECURITY):
@@ -71,6 +113,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--baseline-bundle", type=Path)
     args = parser.parse_args()
+    head = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+    verify_baseline_git_binding(BASELINE["head"], head)
     rows = []
     for name, triggers in CORPUS.items():
         old = BASELINE["cases"][name]
@@ -83,7 +127,7 @@ def main():
         new = measure_route(BUNDLE, triggers)
         rows.append(compare_route(name, old, new, loaded_rules(BUNDLE, new)))
     print(json.dumps({"baseline_head": BASELINE["head"],
-                      "head": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+                      "head": head,
                       "dirty": bool(subprocess.check_output(["git", "status", "--porcelain"], text=True)),
                       "cases": rows}, ensure_ascii=False, indent=2))
     return int(any(row["unexplained_divergence"] for row in rows))

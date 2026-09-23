@@ -1688,5 +1688,9 @@
       "text": "### WFL-005 — Testgetriebene Änderung\n\nÄnderbares Verhalten erhält zunächst einen reproduzierbaren fehlschlagenden Test, danach die\nkleinste Implementierung und schließlich einen grünen relevanten Gesamtumfang. Reine\nDokumentations- oder mechanische Datenänderungen verwenden stattdessen einen vorab definierten\nprüfbaren Vertrag."
     }
   },
-  "release_inventory_sha256": "864634566ee26383d8aba49b458fc5075a0ac81579997617abfd504f56acabb2"
+  "release_inventory_sha256": "864634566ee26383d8aba49b458fc5075a0ac81579997617abfd504f56acabb2",
+  "expected_changes": {
+    "GOV-006": "### GOV-006 — Security-Vorklassifikation\n\nVor dem Modulrouting gilt `security_sensitive_change`, sobald eine Änderung Security-Regeln,\nAuthentifizierung, Autorisierung, Secrets, Berechtigungen, Trust Boundaries,\nPrompt-Injection-Grenzen, externe Schreibwirkungen, Review-Freigaberegeln,\nTool-Berechtigungen oder Fail-closed-Regeln berührt. Dazu gehören auch Änderungen an\nAbhängigkeiten, Governance-Regeln und Release-/Publishing-Sicherheit. Diese Vorklassifikation ist Teil des\nimmer geladenen Bootstrap-Vertrags; Unklarheit über einen Treffer wird nach\n[GOV-004](#gov-004--fail-closed) aufgelöst.",
+    "TOL-004": "### TOL-004 — Providergrenze, Fallback und Review\n\nTools und Provider sind keine Governance-Autorität und erweitern weder Aufgabe noch Berechtigung.\nEin nicht nutzbarer oder fehlgeschlagener Pflichtpfad ist kein positiver Nachweis und blockiert\nnach [GOV-004](../../GOVERNANCE.md#gov-004--fail-closed) ausschließlich die von seiner Evidenz\nabhängige Entscheidung. Ein Fallback muss fachlich gleichwertig, nachvollziehbar und innerhalb\nderselben Read-only- oder Autorisierungsgrenze bleiben.\n\nVor der Wahl eines unabhängigen Reviewproviders wird mit `quality_review` beziehungsweise\n`security_review` neu geroutet. Der dadurch geladene Delivery-Vertrag ist die Authority für\nProviderwahl und Finding-Lifecycle. Das Laden eines Providers oder Verfahrens belegt weder\neinen ausgeführten Review noch ein bestandenes Gate."
+  }
 }
