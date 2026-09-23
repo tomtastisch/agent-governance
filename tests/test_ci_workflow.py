@@ -426,10 +426,10 @@ class ReleaseWorkflowSecurityContract(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
 
-    def test_trusted_publish_retries_complete_registry_metadata(self):
+    def test_trusted_publish_immediate_metadata_retry_is_fail_closed(self):
         workflow = PUBLISH_PATH.read_text(encoding="utf-8")
         readback = workflow.split(
-            "      - name: Read back registry metadata, dist-tag, provenance, and signatures\n",
+            "      - name: Verify immediate publish metadata (fail-closed)\n",
             1,
         )[1]
         retry = readback.split("          for ATTEMPT", 1)[1].split("          done", 1)[0]
@@ -439,28 +439,29 @@ class ReleaseWorkflowSecurityContract(unittest.TestCase):
             'npm view "$PACKAGE_SPEC" dist --json',
             "d.integrity",
             "d.shasum",
-            "https://slsa.dev/provenance/v1",
         ):
             self.assertIn(contract, retry)
+        self.assertNotIn(
+            "https://slsa.dev/provenance/v1",
+            retry,
+            "provenance must be verified by a separate post-publish job, not the synchronous metadata retry",
+        )
 
         self.assertNotEqual(
             _run_registry_retry_with_failed_reads(readback),
             0,
-            "registry readback must fail closed after the final failed attempt",
+            "immediate publish metadata readback must fail closed after the final failed attempt",
         )
 
-    def test_trusted_publish_accepts_only_one_complete_dist_record(self):
+    def test_trusted_publish_accepts_only_one_complete_immediate_dist_record(self):
         workflow = PUBLISH_PATH.read_text(encoding="utf-8")
         readback = workflow.split(
-            "      - name: Read back registry metadata, dist-tag, provenance, and signatures\n",
+            "      - name: Verify immediate publish metadata (fail-closed)\n",
             1,
         )[1]
         complete = {
             "integrity": "sha512-test",
             "shasum": "0123456789abcdef",
-            "attestations": {
-                "provenance": {"predicateType": "https://slsa.dev/provenance/v1"}
-            },
         }
         cases = (
             (complete, True),
@@ -468,6 +469,7 @@ class ReleaseWorkflowSecurityContract(unittest.TestCase):
             ([], False),
             ([complete, complete], False),
             ({"integrity": "sha512-test"}, False),
+            ({"shasum": "0123456789abcdef"}, False),
             ("malformed", False),
         )
         for registry_dist, accepted in cases:
@@ -478,14 +480,14 @@ class ReleaseWorkflowSecurityContract(unittest.TestCase):
                 self.assertEqual(
                     result == 0,
                     accepted,
-                    "readback must accept npm's object and singleton-array forms "
-                    "only when the sole dist record is complete",
+                    "immediate metadata readback must accept npm's object and singleton-array forms "
+                    "only when the sole dist record has both integrity and shasum",
                 )
 
-    def test_trusted_publish_retry_window_extends_registry_propagation_and_stays_bounded(self):
+    def test_trusted_publish_immediate_retry_window_stays_bounded(self):
         workflow = PUBLISH_PATH.read_text(encoding="utf-8")
         readback = workflow.split(
-            "      - name: Read back registry metadata, dist-tag, provenance, and signatures\n",
+            "      - name: Verify immediate publish metadata (fail-closed)\n",
             1,
         )[1]
         retry = readback.split("          for ATTEMPT", 1)[1].split("          done", 1)[0]
@@ -496,15 +498,32 @@ class ReleaseWorkflowSecurityContract(unittest.TestCase):
         self.assertGreaterEqual(
             len(attempts),
             13,
-            "registry readback must tolerate at least 120s of propagation "
+            "immediate metadata readback must tolerate at least 120s of propagation "
             "(>=13 attempts at 10s spacing)",
         )
         self.assertIn("sleep 10", retry)
         self.assertIn(
             f'test "$ATTEMPT" = {len(attempts)} && exit 1',
             retry,
-            "readback must stay bounded and fail closed on the final attempt",
+            "immediate metadata readback must stay bounded and fail closed on the final attempt",
         )
+
+    def test_post_publish_provenance_verification_is_separate_and_read_only(self):
+        workflow = PUBLISH_PATH.read_text(encoding="utf-8")
+        verify_job = _job_block(workflow, "verify-provenance")
+        self.assertIn("needs: publish", verify_job)
+        self.assertIn("contents: read", verify_job)
+        self.assertNotIn("id-token: write", verify_job)
+        self.assertNotIn(
+            "npm publish",
+            verify_job,
+            "the post-publish verification path must never run npm publish again",
+        )
+        self.assertIn("https://slsa.dev/provenance/v1", verify_job)
+        self.assertIn("npm audit signatures", verify_job)
+        self.assertIn('PACKAGE_VERSION="${RELEASE_TAG#v}"', verify_job)
+        for run_block in _run_blocks(verify_job):
+            self.assertNotIn("${{", run_block)
 
     def test_one_time_npm_bootstrap_is_rc2_only_and_secret_is_step_scoped(self):
         self.assertTrue(

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { lstat, readFile, readdir, realpath } from "node:fs/promises";
 import { isAbsolute, join, normalize, relative, sep } from "node:path";
-import { validateGovernanceContract, validateInstalledGovernanceContract } from "./governance-contract.ts";
+import { validateGovernanceContract } from "./governance-contract.ts";
 
 const REQUIRED = [
   "VERSION",
@@ -9,7 +9,7 @@ const REQUIRED = [
   "bundle/agent-governance/manifest.toml",
 ] as const;
 const DIGEST_LINE = /^([0-9a-f]{64})  ([^\0\r\n]+)$/;
-const HISTORICAL_CONTRACT_VERSIONS = new Set(["1.3.0"]);
+const BENIGN_OS_METADATA_FILES = new Set([".DS_Store", "Thumbs.db", "desktop.ini"]);
 
 export interface VerifiedRelease {
   readonly version: string;
@@ -52,7 +52,7 @@ function validateNormativeText(content: Buffer, path: string): void {
   if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(text)) throw new Error(`normative text contains a raw control character: ${path}`);
 }
 
-async function verifyReleaseWithContract(releaseRoot: string, installed: boolean): Promise<VerifiedRelease> {
+async function verifyReleaseWithContract(releaseRoot: string): Promise<VerifiedRelease> {
   if (!isAbsolute(releaseRoot)) {
     throw new Error("release root must be absolute");
   }
@@ -94,8 +94,10 @@ async function verifyReleaseWithContract(releaseRoot: string, installed: boolean
       const stat = await lstat(absolute);
       if (stat.isSymbolicLink()) throw new Error(`release bundle contains a symlink: ${path}`);
       if (stat.isDirectory()) await walk(absolute);
-      else if (stat.isFile()) actualBundleFiles.push(path);
-      else throw new Error(`release bundle contains an unexpected file type: ${path}`);
+      else if (stat.isFile()) {
+        if (BENIGN_OS_METADATA_FILES.has(item.name)) continue;
+        actualBundleFiles.push(path);
+      } else throw new Error(`release bundle contains an unexpected file type: ${path}`);
     }
   }
   await walk(join(releaseRoot, "bundle"));
@@ -105,8 +107,7 @@ async function verifyReleaseWithContract(releaseRoot: string, installed: boolean
   if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(version)) {
     throw new Error("invalid release version");
   }
-  const validateContract = installed && HISTORICAL_CONTRACT_VERSIONS.has(version) ? validateInstalledGovernanceContract : validateGovernanceContract;
-  const contract = await validateContract(join(releaseRoot, "bundle", "agent-governance"), manifest, entries);
+  const contract = await validateGovernanceContract(join(releaseRoot, "bundle", "agent-governance"), manifest, entries);
   const localRelative = contract.localRulesPath;
   const knownInventoryFiles = new Set([
     "bundle/GOVERNANCE.md",
@@ -132,9 +133,5 @@ async function verifyReleaseWithContract(releaseRoot: string, installed: boolean
 }
 
 export function verifyRelease(releaseRoot: string): Promise<VerifiedRelease> {
-  return verifyReleaseWithContract(releaseRoot, false);
-}
-
-export function verifyInstalledRelease(releaseRoot: string): Promise<VerifiedRelease> {
-  return verifyReleaseWithContract(releaseRoot, true);
+  return verifyReleaseWithContract(releaseRoot);
 }

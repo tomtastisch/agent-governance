@@ -32,15 +32,3 @@ export async function createReleaseFixture(releaseRoot: string, version = "1.0.0
   await writeInventory(releaseRoot);
   return releaseRoot;
 }
-
-export async function createPublishedV130ReleaseFixture(releaseRoot: string): Promise<string> {
-  await mkdir(releaseRoot, { recursive: true });
-  const fixtureRoot = join(repositoryRoot, "tests", "fixtures", "installer", "releases", "v1.3.0");
-  await cp(join(fixtureRoot, "bundle"), join(releaseRoot, "bundle"), { recursive: true });
-  await writeFile(join(releaseRoot, "VERSION"), "1.3.0\n");
-  await writeInventory(releaseRoot);
-  const actualInventory = await readFile(join(releaseRoot, "release.files.sha256"));
-  const publishedInventory = await readFile(join(fixtureRoot, "release.files.sha256"));
-  if (!actualInventory.equals(publishedInventory)) throw new Error("v1.3.0 release fixture differs from the published inventory");
-  return releaseRoot;
-}

@@ -107,6 +107,8 @@ jobs:
           npm run test:package
       - name: Run isolated installer fixture
         run: tests/e2e/run_installer_fixture.sh
+      - name: Run release-verifier fixture (benign OS metadata)
+        run: tests/e2e/run_release_verifier_fixture.sh
 
   consistency-tests:
     name: Konsistenz- & Drift-Tests (blockierend)
