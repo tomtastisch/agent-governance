@@ -326,9 +326,9 @@ class ReleaseMetadataContract(unittest.TestCase):
         version = read(ROOT / "VERSION").strip()
         current = changelog.split(f"## [{version}]", 1)[1].split("\n## [", 1)[0]
         for term in (
-            "Cross-Version-Updates",
-            "OUTDATED",
-            "TAMPERED",
+            "Governance-Modulrouting",
+            "Verification-Regeln",
+            "SSOT-Domänenkataloge",
         ):
             self.assertIn(term, current)
         self.assertIn("**Breaking changes:** none", current)
