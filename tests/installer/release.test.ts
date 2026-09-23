@@ -68,6 +68,12 @@ test("release verifier tolerates benign OS metadata files but still rejects othe
   }
 });
 
+test("release verifier still rejects a symlink named like a benign OS metadata file", async () => {
+  const root = await fixture();
+  await symlink(join(root, "VERSION"), join(root, "bundle", ".DS_Store"));
+  await assert.rejects(verifyRelease(root), /symlink/);
+});
+
 test("release verifier rejects missing required files and oversized inventory entries", async () => {
   const missing = await fixture();
   await rm(join(missing, "bundle", "GOVERNANCE.md"));

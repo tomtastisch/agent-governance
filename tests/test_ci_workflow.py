@@ -522,6 +522,8 @@ class ReleaseWorkflowSecurityContract(unittest.TestCase):
         self.assertIn("https://slsa.dev/provenance/v1", verify_job)
         self.assertIn("npm audit signatures", verify_job)
         self.assertIn('PACKAGE_VERSION="${RELEASE_TAG#v}"', verify_job)
+        self.assertIn("sleep 30", verify_job)
+        self.assertIn('test "$ATTEMPT" = 10 && exit 1', verify_job)
         for run_block in _run_blocks(verify_job):
             self.assertNotIn("${{", run_block)
 
