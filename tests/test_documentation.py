@@ -749,6 +749,15 @@ class ReleaseMetadataContract(unittest.TestCase):
         self.assertIn("**Breaking changes:** none", current)
         recovery_patch = CHANGELOG.split("## [0.4.1]", 1)[1].split("\n## [", 1)[0]
         self.assertIn("**Breaking changes:** none", recovery_patch)
+        work_item_release = CHANGELOG.split("## [1.4.0]", 1)[1].split("\n## [", 1)[0]
+        for term in (
+            "Work-Item-Klassifikations-SSOT",
+            "work-items/classifications.toml",
+            "work-items/projections/github-labels.toml",
+            "Projection-Plan",
+            "@tomtastisch/agent-governance/work-items",
+        ):
+            self.assertIn(term, work_item_release)
         historical = CHANGELOG.split("## [0.4.0]", 1)[1].split("\n## [", 1)[0]
         for term in (
             "Manifest-Schema 2",
