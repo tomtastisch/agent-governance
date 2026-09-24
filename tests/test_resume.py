@@ -20,7 +20,7 @@ TRIGGERS = GOVERNANCE_ROOT / "ssot" / "routing" / "triggers.toml"
 RESUME = GOVERNANCE_ROOT / "modules" / "resume.md"
 
 RESUME_TRIGGER = "resume_continuation"
-RESUME_RULE_COUNT = 15
+RESUME_RULE_COUNT = 21
 
 # Pflichtbegriffe: der normative Resume-Vertrag muss diese Semantik ausdrücken.
 REQUIRED_TERMS = (
@@ -49,6 +49,24 @@ REQUIRED_TERMS = (
     "keine neue Credential-Infrastruktur",
     "keine provider- oder modellspezifische Limitlogik",
     "atomaren Aktion",
+    # Delivery-Boundary-Reuse (#93)
+    "State transition != evidence invalidation",
+    "Evidence-Key",
+    "git push",
+    "Pull Request",
+    "Remote-Readback",
+    "Remote-Branch-Head",
+    "PR-Head",
+    "GitHub CI",
+    "Required Checks",
+    "Branch Protection",
+    "Base-unabhängige Evidence",
+    "Base-/Diff-gebundene Evidence",
+    "keine zweite Evidence-Registry",
+    "keine zweite Resume-Engine",
+    "keine zweite Checkpoint-Authority",
+    "keine zweite PR-Contract-Authority",
+    "keine harte Abhängigkeit",
 )
 
 # Provider-/modellspezifische Namen dürfen im neutralen Vertrag nicht auftauchen.
@@ -191,6 +209,63 @@ class ResumeModuleContract(unittest.TestCase):
             "keine neue Credential-Infrastruktur",
         ):
             self.assertIn(phrase, self.text)
+
+    def test_delivery_transition_does_not_invalidate_evidence(self):
+        section = rule_section(self.text, 16)
+        self.assertIn("State transition != evidence invalidation", " ".join(section.split()))
+        self.assertIn("git push", section)
+        self.assertIn("Pull Request", section)
+
+    def test_evidence_key_binds_config_environment_and_base_diff(self):
+        section = " ".join(rule_section(self.text, 17).split())
+        for term in (
+            "Evidence-Key",
+            "content identity",
+            "check identity",
+            "configuration",
+            "environment",
+            "scope",
+            "freshness",
+            "base/diff",
+        ):
+            with self.subTest(term=term):
+                self.assertIn(term, section)
+
+    def test_remote_readback_is_required_before_reuse(self):
+        section = rule_section(self.text, 18)
+        for term in ("Remote-Branch-Head", "PR-Head", "fail-closed"):
+            with self.subTest(term=term):
+                self.assertIn(term, section)
+
+    def test_identical_vs_independent_checks(self):
+        section = " ".join(rule_section(self.text, 19).split())
+        for term in ("identische", "unabhängige", "GitHub CI", "eigenständige Evidence"):
+            with self.subTest(term=term):
+                self.assertIn(term, section)
+
+    def test_base_diff_bound_evidence_is_selectively_invalidated(self):
+        section = " ".join(rule_section(self.text, 20).split())
+        for term in ("Base-unabhängige", "Base-/Diff-gebundene", "keine pauschale Invalidierung"):
+            with self.subTest(term=term):
+                self.assertIn(term, section)
+
+    def test_remote_gates_are_not_weakened(self):
+        section = rule_section(self.text, 21)
+        for term in ("Required Checks", "Branch Protection", "Security", "Approval", "Signing"):
+            with self.subTest(term=term):
+                self.assertIn(term, section)
+
+    def test_no_second_delivery_or_checkpoint_authority(self):
+        normalized = " ".join(self.text.split())
+        for term in (
+            "keine zweite Evidence-Registry",
+            "keine zweite Resume-Engine",
+            "keine zweite Checkpoint-Authority",
+            "keine zweite PR-Contract-Authority",
+            "keine harte Abhängigkeit",
+        ):
+            with self.subTest(term=term):
+                self.assertIn(term, normalized)
 
 
 class ResumeTemplateContract(unittest.TestCase):
