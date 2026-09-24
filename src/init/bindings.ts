@@ -1,7 +1,7 @@
 import { isAbsolute, normalize, resolve } from "node:path";
 
-import type { Candidate } from "../discovery/types.ts";
-import type { InitManualInput, InitTarget } from "./types.ts";
+import { resolveSupport } from "./support.ts";
+import type { InitEnvironment, InitManualInput, InitSelection, InitTarget } from "./types.ts";
 
 function validateRoot(root: string): void {
   if (root === "" || /[\0\r\n]/.test(root) || !isAbsolute(root) || resolve(root) !== root) {
@@ -26,23 +26,19 @@ function validateEntry(entryFile: string): void {
   }
 }
 
-export function resolveBinding(
-  candidate: Candidate | undefined,
-  manualInput: InitManualInput,
-): InitTarget {
-  if (candidate?.confidence === "REJECTED") {
-    throw new Error("rejected discovery candidate cannot become an init target");
-  }
-  if (
-    candidate !== undefined
-    && manualInput.targetRoot !== undefined
-    && manualInput.targetRoot !== candidate.root
-  ) {
-    throw new Error("manual target root conflicts with the selected candidate");
-  }
-  const targetRoot = candidate?.root ?? manualInput.targetRoot;
+export function resolveManualTarget(manualInput: InitManualInput): InitTarget {
+  const targetRoot = manualInput.targetRoot;
   if (targetRoot === undefined) throw new Error("manual target root is required");
   validateRoot(targetRoot);
   validateEntry(manualInput.entryFile);
   return Object.freeze({ targetRoot, entryFile: manualInput.entryFile });
+}
+
+export function resolveTarget(selection: InitSelection, environment: InitEnvironment): InitTarget {
+  if ("harness" in selection) {
+    const decision = resolveSupport(selection.harness.id, environment);
+    if (!decision.supported) throw new Error("selected harness is not supported");
+    return Object.freeze({ targetRoot: decision.targetRoot, entryFile: decision.entryFile });
+  }
+  return resolveManualTarget(selection.manualInput);
 }

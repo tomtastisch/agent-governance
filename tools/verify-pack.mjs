@@ -33,7 +33,7 @@ for (const path of paths) {
   if (path !== runtimeBrandingPath && !/^(?:CHANGELOG\.md|LICENSE|README\.md|VERSION|package\.json|release\.files\.sha256|docs\/installer-cli-reference\.md|bundle\/|dist\/|prebuilds\/(?:darwin|linux)-(?:arm64|x64)\/agent_governance_fs\.node$)/.test(path)) {
     throw new Error(`unexpected tarball path: ${path}`);
   }
-  if (/^(?:integrations|tests|tools)\//.test(path) || /(?:codex|claude|opencode|openclaw|hooks?)/i.test(path)) {
+  if (/^(?:integrations|tests|tools)\//.test(path) || /hooks?/i.test(path)) {
     throw new Error(`forbidden runtime path: ${path}`);
   }
 }
@@ -55,7 +55,7 @@ for (const path of paths) {
 }
 for (const path of paths.filter((value) => value.startsWith("dist/") && value.endsWith(".js"))) {
   const source = await readFile(path, "utf8");
-  if (/\b(?:codex|claude|opencode|openclaw)\b|hooks\.json|PreToolUse|agent_governance__execute/i.test(source)) {
+  if (/hooks\.json|PreToolUse|agent_governance__execute/i.test(source)) {
     throw new Error(`forbidden harness-specific runtime content: ${path}`);
   }
 }

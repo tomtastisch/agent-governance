@@ -6,11 +6,11 @@
 ## Runtime-Dependency-Projektion 1.2.0
 
 `package.json.dependencies` und `package-lock.json` sind die einzige Runtime-Dependency-SSOT.
-Die drei direkten, exakt gepinnten Runtime-Pakete sind `@clack/prompts` `1.7.0` (MIT) für den
-interaktiven Prompt-Stack, `@toon-format/toon` `4.1.1` (MIT) für die deterministische
-Resume-TOON-Projektion und `smol-toml` `1.8.0` (BSD-3-Clause) für die direkt importierten
-Command- und Discovery-Kataloge. Der Lock löst exakt `12 = 1 Root + 8 Production ohne Root + 3 Development`
-Paketdatensätze auf (acht Production-Pakete ohne Root: drei direkt, fünf transitiv). Alle
+Die vier direkten, exakt gepinnten Runtime-Pakete sind `@agntn/harnesses` `0.3.0` (MIT) für die
+Installed-Harness-Erkennung, `@clack/prompts` `1.7.0` (MIT) für den interaktiven Prompt-Stack,
+`@toon-format/toon` `4.1.1` (MIT) für die deterministische Resume-TOON-Projektion und `smol-toml`
+`1.8.0` (BSD-3-Clause) für die direkt importierten Command- und Discovery-Kataloge. Der Lock löst
+exakt `111 = 1 Root + 107 Production ohne Root + 3 Development` Paketdatensätze auf. Alle
 Integrity- und Registry-URLs stehen unverändert im Lockfile; `npm audit --audit-level=high`, der
 License-Allowlist-Check und der echte Tarball-Consumer sind Releasegates.
 
@@ -35,13 +35,14 @@ oder lädt keine Pakete nach und startet weder npm, pnpm, yarn noch bun.
 
 ## Eigene Paketabhängigkeiten
 
-Der Installer besitzt genau drei direkte Third-Party-Runtime-Abhängigkeiten:
-`@clack/prompts` `1.7.0`, `@toon-format/toon` `4.1.1` und `smol-toml` `1.8.0`. Die schmale
+Der Installer besitzt genau vier direkte Third-Party-Runtime-Abhängigkeiten:
+`@agntn/harnesses` `0.3.0`, `@clack/prompts` `1.7.0`, `@toon-format/toon` `4.1.1` und
+`smol-toml` `1.8.0`. Die schmale
 repository-eigene Node-API-C-Komponente nutzt ausschließlich OS- und stabile Node-API-Symbole;
 sie wird für Darwin/Linux auf arm64/x64 im Releaseworkflow gebaut und als vier Prebuilds im
 gleichen provenance-gebundenen npm-Tarball ausgeliefert. Exakt gelockte Entwicklungsabhängigkeiten
 sind TypeScript `5.9.2` und `@types/node` `24.3.0`; die Lockfile-Projektion umfasst wie oben
-beschrieben 12 Datensätze. Der lokale `npm audit --audit-level=high` meldete bei der Einführung null bekannte
+beschrieben 111 Datensätze. Der lokale `npm audit --audit-level=high` meldete bei der Einführung null bekannte
 Schwachstellen. Die direkten und Entwicklungsabhängigkeiten stammen aus der npm-Registry, ihre
 Integritätswerte stehen in `package-lock.json`; Entwicklungsabhängigkeiten werden nicht in das
 Laufzeitpaket gebündelt. Repository und Paket verwenden Apache-2.0.
@@ -73,6 +74,17 @@ er besitzt keine transaktionale Codex-Home-, Instruktions-, Hook- oder Rollback-
 Governance muss vor Klassifikation und Wirkung immer aktiv sein und darf nicht als optionaler Skill
 modelliert werden. Das Paket wird deshalb unabhängig von seiner Lizenzkompatibilität nicht
 übernommen.
+
+## `@agntn/harnesses`
+
+Für die Installed-Harness-Erkennung des `init`-Screens wird `@agntn/harnesses` exakt auf `0.3.0`
+gepinnt (kein Range, kein Versions-Float). Die Registry nennt MIT und Git-Repository
+`https://github.com/agntn/harnesses`. Verwendet wird ausschließlich die Library-API
+`getAllHarnesses()` plus `Harness.isInstalled()`, die auf Unix lediglich `which <binary>` prüft und
+die gefundene Harness-CLI nicht startet. `harnesses detect`, `harness.version` und fremde
+`--version`-Probes werden für die Discovery nicht verwendet. Die Dependency beantwortet nur, ob
+mindestens eine deklarierte Coding-CLI auf dem PATH auflösbar ist; Support-, Binding- und
+Integritätsentscheidungen bleiben Agent-Governance-Authorities.
 
 ## Bekannte Grenzen der Evidenz
 

@@ -29,6 +29,9 @@ test("the 1.4.5 real init path never starts a package manager or dependency repa
     Object.defineProperty(childProcess, method, {
       configurable: true,
       value: (...args: unknown[]) => {
+        if (method === "execFileSync" && String(args[0]) === "which") {
+          return (originals.get(method) as (...values: unknown[]) => unknown)(...args);
+        }
         intercepted.push(`${method}:${String(args[0])}`);
         throw new Error(`init attempted forbidden child process via ${method}`);
       },

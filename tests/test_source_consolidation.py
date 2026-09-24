@@ -172,11 +172,12 @@ class SingleBootstrapSource(unittest.TestCase):
     def test_no_harness_bootstrap_sources_exist(self):
         found = sorted(
             path.relative_to(ROOT).as_posix()
-            for path in ROOT.rglob("*")
-            if path.is_file() and path.name in {"AGENTS.md", "CLAUDE.md"}
-            and ".git" not in path.parts
-            and VENDORED_UPSTREAM not in path.parents
-        )
+        for path in ROOT.rglob("*")
+        if path.is_file() and path.name in {"AGENTS.md", "CLAUDE.md"}
+        and ".git" not in path.parts
+        and "node_modules" not in path.parts
+        and VENDORED_UPSTREAM not in path.parents
+    )
         self.assertEqual(found, [])
 
     def test_instruction_named_dependency_files_are_confined_to_untrusted_snapshot(self):

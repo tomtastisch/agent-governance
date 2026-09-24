@@ -1,19 +1,65 @@
-import { readFileSync } from "node:fs";
 import { parse } from "smol-toml";
-import { loadSsotIndex } from "../ssot-manifest.ts";
-import {
-  EVIDENCE_FAMILIES,
-  type CandidateClass,
-  type CandidateClassDefinition,
-  type DiscoveryCatalog,
-  type DiscoveryConfidence,
-  type DiscoveryLimits,
-  type DiscoverySignal,
-  type EvidenceFamily,
-  type EvidenceFamilyDefinition,
-  type EvidenceSourceKind,
-  type EvidenceStrength,
-} from "./types.ts";
+
+export const EVIDENCE_FAMILIES = [
+  "runtime",
+  "state",
+  "tooling",
+  "ai_metadata",
+  "package_metadata",
+  "document",
+] as const;
+
+export type EvidenceFamily = (typeof EVIDENCE_FAMILIES)[number];
+export type EvidenceStrength = "strong" | "corroborating" | "weak";
+export type EvidenceSourceKind = "json" | "toml" | "plist" | "sqlite_schema" | "package_metadata";
+export type CandidateClass = "DIRECTORY" | "APP_BUNDLE";
+
+export interface DiscoveryLimits {
+  readonly maxDepth: number;
+  readonly maxFiles: number;
+  readonly maxEntries: number;
+  readonly maxFileBytes: number;
+  readonly maxSqliteObjects: number;
+  readonly maxSqliteColumns: number;
+  readonly maxDurationMs: number;
+  readonly maxMetadataLength: number;
+}
+
+export interface DiscoveryConfidence {
+  readonly highMinimumScore: number;
+  readonly highMinimumFamilies: number;
+  readonly highMinimumIndependentSources: number;
+  readonly highRequiresRuntime: boolean;
+  readonly uncertainMinimumScore: number;
+}
+
+export interface DiscoverySignal {
+  readonly id: string;
+  readonly family: EvidenceFamily;
+  readonly sourceKinds: readonly EvidenceSourceKind[];
+  readonly keys: readonly string[];
+  readonly minimumMatches: number;
+  readonly strength: EvidenceStrength;
+}
+
+export interface EvidenceFamilyDefinition {
+  readonly defaultStrength: EvidenceStrength;
+  readonly weight: number;
+}
+
+export interface CandidateClassDefinition {
+  readonly class: CandidateClass;
+  readonly label: string;
+}
+
+export interface DiscoveryCatalog {
+  readonly schemaVersion: 1;
+  readonly limits: DiscoveryLimits;
+  readonly confidence: DiscoveryConfidence;
+  readonly candidateClasses: Readonly<Record<"directory" | "app_bundle", CandidateClassDefinition>>;
+  readonly evidenceFamilies: Readonly<Record<EvidenceFamily, EvidenceFamilyDefinition>>;
+  readonly signals: readonly DiscoverySignal[];
+}
 
 const TOP_LEVEL_FIELDS = new Set([
   "schema_version",
@@ -221,13 +267,4 @@ export function parseDiscoveryCatalogText(content: string): DiscoveryCatalog {
     evidenceFamilies,
     signals: parseSignals(catalog.signals),
   });
-}
-
-export function loadDiscoveryCatalog(releaseRoot?: string): DiscoveryCatalog {
-  const ssot = loadSsotIndex(releaseRoot);
-  const entries = ssot.index.domains.discovery;
-  const keys = Object.keys(entries);
-  if (keys.length !== 1 || keys[0] !== "discovery_signals") throw new Error("discovery domain has missing or unknown fields");
-  const catalogPath = ssot.catalogFile("discovery", "discovery_signals");
-  return parseDiscoveryCatalogText(readFileSync(catalogPath, "utf8"));
 }

@@ -9,21 +9,10 @@ import { fileURLToPath } from "node:url";
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const require = createRequire(import.meta.url);
 
-function markerCandidate(root, confidence) {
-  return {
-    root,
-    candidateClass: "DIRECTORY",
-    status: "COMPLETE",
-    confidence,
-    score: confidence === "HIGH_CONFIDENCE" ? 9 : 3,
-    families: ["runtime", "state", "tooling"],
-    independentSources: 3,
-    evidence: [],
-    fileCount: 3,
-    evidenceDensity: 1,
-    activityAt: null,
-    evidenceDigest: "c".repeat(64),
-  };
+function harnessRow(id, displayName, options = {}) {
+  const { supported = true, state = "CURRENT", localVersion = "1.4.5", latestVersion = "1.4.5" } = options;
+  if (!supported) return { id, displayName, supported: false };
+  return { id, displayName, supported: true, targetRoot: `/synthetic/${id}`, entryFile: "AGENTS.md", state, localVersion, latestVersion };
 }
 
 async function runChild() {
@@ -32,23 +21,25 @@ async function runChild() {
     const { INIT_CANCELLED } = await import("../../src/init/types.ts");
     const columns = process.env.AGENT_GOVERNANCE_TEST_COLUMNS;
     if (!columns || !/^(?:60|80|120)$/u.test(columns)) throw new Error("synthetic PTY columns are invalid");
-    const candidates = process.argv.includes("--entry-child")
-      ? [markerCandidate(join(process.env.XDG_CONFIG_HOME, "runtime-profile"), "HIGH_CONFIDENCE")]
+    const rows = process.argv.includes("--entry-child")
+      ? [harnessRow("claude", "Anthropic Claude Code")]
       : process.argv.includes("--fallback-child")
-      ? Array.from({ length: 20 }, (_, index) => markerCandidate(
-          `/synthetic/Candidate-${String(index + 1).padStart(2, "0")}-${"multiline-label-".repeat(4)}`,
-          index === 0 ? "HIGH_CONFIDENCE" : "UNCERTAIN",
-        ))
-      : [
-          markerCandidate("/synthetic/High", "HIGH_CONFIDENCE"),
-          markerCandidate("/synthetic/Uncertain", "UNCERTAIN"),
-        ];
+        ? Array.from({ length: 20 }, (_, index) => harnessRow(
+            `harness-${String(index + 1).padStart(2, "0")}`,
+            `Harness ${String(index + 1).padStart(2, "0")} ${"multiline-label-".repeat(4)}`,
+            { localVersion: "1.4.4", latestVersion: "1.4.5" },
+          ))
+        : [
+            harnessRow("claude", "Anthropic Claude Code"),
+            harnessRow("codex", "OpenAI Codex CLI", { localVersion: "1.4.4", latestVersion: "1.4.5" }),
+            harnessRow("pi", "Pi Coding Agent", { supported: false }),
+          ];
     const result = await createClackPrompt({
       columns: Number.parseInt(columns, 10),
       environment: process.env,
-    }).selectTargets(candidates);
+    }).selectTargets(rows);
     if (process.argv.includes("--entry-child")) {
-      const entryFile = result === INIT_CANCELLED ? "CANCELLED" : result[0]?.manualInput.entryFile;
+      const entryFile = result === INIT_CANCELLED ? "CANCELLED" : result[0]?.manualInput?.entryFile;
       process.stdout.write(`ENTRY_SELECTION_COMPLETED=${String(entryFile)}\n`);
       return;
     }
@@ -61,9 +52,11 @@ async function runChild() {
     const intercepted = [];
     const methods = ["spawn", "spawnSync", "exec", "execSync", "execFile", "execFileSync", "fork"];
     for (const method of methods) {
+      const original = childProcess[method];
       Object.defineProperty(childProcess, method, {
         configurable: true,
         value: (...args) => {
+          if (method === "execFileSync" && String(args[0]) === "which") return original(...args);
           intercepted.push(`${method}:${String(args[0])}`);
           throw new Error(`forbidden child process via ${method}`);
         },
@@ -81,20 +74,13 @@ async function runChild() {
   const home = process.env.HOME;
   const xdgConfigHome = process.env.XDG_CONFIG_HOME;
   const xdgDataHome = process.env.XDG_DATA_HOME;
-  const systemApplications = process.env.AGENT_GOVERNANCE_TEST_SYSTEM_APPLICATIONS;
-  if (!home || !xdgConfigHome || !xdgDataHome || !systemApplications) {
+  if (!home || !xdgConfigHome || !xdgDataHome) {
     throw new Error("synthetic PTY environment is incomplete");
   }
   process.exitCode = await runCli(["init"], console.log, console.error, {
     initOptions: {
       isTTY: Boolean(process.stdin.isTTY && process.stdout.isTTY),
-      environment: {
-        home,
-        xdgConfigHome,
-        xdgDataHome,
-        macosSystemApplications: systemApplications,
-        platform: process.platform,
-      },
+      environment: { home, xdgConfigHome, xdgDataHome, platform: process.platform },
       releaseRoot: repositoryRoot,
     },
   });
@@ -113,10 +99,8 @@ async function runParent() {
   const xdgConfigHome = join(syntheticRoot, "xdg-config");
   const xdgDataHome = join(syntheticRoot, "xdg-data");
   const xdgCacheHome = join(syntheticRoot, "xdg-cache");
-  const systemApplications = join(syntheticRoot, "system-applications");
   const managerShims = join(syntheticRoot, "manager-shims");
-  await Promise.all([home, xdgConfigHome, xdgDataHome, xdgCacheHome, systemApplications, managerShims].map((path) => mkdir(path)));
-  if (entryNewFile) await mkdir(join(xdgConfigHome, "runtime-profile"));
+  await Promise.all([home, xdgConfigHome, xdgDataHome, xdgCacheHome, managerShims].map((path) => mkdir(path)));
   if (boundary) {
     await Promise.all(["npm", "pnpm", "yarn", "bun"].map(async (manager) => {
       const shim = join(managerShims, manager);
@@ -132,24 +116,10 @@ async function runParent() {
         "send \\033",
         "expect eof",
       ]
-    : entryNewFile
-    ? [
-        "expect -re {Search:}",
-        "send -- \"\\r\"",
-        "expect -re {relative Markdown-Entry-Datei}",
-        "send -- \"AGENTS.md\\r\"",
-        "expect -re {ENTRY_SELECTION_COMPLETED=AGENTS.md}",
-        "expect eof",
-      ]
     : fallback
     ? [
-        "expect -re {(?:◻|\\[(?: |\u2022)\\]) AI/LLM nicht dabei\\?}",
-        "send -- \"Candidate-19\"",
-        "after 300",
-        "expect -re {(?:◻|\\[(?: |\u2022)\\]) AI/LLM nicht dabei\\?}",
-        "send -- \"\\t\"",
-        "after 200",
-        "expect -re {(?:◼|\\[\\+\\]) AI/LLM nicht dabei\\?}",
+        "expect -re {Search:}",
+        "after 400",
         "puts \"FALLBACK_SEARCH_ACTION_VISIBLE\"",
         "send \\003",
         "expect eof",
@@ -157,13 +127,7 @@ async function runParent() {
     : markers
     ? [
         "expect -re {Search:}",
-        "send -- \"Uncertain\"",
-        "after 200",
-        "send -- \"\\033\\[B\"",
-        "after 200",
-        "expect -re {Space/Tab:.*select}",
-        "send -- \" \"",
-        "expect -re {Uncertain}",
+        "after 400",
         "puts \"MARKER_SELECTION_RENDERED\"",
         "send \\003",
         "expect eof",
@@ -196,12 +160,9 @@ async function runParent() {
         XDG_CONFIG_HOME: xdgConfigHome,
         XDG_DATA_HOME: xdgDataHome,
         XDG_CACHE_HOME: xdgCacheHome,
-        AGENT_GOVERNANCE_TEST_SYSTEM_APPLICATIONS: systemApplications,
         AGENT_GOVERNANCE_TEST_COLUMNS: columns,
         AGENT_GOVERNANCE_TEST_NODE: process.execPath,
         AGENT_GOVERNANCE_TEST_ENTRY: childEntry,
-        // Tcl otherwise defaults to Latin-1 on Linux when the isolated env has no locale.
-        // The real Node terminal emits UTF-8, including the selection glyphs we match.
         LANG: "C.UTF-8",
         LC_ALL: "C.UTF-8",
         COLUMNS: columns,
