@@ -1,0 +1,22 @@
+import { lstat, readFile, readdir } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
+import { assertIdentity, captureIdentity, type PathIdentity } from "../filesystem.ts";
+import { secureCreateDirectory, secureCreateNoReplace, secureRenameDirectoryNoReplace } from "../native-filesystem.ts";
+import { verifyRelease, type VerifiedRelease } from "../release.ts";
+import type { TransactionRequest } from "./contracts.ts";
+import { exists, sameFileSnapshot } from "./snapshot.ts";
+
+export interface PreparedRelease { readonly destination: string; readonly existed: boolean; readonly identity?: PathIdentity; readonly stage?: string; }
+
+async function copyVerifiedFile(source: string, destinationDirectory: string, destinationIdentity: PathIdentity, destinationName = basename(source)): Promise<void> { const before = await lstat(source, { bigint: true }); if (before.isSymbolicLink() || !before.isFile()) throw new Error("release source contains an unsafe file"); const content = await readFile(source); const after = await lstat(source, { bigint: true }); if (!after.isFile() || !sameFileSnapshot(before, after)) throw new Error("release source changed while staging"); await secureCreateNoReplace({ directory: destinationDirectory, name: destinationName, directoryIdentity: destinationIdentity }, content); }
+
+async function copyVerifiedTree(source: string, destination: string, destinationIdentity: PathIdentity): Promise<void> { const entries = await readdir(source, { withFileTypes: true }); entries.sort((left, right) => left.name.localeCompare(right.name)); for (const entry of entries) { const sourcePath = join(source, entry.name); if (entry.isSymbolicLink()) throw new Error("release source contains a symlink"); if (entry.isDirectory()) { await secureCreateDirectory({ directory: destination, name: entry.name, directoryIdentity: destinationIdentity }); const child = join(destination, entry.name); await copyVerifiedTree(sourcePath, child, await captureIdentity(child)); } else if (entry.isFile()) await copyVerifiedFile(sourcePath, destination, destinationIdentity, entry.name); else throw new Error("release source contains an unsupported file type"); } }
+
+export async function prepareRelease(release: VerifiedRelease, backupRoot: string, backupRootIdentity: PathIdentity, operation: "install" | "update" | "uninstall", request: TransactionRequest): Promise<PreparedRelease> {
+  const destination = join(request.installationRoot, "releases", release.version);
+  if (await exists(destination)) { const installed = await verifyRelease(destination); if (installed.bundleDigest !== release.bundleDigest) throw new Error("release content changed without a version change"); return { destination, existed: true, identity: await captureIdentity(destination) }; }
+  if (operation === "uninstall") return { destination, existed: false };
+  const stage = join(backupRoot, "release.stage"); await secureCreateDirectory({ directory: backupRoot, name: basename(stage), directoryIdentity: backupRootIdentity }); const stageIdentity = await captureIdentity(stage); request.onCheckpoint?.("afterReleaseStageCreation"); await secureCreateDirectory({ directory: stage, name: "bundle", directoryIdentity: stageIdentity }); const bundle = join(stage, "bundle"); await copyVerifiedTree(join(request.releaseRoot, "bundle"), bundle, await captureIdentity(bundle)); await copyVerifiedFile(join(request.releaseRoot, "VERSION"), stage, stageIdentity); await copyVerifiedFile(join(request.releaseRoot, "release.files.sha256"), stage, stageIdentity); const verified = await verifyRelease(stage); if (verified.bundleDigest !== release.bundleDigest) throw new Error("staged release digest changed"); return { destination, existed: false, identity: stageIdentity, stage };
+}
+
+export async function activateRelease(prepared: PreparedRelease, backupRootIdentity: PathIdentity, releasesRootIdentity: PathIdentity): Promise<void> { if (prepared.stage !== undefined) await secureRenameDirectoryNoReplace({ sourceDirectory: dirname(prepared.stage), sourceName: basename(prepared.stage), sourceDirectoryIdentity: backupRootIdentity, sourceObjectIdentity: prepared.identity!, destinationDirectory: dirname(prepared.destination), destinationName: basename(prepared.destination), destinationDirectoryIdentity: releasesRootIdentity }); if (prepared.identity !== undefined) await assertIdentity(prepared.destination, prepared.identity); }
