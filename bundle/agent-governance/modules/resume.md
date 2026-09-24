@@ -11,6 +11,7 @@ Resume statt Reconstruct.
 Revalidate only what may have changed.
 Reuse only what is still provably bound.
 Chat context is transport, not authority.
+State transition != evidence invalidation.
 ```
 
 ### RES-001 — Resume-Fall und Trigger
@@ -154,6 +155,76 @@ LLM-Memory als Identitätsnachweis verwendet. Wiederholtes Resume bei unverände
 keine zunehmende Rekonstruktion und keine doppelte externe Wirkung. Der Fallback bleibt
 [GOV-004](../../GOVERNANCE.md#gov-004--fail-closed).
 
+### RES-016 — Delivery-Übergänge invalidieren Evidence nicht
+
+Ein reiner Delivery-Übergang — insbesondere `git push` desselben verifizierten Commit und die
+Erstellung eines Pull Request für denselben Head — verändert den bereits lokal geprüften
+Commitinhalt nicht und gilt daher nicht als Evidence-Invalidierung: `State transition != evidence
+invalidation`. Bereits vollständig abgeschlossene lokale Prüfungen — Tests, Build, Typecheck,
+Packcheck und ein identischer lokaler QA-Check — bleiben gültig, solange ihre relevanten
+Bindungen unverändert sind. Ein Übergang der Workflowphase allein bestimmt nicht über die
+Gültigkeit; diese richtet sich ausschließlich nach den relevanten Inputs und Bindungen gemäß
+[RES-007](#res-007--evidence-reuse-und--invalidation).
+
+### RES-017 — Deterministischer Evidence-Key
+
+Evidence wird nicht lediglich als `PASS` oder pauschal an einen Git-SHA gebunden. Für jede
+Prüfung ist eine deterministische fachliche Identität bestimmbar:
+
+```text
+Evidence-Key = content identity + check identity + relevant configuration
+             + relevant environment + scope + freshness class + base/diff identity
+```
+
+Der Exact Head ist bei Repository-Arbeit eine zentrale, aber nicht immer allein ausreichende
+Identität. Zusätzliche relevante Bindungen sind: Dirty-Worktree-Zustand, staged/unstaged
+relevante Änderungen, Dependency-/Lockfilezustand, Tool-/Testversion, Konfiguration, Plattform,
+Security-/Policy-Kontext, PR-Base beziehungsweise Diff, wenn die Prüfung davon abhängt, sowie
+freshness-sensitive externe Zustände. Keine globale Invalidierung, wenn nur eine fachlich
+unabhängige Bindung geändert wurde.
+
+### RES-018 — Remote-Readback vor Reuse
+
+Nach externen Delivery-Aktionen wird vorhandene Evidence nicht neu erzeugt, aber die relevante
+externe Source of Truth vor der Wiederverwendung frisch gelesen. Nach `git push` wird mindestens
+der erwartete lokale Head gegen den Remote-Branch-Head geprüft; nach der PR-Erstellung wird der
+erwartete verifizierte Head gegen den frisch gelesenen PR-Head geprüft. Bei Abweichung wird keine
+Evidence blind übernommen und fail-closed aufgelöst. Ein Readback bestätigt lediglich die externe
+Identität und ersetzt keine davon unabhängige CI-, Security- oder Review-Evidence gemäß
+[DEL-002](verification.md#del-002--exakter-stand).
+
+### RES-019 — Identische versus unabhängige Prüfung
+
+Die Orchestrierung unterscheidet explizit eine identische von einer unabhängigen Prüfung.
+Identisch heißt: gleicher Input, gleicher Exact State, gleicher Checktyp, gleicher Checker,
+gleiche Konfiguration und gleicher relevanter Environment-Kontext; dann wird vorhandene
+vollständige Evidence wiederverwendet. Unabhängig sind etwa lokale Tests gegenüber GitHub CI,
+ein lokaler QA-Reviewer gegenüber einem unabhängigen GitHub-Reviewer oder `darwin-arm64`
+gegenüber `linux-x64`; sie erzeugen eigenständige Evidence. Ziel ist nicht, die Zahl unabhängiger
+Prüfungen zu reduzieren, sondern identische Prüfungen ohne geänderte relevante Inputs nicht
+mehrfach auszuführen. Ein abgeschlossener Review von Checker A ersetzt nicht automatisch einen
+unabhängigen Review durch Checker B.
+
+### RES-020 — Base-/Diff-gebundene Evidence
+
+Gleicher Head bedeutet nicht automatisch, dass jede Review-Evidence unverändert gültig bleibt.
+Base-unabhängige Evidence — etwa ein Test, der ausschließlich den Inhalt eines Heads prüft —
+darf bei unverändertem Head wiederverwendet werden. Base-/Diff-gebundene Evidence — etwa ein
+Review, dessen Aussage auf dem konkreten Diff gegen die Base beruht — wird bei einer relevanten
+Base-Änderung gezielt invalidiert und neu erzeugt. Es erfolgt keine pauschale Invalidierung
+sämtlicher Evidence allein aufgrund einer Base-Änderung.
+
+### RES-021 — Remote-Gates bleiben unangetastet
+
+Die Same-SHA-Wiederverwendung ersetzt oder schwächt keine unabhängigen Remote-Gates ab.
+GitHub CI, Required Checks, Plattformmatrizen, Branch-/Ruleset-Gates, Mergeability,
+GitHub-native Security-/Trust-Checks, unabhängige Remote-Reviewer, PR-spezifische
+Review-Kommentare und freshness-sensitive externe Zustände werden weiterhin ausgeführt
+beziehungsweise frisch ausgelesen. Required Checks, Branch Protection, Security-, Approval-
+und Signing-Gates werden nicht umgangen oder abgeschwächt; dies folgt
+[DEL-003](delivery.md#del-003--unabhängige-prüfung) und
+[SEC-001](security.md#sec-001--risikobasiertes-security-gate).
+
 ## Resume-Checkpoint
 
 Domain-spezifische Form der Wiederaufnahme, Owner ist diese Resume-Capability
@@ -187,3 +258,10 @@ Der Fast-Path führt keine neue Datenbank ausschließlich für Resume, keinen pe
 keinen Netzwerkdienst und keine neue Credential-Infrastruktur ein und kodiert keine provider- oder
 modellspezifische Limitlogik. Reproduzierbarkeit folgt
 [INV-004](invariants.md#inv-004--reproduzierbarkeit).
+
+Die Delivery-Boundary-Reuse erweitert die bestehende Evidence-Reuse-Authority. Es entstehen keine
+zweite Evidence-Registry, keine zweite Resume-Engine, kein paralleler Delivery-State, kein
+zusätzlicher permanenter Cache, kein separates PR-Evidence-System, keine zweite
+Checkpoint-Authority und keine zweite PR-Contract-Authority. Eine ereignisgebundene persistente
+Materialisierung des Resume-/Evidence-Zustands und ein kanonischer PR-Contract werden, sofern real
+vorhanden, wiederverwendet; ihr Fehlen ist keine harte Abhängigkeit.

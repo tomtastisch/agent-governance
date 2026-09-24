@@ -17,7 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Keine.
+- Same-SHA-Evidence wird über Push-/PR-Delivery-Grenzen hinweg nicht mehr allein durch den
+  Übergang invalidiert. Ein deterministischer Evidence-Key (Inhalts-, Check-, Konfigurations-,
+  Environment-, Scope-, Freshness- und Base-/Diff-Identität), ein verbindlicher
+  Remote-/PR-Head-Readback vor Reuse sowie die explizite Trennung identischer von unabhängigen
+  Prüfungen verhindern redundante lokale Prüfungen und doppelte Reviewer-Ausführungen, ohne
+  unabhängige GitHub-CI, Required Checks, Branch Protection, Security-, Approval- oder
+  Signing-Gates abzuschwächen (#93, SemVer: patch).
 
 ### Removed
 
