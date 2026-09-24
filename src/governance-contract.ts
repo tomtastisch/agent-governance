@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { exact, ID, idList, parseClosedToml, safeRelativePath, table, type TomlTable, type TomlValue } from "./closed-toml.ts";
 import { parseSsotManifestText } from "./ssot-manifest.ts";
 import { parseRoutingCatalogs, type RoutingCatalogs } from "./routing-catalog.ts";
-import { parseDiscoveryCatalogText } from "./discovery/catalog.ts";
+import { parseDiscoveryCatalogText } from "./discovery-catalog.ts";
 import { parseCommandCatalogText } from "./command-catalog.ts";
 import { parseTemplatesManifestText } from "./templates-catalog.ts";
 import { parseClassificationsText, parseProjectionsText } from "./work-items.ts";

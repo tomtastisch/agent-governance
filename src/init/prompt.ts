@@ -9,15 +9,14 @@ import {
 } from "@clack/prompts";
 import { isAbsolute, normalize, relative, resolve } from "node:path";
 
-import { resolveCandidateIdentity } from "../discovery/identity.ts";
-import { sanitizeDisplay } from "../discovery/structured.ts";
-import type { Candidate } from "../discovery/types.ts";
-import { createTerminalTheme, renderCandidate, renderLegend } from "./theme.ts";
+import { sanitizeDisplay } from "../terminal/theme.ts";
+import { renderHarnessRow, renderLegend, createTerminalTheme } from "./theme.ts";
+import type { HarnessRow } from "./types.ts";
 import {
   INIT_CANCELLED,
-  type InitBindingSelection,
   type InitPlannedTarget,
   type InitPrompt,
+  type InitSelection,
   type InitStep,
 } from "./types.ts";
 
@@ -27,6 +26,7 @@ interface PromptOption {
   readonly value: string;
   readonly label: string;
   readonly hint?: string;
+  readonly disabled?: boolean;
 }
 
 interface PromptFilterOption {
@@ -132,12 +132,12 @@ function validateEntry(root: string, value: string | undefined): string | undefi
   return undefined;
 }
 
-function assertSelections(value: unknown, candidates: ReadonlyMap<string, Candidate>): string[] {
+function assertSelections(value: unknown, rows: ReadonlyMap<string, HarnessRow>): string[] {
   if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
     throw new Error("prompt returned an invalid target selection");
   }
   const values = value as string[];
-  if (new Set(values).size !== values.length || values.some((item) => item !== CUSTOM_VALUE && !candidates.has(item))) {
+  if (new Set(values).size !== values.length || values.some((item) => item !== CUSTOM_VALUE && !rows.has(item))) {
     throw new Error("prompt returned an unknown or duplicate target selection");
   }
   return values;
@@ -158,13 +158,14 @@ function filterTargetOption(search: string, option: PromptFilterOption): boolean
 }
 
 function renderApprovalPlan(plans: readonly InitPlannedTarget[]): string {
-  return plans.map(({ target, status, plan }, index) => {
+  return plans.map(({ target, status, plan, displayName }, index) => {
     if (plan.plan === undefined) throw new Error("init approval requires a concrete installation plan");
     const resources = plan.plan.resources.map(({ id, operation, target: resourceTarget }) =>
       `- ${id}: ${operation} -> ${sanitizeDisplay(resourceTarget, 1024)}`
     );
     return [
       `Ziel ${index + 1}`,
+      `Harness: ${sanitizeDisplay(displayName, 96)}`,
       `Target Root: ${sanitizeDisplay(target.targetRoot, 1024)}`,
       `Entry File: ${sanitizeDisplay(target.entryFile, 1024)}`,
       `Aktueller Zustand: ${status.state}`,
@@ -222,34 +223,34 @@ export function createClackPrompt(io: ClackPromptIO = {}): InitPrompt {
       activeStep = step;
     },
 
-    async selectTargets(candidates: readonly Candidate[]): Promise<readonly InitBindingSelection[] | typeof INIT_CANCELLED> {
+    async selectTargets(rows: readonly HarnessRow[]): Promise<readonly InitSelection[] | typeof INIT_CANCELLED> {
       stopProgress();
-      const eligible = candidates.filter((candidate) => candidate.confidence !== "REJECTED");
-      const byRoot = new Map(eligible.map((candidate) => [candidate.root, candidate]));
+      const byId = new Map(rows.map((row) => [row.id, row]));
       const options: PromptOption[] = [
-        { value: CUSTOM_VALUE, label: "AI/LLM nicht dabei?", hint: theme.cyan("[fokus]") },
-        ...eligible.map((candidate) => ({
-          value: candidate.root,
-          label: renderCandidate(candidate, { focused: false, selected: false }, theme),
+        { value: CUSTOM_VALUE, label: "Coding-Harness nicht dabei?", hint: theme.cyan("[fokus]") },
+        ...rows.map((row) => ({
+          value: row.id,
+          label: renderHarnessRow(row, { focused: false, selected: false }, theme),
           hint: theme.cyan("[fokus]"),
+          ...(row.supported ? {} : { disabled: true }),
         })),
       ];
       const result = await operations.autocompleteMultiselect({
-        message: `Ziele auswählen\nAI/LLM nicht dabei? — ? tippen, Tab wählen\n${renderLegend(theme)}`,
+        message: `Coding-Harnesses auswählen\nCoding-Harness nicht dabei? — ? tippen, Tab wählen\n${renderLegend(theme)}`,
         options,
-        initialValues: eligible
-          .filter((candidate) => candidate.confidence === "HIGH_CONFIDENCE")
-          .map((candidate) => candidate.root),
+        initialValues: rows
+          .filter((row) => row.supported)
+          .map((row) => row.id),
         required: true,
         filter: filterTargetOption,
       });
       if (operations.isCancel(result)) return cancelled(operations);
-      const values = assertSelections(result, byRoot);
-      const selections: InitBindingSelection[] = [];
+      const values = assertSelections(result, byId);
+      const selections: InitSelection[] = [];
       for (const value of values) {
         if (value === CUSTOM_VALUE) {
           const targetRoot = await askPath({
-            message: "Absoluter Root des weiteren AI-/LLM-Ziels",
+            message: "Absoluter Root des weiteren Coding-Harness",
             directory: true,
             validate: validateAbsoluteRoot,
           });
@@ -261,15 +262,9 @@ export function createClackPrompt(io: ClackPromptIO = {}): InitPrompt {
           }));
           continue;
         }
-        const candidate = byRoot.get(value)!;
-        const entryValue = await askEntry(
-          `${resolveCandidateIdentity(candidate).label}: relative Markdown-Entry-Datei`,
-          candidate.root,
-        );
-        if (entryValue === INIT_CANCELLED) return INIT_CANCELLED;
+        const row = byId.get(value)!;
         selections.push(Object.freeze({
-          candidate,
-          manualInput: Object.freeze({ entryFile: relativeEntry(candidate.root, entryValue) }),
+          harness: Object.freeze({ id: row.id, displayName: row.displayName }),
         }));
       }
       return Object.freeze(selections);

@@ -50,7 +50,12 @@ export interface TerminalTheme {
   readonly green: (value: string) => string;
   readonly yellow: (value: string) => string;
   readonly cyan: (value: string) => string;
+  readonly red: (value: string) => string;
   readonly dim: (value: string) => string;
+}
+
+export function sanitizeDisplay(value: string, maximumLength: number): string {
+  return value.replace(/[\u0000-\u001f\u007f-\u009f]/gu, "?").slice(0, maximumLength);
 }
 
 export function stripAnsi(value: string): string {
@@ -76,6 +81,7 @@ export function createTerminalTheme(options: TerminalThemeOptions = {}): Termina
     green: style(32, color),
     yellow: style(33, color),
     cyan: style(36, color),
+    red: style(31, color),
     dim: style(2, color),
   });
 }

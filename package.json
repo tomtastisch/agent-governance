@@ -72,6 +72,7 @@
     "provenance": true
   },
   "dependencies": {
+    "@agntn/harnesses": "0.3.0",
     "@clack/prompts": "1.7.0",
     "@toon-format/toon": "4.1.1",
     "smol-toml": "1.8.0"

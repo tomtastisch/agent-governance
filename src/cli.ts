@@ -4,10 +4,11 @@ import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname } from "node:path";
 import { EXIT_CODES, exitCodeFor, type InstallerCommand, type InstallerRequest, type PublicCommandDefinition, type PublicCommandId, type TerminalOutcome } from "./contracts.ts";
-import { discoverCandidates } from "./discovery/index.ts";
 import { InstallerFailure, InterruptedFailure } from "./errors.ts";
+import { createAgntnHarnessesAdapter } from "./init/harnesses.ts";
 import { renderBranding } from "./init/branding.ts";
 import { runInit } from "./init/orchestrator.ts";
+import { resolveLatestRelease } from "./installer/latest.ts";
 import { createClackPrompt } from "./init/prompt.ts";
 import type { InitOptions, InitPrompt, InitResult } from "./init/types.ts";
 import { InstallerTransaction } from "./transaction.ts";
@@ -89,7 +90,8 @@ export async function runCli(argv: readonly string[], out: Writer = console.log,
           });
         }
         return runInit(initOptions, {
-          discoverCandidates,
+          discoverHarnesses: createAgntnHarnessesAdapter().discover,
+          resolveLatestRelease,
           prompt,
           createTransaction: dependencies.createTransaction ?? ((request) => new InstallerTransaction(request)),
         });

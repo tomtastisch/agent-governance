@@ -12,12 +12,20 @@ Der normale öffentliche Einstieg ist exakt `npm i @tomtastisch/agent-governance
 yarn oder bun noch einen Package-Manager-Bootstrap und enthält keinen Self-Install-, Repair- oder
 bedingten Nachladepfad. Fehlt eine direkte Runtime-Abhängigkeit, schlägt das Paket fail-closed fehl.
 
+Die Installed-Harness-Erkennung des `init`-Screens ist auf einen einzelnen Adapter hinter
+`@agntn/harnesses` beschränkt, der ausschließlich `getAllHarnesses()` und `isInstalled()` nutzt und
+keine erkannte Harness-CLI startet. Welcher erkannte Harness automatisch unterstützt wird und
+welches Binding-/Entry-Ziel zulässig ist, entscheidet allein die Agent-Governance-Support-/Binding-SSOT;
+Daten oder Pfade aus der Dependency werden niemals automatisch als Binding-Ziel übernommen.
+
 ## Architektur
 
 `GLOBAL_EXPLICIT_PATH_MANAGED_BLOCK` trennt drei Verantwortungen: Der Releaseverifier akzeptiert
 nur ein geschlossenes, digestgebundenes Bundle; der Targetvalidator akzeptiert nur explizite
 kanonische Pfade ohne Symlinks oder Escape; die Transaktion aktiviert Release-Metadaten und genau
-einen generischen Markdown-Block. Keine Schicht kennt Harnessnamen oder produktspezifische Dateien.
+einen generischen Markdown-Block. Der generische Installer-/Runtime-/Release-Verifier-Core besitzt
+kein ad-hoc Harnesswissen; konkrete Harnessidentitäten existieren nur in ausdrücklich autorisierten
+Support-, Binding- und Kompatibilitätsflächen, insbesondere der Init-Support-/Binding-SSOT.
 Der Paket- und Stagingpfad validiert ausschließlich den aktuellen semantischen Governance-Contract.
 Bereits installierte Releases verwenden denselben Byte-, Inventar-, Pfad- und Digestverifier, aber
 eine explizite geschlossene Liste historisch veröffentlichter Contract-Varianten. Unbekannte
