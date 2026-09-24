@@ -143,22 +143,6 @@ jobs:
         env:
           NPM_DIST_TAG: ${{ inputs.dist_tag }}
         run: npm publish --access public --tag "$NPM_DIST_TAG"
-      - name: Verify immediate publish metadata (fail-closed)
-        env:
-          NPM_DIST_TAG: ${{ inputs.dist_tag }}
-        run: |
-          PACKAGE_VERSION=$(node -p "require('./package.json').version")
-          PACKAGE_SPEC="@tomtastisch/agent-governance@$PACKAGE_VERSION"
-          for ATTEMPT in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do
-            if test "$(npm view "$PACKAGE_SPEC" version --registry=https://registry.npmjs.org 2>/dev/null)" = "$PACKAGE_VERSION" \
-              && test "$(npm view @tomtastisch/agent-governance "dist-tags.$NPM_DIST_TAG" --registry=https://registry.npmjs.org 2>/dev/null)" = "$PACKAGE_VERSION" \
-              && npm view "$PACKAGE_SPEC" dist --json --registry=https://registry.npmjs.org > registry-dist.json \
-              && node -e "const r=require('./registry-dist.json');const d=Array.isArray(r)?(r.length===1?r[0]:null):r;if(!d||typeof d!=='object'||!d.integrity||!d.shasum)process.exit(1)"; then
-              break
-            fi
-            test "$ATTEMPT" = 30 && exit 1
-            sleep 10
-          done
 
   verify-provenance:
     name: Verify post-publish provenance and signatures (read-only)
@@ -181,20 +165,29 @@ jobs:
           package-manager-cache: false
       - name: Install exact provenance-capable npm CLI
         run: npm install --global npm@12.0.2 --ignore-scripts
-      - name: Verify SLSA provenance and registry signatures (read-only)
+      - name: Verify published version, dist-tag and provenance (retry on transient registry propagation)
+        uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v4.0.0
+        with:
+          timeout_minutes: 5
+          max_attempts: 20
+          retry_wait_seconds: 30
+          retry_on: error
+          command: |
+            set -euo pipefail
+            PACKAGE_VERSION="${RELEASE_TAG#v}"
+            PACKAGE_SPEC="@tomtastisch/agent-governance@$PACKAGE_VERSION"
+            test "$(npm view "$PACKAGE_SPEC" version --registry=https://registry.npmjs.org)" = "$PACKAGE_VERSION"
+            test "$(npm view @tomtastisch/agent-governance "dist-tags.$NPM_DIST_TAG" --registry=https://registry.npmjs.org)" = "$PACKAGE_VERSION"
+            test -n "$(npm view "$PACKAGE_SPEC" dist.integrity --registry=https://registry.npmjs.org)"
+            test -n "$(npm view "$PACKAGE_SPEC" dist.shasum --registry=https://registry.npmjs.org)"
+            test "$(npm view "$PACKAGE_SPEC" dist.attestations.provenance.predicateType --registry=https://registry.npmjs.org)" = "https://slsa.dev/provenance/v1"
+      - name: Install exact published version and verify registry signatures (read-only)
         run: |
+          set -euo pipefail
           PACKAGE_VERSION="${RELEASE_TAG#v}"
           PACKAGE_SPEC="@tomtastisch/agent-governance@$PACKAGE_VERSION"
-          for ATTEMPT in 1 2 3 4 5 6 7 8 9 10; do
-            npm view "$PACKAGE_SPEC" dist --json --registry=https://registry.npmjs.org > registry-dist.json
-            if node -e "const r=require('./registry-dist.json');const d=Array.isArray(r)?(r.length===1?r[0]:null):r;if(!d||typeof d!=='object'||d.attestations?.provenance?.predicateType!=='https://slsa.dev/provenance/v1')process.exit(1)"; then
-              break
-            fi
-            test "$ATTEMPT" = 10 && exit 1
-            sleep 30
-          done
           VERIFY_ROOT="$RUNNER_TEMP/npm-signature-readback"
-          mkdir "$VERIFY_ROOT"
+          mkdir -p "$VERIFY_ROOT"
           cd "$VERIFY_ROOT"
           npm init --yes >/dev/null
           npm install "$PACKAGE_SPEC" --ignore-scripts --registry=https://registry.npmjs.org
