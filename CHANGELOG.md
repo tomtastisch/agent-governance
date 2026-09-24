@@ -17,6 +17,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Keine.
+
+### Removed
+
+- Keine.
+
+**Breaking changes:** none
+
+## [1.5.1] — 2026-09-24
+
+### Added
+
+- Keine.
+
+### Changed
+
+- Keine.
+
+### Fixed
+
 - Same-SHA-Evidence wird über Push-/PR-Delivery-Grenzen hinweg nicht mehr allein durch den
   Übergang invalidiert. Ein deterministischer Evidence-Key (Inhalts-, Check-, Konfigurations-,
   Environment-, Scope-, Freshness- und Base-/Diff-Identität), ein verbindlicher
