@@ -1,6 +1,8 @@
 import type { InstallPhase, TerminalOutcome } from "./contracts.ts";
 import type { CatchableSignal } from "./signals.ts";
 
+export class ConcurrentEntryChange extends Error {}
+
 export class InstallerFailure extends Error {
   readonly code: string;
   readonly phase: InstallPhase;

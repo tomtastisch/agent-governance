@@ -3,7 +3,8 @@ import { readFile, readdir } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { captureIdentity, validateAllowedPath, type PathIdentity } from "../filesystem.ts";
 import { secureCreateDirectory, secureCreateNoReplace, secureRemoveDirectory, secureRenameDirectoryNoReplace } from "../native-filesystem.ts";
-import { atomicRemove, ensureDirectoryTree, parseObject, requiredBytes } from "./mutation.ts";
+import { atomicRemove, ensureDirectoryTree } from "./mutation.ts";
+import { parseObject, requiredBytes } from "./snapshot.ts";
 
 export function processAlive(pid: number): boolean { try { process.kill(pid, 0); return true; } catch (error) { if ((error as NodeJS.ErrnoException).code === "ESRCH") return false; return true; } }
 

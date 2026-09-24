@@ -3,7 +3,7 @@ import { assertIdentity, captureIdentity, validateAllowedPath, type PathIdentity
 import type { GovernanceBinding } from "../managed-block.ts";
 import { verifyRelease } from "../release.ts";
 import type { TransactionRequest } from "./contracts.ts";
-import { digest, parseObject, requiredBytes } from "./mutation.ts";
+import { digest, parseObject, requiredBytes } from "./snapshot.ts";
 import { SEMVER } from "./version.ts";
 
 export interface CurrentMetadata extends GovernanceBinding { readonly schemaVersion: 1; readonly targetRoot: string; readonly entryFile: string; }

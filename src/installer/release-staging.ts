@@ -4,7 +4,7 @@ import { assertIdentity, captureIdentity, type PathIdentity } from "../filesyste
 import { secureCreateDirectory, secureCreateNoReplace, secureRenameDirectoryNoReplace } from "../native-filesystem.ts";
 import { verifyRelease, type VerifiedRelease } from "../release.ts";
 import type { TransactionRequest } from "./contracts.ts";
-import { exists, sameFileSnapshot } from "./mutation.ts";
+import { exists, sameFileSnapshot } from "./snapshot.ts";
 
 export interface PreparedRelease { readonly destination: string; readonly existed: boolean; readonly identity?: PathIdentity; readonly stage?: string; }
 

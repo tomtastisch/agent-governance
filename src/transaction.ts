@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { basename, dirname, join, relative } from "node:path";
 import type { InstallResult, InstallerCommand, InstallPhase } from "./contracts.ts";
-import { InstallerFailure, InterruptedFailure } from "./errors.ts";
+import { ConcurrentEntryChange, InstallerFailure, InterruptedFailure } from "./errors.ts";
 import { assertIdentity, captureIdentity } from "./filesystem.ts";
 import { installManagedBlock, removeManagedBlock, verifyManagedBlock } from "./managed-block.ts";
 import { probeNativeFilesystemCapability, secureCreateDirectory } from "./native-filesystem.ts";
@@ -14,7 +14,8 @@ import { architecture, type TransactionCheckpoint, type TransactionRequest } fro
 import { bindingIdFor, resolveContext, type Context } from "./installer/context.ts";
 import { withInstallationLock } from "./installer/locking.ts";
 import { optionalCanonicalLocalRules, readCanonicalLocalRules, type LocalRulesMutation } from "./installer/local-rules.ts";
-import { ConcurrentEntryChange, atomicCreate, atomicRemove, atomicWrite, digest, ensureDirectoryTree, exists, matchesSnapshot, optionalBytes } from "./installer/mutation.ts";
+import { atomicCreate, atomicRemove, atomicWrite, ensureDirectoryTree } from "./installer/mutation.ts";
+import { digest, exists, matchesSnapshot, optionalBytes } from "./installer/snapshot.ts";
 import { receiptWithMatchingBackup, storeIdentity, type Receipt } from "./installer/receipts.ts";
 import { restore } from "./installer/recovery.ts";
 import { activateRelease, prepareRelease } from "./installer/release-staging.ts";

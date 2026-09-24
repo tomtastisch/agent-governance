@@ -1,7 +1,7 @@
 import { constants } from "node:fs";
 import { lstat, open, realpath } from "node:fs/promises";
 import { isAbsolute } from "node:path";
-import { sameFileIdentity, sameFileSnapshot } from "./mutation.ts";
+import { sameFileIdentity, sameFileSnapshot } from "./snapshot.ts";
 
 export interface LocalRulesMutation { readonly targetPath: string; readonly source: Buffer; readonly previous?: Buffer; }
 

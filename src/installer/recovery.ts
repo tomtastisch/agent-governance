@@ -5,7 +5,9 @@ import { assertIdentity, captureIdentity, type PathIdentity } from "../filesyste
 import { secureCreateNoReplace, secureRenameNoReplace } from "../native-filesystem.ts";
 import { verifyRelease } from "../release.ts";
 import type { TransactionCheckpoint, TransactionRequest } from "./contracts.ts";
-import { ConcurrentEntryChange, atomicCreate, atomicRemove, atomicWrite, exists, matchesSnapshot, optionalBytes, requiredBytes, sameFileSnapshot } from "./mutation.ts";
+import { ConcurrentEntryChange } from "../errors.ts";
+import { atomicCreate, atomicRemove, atomicWrite } from "./mutation.ts";
+import { exists, matchesSnapshot, optionalBytes, requiredBytes, sameFileSnapshot } from "./snapshot.ts";
 import { loadIdentity, parseCurrentObject, receiptWithMatchingBackup, verifiedBackup, type Receipt } from "./receipts.ts";
 
 export async function otherBindingReferences(releasePath: string, installationRoot: string, bindingId: string): Promise<boolean> { const bindings = join(installationRoot, "bindings"); for (const name of await readdir(bindings)) { if (name === bindingId) continue; const root = join(bindings, name); const stat = await lstat(root); if (stat.isSymbolicLink() || !stat.isDirectory()) throw new Error("unsafe binding state directory"); const bytes = await optionalBytes(join(root, "current.json")); if (bytes === undefined) continue; const current = parseCurrentObject(bytes); if (join(installationRoot, "releases", current.version) === releasePath) return true; } return false; }

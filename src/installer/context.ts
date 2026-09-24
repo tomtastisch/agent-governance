@@ -6,7 +6,7 @@ import { verifyRelease, type VerifiedRelease } from "../release.ts";
 import { inspectTarget, type TargetInspection } from "../target.ts";
 import type { TransactionRequest } from "./contracts.ts";
 import { optionalCanonicalLocalRules } from "./local-rules.ts";
-import { optionalBytes, requiredBytes } from "./mutation.ts";
+import { optionalBytes, requiredBytes } from "./snapshot.ts";
 import { parseCurrentObject, receiptWithMatchingBackup, type CurrentMetadata } from "./receipts.ts";
 import { compareSemver, SEMVER } from "./version.ts";
 
