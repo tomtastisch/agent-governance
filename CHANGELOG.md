@@ -25,6 +25,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Breaking changes:** none
 
+## [1.4.5] — 2026-09-24
+
+### Added
+
+- Keine.
+
+### Changed
+
+- Installer-Transaktionskern (`src/transaction.ts`) behavior-preserving nach
+  fachlichen Verantwortungen atomisiert: SemVer, atomarer Mutationskern,
+  verifizierte Read-/Snapshot-Primitive, Receipts, Local-Rules, Release-Staging,
+  Locking, Recovery und Context als kohärente Module unter `src/installer/` mit
+  schlanker `InstallerTransaction`-Orchestrierung sowie Architektur-Contract-Tests
+  (Importgrenzen, Azyklizität, keine Utility-Ablage). Öffentliche Exporte und
+  persistierte Formate bleiben byte-identisch (#59, SemVer: patch).
+
+### Fixed
+
+- Keine.
+
+### Removed
+
+- Keine.
+
+**Breaking changes:** none
+
 ## [1.4.4] — 2026-09-23
 
 ### Added
