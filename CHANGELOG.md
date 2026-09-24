@@ -25,6 +25,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Breaking changes:** none
 
+## [1.5.0] — 2026-09-24
+
+### Added
+
+- Installed-Harness-Erkennung des `init`-Screens über einen isolierten Adapter auf
+  `@agntn/harnesses@0.3.0` (`getAllHarnesses()` + `isInstalled()`, keine
+  CLI-Ausführung) sowie eine statusbasierte Coding-Harness-Auswahl
+  (Symbol + Text + Farbe, `NO_COLOR`-sicher).
+
+### Changed
+
+- Init-Discovery externalisiert: Support- und Binding-Ziele stammen ausschließlich aus der
+  Agent-Governance-Support-/Binding-SSOT, lokaler Zustand und Version aus der bestehenden
+  Status-/Verify-/Receipt-Logik und die Latest-Release-Auflösung erfolgt read-only und
+  tolerant höchstens einmal pro `init`.
+
+### Fixed
+
+- Keine.
+
+### Removed
+
+- Produktive generische Harness-/LLM-Filesystem-Heuristik (`src/discovery/`) sowie die
+  ad-hoc Harness-Namens-Denylist im Pack-Verifier.
+
+**Breaking changes:** none
+
 ## [1.4.5] — 2026-09-24
 
 ### Added
