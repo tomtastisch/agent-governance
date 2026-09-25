@@ -168,10 +168,10 @@ jobs:
       - name: Verify published version, dist-tag and provenance (retry on transient registry propagation)
         uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v4.0.0
         with:
-          timeout_minutes: 5
+          timeout_minutes: 1
           max_attempts: 20
           retry_wait_seconds: 30
-          retry_on: error
+          retry_on: any
           command: |
             set -euo pipefail
             PACKAGE_VERSION="${RELEASE_TAG#v}"
@@ -181,14 +181,9 @@ jobs:
             test -n "$(npm view "$PACKAGE_SPEC" dist.integrity --registry=https://registry.npmjs.org)"
             test -n "$(npm view "$PACKAGE_SPEC" dist.shasum --registry=https://registry.npmjs.org)"
             test "$(npm view "$PACKAGE_SPEC" dist.attestations.provenance.predicateType --registry=https://registry.npmjs.org)" = "https://slsa.dev/provenance/v1"
-      - name: Install exact published version and verify registry signatures (read-only)
-        run: |
-          set -euo pipefail
-          PACKAGE_VERSION="${RELEASE_TAG#v}"
-          PACKAGE_SPEC="@tomtastisch/agent-governance@$PACKAGE_VERSION"
-          VERIFY_ROOT="$RUNNER_TEMP/npm-signature-readback"
-          mkdir -p "$VERIFY_ROOT"
-          cd "$VERIFY_ROOT"
-          npm init --yes >/dev/null
-          npm install "$PACKAGE_SPEC" --ignore-scripts --registry=https://registry.npmjs.org
-          npm audit signatures
+            VERIFY_ROOT="$(mktemp -d "$RUNNER_TEMP/npm-signature-readback.XXXXXX")"
+            trap 'rm -rf "$VERIFY_ROOT"' EXIT
+            cd "$VERIFY_ROOT"
+            npm init --yes >/dev/null
+            npm install "$PACKAGE_SPEC" --ignore-scripts --registry=https://registry.npmjs.org
+            npm audit signatures

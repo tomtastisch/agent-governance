@@ -43,6 +43,16 @@ def _run_blocks(job_body: str) -> list[str]:
     )
 
 
+def _retry_command(job_body: str) -> str:
+    commands = re.findall(
+        r"(?m)^          command: \|\n((?:            [^\n]*(?:\n|$))*)",
+        job_body,
+    )
+    if len(commands) != 1:
+        raise AssertionError("verification must have exactly one retry command")
+    return textwrap.dedent(commands[0])
+
+
 def _run_npm_publish_admission(
     package_version: str,
     repository_version: str,
@@ -379,6 +389,7 @@ class ReleaseWorkflowSecurityContract(unittest.TestCase):
             "post-publish verification must delegate retry/backoff to nick-fields/retry "
             "pinned to a full commit SHA",
         )
+        self.assertEqual(match.group(1), "ad984534de44a9489a53aefd81eb77f87c70dc60")
         self.assertNotIn(
             "continue_on_error",
             verify_job,
@@ -387,9 +398,17 @@ class ReleaseWorkflowSecurityContract(unittest.TestCase):
         self.assertIn("max_attempts:", verify_job)
         self.assertIn("retry_wait_seconds:", verify_job)
 
+    def test_post_publish_verification_retries_errors_and_timeouts(self):
+        verify_job = _job_block(PUBLISH_PATH.read_text(encoding="utf-8"), "verify-provenance")
+        self.assertRegex(verify_job, r"(?m)^\s+retry_on:\s+any\s*$")
+        timeout = re.search(r"timeout_(?:minutes|seconds):\s+(\d+)", verify_job)
+        self.assertIsNotNone(timeout, "each retry attempt must have a finite timeout")
+        self.assertGreater(int(timeout.group(1)), 0)
+
     def test_post_publish_verification_has_no_own_retry_loop(self):
         verify_job = _job_block(PUBLISH_PATH.read_text(encoding="utf-8"), "verify-provenance")
         self.assertNotIn("for ATTEMPT", verify_job)
+        self.assertNotRegex(verify_job, r"(?m)^\s*(?:for|while|until)\s")
         self.assertNotIn(
             "sleep ",
             verify_job,
@@ -416,9 +435,58 @@ class ReleaseWorkflowSecurityContract(unittest.TestCase):
 
     def test_post_publish_verification_installs_exact_version_and_audits_signatures(self):
         verify_job = _job_block(PUBLISH_PATH.read_text(encoding="utf-8"), "verify-provenance")
-        self.assertIn('npm install "$PACKAGE_SPEC" --ignore-scripts', verify_job)
-        self.assertIn("npm audit signatures", verify_job)
+        command = _retry_command(verify_job)
+        for operation in ('npm install "$PACKAGE_SPEC" --ignore-scripts', "npm audit signatures"):
+            self.assertIn(operation, command)
+            self.assertEqual(verify_job.count(operation), 1, "no second verification path")
         self.assertNotIn("npm publish", verify_job)
+
+    def test_post_publish_retry_isolates_a_failed_install(self):
+        verify_job = _job_block(PUBLISH_PATH.read_text(encoding="utf-8"), "verify-provenance")
+        command = _retry_command(verify_job)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            npm = root / "npm"
+            npm.write_text(textwrap.dedent('''\
+                #!/bin/bash
+                set -eu
+                case "$1" in
+                  view)
+                    case "$3" in
+                      version|dist-tags.latest) echo 1.5.2 ;;
+                      dist.integrity|dist.shasum) echo present ;;
+                      dist.attestations.provenance.predicateType) echo https://slsa.dev/provenance/v1 ;;
+                      *) exit 90 ;;
+                    esac ;;
+                  init) test ! -e damaged-install ;;
+                  install)
+                    test "$2" = @tomtastisch/agent-governance@1.5.2
+                    test "$3" = --ignore-scripts
+                    test ! -e damaged-install
+                    pwd >> "$VERIFY_LOG"
+                    touch damaged-install
+                    exit "$INSTALL_EXIT" ;;
+                  audit) test "$2" = signatures; echo audit >> "$VERIFY_LOG" ;;
+                  *) exit 91 ;;
+                esac
+                '''), encoding="utf-8")
+            npm.chmod(0o700)
+            log = root / "attempts.log"
+            for exit_code in (1, 0):
+                result = subprocess.run(
+                    ["bash", "-c", command], cwd=root,
+                    env={**os.environ, "PATH": f"{root}:{os.environ['PATH']}",
+                         "RUNNER_TEMP": str(root), "RELEASE_TAG": "v1.5.2",
+                         "NPM_DIST_TAG": "latest", "INSTALL_EXIT": str(exit_code),
+                         "VERIFY_LOG": str(log)},
+                    capture_output=True, text=True, check=False,
+                )
+                self.assertEqual(result.returncode, exit_code, result.stderr)
+            first, second, audit = log.read_text(encoding="utf-8").splitlines()
+            self.assertNotEqual(first, second, "attempts must use distinct install roots")
+            self.assertEqual(audit, "audit")
+            for attempt in (first, second):
+                self.assertEqual(Path(attempt).parent, root)
 
     def test_post_publish_provenance_verification_is_separate_and_read_only(self):
         workflow = PUBLISH_PATH.read_text(encoding="utf-8")
