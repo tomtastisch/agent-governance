@@ -61,11 +61,18 @@ Jedes Byte außerhalb der Hülle bleibt erhalten, einschließlich BOM, Zeilenend
 Abständen. Historische Angaben wie `Boundary prefix added` erlauben keine Entfernung
 zusätzlicher Bytes.
 
+Auch mehrere führende U+FEFF-Codepoints bleiben bytegenau erhalten. Der ursprüngliche
+Entry-Snapshot wird bis zum nativen Schreibaufruf gebunden; gleiche Bytes eines später
+ersetzten Inodes begründen kein Schreibrecht.
+
 Lokale Regeln werden ausschließlich über `localRules` ausdrücklich übernommen und
 mit dem aktuellen Local-Rules-Vertrag validiert. Der validierte Snapshot wird privat
 isoliert und anschließend durch den normalen Installer übernommen. Ein Release mit
 bereits enthaltenen privaten lokalen Regeln wird abgelehnt; es muss ein sauberes
 Releasepaket sein. Ohne Opt-in werden keine alten Regeln übernommen.
+Die installierte Regeldatei wird an der Aktivierungsgrenze, nach der Verifikation und
+nach der abschließenden Verzeichnissynchronisierung auf erwartete Abwesenheit oder
+die explizit freigegebenen Bytes geprüft; fremde Regeldateien bleiben bei Abbruch erhalten.
 
 `PLANNED` ist ein schreibfreier Plan ohne `CURRENT`-Aussage und ohne schreibenden
 Native-Probe. Erst der mutierende Aufruf prüft die reale native Capability. Er reserviert
@@ -74,6 +81,9 @@ den neuen Root exklusiv und legt neben dem Entry ein privates Verzeichnis
 Entry, `resources.json` ausschließlich Ressourcenreferenzen, `detached.bin` den abgetrennten
 Entry und gegebenenfalls `local-rules.md` den expliziten Regel-Snapshot. Datei- und
 Verzeichnis-Synchronisierung sichern die ursprünglichen Bytes vor dem Abtrennen.
+Die Identitäten von neuem Root und Quarantäne stammen aus dem nativen mkdir-Aufruf;
+JavaScript übernimmt keine danach erneut aufgelöste Ersatzidentität. Vor privaten
+Schreibzugriffen werden außerdem Modus `0700` und aktueller Eigentümer geprüft.
 
 `SUCCESS` mit `state: "CURRENT"` setzt frische `verify`- und `status`-Prüfungen voraus.
 `quarantine.directory` und `quarantine.entryPath` referenzieren die beibehaltene Isolation.

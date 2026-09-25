@@ -3,6 +3,7 @@ import { access, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promise
 import { basename, dirname, join } from "node:path";
 import { cpSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import test from "node:test";
+import { spawnSync } from "node:child_process";
 import { InstallerTransaction } from "../../src/transaction.ts";
 import { InstallerFailure, InterruptedFailure } from "../../src/errors.ts";
 import type { CatchableSignal, SignalSource } from "../../src/signals.ts";
@@ -17,6 +18,17 @@ async function fixture() {
   const request = { targetRoot, entryFile: "AGENTS.md", scope: "global" as const, installationRoot, releaseRoot, dryRun: false, nonInteractive: true };
   return { root, targetRoot, releaseRoot, installationRoot, request, entry: join(targetRoot, "AGENTS.md") };
 }
+
+test("QA-123-01 transaction does not adopt a same-byte foreign inode at atomicWrite", async () => {
+  const f = await fixture(); await writeFile(f.entry, "original user bytes\n");
+  const child = spawnSync(process.execPath, ["--experimental-test-module-mocks", "--experimental-strip-types", join(import.meta.dirname, "../fixtures/installer/replacement-review-race.ts"), JSON.stringify(f.request), "late-entry-transaction"], { encoding: "utf8" });
+  assert.equal(child.status, 0, child.stderr);
+  const result = JSON.parse(child.stdout);
+  assert.equal(result.injected, true);
+  assert.equal(result.outcome, "FAILURE");
+  assert.equal(result.foreignPreserved, true);
+  assert.equal(await readFile(f.entry, "utf8"), "original user bytes\n");
+});
 
 async function releaseFixture(root: string, version: string): Promise<string> {
   const releaseRoot = join(root, `package-${version}`);

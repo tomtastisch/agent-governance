@@ -1,7 +1,7 @@
 import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync, realpathSync } from "node:fs";
 import { open } from "node:fs/promises";
 import type { PathIdentity } from "../filesystem.ts";
-import type { FileSnapshotIdentity } from "../native-filesystem.ts";
+import type { CreatedDirectoryIdentity, FileSnapshotIdentity } from "../native-filesystem.ts";
 import { sameFileSnapshot } from "./snapshot.ts";
 
 export interface EntrySnapshot { readonly bytes: Buffer; readonly identity: FileSnapshotIdentity; }
@@ -17,6 +17,12 @@ export function assertMissing(path: string): void {
 export function assertDirectory(path: string, expected: PathIdentity): void {
   const stat = lstatSync(path, { bigint: true });
   if (!stat.isDirectory() || realpathSync(path) !== path || stat.dev !== expected.device || stat.ino !== expected.inode || Number(stat.mode) !== expected.mode) throw new Error("replacement directory changed");
+}
+
+export function assertPrivateDirectory(path: string, expected: CreatedDirectoryIdentity): void {
+  assertDirectory(path, expected);
+  const stat = lstatSync(path, { bigint: true });
+  if ((Number(stat.mode) & 0o7777) !== 0o700 || Number(stat.uid) !== expected.uid || expected.uid !== process.geteuid?.()) throw new Error("replacement directory is not private and owned");
 }
 
 export function entrySnapshot(path: string): EntrySnapshot {

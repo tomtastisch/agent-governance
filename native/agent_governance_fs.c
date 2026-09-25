@@ -271,7 +271,27 @@ static napi_value secure_create_directory(napi_env env, napi_callback_info info)
   size_t argc = 4; napi_value argv[4]; napi_get_cb_info(env, info, &argc, argv, NULL, NULL); int directory_fd; uint64_t directory_dev, directory_ino; char name[256];
   if (argc != 4 || !get_fd(env, argv[0], &directory_fd) || !get_basename(env, argv[1], name, sizeof(name)) || !get_u64(env, argv[2], &directory_dev) || !get_u64(env, argv[3], &directory_ino)) { napi_throw_type_error(env, "NATIVE_FS_INVALID_ARGUMENT", "native mkdir requires a valid parent fd, identity, and basename"); return NULL; }
   struct stat directory; if (fstat(directory_fd, &directory) != 0 || !S_ISDIR(directory.st_mode) || (uint64_t)directory.st_dev != directory_dev || (uint64_t)directory.st_ino != directory_ino) { errno = ESTALE; throw_errno(env, "mkdir parent identity validation"); return NULL; }
-  if (mkdirat(directory_fd, name, 0700) != 0) { throw_errno(env, "exclusive directory-relative mkdir"); return NULL; } napi_value undefined; napi_get_undefined(env, &undefined); return undefined;
+  if (mkdirat(directory_fd, name, 0700) != 0) { throw_errno(env, "exclusive directory-relative mkdir"); return NULL; }
+  int created_fd = openat(directory_fd, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+  if (created_fd < 0) { throw_errno(env, "created directory open"); return NULL; }
+  struct stat created, visible;
+  if (fstat(created_fd, &created) != 0 || fstatat(directory_fd, name, &visible, AT_SYMLINK_NOFOLLOW) != 0 ||
+      !S_ISDIR(created.st_mode) || (created.st_mode & 07777) != 0700 || created.st_uid != geteuid() ||
+      visible.st_dev != created.st_dev || visible.st_ino != created.st_ino || visible.st_mode != created.st_mode || visible.st_uid != created.st_uid) {
+    int saved = errno == 0 ? ESTALE : errno; close(created_fd); errno = saved; throw_errno(env, "created directory identity validation"); return NULL;
+  }
+  if (close(created_fd) != 0) { throw_errno(env, "created directory close"); return NULL; }
+  napi_value result, device, inode, mode, uid;
+  napi_create_object(env, &result);
+  napi_create_bigint_uint64(env, (uint64_t)created.st_dev, &device);
+  napi_create_bigint_uint64(env, (uint64_t)created.st_ino, &inode);
+  napi_create_uint32(env, (uint32_t)created.st_mode, &mode);
+  napi_create_uint32(env, (uint32_t)created.st_uid, &uid);
+  napi_set_named_property(env, result, "device", device);
+  napi_set_named_property(env, result, "inode", inode);
+  napi_set_named_property(env, result, "mode", mode);
+  napi_set_named_property(env, result, "uid", uid);
+  return result;
 }
 
 static napi_value secure_remove_directory(napi_env env, napi_callback_info info) {

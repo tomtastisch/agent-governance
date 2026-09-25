@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
 import { access, link, lstat, mkdir, open, readFile, readdir, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
@@ -313,4 +314,80 @@ test("SIGKILL after detach leaves private original bytes and resource references
   assert.equal(references.entryPath, f.entry);
   assert.equal(references.installationRoot, f.request.installationRoot);
   await assert.rejects(access(f.entry));
+});
+
+for (const optIn of [false, true]) test(`SEC-123-01 rejects injected installed rules (opt-in=${optIn})`, async (t) => {
+  const f = await fixture();
+  const source = join(f.root, "approved.md"); await writeFile(source, "approved private rules\n");
+  const installed = join(f.request.installationRoot, "releases", "1.0.0-rc.1", "bundle", "agent-governance", "local", "user-rules.md");
+  const install = InstallerTransaction.prototype.install;
+  t.mock.method(InstallerTransaction.prototype, "install", async function(this: InstallerTransaction) {
+    const request = (this as unknown as { request: ConstructorParameters<typeof InstallerTransaction>[0] }).request;
+    return install.call(new InstallerTransaction({ ...request, onCheckpoint: checkpoint => {
+      if (checkpoint === "afterCurrent") writeFileSync(installed, "foreign private rules\n");
+      request.onCheckpoint?.(checkpoint);
+    } }));
+  });
+  const result = await replaceInstallation({ ...f.request, ...(optIn ? { localRules: source } : {}) });
+  assert.equal(result.outcome, "FAILURE");
+  assert.equal(await readFile(installed, "utf8"), "foreign private rules\n");
+  assert.deepEqual(await readFile(result.quarantine!.entryPath), f.original);
+});
+
+for (const mode of ["quarantine777", "quarantine700", "destination777", "destination700", "late-entry"] as const) {
+  test(`review race ${mode} preserves foreign ownership`, async () => {
+    const f = await fixture();
+    const child = spawnSync(process.execPath, ["--experimental-test-module-mocks", "--experimental-strip-types", join(import.meta.dirname, "../fixtures/installer/replacement-review-race.ts"), JSON.stringify(f.request), mode], { encoding: "utf8" });
+    assert.equal(child.status, 0, child.stderr);
+    const result = JSON.parse(child.stdout);
+    assert.equal(result.injected, true);
+    assert.equal(result.outcome, "FAILURE");
+    assert.equal(result.foreignPreserved, true);
+    assert.equal(result.substituteEmpty, true);
+    assert.deepEqual(await readFile(f.entry), mode === "late-entry" ? f.user : f.original);
+  });
+}
+
+test("QA-123-02 replacement preserves both leading BOM codepoints byte-for-byte", async () => {
+  const f = await fixture();
+  const original = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), f.original]);
+  await writeFile(f.entry, original);
+  const result = await replaceInstallation(f.request);
+  assert.equal(result.outcome, "SUCCESS");
+  const prefix = Buffer.from("\uFEFF\uFEFFprivate prefix\r\nprivate suffix\r\n");
+  assert.deepEqual((await readFile(f.entry)).subarray(0, prefix.length), prefix);
+  assert.deepEqual(await readFile(result.quarantine.entryPath), original);
+});
+
+for (const optIn of [false, true]) test(`SEC-123-01 final verification binds installed rules (opt-in=${optIn})`, async (t) => {
+  const f = await fixture();
+  const source = join(f.root, "approved.md"); await writeFile(source, "approved private rules\n");
+  const installed = join(f.request.installationRoot, "releases", "1.0.0-rc.1", "bundle", "agent-governance", "local", "user-rules.md");
+  const status = InstallerTransaction.prototype.status;
+  t.mock.method(InstallerTransaction.prototype, "status", async function(this: InstallerTransaction) {
+    const result = await status.call(this);
+    await writeFile(installed, "foreign final rules\n");
+    return result;
+  });
+  const result = await replaceInstallation({ ...f.request, ...(optIn ? { localRules: source } : {}) });
+  assert.equal(result.outcome, "FAILURE");
+  assert.equal(await readFile(installed, "utf8"), "foreign final rules\n");
+});
+
+test("SEC-123-01 final directory sync cannot adopt newly injected installed rules", async (t) => {
+  const f = await fixture();
+  const installed = join(f.request.installationRoot, "releases", "1.0.0-rc.1", "bundle", "agent-governance", "local", "user-rules.md");
+  const handle = await open(f.request.targetRoot, "r");
+  const prototype = Object.getPrototypeOf(handle) as { sync: () => Promise<void> };
+  const sync = prototype.sync; await handle.close();
+  let verified = false;
+  const status = InstallerTransaction.prototype.status;
+  t.mock.method(InstallerTransaction.prototype, "status", async function(this: InstallerTransaction) { const result = await status.call(this); verified = true; return result; });
+  t.mock.method(prototype, "sync", async function(this: typeof handle) {
+    await sync.call(this);
+    if (verified) await writeFile(installed, "durability-time foreign rules\n");
+  });
+  const result = await replaceInstallation(f.request);
+  assert.equal(result.outcome, "FAILURE");
+  assert.equal(await readFile(installed, "utf8"), "durability-time foreign rules\n");
 });

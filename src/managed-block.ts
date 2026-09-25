@@ -20,12 +20,10 @@ interface ParsedEntry {
   readonly block?: string;
 }
 
-const UTF8_BOM = Buffer.from([0xef, 0xbb, 0xbf]);
-
 function decode(input: Buffer): string {
   try {
-    const hasBom = input.length >= UTF8_BOM.length && input.subarray(0, UTF8_BOM.length).equals(UTF8_BOM);
-    return (hasBom ? "\uFEFF" : "") + new TextDecoder("utf-8", { fatal: true }).decode(hasBom ? input.subarray(UTF8_BOM.length) : input);
+    // Treat every U+FEFF as content, including consecutive leading codepoints.
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(input);
   } catch {
     throw new Error("entry file must be valid UTF-8");
   }

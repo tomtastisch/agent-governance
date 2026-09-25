@@ -21,7 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Keine.
+- Replacement bindet installierte lokale Regeln an das explizite Opt-in, übernimmt
+  ausschließlich die nativ gebundene Identität neu angelegter privater Verzeichnisse
+  und erhält auch mehrere führende UTF-8-BOM-Codepoints. Entry-Schreibvorgänge reichen
+  den Inspektionssnapshot bis zur nativen Mutation durch und bewahren fremde Inodes
+  auch bei identischen Bytes (SEC-123-01/02, QA-123-01/02).
 
 ### Removed
 

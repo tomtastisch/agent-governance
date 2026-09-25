@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { basename, dirname, join } from "node:path";
-import { captureIdentity, type PathIdentity } from "./filesystem.ts";
+import type { PathIdentity } from "./filesystem.ts";
 import { installManagedBlock } from "./managed-block.ts";
-import { probeNativeFilesystemCapability, secureCreateDirectory, secureRemoveFile, secureRenameNoReplace } from "./native-filesystem.ts";
+import { probeNativeFilesystemCapability, secureCreateDirectory, secureRemoveFile, secureRenameNoReplace, type CreatedDirectoryIdentity } from "./native-filesystem.ts";
 import { buildBinding } from "./installer/context.ts";
 import { atomicCreate } from "./installer/mutation.ts";
-import { assertDirectory, assertEntry, assertMissing, entrySnapshot, syncDirectory, type EntrySnapshot } from "./installer/replacement-guards.ts";
+import { assertDirectory, assertEntry, assertMissing, assertPrivateDirectory, entrySnapshot, syncDirectory, type EntrySnapshot } from "./installer/replacement-guards.ts";
 import { validateReplacement } from "./installer/replacement-validation.ts";
 import { InstallerTransaction } from "./transaction.ts";
 
@@ -60,23 +60,28 @@ export async function replaceInstallation(input: ReplacementRequest): Promise<Re
       [dirname(request.installationRoot), context.destinationParentIdentity],
       [target.targetRoot, target.targetIdentity], [parent, target.entryParentIdentity],
     ];
-    const guard = () => { for (const [path, identity] of directories) assertDirectory(path, identity); };
+    const privateDirectories: [string, CreatedDirectoryIdentity][] = [];
+    const guard = () => {
+      for (const [path, identity] of directories) assertDirectory(path, identity);
+      for (const [path, identity] of privateDirectories) assertPrivateDirectory(path, identity);
+    };
     guard(); assertEntry(target.entryPath, original);
     phase = "reserve";
     await probeNativeFilesystemCapability(parent, target.entryParentIdentity);
     await probeNativeFilesystemCapability(dirname(request.installationRoot), context.destinationParentIdentity);
     guard(); assertEntry(target.entryPath, original);
     installationRoot = request.installationRoot;
-    await secureCreateDirectory({ directory: dirname(request.installationRoot), name: basename(request.installationRoot), directoryIdentity: context.destinationParentIdentity });
-    directories.push([installationRoot, await captureIdentity(installationRoot)]);
+    const installationIdentity = await secureCreateDirectory({ directory: dirname(request.installationRoot), name: basename(request.installationRoot), directoryIdentity: context.destinationParentIdentity });
+    privateDirectories.push([installationRoot, installationIdentity]);
+    guard();
     await syncDirectory(dirname(installationRoot), context.destinationParentIdentity);
     phase = "quarantine";
     guard();
     const directory = join(parent, `.agent-governance-quarantine-${randomUUID()}`);
     quarantine = { directory, entryPath: join(directory, "entry.bin") };
-    await secureCreateDirectory({ directory: parent, name: basename(directory), directoryIdentity: target.entryParentIdentity });
-    const identity = await captureIdentity(directory);
-    directories.push([directory, identity]);
+    const identity = await secureCreateDirectory({ directory: parent, name: basename(directory), directoryIdentity: target.entryParentIdentity });
+    privateDirectories.push([directory, identity]);
+    guard();
     await syncDirectory(parent, target.entryParentIdentity);
     guard();
     await atomicCreate(join(directory, "resources.json"), `${JSON.stringify({ schemaVersion: 1, sourceInstallationRoot: request.sourceInstallationRoot, installationRoot, entryPath: target.entryPath, originalEntry: "entry.bin", detachedEntry: "detached.bin" })}\n`, identity);
@@ -117,9 +122,17 @@ export async function replaceInstallation(input: ReplacementRequest): Promise<Re
     await atomicCreate(target.entryPath, user, target.entryParentIdentity);
     owned = entrySnapshot(target.entryPath);
     const expectedApplied = installManagedBlock(user, buildBinding(context.release, installationRoot));
+    const installedRules = join(installationRoot, "releases", context.release.version, "bundle", "agent-governance", context.release.localRulesPath);
+    let activated = false;
+    const guardInstalledRules = () => {
+      if (!activated || context.localRules === undefined) assertMissing(installedRules);
+      else if (!entrySnapshot(installedRules).bytes.equals(context.localRules)) throw new Error("installed local rules changed");
+    };
     phase = "install";
     const tx = new InstallerTransaction({ installationRoot, releaseRoot: request.releaseRoot, targetRoot: request.targetRoot, entryFile: request.entryFile, scope: "global", nonInteractive: true, dryRun: false, ...(rulesSnapshot === undefined ? {} : { localRules: rulesPath }), onCheckpoint: checkpoint => {
       guard(); assertEntry(backupPath, backup);
+      if (checkpoint === "afterCurrent") activated = true;
+      guardInstalledRules();
       assertMissing(context.releaseRules);
       if (rulesSnapshot !== undefined) assertEntry(rulesPath, rulesSnapshot);
       if (checkpoint === "afterEntry") {
@@ -132,12 +145,12 @@ export async function replaceInstallation(input: ReplacementRequest): Promise<Re
     } });
     await tx.install();
     phase = "verify";
-    guard(); assertEntry(target.entryPath, owned!);
+    guard(); guardInstalledRules(); assertEntry(target.entryPath, owned!);
     await tx.verify();
     if ((await tx.status()).state !== "CURRENT") throw new Error("replacement verification failed");
-    guard(); assertEntry(target.entryPath, owned!); assertEntry(backupPath, backup);
+    guard(); guardInstalledRules(); assertEntry(target.entryPath, owned!); assertEntry(backupPath, backup);
     await syncDirectory(parent, target.entryParentIdentity);
-    guard(); assertEntry(target.entryPath, owned!); assertEntry(backupPath, backup);
+    guard(); guardInstalledRules(); assertEntry(target.entryPath, owned!); assertEntry(backupPath, backup);
     return { outcome: "SUCCESS", state: "CURRENT", quarantine };
   } catch {
     let recovery: "NOT_REQUIRED" | "RESTORED" | "RETAINED" = detached ? "RETAINED" : "NOT_REQUIRED";
