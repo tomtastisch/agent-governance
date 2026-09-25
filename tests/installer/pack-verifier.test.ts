@@ -70,6 +70,17 @@ test("pack verifier accepts the npm 12 package-keyed JSON report", async (t) => 
   assert.match(result.stdout, /tarball entries are generic and allowlisted/);
 });
 
+test("pack verifier requires exactly the terminal branding asset path", async (t) => {
+  const { root, paths } = await allowlistedFixture(t);
+  const report = (entries: string[]) => [{ name: "@tomtastisch/agent-governance", files: entries.map((path) => ({ path })) }];
+  const accepted = verify(root, report(paths));
+  assert.equal(accepted.status, 0, accepted.stderr);
+
+  const missing = verify(root, report(paths.filter((path) => path !== "assets/branding/agent-governance-terminal.png")));
+  assert.notEqual(missing.status, 0);
+  assert.match(missing.stderr, /missing tarball path: assets\/branding\/agent-governance-terminal\.png/u);
+});
+
 for (const path of [
   "INSTALL.md",
   "assets/diagrams/governance-overview.png",

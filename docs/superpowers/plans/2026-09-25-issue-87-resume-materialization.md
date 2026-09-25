@@ -66,3 +66,25 @@ COMMITTED und NOT_APPLIED; Workflow verwendet Materialisierung vor Kontextverlus
 - Ruling: unabhängige, permanente Generationen verwenden vorhandene native Create-/
   Rename-Primitiven; kein neuer Installer-Lock und keine neue Persistence-Authority.
   Stage-Artefakte bleiben ausdrücklich unpubliziert; keine automatische Bereinigung.
+
+## Resume nach Implementierungscommit `8284e83`
+
+- Git bestätigt denselben sauberen #87-Branch und Head, keine Folgecommits;
+  Remote-Basis weiterhin `4e50cbffd75866deaa37b263ebe4d99442420a70`.
+- Bekannten Fehler isoliert reproduziert: Der Branding-Packtest scheiterte vor
+  seiner Branding-Prüfung an `missing tarball path: dist/resume-checkpoint.js`.
+  Sein separates Paket-Fixture war gegenüber dem #87-Paketvertrag veraltet.
+- Kleinste Korrektur: denselben Branding-Test zum bestehenden Pack-Fixture
+  verschoben und das zweite manuelle Inventar entfernt. Keine neue Authority.
+- RED/GREEN: `node --experimental-strip-types --test
+  --test-name-pattern='^pack verifier requires exactly the terminal branding asset path$'`
+  zunächst mit `tests/installer/init-branding.test.ts` FAIL, nach der Korrektur
+  mit `tests/installer/pack-verifier.test.ts` PASS (1 Test).
+- Evidence-Reuse: Resume-/TOON-Code, Contracttests, Package-/Exportvertrag,
+  SSOT und Buildkonfiguration unverändert. Nur die beiden geänderten Testdateien
+  invalidieren ihre bisherige Test-/Typecheck-Evidence. Erneuerung im ohnehin
+  erforderlichen Gesamtgate, keine zusätzliche fokussierte Testsuite.
+- Nächste atomare Aktion: signierten Korrekturhead sichern, vollständige lokale
+  Gates auf diesem Head abschließen. SEC bleibt INCOMPLETE; QA/SEC und Remote-CI
+  benötigen anschließend jeweils belegte Exact-Head-Ergebnisse. Diese werden
+  an den tatsächlichen Lieferhead gebunden im PR dokumentiert.
