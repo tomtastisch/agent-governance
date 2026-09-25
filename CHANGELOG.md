@@ -25,6 +25,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Breaking changes:** none
 
+## [1.5.2] — 2026-09-25
+
+### Added
+
+- Keine.
+
+### Changed
+
+- Keine.
+
+### Fixed
+
+- Trusted npm Publish bündelt sämtliche read-only Registry-, Tarball-, Provenance- und
+  Signaturprüfungen unter einer SHA-gepinnten Retry-Action. Jeder Versuch installiert die
+  exakte veröffentlichte Version mit `--ignore-scripts` in einen frischen temporären Root
+  und führt `npm audit signatures` aus. Fehler und Timeouts werden mit begrenztem
+  Zeitbudget wiederholt; eigene Retry-Schleifen und erneutes Publish entfallen
+  (#115, #117, SemVer: patch).
+
+### Removed
+
+- Keine.
+
+**Breaking changes:** none
+
 ## [1.5.1] — 2026-09-24
 
 ### Added

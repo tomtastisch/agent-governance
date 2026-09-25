@@ -741,9 +741,9 @@ class ReleaseMetadataContract(unittest.TestCase):
         self.assertIn(PACKAGE["license"], README)
         current = CHANGELOG.split(f"## [{VERSION}]", 1)[1].split("\n## [", 1)[0]
         for term in (
-            "Same-SHA-Evidence",
-            "Remote-/PR-Head-Readback",
-            "#93, SemVer: patch",
+            "Trusted npm Publish",
+            "npm audit signatures",
+            "#115, #117, SemVer: patch",
         ):
             self.assertIn(term, current)
         self.assertIn("**Breaking changes:** none", current)
