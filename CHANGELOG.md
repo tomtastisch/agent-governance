@@ -9,7 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Keine.
+- Ereignisgebundene Resume-Checkpoint-Materialisierung mit atomaren Generationen,
+  Recovery, Schutz vor konkurrierenden/veralteten Writern und persistiertem
+  Write-ahead für externe Wirkungen über den neuen Paket-Export `resume-checkpoint`
+  (#87; additive öffentliche API, SemVer minor).
+- TOON-Ableitung aus vollständig validierten persistenten Checkpoints und
+  inhaltsgebundene Prüfung zwischengespeicherter Projektionen.
 
 ### Changed
 

@@ -225,6 +225,56 @@ und Signing-Gates werden nicht umgangen oder abgeschwächt; dies folgt
 [DEL-003](delivery.md#del-003--unabhängige-prüfung) und
 [SEC-001](security.md#sec-001--risikobasiertes-security-gate).
 
+### RES-022 — Ereignisgebundene Materialisierung
+
+Bestätigter Resume-Zustand wird während der Arbeit materialisiert, bevor Kontext entbehrlich
+wird. Materialisierungsrelevant sind Auftragsidentität, Scope, aktiver atomarer Task,
+Taskstart/-abschluss/-fehler/INCOMPLETE, bestätigte Entscheidungen, Evidence-Start/-Abschluss/
+Invalidation, geöffnete/geschlossene Findings, Exact-State- und Next-Action-Änderungen,
+Handoff/Pause, vorbereitete/ausgeführte/zurückgelesene externe Wirkungen, angekündigte Compaction
+und kontrolliertes Sessionende. Chatnachrichten allein sind kein Trigger. Identische Zustände
+brauchen keine neue Generation. Die Workflowintegration verwendet den vorhandenen
+Resume-Checkpoint-Vertrag; eine Work-Item-Identity wird nur referenziert.
+
+Checkpoint-Projektionen tragen Schema-Version, Generation, Vorgänger- und Inhaltsbindung sowie
+die erforderlichen granularen Identitäten. Sichere vorhandene Dateisystemprimitive veröffentlichen
+vollständige Generationen atomar und exklusiv; stale Writer oder konkurrierende Updates dürfen
+keinen neueren Zustand überschreiben. Eine idempotente Wiederholung muss dieselbe Event-ID,
+Vorgängerbindung und denselben Inhalt besitzen. Partielle Staging-Dateien sind kein Checkpoint;
+beschädigte publizierte Zustände, ungültige Schemas und widersprüchliche Ketten scheitern fail-closed.
+Fehlgeschlagene Persistenz gilt niemals als erfolgreich. Ein Prozessabbruch lässt ausschließlich
+einen vollständig validierbaren alten oder neuen Checkpoint zurück.
+
+### RES-023 — Persistiertes Write-ahead und Readback
+
+Vor einer nicht sicher wiederholbaren Wirkung werden Operation-ID, Ziel, Aktion und sichere
+Input-Bindungen als `PREPARED` persistiert. Die Ausführung beansprucht die Operation exklusiv;
+bis zu einem bestätigten Source-of-Truth-Readback bleibt ihr Resultat `UNKNOWN`.
+`COMMITTED` setzt gebundenen Readback voraus. Eine bestätigte Nichtausführung darf erst als
+`NOT_APPLIED` gelten, wenn auch kein noch aktiver Prozess oder ausstehender externer Vorgang
+die Wirkung später auslösen kann. Ein bloß momentan fehlendes Ziel genügt nicht.
+
+Recovery fragt ausschließlich die zuständige Authority ab. Unklarheit führt niemals zur blinden
+Wiederholung. Nach `NOT_APPLIED` erfordert ein Versuch eine explizite erneute Vorbereitung und
+weiterhin aktuelle Autorisierung. Operation-Identitäten und Bindungen werden nicht entfernt oder
+umgedeutet. Persistenz erteilt keine Approval und übernimmt keine externe Authority.
+
+### RES-024 — Persistenzgebundene Kontextprojektion und optionaler Flush
+
+Die ausführbare Kette lautet: persistierten Checkpoint auflösen/lesen, vollständiges Schema,
+Generationskette und Inhalt validieren, daraus `ResumeProjection` ableiten, dann TOON erzeugen.
+Strukturvalidierung einer frei übergebenen `ResumeProjection` allein erfüllt diesen Vertrag nicht.
+Zwischengespeichertes TOON muss sowohl an die erwartete Checkpoint-Identität als auch an den
+abgeleiteten Inhalt gebunden sein; ein kopierter Fingerprint legitimiert keine manipulierten Felder.
+Detail-Evidence wird ausschließlich bei Bedarf über ihre Referenz aufgelöst; fehlende benötigte
+Artefakte blockieren ihre Wiederverwendung. Integritätsprüfung ersetzt weder Authentizität noch
+den bestehenden Resume-Preflight und verlängert keine freshness-sensitive Evidence.
+
+Ereignisgebundene atomare Materialisierung ist der primäre Schutz bei Compaction ohne Hook,
+Crash und Sessionabbruch. Ein `checkpoint.flush()`-Adapter darf ausschließlich eine tatsächlich
+vorhandene belastbare Lifecycle-Oberfläche ergänzen. Ohne solche Oberfläche wird kein Hook
+erfunden und keine Startup-/Readiness-Semantik übernommen. Der Kern bleibt harnessneutral.
+
 ## Resume-Checkpoint
 
 Domain-spezifische Form der Wiederaufnahme, Owner ist diese Resume-Capability
@@ -235,6 +285,7 @@ die der generische Handoff-Vertrag nicht ausdrückt.
 
 ```text
 Auftrag: <task-id> — <bounded objective>
+Checkpoint: <schema identity> <generation> <previous checkpoint> <checkpoint fingerprint>
 Scope: <included / excluded>
 Task-Identität: <task_identity fingerprint>
 Scope-Identität: <scope_identity fingerprint>
@@ -242,6 +293,9 @@ Repository/Worktree/Branch: <repository> <worktree> <branch>
 Exact state: <branch> <head-SHA> <clean|dirty>
 Dirty state: <staged / unstaged / untracked fingerprints>
 Kanonische SSOT: <paths/objects and precedence>
+Aktiver atomarer Task: <task> <RUNNING|COMPLETED|FAILED|INCOMPLETE>
+Bestätigte Entscheidungen: <minimierte Referenzen>
+Externe Wirkungen: <operation identity, safe bindings, PREPARED|UNKNOWN|COMMITTED|NOT_APPLIED, readback reference>
 Abgeschlossene Evidence:
 | Evidence-ID | Binding-Fingerprints | Ergebnis |
 | <id> | <fingerprints> | <REUSE|INVALIDATE> |

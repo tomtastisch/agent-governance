@@ -15,6 +15,16 @@ den nächsten sicheren Schritt fest. Ein Checkpoint wird nach jeder Scopeentsche
 externen Wirkung, Commit-/Push-/Reviewgrenze, Findingkorrektur und vor einer Übergabe
 aktualisiert. Die [Kontextübergabe](../templates/context/handoff.md) ist die verbindliche Form.
 
+Der technische Resume-Zustand wird bereits während relevanter Zustandsübergänge ereignisgebunden
+und atomar persistiert: Task-/Scope-/Exact-State-Änderung, Taskstart und -ende einschließlich
+Fehler/INCOMPLETE, Entscheidung, Evidence-Start/-Abschluss/-Invalidation, Finding, nächste Aktion,
+Handoff, externe Vorbereitung/Ausführung/Readback sowie angekündigte Compaction oder Sessionende.
+Die Form und Persistenzgrenzen gehören ausschließlich der bestehenden
+[Resume-Capability](resume.md#res-022--ereignisgebundene-materialisierung).
+Chatnachrichten sind keine Persistenztrigger. Ein fehlender Compaction-Hook darf den Schutz nicht
+verhindern; Zustand muss vor Kontextverlust gesichert sein. Persistenzfehler blockieren nur den
+abhängigen Übergang beziehungsweise die externe Wirkung.
+
 ### CTX-003 — Kontext neu laden
 
 Der Agent muss Kontext neu laden, wenn eine Sitzung fortgesetzt oder komprimiert wurde,
