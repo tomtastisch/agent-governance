@@ -88,3 +88,25 @@ COMMITTED und NOT_APPLIED; Workflow verwendet Materialisierung vor Kontextverlus
   Gates auf diesem Head abschließen. SEC bleibt INCOMPLETE; QA/SEC und Remote-CI
   benötigen anschließend jeweils belegte Exact-Head-Ergebnisse. Diese werden
   an den tatsächlichen Lieferhead gebunden im PR dokumentiert.
+
+### Follow-up der Liefergates
+
+- `d72f5fc`: Node-/Package-/Installer-Gates PASS. Python-Gate deckte zwei weitere
+  veraltete Dokumentationsannahmen auf. `df87f19` registriert die öffentliche
+  Checkpoint-Referenz beim bestehenden Dokumentlink-Owner und beseitigt das
+  parallele Dokumentlink-Fixture-Inventar. Gezielte drei Regressionen PASS.
+- Unabhängiger SEC-Review auf `df87f19` (Referenz
+  `ses_f264f1560ffeQ4COKOCKrMtIUH`) klassifiziert SEC-87-001 und SEC-87-002 jeweils
+  als Medium / blocking-valid: Retry nach fehlgeschlagenem Directory-Sync und
+  veränderbare Expected-Identität über asynchrone Grenzen.
+- Beide Befunde im Executor mit drei Regressionen RED reproduziert, dann GREEN:
+  Wiederholungen synchronisieren und lesen die exakte Generation erneut;
+  Expected-Identitäten werden vor asynchronen Grenzen als eigenes Wertepaar
+  erfasst, einschließlich progressiver Evidence-Callbacks. Betroffene Evidence:
+  Checkpoint-Runtime, ihre Tests, Build/Package/Consumer und SEC; keine neue SSOT.
+- Ein Python-Gesamtlauf auf `df87f19` scheiterte nach erfolgreichem Providerbuild
+  ausschließlich beim temporären Cleanup (`Directory not empty`). Derselbe
+  unveränderte Provider-Test bestand isoliert. Keine fachfremde Änderung am
+  Provider vorgenommen; vollständiger Abschlusslauf bleibt erforderlich.
+- Nächste Aktion: finalen Korrekturhead sichern, lokale Gesamtgates und unabhängigen
+  SEC-Recheck abschließen; QA und PR-CI an denselben Lieferhead binden.

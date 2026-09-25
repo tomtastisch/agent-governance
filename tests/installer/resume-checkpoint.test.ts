@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { chmod, link, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, link, mkdtemp, open, readFile, readdir, realpath, rm, symlink, writeFile, type FileHandle } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fork } from "node:child_process";
@@ -60,6 +60,54 @@ test("Generation, Event und Inhalt binden idempotente Wiederholung und stale Wri
   const changed = await store.materialize({ eventId: "dirty", trigger: "exact_state_changed", expected: first, state: { ...state(), identities: { ...state().identities, dirty: "diff-b" } } });
   assert.notEqual(changed!.fingerprint, first!.fingerprint);
   await assert.rejects(initial(store), /stale|event/);
+});
+
+test("Wiederholung nach fehlgeschlagenem Directory-Sync bestätigt erst nach erfolgreicher Persistenz", async (t) => {
+  const { directory, store } = await fixture(t);
+  const handle = await open(directory, "r");
+  const prototype = Object.getPrototypeOf(handle) as FileHandle;
+  const sync = prototype.sync;
+  await handle.close();
+  let failSync = true;
+  t.mock.method(prototype, "sync", async function (this: FileHandle) {
+    if ((await this.stat()).isDirectory() && failSync) throw Object.assign(new Error("directory sync failed"), { code: "EIO" });
+    return sync.call(this);
+  });
+  await assert.rejects(initial(store), { code: "EIO" });
+  const visible = (await store.read())!;
+  assert.equal(visible.generation, 1);
+  await assert.rejects(initial(store), { code: "EIO" });
+  const unchanged = () => store.materialize({ eventId: "unchanged", trigger: "task_started", expected: visible, state: state() });
+  await assert.rejects(unchanged(), { code: "EIO" });
+  failSync = false;
+  assert.deepEqual(await initial(store), visible);
+  assert.deepEqual(await unchanged(), visible);
+});
+
+test("Aufrufermutation der erwarteten Identität kann stale Writer oder Reads nicht rebaselinen", async (t) => {
+  const { store } = await fixture(t);
+  const first = (await initial(store))!;
+  const newer = (await store.materialize({ eventId: "finding", trigger: "finding_opened", expected: first, state: { ...state(), projection: { ...state().projection, openFindings: ["finding-1"] } } }))!;
+  const expected = { generation: first.generation, fingerprint: first.fingerprint };
+  const pending = store.materialize({ eventId: "stale", trigger: "task_started", expected, state: state() });
+  Object.assign(expected, { generation: newer.generation, fingerprint: newer.fingerprint });
+  await assert.rejects(pending, /stale/);
+  assert.deepEqual((await store.read())!.state.projection.openFindings, ["finding-1"]);
+  Object.assign(expected, { generation: first.generation, fingerprint: first.fingerprint });
+  const read = store.read(expected);
+  Object.assign(expected, { generation: newer.generation, fingerprint: newer.fingerprint });
+  await assert.rejects(read, /stale/);
+});
+
+test("Evidence-Callback kann die erwartete Identität über einen Checkpoint-Wechsel nicht verändern", async (t) => {
+  const { store } = await fixture(t);
+  const first = (await initial(store))!;
+  const expected = { generation: first.generation, fingerprint: first.fingerprint };
+  await assert.rejects(store.evidenceReference(expected, "test-1", async () => {
+    const newer = (await store.materialize({ eventId: "changed", trigger: "next_action_changed", expected: first, state: { ...state(), activeTask: "changed" } }))!;
+    Object.assign(expected, { generation: newer.generation, fingerprint: newer.fingerprint });
+    return true;
+  }), /stale/);
 });
 
 test("Schema, unbekannte Felder, sensible Daten und fehlende Evidence-Referenzen scheitern vor Persistenz", async (t) => {

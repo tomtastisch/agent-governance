@@ -34,6 +34,10 @@ function matches(actual: CheckpointIdentity | null, expected: CheckpointIdentity
   return actual === null ? expected === null : expected !== null && actual.generation === expected.generation && actual.fingerprint === expected.fingerprint;
 }
 
+function snapshotIdentity(expected: CheckpointIdentity): CheckpointIdentity {
+  return { generation: expected.generation, fingerprint: expected.fingerprint };
+}
+
 /** Append-only checkpoint projections. Canonical authorities and RES-003..015 still own revalidation. */
 export class ResumeCheckpointStore {
   private readonly directory: string;
@@ -105,9 +109,17 @@ export class ResumeCheckpointStore {
 
   /** Structural/integrity resolution only. Freshness and authority revalidation remain mandatory. */
   async read(expected?: CheckpointIdentity): Promise<ResumeCheckpoint | null> {
+    const identity = expected === undefined ? undefined : snapshotIdentity(expected);
     const current = (await this.history()).at(-1) ?? null;
-    if (expected !== undefined && !matches(current, expected)) reject("stale checkpoint identity");
+    if (identity !== undefined && !matches(current, identity)) reject("stale checkpoint identity");
     return current;
+  }
+
+  private async confirm(expected: CheckpointIdentity): Promise<ResumeCheckpoint> {
+    await this.sync();
+    const confirmed = await this.read(expected);
+    if (confirmed === null) reject("checkpoint missing");
+    return confirmed;
   }
 
   async materialize(request: MaterializationRequest, observer?: PersistenceObserver): Promise<ResumeCheckpoint | null> {
@@ -119,16 +131,17 @@ export class ResumeCheckpointStore {
     const event = trigger(request.trigger);
     const eventId = text(request.eventId);
     const state = validateState(request.state);
+    const expected = request.expected === null ? null : snapshotIdentity(request.expected);
     const history = await this.history();
     const current = history.at(-1) ?? null;
     const repeated = history.find(cp => cp.eventId === eventId);
     if (repeated !== undefined) {
       const previous = history.at(-2) ?? null;
-      if (repeated === current && matches(previous, request.expected) && repeated.trigger === event && JSON.stringify(repeated.state) === JSON.stringify(state)) return repeated;
+      if (repeated === current && matches(previous, expected) && repeated.trigger === event && JSON.stringify(repeated.state) === JSON.stringify(state)) return this.confirm(repeated);
       reject("stale or conflicting event");
     }
-    if (!matches(current, request.expected)) reject("stale writer generation");
-    if (current !== null && JSON.stringify(current.state) === JSON.stringify(state)) return current;
+    if (!matches(current, expected)) reject("stale writer generation");
+    if (current !== null && JSON.stringify(current.state) === JSON.stringify(state)) return this.confirm(current);
     const cp = createCheckpoint((current?.generation ?? 0) + 1, current?.fingerprint ?? null, eventId, event, state);
     validateTransition(current, cp);
     if (!effectReadback && cp.state.externalEffects.some(effect => ["COMMITTED", "NOT_APPLIED"].includes(effect.state) && JSON.stringify(effect) !== JSON.stringify(current?.state.externalEffects.find(old => old.operationId === effect.operationId)))) reject("effect requires source-of-truth readback");
@@ -163,10 +176,11 @@ export class ResumeCheckpointStore {
 
   /** Resolve one needed artifact at its authority; never infer validity from its mere existence. */
   async evidenceReference(expected: CheckpointIdentity, id: string, exists: (reference: string) => Promise<boolean>): Promise<string> {
-    const cp = await this.read(expected);
+    const identity = snapshotIdentity(expected);
+    const cp = await this.read(identity);
     const ref = cp?.state.evidenceReferences.find(item => item.id === id);
     if (ref === undefined || await exists(ref.reference) !== true) reject("missing evidence artifact");
-    await this.read(expected);
+    await this.read(identity);
     return ref.reference;
   }
 
@@ -181,7 +195,7 @@ export class ResumeCheckpointStore {
   /** The callback is already authorized by the caller; this guard cannot grant permission. */
   async executeEffect(expected: CheckpointIdentity, operationId: string, execute: () => Promise<void>, readback: ReadEffect): Promise<ResumeCheckpoint> {
     const { cp, effect } = await this.operation(expected, operationId);
-    if (effect.state === "COMMITTED") return cp;
+    if (effect.state === "COMMITTED") return this.confirm(cp);
     if (effect.state !== "PREPARED") reject("effect requires readback and explicit preparation before execution");
     // A unique event claims the operation. Reusing an idempotent event here could dispatch twice.
     const claimed = (await this.publish({ eventId: `dispatch-${randomUUID()}`, trigger: "effect_executed", expected: cp, state: { ...cp.state, externalEffects: cp.state.externalEffects.map(item => item.operationId === operationId ? { ...item, state: "UNKNOWN" } : item) } }, false))!;
@@ -192,7 +206,7 @@ export class ResumeCheckpointStore {
   /** Read-only authority query. Inconclusive/active executions remain UNKNOWN; no effect callback. */
   async recoverEffect(expected: CheckpointIdentity, operationId: string, readback: ReadEffect): Promise<ResumeCheckpoint> {
     const { cp, effect } = await this.operation(expected, operationId);
-    if (effect.state === "COMMITTED" || effect.state === "NOT_APPLIED") return cp;
+    if (effect.state === "COMMITTED" || effect.state === "NOT_APPLIED") return this.confirm(cp);
     const raw = await readback(structuredClone(effect));
     const value = record(raw, ["operationId", "target", "action", "inputBindings", "outcome", "reference"]);
     if (effectBinding(raw as unknown as ExternalEffect) !== effectBinding(effect)) reject("readback operation binding mismatch");
