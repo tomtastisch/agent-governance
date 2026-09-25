@@ -51,6 +51,7 @@ DOCUMENTATION_SECTION_RE = re.compile(
 
 CANONICAL_DOCUMENT_PATHS = (
     "docs/installer-cli-reference.md",
+    "docs/resume-checkpoints.md",
     "docs/harness-recipes.md",
     "docs/installer-architecture.md",
     "docs/installer-threat-model.md",
