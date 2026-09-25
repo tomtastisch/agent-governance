@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Keine.
+
+### Changed
+
+- Keine.
+
+### Fixed
+
+- Keine.
+
+### Removed
+
+- Keine.
+
+**Breaking changes:** none
+
+## [1.6.0] — 2026-09-25
+
+### Added
+
 - Ereignisgebundene Resume-Checkpoint-Materialisierung mit atomaren Generationen,
   Recovery, Schutz vor konkurrierenden/veralteten Writern und persistiertem
   Write-ahead für externe Wirkungen über den neuen Paket-Export `resume-checkpoint`
@@ -22,7 +42,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Keine.
+- Checkpoint-Wiederholungen bestätigen Persistenz erst nach erfolgreicher
+  Verzeichnissynchronisierung und exaktem Readback; erwartete Identitäten bleiben
+  über asynchrone Grenzen gegen Aufrufermutation gebunden (SEC-87-001/002).
+- Branding-Packprüfung verwendet das bestehende vollständige Paket-Fixture;
+  die Resume-Referenz ist im Dokumentations- und Delivery-Prüfvertrag registriert.
 
 ### Removed
 
