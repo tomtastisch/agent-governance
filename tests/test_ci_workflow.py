@@ -453,14 +453,14 @@ class ReleaseWorkflowSecurityContract(unittest.TestCase):
                 case "$1" in
                   view)
                     case "$3" in
-                      version|dist-tags.latest) echo 1.5.2 ;;
+                      version|dist-tags.latest) echo 7.8.9 ;;
                       dist.integrity|dist.shasum) echo present ;;
                       dist.attestations.provenance.predicateType) echo https://slsa.dev/provenance/v1 ;;
                       *) exit 90 ;;
                     esac ;;
                   init) test ! -e damaged-install ;;
                   install)
-                    test "$2" = @tomtastisch/agent-governance@1.5.2
+                    test "$2" = @tomtastisch/agent-governance@7.8.9
                     test "$3" = --ignore-scripts
                     test ! -e damaged-install
                     pwd >> "$VERIFY_LOG"
@@ -476,7 +476,7 @@ class ReleaseWorkflowSecurityContract(unittest.TestCase):
                 result = subprocess.run(
                     ["bash", "-c", command], cwd=root,
                     env={**os.environ, "PATH": f"{root}:{os.environ['PATH']}",
-                         "RUNNER_TEMP": str(root), "RELEASE_TAG": "v1.5.2",
+                         "RUNNER_TEMP": str(root), "RELEASE_TAG": "v7.8.9",
                          "NPM_DIST_TAG": "latest", "INSTALL_EXIT": str(exit_code),
                          "VERIFY_LOG": str(log)},
                     capture_output=True, text=True, check=False,
