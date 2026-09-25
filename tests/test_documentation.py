@@ -622,10 +622,9 @@ class InstallerCliReferenceContract(unittest.TestCase):
         self.assertRegex(reference, r"(?i)kein cwd-Fallback")
         self.assertRegex(reference, r"(?i)kein implizites (?:Default-)?Ziel")
 
-    def test_reference_is_the_only_packaged_docs_file(self):
-        self.assertIn("docs/installer-cli-reference.md", PACKAGE["files"])
+    def test_only_public_cli_and_checkpoint_references_are_packaged(self):
         packaged_docs = [entry for entry in PACKAGE["files"] if entry.startswith("docs/")]
-        self.assertEqual(packaged_docs, ["docs/installer-cli-reference.md"])
+        self.assertEqual(packaged_docs, ["docs/installer-cli-reference.md", "docs/resume-checkpoints.md"])
 
     def test_packaged_reference_uses_absolute_links_for_nonpackaged_current_docs(self):
         reference = CLI_REFERENCE_PATH.read_text(encoding="utf-8")

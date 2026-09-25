@@ -37,7 +37,7 @@ jobs:
           npm ci --ignore-scripts
           npm run build:native
           test "$(node -p 'process.platform+"-"+process.arch')" = "${{ matrix.target }}"
-          node --experimental-strip-types --test tests/installer/native-filesystem.test.ts
+          node --experimental-strip-types --test tests/installer/native-filesystem.test.ts tests/installer/resume-checkpoint.test.ts
           file "prebuilds/${{ matrix.target }}/agent_governance_fs.node"
           if test "$(uname -s)" = Darwin; then
             nm -gU "prebuilds/${{ matrix.target }}/agent_governance_fs.node"

@@ -20,7 +20,7 @@ TRIGGERS = GOVERNANCE_ROOT / "ssot" / "routing" / "triggers.toml"
 RESUME = GOVERNANCE_ROOT / "modules" / "resume.md"
 
 RESUME_TRIGGER = "resume_continuation"
-RESUME_RULE_COUNT = 21
+RESUME_RULE_COUNT = 24
 
 # Pflichtbegriffe: der normative Resume-Vertrag muss diese Semantik ausdrücken.
 REQUIRED_TERMS = (

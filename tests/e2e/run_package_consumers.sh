@@ -88,6 +88,26 @@ console.log("toon_consumer=PASS");
 EOF
 node "$consumer/use-resume-toon.mjs"
 
+cat > "$consumer/use-resume-checkpoint.mjs" <<'EOF'
+import assert from "node:assert/strict";
+import { mkdir } from "node:fs/promises";
+import { ResumeCheckpointStore } from "@tomtastisch/agent-governance/resume-checkpoint";
+const directory = process.argv[2];
+await mkdir(directory, { mode: 0o700 });
+const store = await ResumeCheckpointStore.open(directory);
+const cp = await store.materialize({ eventId: "start", trigger: "task_started", expected: null, state: {
+  projection: { taskId: "consumer", objective: "Persistenz prüfen", scope: ["fixture"], exactHead: "a".repeat(40), evidence: [], incompleteEvidence: [], openFindings: [], nextAtomicAction: "resume" },
+  identities: { scope: "scope", repository: "repo", worktree: "tree", branch: "branch", dirty: "clean", dependencies: "lock", configuration: "config", governance: "bundle", environment: "node" },
+  authorities: ["git:fixture"], activeTask: "consumer", taskStatus: "RUNNING", decisions: [], evidenceReferences: [], workItem: null, externalEffects: [],
+} });
+const fresh = await ResumeCheckpointStore.open(directory);
+const toon = await fresh.toToon(cp);
+assert.equal((await fresh.validateToon(toon, cp)).checkpointFingerprint, cp.fingerprint);
+assert.equal((await fresh.read()).generation, 1);
+console.log("checkpoint_consumer=PASS");
+EOF
+node "$consumer/use-resume-checkpoint.mjs" "$fixture_root/checkpoints"
+
 cat > "$consumer/use-work-items.mjs" <<'EOF'
 import {
   buildLabelProjectionPlan,

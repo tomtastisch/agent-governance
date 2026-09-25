@@ -48,15 +48,9 @@ _CHANGELOG_MIN = (
     "### Fixed\n- Keine.\n### Removed\n- Keine.\n\n**Breaking changes:** none\n"
 )
 
-_CANONICAL_DOCUMENT_PATHS = (
-    "docs/installer-cli-reference.md",
-    "docs/harness-recipes.md",
-    "docs/installer-architecture.md",
-    "docs/installer-threat-model.md",
-    "docs/installer-json-schemas.md",
-    "CHANGELOG.md",
-    "bundle/GOVERNANCE.md",
-)
+# Fixture projection of the existing documentation-link authority. Individual
+# contract assertions below independently exercise required and forbidden links.
+_CANONICAL_DOCUMENT_PATHS = release_check.CANONICAL_DOCUMENT_PATHS
 _BLOB_MAIN = "https://github.com/tomtastisch/agent-governance/blob/main"
 
 
@@ -555,6 +549,13 @@ class TreeDocumentLinks(unittest.TestCase):
 
     def test_missing_canonical_path_is_error(self):
         missing = _CANONICAL_DOCUMENT_PATHS[0]
+        _write_documentation_tree(self.root, _canonical_readme(omitted=(missing,)))
+        r = check_tree(root=self.root)
+        self.assertFalse(r.ok)
+        self.assertTrue(any(missing in error and "fehlt" in error for error in r.errors), r.errors)
+
+    def test_missing_checkpoint_reference_is_error(self):
+        missing = "docs/resume-checkpoints.md"
         _write_documentation_tree(self.root, _canonical_readme(omitted=(missing,)))
         r = check_tree(root=self.root)
         self.assertFalse(r.ok)
