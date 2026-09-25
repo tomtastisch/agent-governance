@@ -43,6 +43,16 @@ def _run_blocks(job_body: str) -> list[str]:
     )
 
 
+def _retry_command(job_body: str) -> str:
+    commands = re.findall(
+        r"(?m)^          command: \|\n((?:            [^\n]*(?:\n|$))*)",
+        job_body,
+    )
+    if len(commands) != 1:
+        raise AssertionError("verification must have exactly one retry command")
+    return textwrap.dedent(commands[0])
+
+
 def _run_npm_publish_admission(
     package_version: str,
     repository_version: str,
@@ -86,77 +96,6 @@ def _run_npm_publish_admission(
             text=True,
             check=False,
         )
-
-
-def _run_registry_retry_with_failed_reads(readback: str) -> int:
-    run_block = textwrap.dedent(_run_blocks(readback)[0])
-    retry = run_block.split("PACKAGE_VERSION=", 1)[1].split("VERIFY_ROOT=", 1)[0]
-    script = f"PACKAGE_VERSION={retry}"
-    with tempfile.TemporaryDirectory() as directory:
-        root = Path(directory)
-        (root / "package.json").write_text(
-            '{"version":"1.0.0"}\n', encoding="utf-8"
-        )
-        commands = root / "commands"
-        commands.mkdir()
-        for name, body in (("npm", "exit 1"), ("sleep", "exit 0")):
-            command = commands / name
-            command.write_text(f"#!/bin/sh\n{body}\n", encoding="utf-8")
-            command.chmod(0o700)
-        result = subprocess.run(
-            ["/bin/sh", "-eu", "-c", script],
-            cwd=root,
-            env={
-                **os.environ,
-                "NPM_DIST_TAG": "latest",
-                "PATH": f"{commands}:{os.environ['PATH']}",
-            },
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        return result.returncode
-
-
-def _run_registry_retry_with_dist_json(readback: str, dist_json: str) -> int:
-    run_block = textwrap.dedent(_run_blocks(readback)[0])
-    retry = run_block.split("PACKAGE_VERSION=", 1)[1].split("VERIFY_ROOT=", 1)[0]
-    script = f"PACKAGE_VERSION={retry}"
-    with tempfile.TemporaryDirectory() as directory:
-        root = Path(directory)
-        (root / "package.json").write_text(
-            '{"version":"1.0.0"}\n', encoding="utf-8"
-        )
-        commands = root / "commands"
-        commands.mkdir()
-        npm = commands / "npm"
-        npm.write_text(
-            "#!/bin/sh\n"
-            "case \"$3\" in\n"
-            "  version|dist-tags.latest) printf '%s\\n' '1.0.0' ;;\n"
-            "  dist) printf '%s\\n' \"$REGISTRY_DIST_JSON\" ;;\n"
-            "  *) exit 1 ;;\n"
-            "esac\n",
-            encoding="utf-8",
-        )
-        npm.chmod(0o700)
-        sleep = commands / "sleep"
-        sleep.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-        sleep.chmod(0o700)
-        result = subprocess.run(
-            ["/bin/sh", "-eu", "-c", script],
-            cwd=root,
-            env={
-                **os.environ,
-                "NPM_DIST_TAG": "latest",
-                "REGISTRY_DIST_JSON": dist_json,
-                "PATH": f"{commands}:{os.environ['PATH']}",
-            },
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        return result.returncode
 
 
 class ReleaseWorkflowSecurityContract(unittest.TestCase):
@@ -426,87 +365,128 @@ class ReleaseWorkflowSecurityContract(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
 
-    def test_trusted_publish_immediate_metadata_retry_is_fail_closed(self):
+    def test_npm_publish_has_no_immediate_metadata_retry(self):
         workflow = PUBLISH_PATH.read_text(encoding="utf-8")
-        readback = workflow.split(
-            "      - name: Verify immediate publish metadata (fail-closed)\n",
-            1,
-        )[1]
-        retry = readback.split("          for ATTEMPT", 1)[1].split("          done", 1)[0]
+        self.assertNotIn(
+            "Verify immediate publish metadata",
+            workflow,
+            "the synchronous immediate metadata retry must be removed from the publish job",
+        )
+        publish = _job_block(workflow, "publish")
+        self.assertNotIn("for ATTEMPT", publish)
+        self.assertNotIn("sleep ", publish)
+        self.assertNotIn(
+            "npm view",
+            publish,
+            "the publish job must not perform any eventual-consistent registry readback",
+        )
+
+    def test_post_publish_verification_delegates_retry_to_pinned_action(self):
+        verify_job = _job_block(PUBLISH_PATH.read_text(encoding="utf-8"), "verify-provenance")
+        match = re.search(r"nick-fields/retry@([0-9a-f]{40})", verify_job)
+        self.assertIsNotNone(
+            match,
+            "post-publish verification must delegate retry/backoff to nick-fields/retry "
+            "pinned to a full commit SHA",
+        )
+        self.assertEqual(match.group(1), "ad984534de44a9489a53aefd81eb77f87c70dc60")
+        self.assertNotIn(
+            "continue_on_error",
+            verify_job,
+            "a genuine verification failure must never be suppressed via continue_on_error",
+        )
+        self.assertIn("max_attempts:", verify_job)
+        self.assertIn("retry_wait_seconds:", verify_job)
+
+    def test_post_publish_verification_retries_errors_and_timeouts(self):
+        verify_job = _job_block(PUBLISH_PATH.read_text(encoding="utf-8"), "verify-provenance")
+        self.assertRegex(verify_job, r"(?m)^\s+retry_on:\s+any\s*$")
+        timeout = re.search(r"timeout_(?:minutes|seconds):\s+(\d+)", verify_job)
+        self.assertIsNotNone(timeout, "each retry attempt must have a finite timeout")
+        self.assertGreater(int(timeout.group(1)), 0)
+
+    def test_post_publish_verification_has_no_own_retry_loop(self):
+        verify_job = _job_block(PUBLISH_PATH.read_text(encoding="utf-8"), "verify-provenance")
+        self.assertNotIn("for ATTEMPT", verify_job)
+        self.assertNotRegex(verify_job, r"(?m)^\s*(?:for|while|until)\s")
+        self.assertNotIn(
+            "sleep ",
+            verify_job,
+            "no self-implemented shell retry loop may remain in the verification job",
+        )
+
+    def test_post_publish_verification_checks_version_dist_tag_integrity_and_provenance(self):
+        verify_job = _job_block(PUBLISH_PATH.read_text(encoding="utf-8"), "verify-provenance")
         for contract in (
             'npm view "$PACKAGE_SPEC" version',
             '"dist-tags.$NPM_DIST_TAG"',
-            'npm view "$PACKAGE_SPEC" dist --json',
-            "d.integrity",
-            "d.shasum",
-        ):
-            self.assertIn(contract, retry)
-        self.assertNotIn(
+            'dist.integrity',
+            'dist.shasum',
+            'dist.attestations.provenance.predicateType',
             "https://slsa.dev/provenance/v1",
-            retry,
-            "provenance must be verified by a separate post-publish job, not the synchronous metadata retry",
+        ):
+            self.assertIn(contract, verify_job)
+        self.assertNotIn(
+            "dist --json",
+            verify_job,
+            "custom npm dist JSON object/singleton parsing must be replaced by npm-native scalar reads",
         )
+        self.assertNotIn("registry-dist.json", verify_job)
 
-        self.assertNotEqual(
-            _run_registry_retry_with_failed_reads(readback),
-            0,
-            "immediate publish metadata readback must fail closed after the final failed attempt",
-        )
+    def test_post_publish_verification_installs_exact_version_and_audits_signatures(self):
+        verify_job = _job_block(PUBLISH_PATH.read_text(encoding="utf-8"), "verify-provenance")
+        command = _retry_command(verify_job)
+        for operation in ('npm install "$PACKAGE_SPEC" --ignore-scripts', "npm audit signatures"):
+            self.assertIn(operation, command)
+            self.assertEqual(verify_job.count(operation), 1, "no second verification path")
+        self.assertNotIn("npm publish", verify_job)
 
-    def test_trusted_publish_accepts_only_one_complete_immediate_dist_record(self):
-        workflow = PUBLISH_PATH.read_text(encoding="utf-8")
-        readback = workflow.split(
-            "      - name: Verify immediate publish metadata (fail-closed)\n",
-            1,
-        )[1]
-        complete = {
-            "integrity": "sha512-test",
-            "shasum": "0123456789abcdef",
-        }
-        cases = (
-            (complete, True),
-            ([complete], True),
-            ([], False),
-            ([complete, complete], False),
-            ({"integrity": "sha512-test"}, False),
-            ({"shasum": "0123456789abcdef"}, False),
-            ("malformed", False),
-        )
-        for registry_dist, accepted in cases:
-            with self.subTest(registry_dist=registry_dist):
-                result = _run_registry_retry_with_dist_json(
-                    readback, json.dumps(registry_dist)
+    def test_post_publish_retry_isolates_a_failed_install(self):
+        verify_job = _job_block(PUBLISH_PATH.read_text(encoding="utf-8"), "verify-provenance")
+        command = _retry_command(verify_job)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            npm = root / "npm"
+            npm.write_text(textwrap.dedent('''\
+                #!/bin/bash
+                set -eu
+                case "$1" in
+                  view)
+                    case "$3" in
+                      version|dist-tags.latest) echo 1.5.2 ;;
+                      dist.integrity|dist.shasum) echo present ;;
+                      dist.attestations.provenance.predicateType) echo https://slsa.dev/provenance/v1 ;;
+                      *) exit 90 ;;
+                    esac ;;
+                  init) test ! -e damaged-install ;;
+                  install)
+                    test "$2" = @tomtastisch/agent-governance@1.5.2
+                    test "$3" = --ignore-scripts
+                    test ! -e damaged-install
+                    pwd >> "$VERIFY_LOG"
+                    touch damaged-install
+                    exit "$INSTALL_EXIT" ;;
+                  audit) test "$2" = signatures; echo audit >> "$VERIFY_LOG" ;;
+                  *) exit 91 ;;
+                esac
+                '''), encoding="utf-8")
+            npm.chmod(0o700)
+            log = root / "attempts.log"
+            for exit_code in (1, 0):
+                result = subprocess.run(
+                    ["bash", "-c", command], cwd=root,
+                    env={**os.environ, "PATH": f"{root}:{os.environ['PATH']}",
+                         "RUNNER_TEMP": str(root), "RELEASE_TAG": "v1.5.2",
+                         "NPM_DIST_TAG": "latest", "INSTALL_EXIT": str(exit_code),
+                         "VERIFY_LOG": str(log)},
+                    capture_output=True, text=True, check=False,
                 )
-                self.assertEqual(
-                    result == 0,
-                    accepted,
-                    "immediate metadata readback must accept npm's object and singleton-array forms "
-                    "only when the sole dist record has both integrity and shasum",
-                )
-
-    def test_trusted_publish_immediate_retry_window_stays_bounded(self):
-        workflow = PUBLISH_PATH.read_text(encoding="utf-8")
-        readback = workflow.split(
-            "      - name: Verify immediate publish metadata (fail-closed)\n",
-            1,
-        )[1]
-        retry = readback.split("          for ATTEMPT", 1)[1].split("          done", 1)[0]
-        header = re.search(r"\bin ([0-9 ]+); do\b", retry)
-        self.assertIsNotNone(header, "retry loop header missing or malformed")
-        attempts = [int(value) for value in header.group(1).split()]
-        self.assertEqual(attempts, list(range(1, len(attempts) + 1)))
-        self.assertGreaterEqual(
-            len(attempts),
-            30,
-            "immediate metadata readback must tolerate npm's async publish processing "
-            "(>=300s at 30 attempts x 10s spacing)",
-        )
-        self.assertIn("sleep 10", retry)
-        self.assertIn(
-            f'test "$ATTEMPT" = {len(attempts)} && exit 1',
-            retry,
-            "immediate metadata readback must stay bounded and fail closed on the final attempt",
-        )
+                self.assertEqual(result.returncode, exit_code, result.stderr)
+            first, second, audit = log.read_text(encoding="utf-8").splitlines()
+            self.assertNotEqual(first, second, "attempts must use distinct install roots")
+            self.assertEqual(audit, "audit")
+            for attempt in (first, second):
+                self.assertEqual(Path(attempt).parent, root)
 
     def test_post_publish_provenance_verification_is_separate_and_read_only(self):
         workflow = PUBLISH_PATH.read_text(encoding="utf-8")
@@ -519,11 +499,6 @@ class ReleaseWorkflowSecurityContract(unittest.TestCase):
             verify_job,
             "the post-publish verification path must never run npm publish again",
         )
-        self.assertIn("https://slsa.dev/provenance/v1", verify_job)
-        self.assertIn("npm audit signatures", verify_job)
-        self.assertIn('PACKAGE_VERSION="${RELEASE_TAG#v}"', verify_job)
-        self.assertIn("sleep 30", verify_job)
-        self.assertIn('test "$ATTEMPT" = 10 && exit 1', verify_job)
         for run_block in _run_blocks(verify_job):
             self.assertNotIn("${{", run_block)
 
