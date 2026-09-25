@@ -121,6 +121,14 @@ export function removeManagedBlock(input: Buffer): Buffer {
   return Buffer.from(prefix + suffix, "utf8");
 }
 
+/** Remove only the marker envelope; none of its opaque contents authorize byte removal. */
+export function removeOpaqueManagedEnvelope(input: Buffer): Buffer {
+  const parsed = parse(input);
+  if (parsed.start === undefined || parsed.end === undefined) throw new Error("managed block is missing");
+  if (occurrences(parsed.text, "AGENT_GOVERNANCE_MANAGED_").length !== 2) throw new Error("ambiguous managed markers");
+  return Buffer.from(parsed.text.slice(0, parsed.start) + parsed.text.slice(parsed.end), "utf8");
+}
+
 export function verifyManagedBlock(input: Buffer, binding: GovernanceBinding): void {
   const parsed = parse(input);
   if (parsed.block === undefined) throw new Error("managed block is missing");

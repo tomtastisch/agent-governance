@@ -27,6 +27,79 @@ Harnesserkennung.
 
 ## Command-Referenz
 
+### Paket-API: Forward-only Replacement
+
+Der additive Export `@tomtastisch/agent-governance/replacement` stellt
+`replaceInstallation(request)` bereit (SemVer minor, kein zusätzlicher CLI-Command).
+Er ersetzt ausschließlich den ausdrücklich gewählten Einstieg durch eine frische
+Installation. Historische Receipts, Bindings und Releases werden weder gelesen noch
+repariert; andere Bindings und der alte Installationsroot bleiben bestehen.
+
+```js
+import { replaceInstallation } from "@tomtastisch/agent-governance/replacement";
+
+const request = {
+  sourceInstallationRoot: "/absolute/old-installation",
+  installationRoot: "/absolute/new-installation", // muss fehlen
+  releaseRoot: "/absolute/verified-package",
+  targetRoot: "/absolute/harness-config",
+  entryFile: "AGENTS.md",
+  // localRules: "/absolute/explicit-private-rules.md", // optional
+};
+const plan = await replaceInstallation({ ...request, dryRun: true });
+// Nach Prüfung des Plans im autorisierten Ziel:
+const result = await replaceInstallation(request);
+```
+
+Alle Roots müssen kanonisch und absolut sein; die Installationsroots sind disjunkt.
+Target und Entry liegen außerhalb beider Roots, der Release-Root außerhalb der
+Installationsroots. Der neue Root benötigt einen bereits vorhandenen sicheren Parent.
+Entry-Parent und Entry müssen existieren; Symlinks, Hardlinks, nicht reguläre Dateien,
+ungültiges UTF-8 sowie fehlende, doppelte, fremde oder unvollständige Marker werden
+abgelehnt. Genau eine aktuelle Markerhülle ist erforderlich; ihr Inneres bleibt opak.
+Jedes Byte außerhalb der Hülle bleibt erhalten, einschließlich BOM, Zeilenenden und
+Abständen. Historische Angaben wie `Boundary prefix added` erlauben keine Entfernung
+zusätzlicher Bytes.
+
+Lokale Regeln werden ausschließlich über `localRules` ausdrücklich übernommen und
+mit dem aktuellen Local-Rules-Vertrag validiert. Der validierte Snapshot wird privat
+isoliert und anschließend durch den normalen Installer übernommen. Ein Release mit
+bereits enthaltenen privaten lokalen Regeln wird abgelehnt; es muss ein sauberes
+Releasepaket sein. Ohne Opt-in werden keine alten Regeln übernommen.
+
+`PLANNED` ist ein schreibfreier Plan ohne `CURRENT`-Aussage und ohne schreibenden
+Native-Probe. Erst der mutierende Aufruf prüft die reale native Capability. Er reserviert
+den neuen Root exklusiv und legt neben dem Entry ein privates Verzeichnis
+`.agent-governance-quarantine-<id>` an. `entry.bin` enthält den vollständigen ursprünglichen
+Entry, `resources.json` ausschließlich Ressourcenreferenzen, `detached.bin` den abgetrennten
+Entry und gegebenenfalls `local-rules.md` den expliziten Regel-Snapshot. Datei- und
+Verzeichnis-Synchronisierung sichern die ursprünglichen Bytes vor dem Abtrennen.
+
+`SUCCESS` mit `state: "CURRENT"` setzt frische `verify`- und `status`-Prüfungen voraus.
+`quarantine.directory` und `quarantine.entryPath` referenzieren die beibehaltene Isolation.
+Quarantäne und neuer Root werden auch bei Fehlern niemals automatisch gelöscht.
+`FAILURE` liefert nur `REPLACEMENT_FAILED`, eine feste Phase, Ressourcenreferenzen
+soweit bekannt und `recovery`: `NOT_REQUIRED`, `RESTORED` oder `RETAINED`.
+Ein Ressourcenpfad ist keine Besitz- oder Existenzgarantie: bei einem Fehler kann
+bereits eine Reservierung versucht worden sein oder ein Parent inzwischen ersetzt sein.
+Ausnahmen, private Inhalte und deren Fingerprints werden nicht zurückgegeben.
+
+Die ursprünglichen Bytes werden bei Fehlern nur zurückgeschrieben, wenn Identität und
+Snapshot des eigenen Live-Entry weiterhin nachweisbar sind oder sein Name fehlt;
+die Neuanlage ist immer no-clobber. Kann Besitz nicht bewiesen werden, bleibt die
+Isolation zur manuellen, erneut autorisierten Wiederherstellung bestehen. Insbesondere
+kann ein interner Installer-Rollback einen neuen Inode erzeugen: dann ist `RETAINED`
+absichtlich konservativ. Vor Wiederherstellung müssen Parent, Live-Entry und
+Quarantäne frisch geprüft werden; niemals einen konkurrierenden Writer überschreiben.
+Der normale Installer-Rollback im neuen Root ist kein Rückweg in den alten Root.
+Für einen erneuten Replacement-Versuch ist wiederum ein neuer, fehlender Root nötig.
+
+SIGKILL oder Stromausfall werden nicht als atomar zurückgerollt beschrieben. Die
+dauerhaft gesicherte Isolation ist die Wiederherstellungsgrundlage. Die dokumentierten
+Same-UID-Finalkomponenten-Racegrenzen der nativen Primitiven gelten weiterhin;
+beobachtbare Parent-, Identitäts- und Snapshotwechsel brechen fail-closed ab. Erfolgreiche
+lokale Tests ersetzen keine unabhängige QA/SEC und keine plattformübergreifende CI.
+
 Alle Commands verlangen denselben expliziten Pfadvertrag.
 
 ### `inspect`

@@ -55,7 +55,7 @@ wird erneut klassifiziert und der erforderliche Regelbestand geladen.
 
 ## Dokumentation
 
-- [Commands, Optionen und Exitverhalten](https://github.com/tomtastisch/agent-governance/blob/main/docs/installer-cli-reference.md)
+- [Commands, Optionen, Exitverhalten und Forward-only Replacement](https://github.com/tomtastisch/agent-governance/blob/main/docs/installer-cli-reference.md)
 - [Verifizierte Harness-Rezepte](https://github.com/tomtastisch/agent-governance/blob/main/docs/harness-recipes.md)
 - [Installerarchitektur und Lifecycle](https://github.com/tomtastisch/agent-governance/blob/main/docs/installer-architecture.md)
 - [Trust Boundaries und Residual Risks](https://github.com/tomtastisch/agent-governance/blob/main/docs/installer-threat-model.md)
