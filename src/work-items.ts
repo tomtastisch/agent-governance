@@ -12,12 +12,7 @@ import { governanceContract } from "./contract-fixture.ts";
  * Dieses Modul führt keine GitHub-Mutation aus; es liest nur und erzeugt Pläne.
  */
 
-export const CARDINALITIES = governanceContract.workItemCardinalities as readonly [
-  "one",
-  "many",
-  "at_most_one",
-  "zero_or_more",
-];
+export const CARDINALITIES = governanceContract.workItemCardinalities;
 export type Cardinality = (typeof CARDINALITIES)[number];
 
 export interface ClassificationDimension {

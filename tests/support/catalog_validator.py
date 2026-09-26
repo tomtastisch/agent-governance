@@ -64,6 +64,7 @@ _CONTRACT_VOCABULARY_ARRAY_KEYS = frozenset(
     }
 )
 _CONTRACT_VOCABULARY_MAP_KEYS = frozenset({"discovery_candidate_classes"})
+_CONTRACT_CARDINALITIES = frozenset({"one", "many", "at_most_one", "zero_or_more"})
 
 
 def _closed_keys(data: Mapping[str, object], expected: frozenset[str], context: str) -> None:
@@ -132,6 +133,10 @@ def _load_contract_fixture() -> Mapping[str, object]:
     for name in _CONTRACT_VOCABULARY_ARRAY_KEYS:
         _vocabulary(data, name)
     _candidate_classes(data)
+    if _vocabulary(data, "work_item_cardinalities") != _CONTRACT_CARDINALITIES:
+        raise CatalogValidationError(
+            "contract fixture vocabularies.work_item_cardinalities ist nicht kanonisch"
+        )
 
     return data
 

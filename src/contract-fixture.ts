@@ -48,8 +48,10 @@ export interface GovernanceContract {
   readonly discoverySourceKinds: readonly string[];
   readonly discoveryStrengths: readonly string[];
   readonly discoveryCandidateClasses: Readonly<Record<string, string>>;
-  readonly workItemCardinalities: readonly string[];
+  readonly workItemCardinalities: typeof CARDINALITIES;
 }
+
+const CARDINALITIES = ["one", "many", "at_most_one", "zero_or_more"] as const;
 
 const FIELD_KEYS = [
   "manifest",
@@ -163,6 +165,10 @@ function loadGovernanceContract(): GovernanceContract {
     vocabularies.discovery_candidate_classes,
     "vocabularies.discovery_candidate_classes",
   );
+  const workItemCardinalities = vocabulary("work_item_cardinalities");
+  if (workItemCardinalities.join("\0") !== [...CARDINALITIES].join("\0")) {
+    fail("vocabularies.work_item_cardinalities must be the canonical cardinality set");
+  }
 
   return Object.freeze({
     manifestFields: field("manifest"),
@@ -196,7 +202,7 @@ function loadGovernanceContract(): GovernanceContract {
     discoverySourceKinds: vocabulary("discovery_source_kinds"),
     discoveryStrengths: vocabulary("discovery_strengths"),
     discoveryCandidateClasses,
-    workItemCardinalities: vocabulary("work_item_cardinalities"),
+    workItemCardinalities: CARDINALITIES,
   });
 }
 
