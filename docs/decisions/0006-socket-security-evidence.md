@@ -60,6 +60,10 @@ AND Socket zeigt älteren Stand
 - Socket erzeugt keine Runtime-Dependency und keine zweite Dependency-SSOT.
 - Der Release-Pfad bleibt unverändert; Socket-Index-Lag blockiert keinen Release.
 - Die Drift ist deterministisch diagnostizierbar und wird kontrolliert überwacht.
+- Retries sind auf transiente Transportfehler begrenzt; HTTP-Fehler (401/403/404/429/500)
+  werden bewusst nicht retried, weil jeder Socket-API-Aufruf Quota kostet und ein Retry auf
+  einen Rate-Limit/Authorisierungsfehler Quota verbraucht, ohne die Klassifikation zu
+  verbessern. Der Check ist advisory und läuft wöchentlich.
 
 ## Verworfene Alternativen
 

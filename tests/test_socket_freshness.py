@@ -121,6 +121,31 @@ class SocketKnownVersionsContract(unittest.TestCase):
         with mock.patch("urllib.request.urlopen", return_value=_Response(b"not json")):
             self.assertIsNone(sf.socket_known_versions("org", "pkg:npm/a", "token"))
 
+    def test_http_errors_are_not_retried(self):
+        calls = []
+
+        def fake_open(request, timeout=None):
+            calls.append(1)
+            raise _http_error(401)
+
+        with mock.patch("urllib.request.urlopen", side_effect=fake_open):
+            self.assertIsNone(sf.socket_known_versions("org", "pkg:npm/a", "token"))
+        self.assertEqual(
+            len(calls), 1,
+            "HTTP errors (auth/not-found/rate-limit) must not be retried",
+        )
+
+    def test_transient_network_errors_are_retried_bounded(self):
+        calls = []
+
+        def fake_open(request, timeout=None):
+            calls.append(1)
+            raise urllib.error.URLError("transient")
+
+        with mock.patch("urllib.request.urlopen", side_effect=fake_open):
+            self.assertIsNone(sf.socket_known_versions("org", "pkg:npm/a", "token"))
+        self.assertEqual(len(calls), sf.RETRY_ATTEMPTS)
+
     def test_percent_encodes_purl_as_single_path_segment(self):
         captured = {}
 
