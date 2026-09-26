@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Keine.
+
+### Changed
+
+- Keine.
+
+### Fixed
+
+- Keine.
+
+### Removed
+
+- Keine.
+
+**Breaking changes:** none
+
+## [1.7.0] — 2026-09-26
+
+### Added
+
 - Additive Paket-API `./replacement` für einen versionsneutralen, forward-only
   Ersatz einer nicht verifizierbaren Installation in einem neuen disjunkten Root
   (#123; SemVer minor). Private Quarantäne erhält den vollständigen alten Entry;
