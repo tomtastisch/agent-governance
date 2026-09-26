@@ -7,10 +7,17 @@
 
 Der normale öffentliche Einstieg ist exakt `npm i @tomtastisch/agent-governance` gefolgt von
 `npx agent-governance init`. `init` orchestriert ausschließlich die vorhandene Transaktion
-`plan -> install -> verify`; Runtime-Abhängigkeiten werden vorab durch die deklarativen
+`status -> plan -> [Bestätigung] -> install|update -> verify`; Runtime-Abhängigkeiten werden vorab
+durch die deklarativen
 `package.json.dependencies` und das Lockfile geliefert. Der Init-Pfad startet weder npm, pnpm,
 yarn oder bun noch einen Package-Manager-Bootstrap und enthält keinen Self-Install-, Repair- oder
 bedingten Nachladepfad. Fehlt eine direkte Runtime-Abhängigkeit, schlägt das Paket fail-closed fehl.
+
+Vor der Transaktion nutzt `init` eine begrenzte, passive und nicht mutierende Discovery als
+Auswahlunterstützung. Sie trifft keine automatische Zielannahme, mutiert keinen Harness und besitzt
+keine fachliche Authority. Die bewusste Auswahl erzeugt explizite Transaktionsziele; Status und
+Pläne werden für alle Ziele vor einer gemeinsamen Bestätigung ermittelt. Erst diese Bestätigung
+autorisiert die Mutation.
 
 Die Installed-Harness-Erkennung des `init`-Screens ist auf einen einzelnen Adapter hinter
 `@agntn/harnesses` beschränkt, der ausschließlich `getAllHarnesses()` und `isInstalled()` nutzt und
@@ -55,10 +62,10 @@ betroffenen Dateisystem vor der ersten produktiven Mutation real aus.
 
 ## Installation und Lifecycle
 
-Eine Installation materialisiert ausschließlich eine globale, explizit gewählte Bindung:
+Eine Transaktion materialisiert ausschließlich eine globale, explizit gewählte Bindung:
 `--scope global`, ein absoluter kanonischer `--installation-root`, ein absoluter kanonischer
 `--target-root` und ein relativer Markdownpfad in `--entry-file`. Es gibt kein Defaultziel, keinen
-cwd-Fallback, keine Harness-Erkennung und keine Projektinstallation. Die
+cwd-Fallback, keine aus Produktidentität abgeleitete Zielannahme und keine Projektinstallation. Die
 [Harness-Rezepte](harness-recipes.md) helfen allein bei der manuellen Auswahl eines verifizierten
 Ziels; sie verändern diesen Pfadvertrag nicht.
 

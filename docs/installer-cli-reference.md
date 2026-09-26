@@ -12,18 +12,19 @@ Sicherheitsverträge werden hier nicht neu definiert.
 Releases, Bindings, Receipts und Backups hält. Der typische Wert ist
 `$HOME/.agent-governance`.
 
-`--target-root` bezeichnet den bewusst gewählten absoluten globalen Instruktionsroot des
-Ziel-Harnesses, beispielsweise `$HOME/.codex`, `$HOME/.claude`,
-`$HOME/.config/opencode` oder ein tatsächlich verifizierter aktiver OpenClaw-Workspace. Der
-Installer erkennt keinen Harness und leitet daraus kein Ziel ab.
+`--target-root` bezeichnet bei den Transaktionscommands den bewusst gewählten absoluten globalen
+Instruktionsroot des Ziel-Harnesses, beispielsweise `$HOME/.codex`, `$HOME/.claude`,
+`$HOME/.config/opencode` oder ein tatsächlich verifizierter aktiver OpenClaw-Workspace. Diese
+Commands erkennen keinen Harness und leiten daraus kein Ziel ab.
 
 `--entry-file` bezeichnet den relativen Markdownpfad innerhalb des Target-Roots, etwa
 `AGENTS.md` oder `CLAUDE.md`. Target-Root und Entry-Datei bestimmen gemeinsam die tatsächliche
 globale Einstiegsdatei; die Implementierung validiert und bindet beide Pfadbestandteile sicher,
 statt sie als ungeprüfte Zeichenketten zusammenzufügen.
 
-Es gibt kein implizites Ziel, kein cwd-Fallback, keine Projektinstallation und keine
-Harnesserkennung.
+Für Transaktionscommands gibt es kein implizites Ziel, kein cwd-Fallback und keine
+Projektinstallation. Die passive Discovery von `init` unterstützt ausschließlich die bewusste
+Zielauswahl; sie ist keine automatische Zielannahme oder fachliche Authority.
 
 ## Command-Referenz
 
@@ -110,7 +111,24 @@ Same-UID-Finalkomponenten-Racegrenzen der nativen Primitiven gelten weiterhin;
 beobachtbare Parent-, Identitäts- und Snapshotwechsel brechen fail-closed ab. Erfolgreiche
 lokale Tests ersetzen keine unabhängige QA/SEC und keine plattformübergreifende CI.
 
-Alle Commands verlangen denselben expliziten Pfadvertrag.
+Die acht Transaktionscommands verlangen denselben expliziten Pfadvertrag. Das interaktive `init`
+nimmt nur Hilfeoptionen an und orchestriert Auswahl und Transaktionen getrennt.
+
+### `init`
+
+- **Art:** interaktiv und nach Bestätigung mutierend.
+- **Optionen:** Nur die Hilfeoptionen `--help` und `-h`; keine Transaktionsoptionen.
+- **Zweck:** Unterstützt die Auswahl expliziter Ziele und orchestriert für jedes Ziel
+  `status -> plan -> [Bestätigung] -> install|update -> verify`.
+- **Ausgangszustand:** Ein TTY und mindestens ein bewusst ausgewähltes Ziel; ohne TTY wird der
+  Aufruf vor Discovery, Prompt und Mutation abgelehnt.
+- **Prüft:** Begrenzte generische Kandidaten, manuelle Eingaben, Zielstatus und vollständige Pläne
+  vor einer gemeinsamen Bestätigung.
+- **Verändert:** Vor der Bestätigung nichts; danach ausschließlich die bestätigten expliziten
+  Ziele über dieselbe Transaktionsgrenze wie die Low-Level-Commands.
+- **Typisch:** Normaler öffentlicher Einstieg nach der Paketinstallation.
+- **Fail-closed:** Passive Discovery ist nur Auswahlunterstützung, keine automatische
+  Zielannahme, keine implizite Harness-Mutation und keine fachliche Authority.
 
 ### `inspect`
 
@@ -289,6 +307,15 @@ Alle Commands verlangen denselben expliziten Pfadvertrag.
 - **Sicherheit:** Erzeugt keine automatische Zustimmung, Zielerkennung oder Approval-Erweiterung.
 - **Beispiel:** `--non-interactive`.
 - **Fehlanwendung:** Den Schalter als Erlaubnis für implizite Pfade verstehen.
+
+### `--help` / `-h`
+
+- **Pflicht:** Nein.
+- **Typ:** Alternative boolesche Hilfeschalter ohne Wert.
+- **Zweck:** Zeigt die command-spezifische Hilfe vor Pfadprüfung oder Transaktionszugriff.
+- **Sicherheit:** Führt keine Discovery, Transaktion oder Mutation aus.
+- **Beispiel:** `install --help` oder `init -h`.
+- **Fehlanwendung:** Weitere Optionen mit einem Hilfeaufruf kombinieren.
 
 ## Exitverhalten
 
