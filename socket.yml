@@ -1,0 +1,17 @@
+version: 2
+
+# Socket.dev GitHub-App-Konfiguration. Socket ist ausschließlich externe
+# Security-Evidence; npm/GitHub bleiben Release- und Dependency-Authority.
+# Die Ingestion wird auf die veröffentlichten Root-Manifeste begrenzt; das
+# e2e-Testfixture (tests/e2e/package.json) ist kein produktives Manifest.
+projectIgnorePaths:
+  - "/*"
+  - "!/package.json"
+  - "!/package-lock.json"
+
+triggerPaths:
+  - "package.json"
+  - "package-lock.json"
+
+githubApp:
+  enabled: true
