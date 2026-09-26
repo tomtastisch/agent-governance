@@ -9,15 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Keine.
+- Deterministische Documentation-Authority-Parity-Kontrakte: Der CLI-Referenz-Commandbestand,
+  die Paketexporte und die dokumentierten SSOT-Domains werden testgetrieben gegen ihre
+  Authorities (`ssot/commands/commands.toml`, `package.json.exports`, `ssot/manifest.toml`)
+  gebunden (#86).
 
 ### Changed
 
-- Keine.
+- README, Package-Metadaten und technische Referenzen beschreiben den realen öffentlichen
+  Funktionsumfang (CLI sowie Resume-, Work-Item- und SSOT-Verträge) statt nur den Installer (#86).
 
 ### Fixed
 
-- Keine.
+- Documentation Drift: passive, nicht mutierende `init`-Discovery von impliziter
+  Harness-Mutation unterschieden; der bisher nicht dokumentierte `init`-Command und die
+  Hilfeoptionen `--help`/`-h` ergänzt; `work-items`-Export dokumentiert (#86).
 
 ### Removed
 
