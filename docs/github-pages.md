@@ -17,18 +17,24 @@ GitHub Pages (https://tomtastisch.github.io/agent-governance/)
 ```
 
 - Quelle: `site/` (HTML-Templates mit `{{TOKEN}}`-Platzhaltern, `robots.txt`, CSS).
+  `site/assets/favicon.png` ist eine verkleinerte Ableitung des autoritativen
+  `assets/branding/agent-governance-icon.png` (keine zweite Branding-Authority); das
+  vollständige Icon wird nur für Social-Preview (`og:image`) verwendet.
 - Build: `tools/site_build.py build` leitet Version, Package-Name, Installationsweg,
   Repository-URL und Base-Path aus `VERSION` und `package.json` ab, ersetzt die Tokens,
   projiziert die Branding-Assets und erzeugt `sitemap.xml` deterministisch aus dem
-  `site/`-Baum. Unbekannte oder unaufgelöste Tokens, fehlende Assets und Nicht-GitHub-
-  Repository-URLs scheitern fail-closed.
+  `site/`-Baum. Unbekannte oder fehlerhafte Platzhalter, fehlende Assets, Nicht-GitHub-
+  Repository-URLs und JSON-/HTML-unsichere Authority-Werte scheitern fail-closed.
 - Verifikation: `tests/test_site.py` prüft Base-Path, Canonicals, Meta Descriptions,
   Sitemap, `robots.txt`, strukturierte Daten, interne Links, Branding-Assets und die
   Package-Grenze. Der Build mutiert keine npm-Runtime-Artefakte.
 - Deployment: `.github/workflows/pages.yml` baut, verifiziert und deployt ausschließlich
-  auf `main` über die offiziellen GitHub-Actions (`configure-pages`, `upload-pages-artifact`,
-  `deploy-pages`) mit Least-Privilege-Berechtigungen (`contents: read`, `pages: write`,
-  `id-token: write`). Ein fehlerhafter Build erzeugt kein Deployment.
+  auf `main` (Guards `github.ref == 'refs/heads/main'`) über die offiziellen GitHub-Actions
+  (`configure-pages`, `upload-pages-artifact`, `deploy-pages`) mit Least-Privilege-Berechtigungen
+  (Build-Job `contents: read` + `pages: read`; Deploy-Job nur `pages: write` + `id-token: write`).
+  Ein fehlerhafter Build erzeugt kein Deployment. Zusätzlich wird eine
+  Deployment-Protection-Regel (nur Default-Branch) für die `github-pages`-Umgebung empfohlen
+  (Repository-Settings, keine Code-Änderung).
 
 ## Suchmaschinen-Crawler
 
@@ -36,6 +42,12 @@ GitHub Pages (https://tomtastisch.github.io/agent-governance/)
 `Disallow`-Regel. AI-Training-Crawler (z. B. `Google-Extended` für Gemini/Vertex AI) werden
 fachlich getrennt behandelt und hier bewusst **nicht** über eine pauschale Regel gesteuert;
 ob sie erlaubt werden, ist eine separate Entscheidung.
+
+Hinweis Project-Site: Crawler lesen `robots.txt` gemäß RFC 9309 ausschließlich am
+Origin-Root (`/robots.txt`). Bei einer GitHub-Pages-Projekt-Site liegt die Datei unter
+`/agent-governance/robots.txt` und wird von Crawlern nicht ausgewertet. Die effektive
+Discovery läuft daher über die direkte Sitemap-Einreichung in Search Console/Webmaster Tools;
+eine Origin-Root-`robots.txt` wäre erst mit einer Custom Domain möglich.
 
 ## Google Search Console
 

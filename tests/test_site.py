@@ -148,6 +148,7 @@ class SiteProjectionTest(unittest.TestCase):
     def test_branding_assets_are_projected(self):
         self.assertTrue((self.out / "assets" / "icon.png").is_file())
         self.assertTrue((self.out / "assets" / "terminal.png").is_file())
+        self.assertTrue((self.out / "assets" / "favicon.png").is_file())
 
     # ── Package boundary ──
 
@@ -172,6 +173,12 @@ class SiteBuildFailClosedTest(unittest.TestCase):
     def test_unknown_token_fails_closed(self):
         with self.assertRaises(SiteError):
             site_build.substitute("{{NOT_A_REAL_TOKEN}}", {"VERSION": "1.0.0"}, "fixture")
+
+    def test_malformed_placeholders_fail_closed(self):
+        for malformed in ("{{public_url}}", "{{PUBLIC-URL}}", "{{ PUBLIC_URL }}", "{{PUBLIC_URL}"):
+            with self.subTest(placeholder=malformed):
+                with self.assertRaises(SiteError):
+                    site_build.substitute(malformed, {"PUBLIC_URL": "https://x.example"}, "fixture")
 
     def test_missing_projected_asset_fails_closed(self):
         with tempfile.TemporaryDirectory(prefix="agent-governance-site-missing-") as directory:

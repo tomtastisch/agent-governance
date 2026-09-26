@@ -11,7 +11,6 @@ mutiert das Repository, den npm-Runtime-Pfad oder externe Dienste.
 from __future__ import annotations
 
 import json
-import re
 import shutil
 import sys
 from pathlib import Path
@@ -27,9 +26,6 @@ PROJECTED_ASSETS = {
     "assets/branding/agent-governance-terminal.png": "terminal.png",
     "assets/diagrams/governance-overview.png": "overview.png",
 }
-
-TOKEN_PATTERN = re.compile(r"\{\{([A-Z][A-Z0-9_]*)\}\}")
-
 
 class SiteError(Exception):
     """Deterministischer Build-/Verifikationsfehler der Site-Projektion."""
@@ -68,7 +64,7 @@ def canonical_values(root: Path = ROOT) -> dict[str, str]:
     base_path = f"/{repo_name}"
     public_url = f"https://{owner}.github.io/{repo_name}"
 
-    return {
+    values = {
         "VERSION": version,
         "PACKAGE_NAME": package_name,
         "BIN": bin_name,
@@ -80,6 +76,9 @@ def canonical_values(root: Path = ROOT) -> dict[str, str]:
         "PUBLIC_URL": public_url,
         "DESCRIPTION": description,
     }
+    for key, value in values.items():
+        _assert_web_safe(value, key)
+    return values
 
 
 def pages(site_src: Path = SITE_SRC) -> list[str]:
@@ -104,16 +103,11 @@ def canonical_url(subpath: str, values: dict[str, str]) -> str:
 
 
 def substitute(text: str, values: dict[str, str], context: str) -> str:
-    """Ersetzt alle Tokens; unbekannte oder verbleibende Tokens scheitern fail-closed."""
-    unresolved = TOKEN_PATTERN.findall(text)
-    for name in unresolved:
-        if name not in values:
-            raise SiteError(f"{context}: unbekanntes Token {{{{ {name} }}}}")
+    """Ersetzt alle Tokens; jede verbleibende `{{...}}`-Syntax scheitert fail-closed."""
     for name, value in values.items():
         text = text.replace("{{" + name + "}}", value)
-    leftover = TOKEN_PATTERN.findall(text)
-    if leftover:
-        raise SiteError(f"{context}: nicht aufgelöste Tokens {sorted(set(leftover))}")
+    if "{{" in text or "}}" in text:
+        raise SiteError(f"{context}: nicht aufgelöster oder fehlerhafter Platzhalter")
     return text
 
 
