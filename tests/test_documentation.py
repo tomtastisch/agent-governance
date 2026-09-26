@@ -310,6 +310,8 @@ class ReadmeEntryContract(unittest.TestCase):
         """Catches relative or historical links instead of durable current-reference navigation."""
         paths = (
             "docs/installer-cli-reference.md",
+            "docs/resume-checkpoints.md",
+            "docs/work-items.md",
             "docs/harness-recipes.md",
             "docs/installer-architecture.md",
             "docs/installer-threat-model.md",
@@ -790,45 +792,47 @@ class DocumentationAuthorityParity(unittest.TestCase):
     GOVERNANCE_ROOT = ROOT / "bundle" / "agent-governance"
     SSOT_MANIFEST = GOVERNANCE_ROOT / "ssot" / "manifest.toml"
     COMMANDS_CATALOG = GOVERNANCE_ROOT / "ssot" / "commands" / "commands.toml"
-    DOCUMENT_CORPUS = (
-        "installer-cli-reference.md",
-        "resume-checkpoints.md",
-        "installer-architecture.md",
-        "harness-recipes.md",
-        "installer-threat-model.md",
-        "installer-json-schemas.md",
-    )
 
     def _ssot_domains(self):
         ssot = tomllib.loads(self.SSOT_MANIFEST.read_text(encoding="utf-8"))
-        return list(ssot["domains"])
+        return [domain for domain in ssot["domains"]]
 
-    def _command_ids(self):
+    def _command_paths(self):
         catalog = tomllib.loads(self.COMMANDS_CATALOG.read_text(encoding="utf-8"))
-        return [command["id"] for command in catalog["commands"]]
+        return [" ".join(command["path"]) for command in catalog["commands"]]
+
+    def _documented_command_paths(self):
+        reference = CLI_REFERENCE_PATH.read_text(encoding="utf-8")
+        return re.findall(r"(?m)^### `([a-z][^`]*)`$", reference)
+
+    def _documented_exports(self):
+        match = re.search(r"(?m)^- Paketexporte:\s*(.*)$", README)
+        self.assertIsNotNone(match, "README 'Paketexporte' projection line missing")
+        return re.findall(r"`([a-z][a-z0-9_-]*)`", match.group(1))
+
+    def _documented_ssot_domains(self):
+        match = re.search(r"(?m)^- SSOT-Domains:\s*(.*)$", README)
+        self.assertIsNotNone(match, "README 'SSOT-Domains' projection line missing")
+        return re.findall(r"`([a-z][a-z0-9_]*)`", match.group(1))
 
     def test_cli_reference_documents_exactly_the_command_catalog(self):
-        """Catches a command added to or removed from the SSOT without a matching reference."""
-        reference = CLI_REFERENCE_PATH.read_text(encoding="utf-8")
-        documented = re.findall(r"(?m)^### `([a-z][a-z0-9_]*)`$", reference)
-        self.assertEqual(sorted(documented), sorted(self._command_ids()))
-
-    def test_package_exports_are_documented(self):
-        """Catches a public package export that no consumer document explains."""
-        corpus = README + "\n" + "\n".join(
-            (ROOT / "docs" / name).read_text(encoding="utf-8")
-            for name in self.DOCUMENT_CORPUS
+        """Catches a command added to, removed from, or renamed in the SSOT without a matching reference."""
+        self.assertEqual(
+            sorted(self._documented_command_paths()),
+            sorted(self._command_paths()),
         )
-        for subpath in PACKAGE["exports"]:
-            name = subpath.removeprefix("./")
-            with self.subTest(export=subpath):
-                self.assertIn(name, corpus, f"export subpath {subpath} is not documented")
 
-    def test_readme_documents_the_ssot_domains(self):
-        """Catches an SSOT domain that is no longer reflected in the public README."""
-        for domain in self._ssot_domains():
-            with self.subTest(domain=domain):
-                self.assertIn(domain, README)
+    def test_package_exports_match_the_documented_projection(self):
+        """Catches a package export that is added or removed without the README projection following."""
+        expected = [subpath.removeprefix("./") for subpath in PACKAGE["exports"]]
+        self.assertEqual(sorted(self._documented_exports()), sorted(expected))
+
+    def test_readme_projection_matches_the_ssot_domains(self):
+        """Catches an SSOT domain added or removed without the README projection following."""
+        self.assertEqual(
+            sorted(self._documented_ssot_domains()),
+            sorted(self._ssot_domains()),
+        )
 
 
 if __name__ == "__main__":
