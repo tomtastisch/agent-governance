@@ -24,7 +24,8 @@ statt sie als ungeprüfte Zeichenketten zusammenzufügen.
 
 Für Transaktionscommands gibt es kein implizites Ziel, kein cwd-Fallback und keine
 Projektinstallation. Die passive Discovery von `init` unterstützt ausschließlich die bewusste
-Zielauswahl; sie ist keine automatische Zielannahme oder fachliche Authority.
+Zielauswahl; die Vorauswahl unterstützter Harnesses ist ein editierbarer Default, keine implizite
+Mutation und keine fachliche Authority.
 
 ## Command-Referenz
 
@@ -122,13 +123,15 @@ nimmt nur Hilfeoptionen an und orchestriert Auswahl und Transaktionen getrennt.
   `status -> plan -> [Bestätigung] -> install|update -> verify`.
 - **Ausgangszustand:** Ein TTY und mindestens ein bewusst ausgewähltes Ziel; ohne TTY wird der
   Aufruf vor Discovery, Prompt und Mutation abgelehnt.
-- **Prüft:** Begrenzte generische Kandidaten, manuelle Eingaben, Zielstatus und vollständige Pläne
+- **Prüft:** Begrenzte lokale Kandidaten, manuelle Eingaben, Zielstatus und vollständige Pläne
   vor einer gemeinsamen Bestätigung.
 - **Verändert:** Vor der Bestätigung nichts; danach ausschließlich die bestätigten expliziten
   Ziele über dieselbe Transaktionsgrenze wie die Low-Level-Commands.
 - **Typisch:** Normaler öffentlicher Einstieg nach der Paketinstallation.
-- **Fail-closed:** Passive Discovery ist nur Auswahlunterstützung, keine automatische
-  Zielannahme, keine implizite Harness-Mutation und keine fachliche Authority.
+- **Fail-closed:** Passive Discovery ist nur Auswahlunterstützung. Unterstützte Harnesses werden
+  als editierbarer Default vorausgewählt und ihre Zielpfade aus der Binding-SSOT abgeleitet; erst
+  die ausdrückliche Bestätigung autorisiert die Mutation. Keine implizite Harness-Mutation und
+  keine fachliche Authority.
 
 ### `inspect`
 
@@ -324,7 +327,8 @@ nimmt nur Hilfeoptionen an und orchestriert Auswahl und Transaktionen getrennt.
 - `4`: `UNSAFE_STATE` für einen nicht sicher klassifizierbaren Zustand.
 - `5`: `VERIFICATION_ROLLED_BACK` für einen Fehler mit erfolgreichem Rollback.
 - `6`: `ROLLBACK_FAILED` für einen fehlgeschlagenen Rollback.
-- `130`: serialisierte Unterbrechung durch `SIGINT`.
+- `130`: serialisierte Unterbrechung durch `SIGINT` oder ein bewusst abgebrochener `init`-Aufruf
+  (`INTERRUPTED`, reason `CANCELLED`).
 - `143`: serialisierte Unterbrechung durch `SIGTERM`.
 
 ## Advanced: Automation und CI

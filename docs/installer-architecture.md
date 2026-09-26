@@ -14,10 +14,10 @@ yarn oder bun noch einen Package-Manager-Bootstrap und enthält keinen Self-Inst
 bedingten Nachladepfad. Fehlt eine direkte Runtime-Abhängigkeit, schlägt das Paket fail-closed fehl.
 
 Vor der Transaktion nutzt `init` eine begrenzte, passive und nicht mutierende Discovery als
-Auswahlunterstützung. Sie trifft keine automatische Zielannahme, mutiert keinen Harness und besitzt
-keine fachliche Authority. Die bewusste Auswahl erzeugt explizite Transaktionsziele; Status und
-Pläne werden für alle Ziele vor einer gemeinsamen Bestätigung ermittelt. Erst diese Bestätigung
-autorisiert die Mutation.
+Auswahlunterstützung. Unterstützte Harnesses werden als editierbarer Default vorausgewählt und
+ihre Zielpfade aus der Support-/Binding-SSOT abgeleitet. Die bewusste Auswahl erzeugt explizite
+Transaktionsziele; Status und Pläne werden für alle Ziele vor einer gemeinsamen Bestätigung
+ermittelt. Erst diese Bestätigung autorisiert die Mutation.
 
 Die Installed-Harness-Erkennung des `init`-Screens ist auf einen einzelnen Adapter hinter
 `@agntn/harnesses` beschränkt, der ausschließlich `getAllHarnesses()` und `isInstalled()` nutzt und
