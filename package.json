@@ -22,6 +22,10 @@
     "agent-governance": "dist/cli.js"
   },
   "exports": {
+    "./replacement": {
+      "types": "./dist/replacement.d.ts",
+      "default": "./dist/replacement.js"
+    },
     "./resume-checkpoint": {
       "types": "./dist/resume-checkpoint.d.ts",
       "default": "./dist/resume-checkpoint.js"

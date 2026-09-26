@@ -20,12 +20,10 @@ interface ParsedEntry {
   readonly block?: string;
 }
 
-const UTF8_BOM = Buffer.from([0xef, 0xbb, 0xbf]);
-
 function decode(input: Buffer): string {
   try {
-    const hasBom = input.length >= UTF8_BOM.length && input.subarray(0, UTF8_BOM.length).equals(UTF8_BOM);
-    return (hasBom ? "\uFEFF" : "") + new TextDecoder("utf-8", { fatal: true }).decode(hasBom ? input.subarray(UTF8_BOM.length) : input);
+    // Treat every U+FEFF as content, including consecutive leading codepoints.
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(input);
   } catch {
     throw new Error("entry file must be valid UTF-8");
   }
@@ -119,6 +117,14 @@ export function removeManagedBlock(input: Buffer): Buffer {
   if (flags.prefixAdded && prefix.endsWith(parsed.eol)) prefix = prefix.slice(0, -parsed.eol.length);
   if (flags.suffixAdded && suffix.startsWith(parsed.eol)) suffix = suffix.slice(parsed.eol.length);
   return Buffer.from(prefix + suffix, "utf8");
+}
+
+/** Remove only the marker envelope; none of its opaque contents authorize byte removal. */
+export function removeOpaqueManagedEnvelope(input: Buffer): Buffer {
+  const parsed = parse(input);
+  if (parsed.start === undefined || parsed.end === undefined) throw new Error("managed block is missing");
+  if (occurrences(parsed.text, "AGENT_GOVERNANCE_MANAGED_").length !== 2) throw new Error("ambiguous managed markers");
+  return Buffer.from(parsed.text.slice(0, parsed.start) + parsed.text.slice(parsed.end), "utf8");
 }
 
 export function verifyManagedBlock(input: Buffer, binding: GovernanceBinding): void {

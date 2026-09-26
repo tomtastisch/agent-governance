@@ -9,7 +9,7 @@ import type { PathIdentity } from "./filesystem.ts";
 interface NativeBinding {
   secureRenameNoReplace(sourceFd: number, sourceName: string, sourceDev: bigint, sourceIno: bigint, destinationFd: number, destinationName: string, destinationDev: bigint, destinationIno: bigint): void;
   secureCreateNoReplace(directoryFd: number, name: string, directoryDev: bigint, directoryIno: bigint, content: Buffer): void;
-  secureCreateDirectory(directoryFd: number, name: string, directoryDev: bigint, directoryIno: bigint): void;
+  secureCreateDirectory(directoryFd: number, name: string, directoryDev: bigint, directoryIno: bigint): CreatedDirectoryIdentity;
   secureWriteFile(directoryFd: number, name: string, directoryDev: bigint, directoryIno: bigint, objectDev: bigint, objectIno: bigint, objectMode: bigint, objectSize: bigint, objectMtimeNs: bigint, objectCtimeNs: bigint, content: Buffer): void;
   secureRemoveFile(directoryFd: number, name: string, directoryDev: bigint, directoryIno: bigint, objectDev: bigint, objectIno: bigint, objectMode: bigint, objectSize: bigint, objectMtimeNs: bigint, objectCtimeNs: bigint): void;
   secureRemoveDirectory(directoryFd: number, name: string, directoryDev: bigint, directoryIno: bigint, objectDev: bigint, objectIno: bigint): void;
@@ -33,6 +33,7 @@ export interface SecureCreateRequest {
 }
 
 export interface FileSnapshotIdentity extends PathIdentity { readonly size: bigint; readonly mtimeNs: bigint; readonly ctimeNs: bigint; }
+export interface CreatedDirectoryIdentity extends PathIdentity { readonly uid: number; }
 export interface SecureFileRequest extends SecureCreateRequest { readonly objectIdentity: FileSnapshotIdentity; readonly onDirectoryBound?: () => void | Promise<void>; }
 export interface SecureDirectoryRenameRequest extends SecureRenameRequest { readonly sourceObjectIdentity: PathIdentity; }
 
@@ -71,9 +72,9 @@ export async function secureCreateNoReplace(request: SecureCreateRequest, conten
   finally { await directory.close(); }
 }
 
-export async function secureCreateDirectory(request: SecureCreateRequest & { readonly onDirectoryBound?: () => void | Promise<void> }): Promise<void> {
+export async function secureCreateDirectory(request: SecureCreateRequest & { readonly onDirectoryBound?: () => void | Promise<void> }): Promise<CreatedDirectoryIdentity> {
   basename(request.name); const binding = loadBinding(); const directory = await open(request.directory, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
-  try { const identity = await directory.stat({ bigint: true }); if (!identity.isDirectory() || identity.dev !== request.directoryIdentity.device || identity.ino !== request.directoryIdentity.inode || Number(identity.mode) !== request.directoryIdentity.mode) throw new Error("native filesystem directory identity changed"); await request.onDirectoryBound?.(); binding.secureCreateDirectory(directory.fd, request.name, identity.dev, identity.ino); }
+  try { const identity = await directory.stat({ bigint: true }); if (!identity.isDirectory() || identity.dev !== request.directoryIdentity.device || identity.ino !== request.directoryIdentity.inode || Number(identity.mode) !== request.directoryIdentity.mode) throw new Error("native filesystem directory identity changed"); await request.onDirectoryBound?.(); return binding.secureCreateDirectory(directory.fd, request.name, identity.dev, identity.ino); }
   finally { await directory.close(); }
 }
 

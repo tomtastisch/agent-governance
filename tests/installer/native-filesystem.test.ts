@@ -27,6 +27,13 @@ function nativeBinding(): NativeTestBinding {
   return createRequire(import.meta.url)(join(root, "prebuilds", `${process.platform}-${process.arch}`, "agent_governance_fs.node")) as NativeTestBinding;
 }
 
+test("SEC-123-02 native directory creation returns the identity it created", async () => {
+  const root = await createTestRoot("native-created-identity-");
+  const created = await secureCreateDirectory({ directory: root, name: "private", directoryIdentity: await captureIdentity(root) });
+  const actual = await lstat(join(root, "private"), { bigint: true });
+  assert.deepEqual(created, { device: actual.dev, inode: actual.ino, mode: Number(actual.mode), uid: Number(actual.uid) });
+});
+
 async function renameBound(request: Omit<Parameters<typeof secureRenameNoReplace>[0], "sourceDirectoryIdentity" | "destinationDirectoryIdentity">): Promise<void> {
   await secureRenameNoReplace({ ...request, sourceDirectoryIdentity: await captureIdentity(request.sourceDirectory), destinationDirectoryIdentity: await captureIdentity(request.destinationDirectory) });
 }

@@ -39,6 +39,7 @@ for (const path of paths) {
   }
 }
 const requiredPaths = ["README.md", "LICENSE", "CHANGELOG.md", "dist/cli.js", "dist/resume-toon.js", "dist/resume-toon.d.ts", "dist/resume-checkpoint.js", "dist/resume-checkpoint.d.ts", "dist/resume-checkpoint-schema.js", "docs/resume-checkpoints.md", "dist/work-items.js", "dist/work-items.d.ts", "bundle/GOVERNANCE.md", "bundle/agent-governance/manifest.toml", "bundle/agent-governance/templates/manifest.toml", "bundle/agent-governance/ssot/manifest.toml", "bundle/agent-governance/ssot/routing/triggers.toml", "bundle/agent-governance/ssot/routing/policy-tags.toml", "bundle/agent-governance/ssot/routing/scopes.toml", "bundle/agent-governance/ssot/routing/tools.toml", "bundle/agent-governance/ssot/commands/commands.toml", "bundle/agent-governance/ssot/discovery/discovery-signals.toml", "bundle/agent-governance/ssot/work-items/classifications.toml", "bundle/agent-governance/ssot/work-items/projections/github-labels.toml", "docs/installer-cli-reference.md", "release.files.sha256", "VERSION", runtimeBrandingPath];
+requiredPaths.push("dist/replacement.js", "dist/replacement.d.ts");
 for (const required of requiredPaths) {
   if (!paths.includes(required)) throw new Error(`missing tarball path: ${required}`);
 }

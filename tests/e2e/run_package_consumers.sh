@@ -54,6 +54,30 @@ verify_output=$("$consumer/node_modules/.bin/agent-governance" verify "${common[
 node -e 'for (const value of process.argv.slice(1)) { const parsed=JSON.parse(value); if(parsed.outcome!=="SUCCESS") process.exit(1) }' "$install_output" "$verify_output"
 test -f "$target_root/AGENTS.md"
 
+cat > "$consumer/use-replacement.mjs" <<'EOF'
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { replaceInstallation } from "@tomtastisch/agent-governance/replacement";
+const root = process.argv[2];
+const entry = join(root, "target", "AGENTS.md");
+const original = await readFile(entry);
+const request = {
+  sourceInstallationRoot: join(root, "direct-installation"),
+  installationRoot: join(root, "replacement-installation"),
+  targetRoot: join(root, "target"), entryFile: "AGENTS.md",
+  releaseRoot: join(process.cwd(), "node_modules", "@tomtastisch", "agent-governance"),
+};
+assert.equal((await replaceInstallation({ ...request, dryRun: true })).outcome, "PLANNED");
+const result = await replaceInstallation(request);
+assert.equal(result.outcome, "SUCCESS");
+assert.equal(result.state, "CURRENT");
+assert.deepEqual(await readFile(result.quarantine.entryPath), original);
+console.log("replacement_consumer=PASS");
+EOF
+node "$consumer/use-replacement.mjs" "$fixture_root"
+"$consumer_bin" verify "${common[@]}" --installation-root "$fixture_root/replacement-installation"
+
 cat > "$consumer/use-resume-toon.mjs" <<'EOF'
 import {
   decodeResumeProjection,

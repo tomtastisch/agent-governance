@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   installManagedBlock,
   removeManagedBlock,
+  removeOpaqueManagedEnvelope,
   verifyManagedBlock,
   type GovernanceBinding,
 } from "../../src/managed-block.ts";
@@ -95,4 +96,13 @@ test("managed block rejects duplicate, incomplete, foreign, and tampered blocks"
 
 test("managed block rejects malformed UTF-8", () => {
   assert.throws(() => installManagedBlock(Buffer.from([0xc3, 0x28]), binding), /UTF-8/);
+});
+
+test("QA-123-02 preserves multiple leading BOMs in opaque removal and normal lifecycle", () => {
+  const prefix = Buffer.from("\uFEFF\uFEFFprefix\r\n");
+  const opaque = Buffer.concat([prefix, Buffer.from(`${begin}\nopaque\n${end}suffix`)]);
+  assert.deepEqual(removeOpaqueManagedEnvelope(opaque), Buffer.concat([prefix, Buffer.from("suffix")]));
+  const installed = installManagedBlock(prefix, binding);
+  assert.deepEqual(installed.subarray(0, prefix.length), prefix);
+  assert.deepEqual(removeManagedBlock(installed), prefix);
 });
