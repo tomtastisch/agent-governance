@@ -35,6 +35,14 @@ class SiteError(Exception):
     """Deterministischer Build-/Verifikationsfehler der Site-Projektion."""
 
 
+def _assert_web_safe(value: str, label: str) -> None:
+    """Lehnt Zeichen ab, die HTML-Attribute oder eingebettetes JSON-LD korrumpieren würden."""
+    if '"' in value or "\\" in value or "<" in value or ">" in value or "&" in value:
+        raise SiteError(f"{label} enthält für die Site-Projektion ungeeignete Zeichen")
+    if any(ord(ch) < 0x20 for ch in value):
+        raise SiteError(f"{label} enthält Steuerzeichen")
+
+
 def canonical_values(root: Path = ROOT) -> dict[str, str]:
     """Liest die kanonischen Werte ausschließlich aus den bestehenden Authorities."""
     version = (root / "VERSION").read_text(encoding="utf-8").strip()
@@ -52,6 +60,10 @@ def canonical_values(root: Path = ROOT) -> dict[str, str]:
     owner, _, repo_name = slug.partition("/")
     if not owner or not repo_name:
         raise SiteError(f"repository.url hat keine gültige Owner/Repository-Form: {repository_url}")
+
+    _assert_web_safe(description, "package.json description")
+    _assert_web_safe(version, "VERSION")
+    _assert_web_safe(package_name, "package name")
 
     base_path = f"/{repo_name}"
     public_url = f"https://{owner}.github.io/{repo_name}"
@@ -85,14 +97,6 @@ def pages(site_src: Path = SITE_SRC) -> list[str]:
         else:
             result.append(relative[: -len("index.html")].rstrip("/"))
     return result
-
-
-def public_path(subpath: str, values: dict[str, str]) -> str:
-    """Voller Base-Path einer Seite (ohne Protokoll/Host)."""
-    base = values["BASE_PATH"]
-    if not subpath:
-        return f"{base}/"
-    return f"{base}/{subpath}/"
 
 
 def canonical_url(subpath: str, values: dict[str, str]) -> str:
@@ -167,14 +171,9 @@ def build(root: Path = ROOT, out: Path = DEFAULT_OUT) -> None:
             raise SiteError(f"Seite fehlt im Build-Ergebnis: {subpath or '/'}")
 
 
-def verify(root: Path = ROOT, out: Path = DEFAULT_OUT) -> None:
-    """Prüft, dass der Build dem aktuellen Authority-Stand entspricht (read-only)."""
-    build(root, out)
-
-
 def main(argv: list[str]) -> int:
-    if len(argv) != 2 or argv[1] not in {"build", "verify"}:
-        print("usage: site_build.py <build|verify>", file=sys.stderr)
+    if len(argv) != 2 or argv[1] != "build":
+        print("usage: site_build.py build", file=sys.stderr)
         return 2
     try:
         build()

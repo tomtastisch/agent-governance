@@ -189,6 +189,15 @@ class SiteBuildFailClosedTest(unittest.TestCase):
             with self.assertRaises(SiteError):
                 site_build.canonical_values(ROOT)
 
+    def test_unsafe_description_fails_closed(self):
+        bad_package = {
+            "name": "@x/y", "bin": {"y": "dist/y.js"}, "description": 'a "quoted" description',
+            "repository": {"url": "git+https://github.com/x/y.git"},
+        }
+        with mock.patch.object(site_build.json, "loads", return_value=bad_package):
+            with self.assertRaises(SiteError):
+                site_build.canonical_values(ROOT)
+
 
 if __name__ == "__main__":
     unittest.main()
