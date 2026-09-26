@@ -1,0 +1,30 @@
+name: Socket Index Freshness
+
+# Read-only, advisory projection check: npm `dist-tags.latest` is the release
+# authority; Socket.dev's public package projection is external security evidence
+# only. This workflow classifies CURRENT | STALE | UNAVAILABLE and never blocks
+# a release, re-publishes, or mutates dist-tags. Manual (workflow_dispatch) plus
+# a weekly schedule for controlled drift monitoring.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 4 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  freshness:
+    name: Classify Socket package projection (advisory)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.11"
+      - name: Classify Socket package projection against npm latest
+        env:
+          SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_SECURITY_API_KEY }}
+        run: |
+          python3 tools/socket_freshness.py
