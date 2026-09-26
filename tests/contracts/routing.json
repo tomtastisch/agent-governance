@@ -1,0 +1,5 @@
+{
+  "tools": ["local_git_cli", "repository_checks", "github", "github_cli", "github_connector", "authoritative_documentation", "superpowers", "independent_review_provider", "security_diff_scan", "microsoft_apm", "linear", "supabase", "supermetrics", "data_analytics", "canonical_memory_verifier"],
+  "policy_tags": ["read", "write"],
+  "scopes": ["repository", "github", "documentation", "work_tracking", "database", "authentication", "storage", "realtime", "edge_functions", "marketing_data", "structured_data", "analytics_artifacts", "canonical_memory", "agent_packages"]
+}

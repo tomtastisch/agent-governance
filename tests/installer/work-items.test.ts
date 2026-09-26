@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { workItemsOracle } from "./catalog-oracles.ts";
 import {
   buildLabelProjectionPlan,
   classifyLabels,
@@ -44,7 +45,7 @@ test("the canonical classification SSOT resolves every stable ID deterministical
   const { classifications, projections } = loadWorkItemSsot();
   assert.equal(classifications.schemaVersion, 1);
   const dimensions = Object.keys(classifications.dimensions).sort();
-  assert.deepEqual(dimensions, ["area", "horizon", "semver", "type"]);
+  assert.deepEqual(dimensions, Object.keys(workItemsOracle.dimensions).sort());
   for (const id of Object.keys(classifications.classifications)) {
     assert.match(id, /^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/);
     const resolved = resolveClassification(classifications, id);
@@ -58,10 +59,19 @@ test("the canonical classification SSOT resolves every stable ID deterministical
 
 test("dimensions declare explicit cardinality", () => {
   const { classifications } = loadWorkItemSsot();
-  assert.equal(classifications.dimensions.type!.cardinality, "one");
-  assert.equal(classifications.dimensions.area!.cardinality, "many");
-  assert.equal(classifications.dimensions.horizon!.cardinality, "at_most_one");
-  assert.equal(classifications.dimensions.semver!.cardinality, "at_most_one");
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(classifications.dimensions).map(([id, entry]) => [id, entry.cardinality])),
+    workItemsOracle.dimensions,
+  );
+});
+
+test("work-item required classifications and projection names match the independent oracle", () => {
+  const { classifications, projections } = loadWorkItemSsot();
+  for (const id of workItemsOracle.required_classifications) {
+    assert.equal(resolveClassification(classifications, id).id, id);
+  }
+  const names = new Set(Object.values(projections.projections).map(entry => entry.name));
+  for (const name of workItemsOracle.required_projection_names) assert.ok(names.has(name), name);
 });
 
 test("policy_tags remain a separate domain from work-item classification", () => {

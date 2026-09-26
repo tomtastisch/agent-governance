@@ -27,43 +27,12 @@ EXPECTED_CATALOG_PATHS = {
     "classifications": "ssot/work-items/classifications.toml",
     "github_labels": "ssot/work-items/projections/github-labels.toml",
 }
-COMMAND_FIELDS = {
-    "id",
-    "path",
-    "description",
-    "capability",
-    "effect",
-    "orchestrates",
-    "interactive",
-}
-EXPECTED_TOOLS = {
-    "local_git_cli",
-    "repository_checks",
-    "github",
-    "github_cli",
-    "github_connector",
-    "authoritative_documentation",
-    "superpowers",
-    "independent_review_provider",
-    "security_diff_scan",
-    "microsoft_apm",
-    "linear",
-    "supabase",
-    "supermetrics",
-    "data_analytics",
-    "canonical_memory_verifier",
-}
-TOOL_FIELDS = {
-    "name",
-    "purpose",
-    "required_on",
-    "useful_on",
-    "policy_tags",
-    "scopes",
-    "evidence",
-    "fallback",
-    "constraints",
-}
+# Test-only semantic oracles; structural fields already belong to the #90 contract.
+STRUCTURE = json.loads((ROOT / "contracts" / "governance-contract.json").read_text(encoding="utf-8"))
+ROUTING_ORACLE = json.loads((ROOT / "tests/contracts/routing.json").read_text(encoding="utf-8"))
+WORK_ITEMS_ORACLE = json.loads((ROOT / "tests/contracts/work-items.json").read_text(encoding="utf-8"))
+COMMAND_FIELDS = set(STRUCTURE["fields"]["command"])
+TOOL_FIELDS = set(STRUCTURE["fields"]["tool"])
 
 
 def load_validator(case: unittest.TestCase):
@@ -96,7 +65,7 @@ class CatalogContract(unittest.TestCase):
         self.assertEqual(self.contract.manifest["templates"], "templates/manifest.toml")
         self.assertEqual(
             set(self.contract.manifest),
-            {"schema_version", "local_rules", "ssot", "templates", "routing", "modules", "roles"},
+            set(STRUCTURE["fields"]["manifest"]),
         )
         self.assertEqual(
             self.contract.manifest["routing"],
@@ -111,18 +80,11 @@ class CatalogContract(unittest.TestCase):
         self.assertEqual(
             ssot["domains"],
             {
-                "routing": {
-                    "triggers": "routing/triggers.toml",
-                    "policy_tags": "routing/policy-tags.toml",
-                    "scopes": "routing/scopes.toml",
-                    "tools": "routing/tools.toml",
-                },
-                "commands": {"commands": "commands/commands.toml"},
-                "discovery": {"discovery_signals": "discovery/discovery-signals.toml"},
-                "work_items": {
-                    "classifications": "work-items/classifications.toml",
-                    "github_labels": "work-items/projections/github-labels.toml",
-                },
+                domain: {
+                    catalog: str(Path(EXPECTED_CATALOG_PATHS[catalog]).relative_to("ssot"))
+                    for catalog in catalogs
+                }
+                for domain, catalogs in STRUCTURE["domains"]["ssot_catalogs"].items()
             },
         )
 
@@ -136,18 +98,11 @@ class CatalogContract(unittest.TestCase):
         self.assertEqual(set(self.contract.catalogs["commands"]), {"schema_version", "commands"})
         self.assertEqual(
             set(self.contract.catalogs["discovery_signals"]),
-            {
-                "schema_version",
-                "limits",
-                "confidence",
-                "candidate_classes",
-                "evidence_families",
-                "signals",
-            },
+            set(STRUCTURE["fields"]["discovery_top_level"]),
         )
         for catalog_name in ("triggers", "policy_tags", "scopes"):
             for item_id, item in self.contract.catalogs[catalog_name][catalog_name].items():
-                self.assertEqual(set(item), {"label", "description"}, item_id)
+                self.assertEqual(set(item), set(STRUCTURE["fields"]["vocabulary"]), item_id)
         for tool_id, tool in self.contract.tools.items():
             self.assertEqual(set(tool), TOOL_FIELDS, tool_id)
         for command in self.contract.commands:
@@ -155,10 +110,10 @@ class CatalogContract(unittest.TestCase):
 
     def test_discovery_catalog_is_generic_closed_and_bounded(self):
         discovery = self.contract.discovery
-        self.assertEqual(set(discovery["candidate_classes"]), {"directory", "app_bundle"})
+        self.assertEqual(set(discovery["candidate_classes"]), set(STRUCTURE["vocabularies"]["discovery_candidate_classes"]))
         self.assertEqual(
             set(discovery["evidence_families"]),
-            {"runtime", "state", "tooling", "ai_metadata", "package_metadata", "document"},
+            set(STRUCTURE["vocabularies"]["discovery_evidence_families"]),
         )
         self.assertTrue(all(type(value) is int and value > 0 for value in discovery["limits"].values()))
         self.assertTrue(discovery["confidence"]["high_requires_runtime"])
@@ -210,40 +165,11 @@ class CatalogContract(unittest.TestCase):
         )
 
     def test_catalog_contains_all_migrated_and_required_tools(self):
-        self.assertEqual(set(self.contract.tools), EXPECTED_TOOLS)
-        for required in (
-            "linear",
-            "supabase",
-            "superpowers",
-            "supermetrics",
-            "github",
-            "data_analytics",
-            "canonical_memory_verifier",
-            "microsoft_apm",
-        ):
-            self.assertIn(required, self.contract.tools)
+        self.assertEqual(set(self.contract.tools), set(ROUTING_ORACLE["tools"]))
 
     def test_policy_tags_are_only_effect_classes_and_scopes_are_only_resources(self):
-        self.assertEqual(self.contract.policy_tags, frozenset({"read", "write"}))
-        self.assertEqual(
-            self.contract.scopes,
-            frozenset({
-                "repository",
-                "github",
-                "documentation",
-                "work_tracking",
-                "database",
-                "authentication",
-                "storage",
-                "realtime",
-                "edge_functions",
-                "marketing_data",
-                "structured_data",
-                "analytics_artifacts",
-                "canonical_memory",
-                "agent_packages",
-            }),
-        )
+        self.assertEqual(self.contract.policy_tags, frozenset(ROUTING_ORACLE["policy_tags"]))
+        self.assertEqual(self.contract.scopes, frozenset(ROUTING_ORACLE["scopes"]))
         policy_text = (
             GOVERNANCE_ROOT / EXPECTED_CATALOG_PATHS["policy_tags"]
         ).read_text(encoding="utf-8")
@@ -360,11 +286,10 @@ class WorkItemClassificationContract(unittest.TestCase):
 
     def test_classification_dimensions_and_cardinality(self):
         dimensions = self.contract.work_item_classifications["dimensions"]
-        self.assertEqual(set(dimensions), {"type", "area", "horizon", "semver"})
-        self.assertEqual(dimensions["type"]["cardinality"], "one")
-        self.assertEqual(dimensions["area"]["cardinality"], "many")
-        self.assertEqual(dimensions["horizon"]["cardinality"], "at_most_one")
-        self.assertEqual(dimensions["semver"]["cardinality"], "at_most_one")
+        self.assertEqual(
+            {key: value["cardinality"] for key, value in dimensions.items()},
+            WORK_ITEMS_ORACLE["dimensions"],
+        )
 
     def test_classification_values_form_stable_ids(self):
         classifications = self.contract.work_item_classifications["classifications"]
@@ -373,9 +298,7 @@ class WorkItemClassificationContract(unittest.TestCase):
             for dimension, values in classifications.items()
             for value in values
         }
-        self.assertIn("type.refactor", ids)
-        self.assertIn("semver.patch", ids)
-        self.assertIn("horizon.future", ids)
+        self.assertLessEqual(set(WORK_ITEMS_ORACLE["required_classifications"]), ids)
 
     def test_policy_tags_are_not_work_item_classifications(self):
         classifications = self.contract.work_item_classifications["classifications"]
@@ -401,7 +324,7 @@ class WorkItemClassificationContract(unittest.TestCase):
     def test_managed_projections_cover_semver_and_future(self):
         projections = self.contract.work_item_projections["projections"]
         names = {projection["name"] for projection in projections.values()}
-        for name in ("semver:major", "semver:minor", "semver:patch", "semver:none", "semver:pending", "future"):
+        for name in WORK_ITEMS_ORACLE["required_projection_names"]:
             self.assertIn(name, names)
 
     def test_no_lifecycle_state_in_classification(self):
