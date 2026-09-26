@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Coding Agent Governance — Guardrails for AI Coding Agents</title>
+  <meta name="description" content="AI coding agent governance: apply consistent, versioned guardrails across Codex, Claude Code, OpenCode, and other harnesses with a verified, reversible installer.">
+  <link rel="canonical" href="{{PUBLIC_URL}}/ai-coding-agent-governance/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Agent Governance">
+  <meta property="og:title" content="AI Coding Agent Governance — Guardrails for AI Coding Agents">
+  <meta property="og:description" content="Consistent, versioned guardrails for AI coding agents across multiple harnesses.">
+  <meta property="og:url" content="{{PUBLIC_URL}}/ai-coding-agent-governance/">
+  <meta property="og:image" content="{{PUBLIC_URL}}/assets/icon.png">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="AI Coding Agent Governance — Guardrails for AI Coding Agents">
+  <meta name="twitter:description" content="Consistent, versioned guardrails for AI coding agents across multiple harnesses.">
+  <meta name="twitter:image" content="{{PUBLIC_URL}}/assets/icon.png">
+  <link rel="icon" type="image/png" href="{{BASE_PATH}}/assets/icon.png">
+  <link rel="stylesheet" href="{{BASE_PATH}}/assets/site.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Home", "item": "{{PUBLIC_URL}}/" },
+          { "@type": "ListItem", "position": 2, "name": "AI Coding Agent Governance", "item": "{{PUBLIC_URL}}/ai-coding-agent-governance/" }
+        ]
+      },
+      {
+        "@type": "SoftwareSourceCode",
+        "name": "Agent Governance",
+        "codeRepository": "{{REPO_URL}}",
+        "programmingLanguage": "TypeScript",
+        "version": "{{VERSION}}",
+        "license": "https://www.apache.org/licenses/LICENSE-2.0.html"
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="container">
+      <a class="brand" href="{{BASE_PATH}}/">
+        <img src="{{BASE_PATH}}/assets/icon.png" alt="Agent Governance" width="32" height="32">
+        <span>Agent Governance</span>
+      </a>
+      <nav class="site-nav" aria-label="Main navigation">
+        <a href="{{BASE_PATH}}/">Home</a>
+        <a href="{{BASE_PATH}}/ai-coding-agent-governance/">AI Coding Agent Governance</a>
+        <a href="{{BASE_PATH}}/governance-as-code/">Governance as Code</a>
+        <a href="{{BASE_PATH}}/docs/">Docs</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <div class="container">
+      <nav class="breadcrumbs" aria-label="Breadcrumb">
+        <a href="{{BASE_PATH}}/">Home</a> / AI Coding Agent Governance
+      </nav>
+
+      <section class="hero">
+        <h1>AI Coding Agent Governance</h1>
+        <p class="tagline">Apply the same versioned guardrails to every AI coding agent you run — without per-harness adapters or silent mutations.</p>
+      </section>
+
+      <section>
+        <h2>The problem</h2>
+        <p>AI coding agents (Codex, Claude Code, OpenCode, and others) read global instruction files that live at different paths on every harness. Ad-hoc edits drift, and implicit target assumptions can silently change an agent&rsquo;s behavior.</p>
+      </section>
+
+      <section>
+        <h2>How Agent Governance addresses it</h2>
+        <ul>
+          <li><strong>Explicit paths:</strong> you choose the exact global target and entry file; the installer validates both and never guesses.</li>
+          <li><strong>Passive discovery:</strong> setup pre-selects supported harnesses as editable defaults, then only mutates after your explicit confirmation.</li>
+          <li><strong>Verified and reversible:</strong> a digest-bound bundle, backups, and a transactional rollback keep every change auditable.</li>
+          <li><strong>Harness-agnostic:</strong> one rule set projected to multiple harnesses, with the normative source kept in a single versioned bundle.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Start</h2>
+        <div class="install">
+          <pre><code>{{INSTALL}}
+{{INIT}}</code></pre>
+        </div>
+        <p>See the <a href="{{BASE_PATH}}/docs/">documentation</a> for the CLI reference, verified <a href="{{REPO_URL}}/blob/main/docs/harness-recipes.md">harness recipes</a>, and the <a href="{{REPO_URL}}/blob/main/docs/installer-threat-model.md">threat model</a>.</p>
+      </section>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p>Agent Governance v{{VERSION}} · <a href="{{REPO_URL}}">GitHub</a> · <a href="https://www.npmjs.com/package/{{PACKAGE_NAME}}">npm</a></p>
+    </div>
+  </footer>
+</body>
+</html>

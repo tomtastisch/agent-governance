@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Documentation — Agent Governance</title>
+  <meta name="description" content="Documentation for Agent Governance: the installer CLI, resume checkpoints, work-item classification, architecture, threat model, and the normative governance source.">
+  <link rel="canonical" href="{{PUBLIC_URL}}/docs/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Agent Governance">
+  <meta property="og:title" content="Documentation — Agent Governance">
+  <meta property="og:description" content="CLI reference, resume checkpoints, work-item classification, architecture, and threat model for Agent Governance.">
+  <meta property="og:url" content="{{PUBLIC_URL}}/docs/">
+  <meta property="og:image" content="{{PUBLIC_URL}}/assets/icon.png">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Documentation — Agent Governance">
+  <meta name="twitter:description" content="CLI reference, resume checkpoints, work-item classification, architecture, and threat model.">
+  <meta name="twitter:image" content="{{PUBLIC_URL}}/assets/icon.png">
+  <link rel="icon" type="image/png" href="{{BASE_PATH}}/assets/icon.png">
+  <link rel="stylesheet" href="{{BASE_PATH}}/assets/site.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Home", "item": "{{PUBLIC_URL}}/" },
+          { "@type": "ListItem", "position": 2, "name": "Documentation", "item": "{{PUBLIC_URL}}/docs/" }
+        ]
+      },
+      {
+        "@type": "SoftwareSourceCode",
+        "name": "Agent Governance",
+        "codeRepository": "{{REPO_URL}}",
+        "programmingLanguage": "TypeScript",
+        "version": "{{VERSION}}",
+        "license": "https://www.apache.org/licenses/LICENSE-2.0.html"
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="container">
+      <a class="brand" href="{{BASE_PATH}}/">
+        <img src="{{BASE_PATH}}/assets/icon.png" alt="Agent Governance" width="32" height="32">
+        <span>Agent Governance</span>
+      </a>
+      <nav class="site-nav" aria-label="Main navigation">
+        <a href="{{BASE_PATH}}/">Home</a>
+        <a href="{{BASE_PATH}}/ai-coding-agent-governance/">AI Coding Agent Governance</a>
+        <a href="{{BASE_PATH}}/governance-as-code/">Governance as Code</a>
+        <a href="{{BASE_PATH}}/docs/">Docs</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <div class="container">
+      <nav class="breadcrumbs" aria-label="Breadcrumb">
+        <a href="{{BASE_PATH}}/">Home</a> / Documentation
+      </nav>
+
+      <section class="hero">
+        <h1>Documentation</h1>
+        <p class="tagline">The canonical technical references live in the repository. This page links to them without duplicating their content.</p>
+      </section>
+
+      <section>
+        <h2>Technical references</h2>
+        <ul>
+          <li><a href="{{REPO_URL}}/blob/main/docs/installer-cli-reference.md">Installer CLI reference</a> — commands, options, exit behavior, and the forward-only replacement API.</li>
+          <li><a href="{{REPO_URL}}/blob/main/docs/harness-recipes.md">Harness recipes</a> — manually verified global target paths for supported harnesses.</li>
+          <li><a href="{{REPO_URL}}/blob/main/docs/installer-architecture.md">Installer architecture</a> — lifecycle, recovery, and the managed-block contract.</li>
+          <li><a href="{{REPO_URL}}/blob/main/docs/installer-threat-model.md">Installer threat model</a> — trust boundaries and residual risks.</li>
+          <li><a href="{{REPO_URL}}/blob/main/docs/installer-json-schemas.md">JSON schemas</a> — structures and field semantics.</li>
+          <li><a href="{{REPO_URL}}/blob/main/docs/resume-checkpoints.md">Resume checkpoints</a> — persistent resume state and TOON derivation.</li>
+          <li><a href="{{REPO_URL}}/blob/main/docs/work-items.md">Work-item classification</a> — the work-items SSOT and its projections.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Normative source</h2>
+        <p>The authoritative governance contract is the <a href="{{REPO_URL}}/blob/main/bundle/GOVERNANCE.md">normative governance source</a>. Documentation and this website are projections and explanations, never a second authority.</p>
+      </section>
+
+      <section>
+        <h2>Search-engine verification</h2>
+        <p>This site is built so its owner can verify it in Google Search Console and Bing Webmaster Tools. Verification is a manual, account-level action and is not performed at build time; no credentials or verification values are stored in this repository.</p>
+      </section>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p>Agent Governance v{{VERSION}} · <a href="{{REPO_URL}}">GitHub</a> · <a href="https://www.npmjs.com/package/{{PACKAGE_NAME}}">npm</a></p>
+    </div>
+  </footer>
+</body>
+</html>

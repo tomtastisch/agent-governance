@@ -8,3 +8,4 @@ dist/
 prebuilds/
 *.tgz
 .worktrees/
+_site/
