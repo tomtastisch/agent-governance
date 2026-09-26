@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   die Paketexporte und die dokumentierten SSOT-Domains werden testgetrieben gegen ihre
   Authorities (`ssot/commands/commands.toml`, `package.json.exports`, `ssot/manifest.toml`)
   gebunden (#86).
+- Statische öffentliche GitHub-Pages-Präsenz als reine Projektion der Authorities (#119):
+  englischsprachige Landingpage und Suchintentionsseiten mit korrektem Project-Site-Base-Path,
+  eindeutigen Canonicals, Open-Graph-/Preview-Metadaten, validierten strukturierten Daten,
+  `robots.txt` und deterministisch erzeugter `sitemap.xml`; reproduzierbarer Build
+  (`tools/site_build.py`) plus Regressionstests (`tests/test_site.py`) und
+  Least-Privilege-Deployment über die offiziellen GitHub-Actions.
 
 ### Changed
 

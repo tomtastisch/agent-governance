@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Governance as Code — Versioned Rules and Drift Control</title>
+  <meta name="description" content="Governance as code for AI coding agents: versioned, declarative sources of truth with deterministic drift checks and a blocking consistency gate.">
+  <link rel="canonical" href="{{PUBLIC_URL}}/governance-as-code/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Agent Governance">
+  <meta property="og:title" content="Governance as Code — Versioned Rules and Drift Control">
+  <meta property="og:description" content="Versioned, declarative governance-as-code with deterministic drift checks.">
+  <meta property="og:url" content="{{PUBLIC_URL}}/governance-as-code/">
+  <meta property="og:image" content="{{PUBLIC_URL}}/assets/icon.png">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Governance as Code — Versioned Rules and Drift Control">
+  <meta name="twitter:description" content="Versioned, declarative governance-as-code with deterministic drift checks.">
+  <meta name="twitter:image" content="{{PUBLIC_URL}}/assets/icon.png">
+  <link rel="icon" type="image/png" href="{{BASE_PATH}}/assets/favicon.png">
+  <link rel="stylesheet" href="{{BASE_PATH}}/assets/site.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Home", "item": "{{PUBLIC_URL}}/" },
+          { "@type": "ListItem", "position": 2, "name": "Governance as Code", "item": "{{PUBLIC_URL}}/governance-as-code/" }
+        ]
+      },
+      {
+        "@type": "SoftwareSourceCode",
+        "name": "Agent Governance",
+        "codeRepository": "{{REPO_URL}}",
+        "programmingLanguage": "TypeScript",
+        "version": "{{VERSION}}",
+        "license": "https://www.apache.org/licenses/LICENSE-2.0.html"
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="container">
+      <a class="brand" href="{{BASE_PATH}}/">
+        <img src="{{BASE_PATH}}/assets/favicon.png" alt="Agent Governance" width="32" height="32">
+        <span>Agent Governance</span>
+      </a>
+      <nav class="site-nav" aria-label="Main navigation">
+        <a href="{{BASE_PATH}}/">Home</a>
+        <a href="{{BASE_PATH}}/ai-coding-agent-governance/">AI Coding Agent Governance</a>
+        <a href="{{BASE_PATH}}/governance-as-code/">Governance as Code</a>
+        <a href="{{BASE_PATH}}/docs/">Docs</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <div class="container">
+      <nav class="breadcrumbs" aria-label="Breadcrumb">
+        <a href="{{BASE_PATH}}/">Home</a> / Governance as Code
+      </nav>
+
+      <section class="hero">
+        <h1>Governance as Code</h1>
+        <p class="tagline">Agent Governance treats rules, contracts, and sources of truth as versioned artifacts — and verifies that documentation and tooling never drift from them.</p>
+      </section>
+
+      <section>
+        <h2>Declarative sources of truth</h2>
+        <p>The project keeps its policy, commands, discovery signals, and work-item classification in a closed, versioned bundle. Manifest and catalog references are validated fail-closed, so a dangling or unknown reference cannot be silently accepted.</p>
+      </section>
+
+      <section>
+        <h2>Deterministic drift control</h2>
+        <ul>
+          <li><strong>Version authority:</strong> a single <code>VERSION</code> source projected into package metadata and the changelog.</li>
+          <li><strong>Command authority:</strong> the CLI command set is defined once and projected into the runtime and the reference.</li>
+          <li><strong>Consistency gates:</strong> blocking checks detect documentation drift, competing version declarations, and stale document links before they merge.</li>
+          <li><strong>Projection, not duplication:</strong> documentation and this website derive from, check against, or link to their authorities rather than maintaining independent copies.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Install</h2>
+        <div class="install">
+          <pre><code>{{INSTALL}}
+{{INIT}}</code></pre>
+        </div>
+        <p>Read the <a href="{{REPO_URL}}/blob/main/bundle/GOVERNANCE.md">normative governance source</a> and the <a href="{{BASE_PATH}}/docs/">documentation</a> for the full contract.</p>
+      </section>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p>Agent Governance v{{VERSION}} · <a href="{{REPO_URL}}">GitHub</a> · <a href="https://www.npmjs.com/package/{{PACKAGE_NAME}}">npm</a></p>
+    </div>
+  </footer>
+</body>
+</html>

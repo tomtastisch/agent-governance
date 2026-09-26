@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent Governance — Governance-as-Code for AI Coding Agents</title>
+  <meta name="description" content="Agent Governance installs versioned, harness-agnostic governance rules for AI coding agents through a verified, reversible CLI, with resume, work-item, and SSOT contract exports.">
+  <link rel="canonical" href="{{PUBLIC_URL}}/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Agent Governance">
+  <meta property="og:title" content="Agent Governance — Governance-as-Code for AI Coding Agents">
+  <meta property="og:description" content="Harness-agnostic governance-as-code for AI coding agents: a verified, reversible installer plus resume, work-item, and SSOT contract exports.">
+  <meta property="og:url" content="{{PUBLIC_URL}}/">
+  <meta property="og:image" content="{{PUBLIC_URL}}/assets/icon.png">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Agent Governance — Governance-as-Code for AI Coding Agents">
+  <meta name="twitter:description" content="Harness-agnostic governance-as-code for AI coding agents.">
+  <meta name="twitter:image" content="{{PUBLIC_URL}}/assets/icon.png">
+  <link rel="icon" type="image/png" href="{{BASE_PATH}}/assets/favicon.png">
+  <link rel="stylesheet" href="{{BASE_PATH}}/assets/site.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "SoftwareApplication",
+        "name": "Agent Governance",
+        "description": "{{DESCRIPTION}}",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Linux, macOS",
+        "softwareVersion": "{{VERSION}}",
+        "url": "{{PUBLIC_URL}}/",
+        "license": "https://www.apache.org/licenses/LICENSE-2.0.html",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+      },
+      {
+        "@type": "SoftwareSourceCode",
+        "name": "Agent Governance",
+        "description": "{{DESCRIPTION}}",
+        "codeRepository": "{{REPO_URL}}",
+        "programmingLanguage": "TypeScript",
+        "version": "{{VERSION}}",
+        "license": "https://www.apache.org/licenses/LICENSE-2.0.html"
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="container">
+      <a class="brand" href="{{BASE_PATH}}/">
+        <img src="{{BASE_PATH}}/assets/favicon.png" alt="Agent Governance" width="32" height="32">
+        <span>Agent Governance</span>
+      </a>
+      <nav class="site-nav" aria-label="Main navigation">
+        <a href="{{BASE_PATH}}/">Home</a>
+        <a href="{{BASE_PATH}}/ai-coding-agent-governance/">AI Coding Agent Governance</a>
+        <a href="{{BASE_PATH}}/governance-as-code/">Governance as Code</a>
+        <a href="{{BASE_PATH}}/docs/">Docs</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <div class="container">
+      <section class="hero">
+        <h1>Governance-as-Code for AI Coding Agents</h1>
+        <p class="tagline">Agent Governance installs versioned, harness-agnostic rules for AI coding agents in a controlled, verifiable, and reversible way — and ships deterministic contracts for resume, work items, and sources of truth.</p>
+        <div class="actions">
+          <a class="button" href="{{REPO_URL}}">View on GitHub</a>
+          <a class="button ghost" href="https://www.npmjs.com/package/{{PACKAGE_NAME}}">npm package</a>
+          <a class="button ghost" href="{{BASE_PATH}}/docs/">Documentation</a>
+        </div>
+      </section>
+
+      <section>
+        <h2>What it does</h2>
+        <p>Agent Governance manages exactly its own Markdown block at an explicit global target path. It verifies a closed, versioned bundle, backs up the existing entry, and only mutates after explicit confirmation. The same installer is the source of truth for the CLI, while the package also exposes contract exports for resume state and work-item classification.</p>
+        <div class="cards">
+          <div class="card">
+            <h3>Verified install</h3>
+            <p>A digest-bound bundle, explicit canonical paths, and a transactional install/verify lifecycle with rollback.</p>
+          </div>
+          <div class="card">
+            <h3>Resume contracts</h3>
+            <p>Event-bound persistent checkpoints and a TOON codec for cross-session continuation.</p>
+          </div>
+          <div class="card">
+            <h3>Work-item classification</h3>
+            <p>A declarative SSOT for work-item classification with deterministic GitHub-label projections.</p>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Quick start</h2>
+        <p>Install the package and run the guided, interactive setup:</p>
+        <div class="install">
+          <pre><code>{{INSTALL}}
+{{INIT}}</code></pre>
+        </div>
+        <p>The wizard uses passive, non-mutating discovery to support target selection; nothing is installed or updated until you explicitly confirm. For automation, CI, and manual diagnosis, see the <a href="{{BASE_PATH}}/docs/">documentation</a>.</p>
+      </section>
+
+      <section>
+        <h2>Documentation</h2>
+        <ul>
+          <li><a href="{{REPO_URL}}/blob/main/docs/installer-cli-reference.md">CLI reference</a></li>
+          <li><a href="{{REPO_URL}}/blob/main/docs/resume-checkpoints.md">Resume checkpoints</a></li>
+          <li><a href="{{REPO_URL}}/blob/main/docs/work-items.md">Work-item classification</a></li>
+          <li><a href="{{REPO_URL}}/blob/main/docs/installer-architecture.md">Installer architecture</a></li>
+          <li><a href="{{REPO_URL}}/blob/main/docs/installer-threat-model.md">Trust boundaries and residual risks</a></li>
+          <li><a href="{{REPO_URL}}/blob/main/bundle/GOVERNANCE.md">Normative governance source</a></li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Open source</h2>
+        <p>Agent Governance is licensed under <a href="https://www.apache.org/licenses/LICENSE-2.0.html">Apache-2.0</a>. Source, issues, and releases are on <a href="{{REPO_URL}}">GitHub</a>.</p>
+      </section>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p>Agent Governance v{{VERSION}} · <a href="{{REPO_URL}}">GitHub</a> · <a href="https://www.npmjs.com/package/{{PACKAGE_NAME}}">npm</a></p>
+    </div>
+  </footer>
+</body>
+</html>

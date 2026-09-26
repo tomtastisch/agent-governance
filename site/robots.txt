@@ -1,0 +1,10 @@
+# Search discovery is explicitly permitted; no blanket block is applied.
+User-agent: *
+Allow: /
+
+# AI-training crawling is a separate concern from search indexing.
+# Google-Extended (Gemini/Vertex AI training) and comparable training crawlers
+# are deliberately not governed by a blanket rule here; whether to allow or
+# restrict them is a separate, explicit decision.
+
+Sitemap: {{PUBLIC_URL}}/sitemap.xml
