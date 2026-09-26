@@ -25,6 +25,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Breaking changes:** none
 
+## [1.7.1] — 2026-09-26
+
+### Added
+
+- Deterministische Resume-Candidate-Resolution (#95; SemVer patch): löst aus
+  einer begrenzten, vom Aufrufer bereitgestellten Candidate-Scope über die
+  bestehende Resume-Checkpoint-Capability deterministisch
+  `RESUME | NO_MATCH | AMBIGUOUS | INVALID` auf. Internes Modul ohne
+  öffentlichen Package-/CLI-Vertrag; keine zweite Resume-/Checkpoint-/
+  Evidence-Authority.
+
+### Changed
+
+- Keine.
+
+### Fixed
+
+- Keine.
+
+### Removed
+
+- Keine.
+
+**Breaking changes:** none
+
 ## [1.7.0] — 2026-09-26
 
 ### Added

@@ -740,9 +740,9 @@ class ReleaseMetadataContract(unittest.TestCase):
         self.assertIn(PACKAGE["license"], README)
         current = CHANGELOG.split(f"## [{VERSION}]", 1)[1].split("\n## [", 1)[0]
         for term in (
-            "./replacement",
-            "forward-only",
-            "#123; SemVer minor",
+            "Resume-Candidate-Resolution",
+            "RESUME | NO_MATCH | AMBIGUOUS | INVALID",
+            "#95; SemVer patch",
         ):
             self.assertIn(term, current)
         self.assertIn("**Breaking changes:** none", current)
