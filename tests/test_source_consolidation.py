@@ -160,6 +160,11 @@ def current_version_literal_violations(root: Path, version: str) -> list[str]:
             continue
         allowed_lines = fixture_line_numbers(path)
         for number, line in enumerate(read(path).splitlines(), start=1):
+            # A dependency pin can coincide with the release version without being a projection.
+            if path.relative_to(root).as_posix() in {
+                "tests/test_installer_distribution.py", "tools/verify-licenses.mjs",
+            }:
+                line = line.replace(f'"@clack/prompts": "{version}"', '"@clack/prompts": "<dependency-version>"')
             if version in line and number not in allowed_lines:
                 violations.append(f"{path.relative_to(root).as_posix()}:{number}")
     return violations
@@ -327,9 +332,9 @@ class ReleaseMetadataContract(unittest.TestCase):
         version = read(ROOT / "VERSION").strip()
         current = changelog.split(f"## [{version}]", 1)[1].split("\n## [", 1)[0]
         for term in (
-            "Resume-Checkpoint-Materialisierung",
-            "resume-checkpoint",
-            "#87; additive öffentliche API, SemVer minor",
+            "./replacement",
+            "forward-only",
+            "#123; SemVer minor",
         ):
             self.assertIn(term, current)
         self.assertIn("**Breaking changes:** none", current)
@@ -369,7 +374,13 @@ class ReleaseMetadataContract(unittest.TestCase):
             test_path.parent.mkdir(parents=True, exist_ok=True)
             test_path.write_text(f"value = '{version}'\n", encoding="utf-8")
             distribution_test = root / "tests" / "test_installer_distribution.py"
-            distribution_test.write_text(f"value = '{version}'\n", encoding="utf-8")
+            dependency_lines = (
+                f"value = '{version}'\n"
+                f'"@clack/prompts": "{version}"\n'
+                f'"@clack/prompts": "{version}", "version": "{version}"\n'
+            )
+            distribution_test.write_text(dependency_lines, encoding="utf-8")
+            (root / "tools" / "verify-licenses.mjs").write_text(dependency_lines, encoding="utf-8")
 
             violations = current_version_literal_violations(root, version)
 
@@ -378,9 +389,12 @@ class ReleaseMetadataContract(unittest.TestCase):
             [
                 "tests/test_ci_workflow.py:1",
                 "tests/test_installer_distribution.py:1",
+                "tests/test_installer_distribution.py:3",
                 "tools/productive.mjs:1",
                 "tools/productive.sh:1",
                 "tools/productive.ts:1",
+                "tools/verify-licenses.mjs:1",
+                "tools/verify-licenses.mjs:3",
             ],
         )
 
