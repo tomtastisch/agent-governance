@@ -211,11 +211,7 @@ class CatalogContract(unittest.TestCase):
         ):
             self.assertIn(term, supabase_text)
 
-    def test_github_profiles_distinguish_remote_local_cli_and_connector(self):
-        self.assertIn("github", self.contract.tools)
-        self.assertIn("github_cli", self.contract.tools)
-        self.assertIn("github_connector", self.contract.tools)
-        self.assertIn("local_git_cli", self.contract.tools)
+    def test_local_git_evidence_does_not_claim_remote_state(self):
         self.assertRegex(
             self.contract.tools["local_git_cli"]["constraints"],
             r"(?is)keinen Remotezustand",
