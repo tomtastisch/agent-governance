@@ -72,6 +72,7 @@ wird erneut klassifiziert und der erforderliche Regelbestand geladen.
 - [Trust Boundaries und Residual Risks](https://github.com/tomtastisch/agent-governance/blob/main/docs/installer-threat-model.md)
 - [JSON-Strukturen und Feldsemantik](https://github.com/tomtastisch/agent-governance/blob/main/docs/installer-json-schemas.md)
 - [Persistente Resume-Checkpoints und TOON-Ableitung](https://github.com/tomtastisch/agent-governance/blob/main/docs/resume-checkpoints.md)
+- [Work-Item-Klassifikation](https://github.com/tomtastisch/agent-governance/blob/main/docs/work-items.md)
 - [Versionen und Migrationen](https://github.com/tomtastisch/agent-governance/blob/main/CHANGELOG.md)
 - [Normative Governancequelle](https://github.com/tomtastisch/agent-governance/blob/main/bundle/GOVERNANCE.md)
 
