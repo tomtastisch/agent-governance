@@ -9,6 +9,7 @@ import json
 import re
 import shutil
 import tempfile
+import tomllib
 import unittest
 
 
@@ -309,6 +310,8 @@ class ReadmeEntryContract(unittest.TestCase):
         """Catches relative or historical links instead of durable current-reference navigation."""
         paths = (
             "docs/installer-cli-reference.md",
+            "docs/resume-checkpoints.md",
+            "docs/work-items.md",
             "docs/harness-recipes.md",
             "docs/installer-architecture.md",
             "docs/installer-threat-model.md",
@@ -781,6 +784,55 @@ class ReleaseMetadataContract(unittest.TestCase):
         ):
             self.assertIn(term, section)
         self.assertIn("**Breaking changes:** none", section)
+
+
+class DocumentationAuthorityParity(unittest.TestCase):
+    """Binds structured public-surface documentation to its real authorities."""
+
+    GOVERNANCE_ROOT = ROOT / "bundle" / "agent-governance"
+    SSOT_MANIFEST = GOVERNANCE_ROOT / "ssot" / "manifest.toml"
+    COMMANDS_CATALOG = GOVERNANCE_ROOT / "ssot" / "commands" / "commands.toml"
+
+    def _ssot_domains(self):
+        ssot = tomllib.loads(self.SSOT_MANIFEST.read_text(encoding="utf-8"))
+        return [domain for domain in ssot["domains"]]
+
+    def _command_paths(self):
+        catalog = tomllib.loads(self.COMMANDS_CATALOG.read_text(encoding="utf-8"))
+        return [" ".join(command["path"]) for command in catalog["commands"]]
+
+    def _documented_command_paths(self):
+        reference = CLI_REFERENCE_PATH.read_text(encoding="utf-8")
+        return re.findall(r"(?m)^### `([a-z][^`]*)`$", reference)
+
+    def _documented_exports(self):
+        match = re.search(r"(?m)^- Paketexporte:\s*(.*)$", README)
+        self.assertIsNotNone(match, "README 'Paketexporte' projection line missing")
+        return re.findall(r"`([a-z][a-z0-9_-]*)`", match.group(1))
+
+    def _documented_ssot_domains(self):
+        match = re.search(r"(?m)^- SSOT-Domains:\s*(.*)$", README)
+        self.assertIsNotNone(match, "README 'SSOT-Domains' projection line missing")
+        return re.findall(r"`([a-z][a-z0-9_]*)`", match.group(1))
+
+    def test_cli_reference_documents_exactly_the_command_catalog(self):
+        """Catches a command added to, removed from, or renamed in the SSOT without a matching reference."""
+        self.assertEqual(
+            sorted(self._documented_command_paths()),
+            sorted(self._command_paths()),
+        )
+
+    def test_package_exports_match_the_documented_projection(self):
+        """Catches a package export that is added or removed without the README projection following."""
+        expected = [subpath.removeprefix("./") for subpath in PACKAGE["exports"]]
+        self.assertEqual(sorted(self._documented_exports()), sorted(expected))
+
+    def test_readme_projection_matches_the_ssot_domains(self):
+        """Catches an SSOT domain added or removed without the README projection following."""
+        self.assertEqual(
+            sorted(self._documented_ssot_domains()),
+            sorted(self._ssot_domains()),
+        )
 
 
 if __name__ == "__main__":
