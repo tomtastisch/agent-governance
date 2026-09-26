@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import tools.socket_freshness as sf  # noqa: E402
 
+import http.client  # noqa: E402
 import urllib.error  # noqa: E402
 import urllib.request  # noqa: E402
 
@@ -50,9 +51,12 @@ def _json_response(obj):
 
 
 def _http_error(code):
-    return urllib.error.HTTPError(
-        "https://api.socket.dev/", code, "error", Message(), io.BytesIO(b"{}")
+    fp = io.BytesIO(b"{}")
+    error = urllib.error.HTTPError(
+        "https://api.socket.dev/", code, "error", Message(), fp
     )
+    fp.close()
+    return error
 
 
 class ClassificationContract(unittest.TestCase):
@@ -86,7 +90,7 @@ class SocketKnownVersionsContract(unittest.TestCase):
 
     def test_returns_known_versions(self):
         with mock.patch(
-            "urllib.request.urlopen",
+            "tools.socket_freshness._urlopen",
             return_value=_json_response(
                 {
                     "purl": "pkg:npm/a",
@@ -103,26 +107,49 @@ class SocketKnownVersionsContract(unittest.TestCase):
             )
 
     def test_returns_none_on_http_401(self):
-        with mock.patch("urllib.request.urlopen", side_effect=_http_error(401)):
+        with mock.patch("tools.socket_freshness._urlopen", side_effect=_http_error(401)):
             self.assertIsNone(sf.socket_known_versions("org", "pkg:npm/a", "token"))
 
     def test_returns_none_on_http_404(self):
-        with mock.patch("urllib.request.urlopen", side_effect=_http_error(404)):
+        with mock.patch("tools.socket_freshness._urlopen", side_effect=_http_error(404)):
             self.assertIsNone(sf.socket_known_versions("org", "pkg:npm/a", "token"))
 
     def test_returns_none_on_network_failure(self):
         with mock.patch(
-            "urllib.request.urlopen",
+            "tools.socket_freshness._urlopen",
             side_effect=urllib.error.URLError("connection refused"),
         ):
             self.assertIsNone(sf.socket_known_versions("org", "pkg:npm/a", "token"))
 
     def test_returns_none_on_invalid_json(self):
-        with mock.patch("urllib.request.urlopen", return_value=_Response(b"not json")):
+        with mock.patch("tools.socket_freshness._urlopen", return_value=_Response(b"not json")):
             self.assertIsNone(sf.socket_known_versions("org", "pkg:npm/a", "token"))
 
     def test_returns_none_on_invalid_encoding(self):
-        with mock.patch("urllib.request.urlopen", return_value=_Response(b"\xff\xff\xff\xff")):
+        with mock.patch("tools.socket_freshness._urlopen", return_value=_Response(b"\xff\xff\xff\xff")):
+            self.assertIsNone(sf.socket_known_versions("org", "pkg:npm/a", "token"))
+
+    def test_returns_none_on_incomplete_read(self):
+        def fake_open(request, timeout=None):
+            raise http.client.IncompleteRead(partial=b"{}")
+
+        with mock.patch("tools.socket_freshness._urlopen", side_effect=fake_open):
+            self.assertIsNone(sf.socket_known_versions("org", "pkg:npm/a", "token"))
+
+    def test_returns_none_on_malformed_version_entry(self):
+        with mock.patch(
+            "tools.socket_freshness._urlopen",
+            return_value=_json_response({"purl": "pkg:npm/a", "versions": ["not-a-dict"]}),
+        ):
+            self.assertIsNone(sf.socket_known_versions("org", "pkg:npm/a", "token"))
+
+    def test_returns_none_on_version_entry_missing_version(self):
+        with mock.patch(
+            "tools.socket_freshness._urlopen",
+            return_value=_json_response(
+                {"purl": "pkg:npm/a", "versions": [{"publishedAt": "2026-09-26T10:00:00Z"}]}
+            ),
+        ):
             self.assertIsNone(sf.socket_known_versions("org", "pkg:npm/a", "token"))
 
     def test_client_http_errors_are_not_retried(self):
@@ -134,7 +161,7 @@ class SocketKnownVersionsContract(unittest.TestCase):
                     calls.append(1)
                     raise _http_error(code)
 
-                with mock.patch("urllib.request.urlopen", side_effect=fake_open):
+                with mock.patch("tools.socket_freshness._urlopen", side_effect=fake_open):
                     self.assertIsNone(sf.socket_known_versions("org", "pkg:npm/a", "token"))
                 self.assertEqual(
                     len(calls), 1,
@@ -148,7 +175,7 @@ class SocketKnownVersionsContract(unittest.TestCase):
             calls.append(1)
             raise _http_error(503)
 
-        with mock.patch("urllib.request.urlopen", side_effect=fake_open):
+        with mock.patch("tools.socket_freshness._urlopen", side_effect=fake_open):
             self.assertIsNone(sf.socket_known_versions("org", "pkg:npm/a", "token"))
         self.assertEqual(len(calls), sf.RETRY_ATTEMPTS)
 
@@ -159,7 +186,7 @@ class SocketKnownVersionsContract(unittest.TestCase):
             calls.append(1)
             raise urllib.error.URLError("transient")
 
-        with mock.patch("urllib.request.urlopen", side_effect=fake_open):
+        with mock.patch("tools.socket_freshness._urlopen", side_effect=fake_open):
             self.assertIsNone(sf.socket_known_versions("org", "pkg:npm/a", "token"))
         self.assertEqual(len(calls), sf.RETRY_ATTEMPTS)
 
@@ -170,7 +197,7 @@ class SocketKnownVersionsContract(unittest.TestCase):
             captured["url"] = request.full_url
             return _json_response({"purl": "pkg:npm/@tomtastisch/agent-governance", "versions": []})
 
-        with mock.patch("urllib.request.urlopen", side_effect=fake_open):
+        with mock.patch("tools.socket_freshness._urlopen", side_effect=fake_open):
             sf.socket_known_versions(
                 "tomtastisch-8rpr5",
                 "pkg:npm/@tomtastisch/agent-governance",
@@ -191,7 +218,7 @@ class SocketKnownVersionsContract(unittest.TestCase):
             captured["url"] = request.full_url
             return _json_response({"purl": "pkg:npm/a", "versions": []})
 
-        with mock.patch("urllib.request.urlopen", side_effect=fake_open):
+        with mock.patch("tools.socket_freshness._urlopen", side_effect=fake_open):
             sf.socket_known_versions("org/slug", "pkg:npm/a", "token")
 
         self.assertIn("/v1/orgs/org%2Fslug/purl/versions/", captured["url"])
@@ -203,7 +230,7 @@ class SocketKnownVersionsContract(unittest.TestCase):
             captured["headers"] = dict(request.headers)
             return _json_response({"purl": "pkg:npm/a", "versions": []})
 
-        with mock.patch("urllib.request.urlopen", side_effect=fake_open):
+        with mock.patch("tools.socket_freshness._urlopen", side_effect=fake_open):
             sf.socket_known_versions("org", "pkg:npm/a", "secret-token")
 
         self.assertEqual(captured["headers"].get("Authorization"), "Bearer secret-token")
@@ -212,22 +239,22 @@ class SocketKnownVersionsContract(unittest.TestCase):
 class NpmLatestContract(unittest.TestCase):
     def test_reads_latest_dist_tag(self):
         with mock.patch(
-            "urllib.request.urlopen",
+            "tools.socket_freshness._urlopen",
             return_value=_json_response({"latest": "1.7.1"}),
         ):
             self.assertEqual(sf.npm_latest_version("@tomtastisch/agent-governance"), "1.7.1")
 
     def test_returns_none_when_latest_missing(self):
-        with mock.patch("urllib.request.urlopen", return_value=_json_response({})):
+        with mock.patch("tools.socket_freshness._urlopen", return_value=_json_response({})):
             self.assertIsNone(sf.npm_latest_version("@tomtastisch/agent-governance"))
 
     def test_returns_none_on_http_error(self):
-        with mock.patch("urllib.request.urlopen", side_effect=_http_error(500)):
+        with mock.patch("tools.socket_freshness._urlopen", side_effect=_http_error(500)):
             self.assertIsNone(sf.npm_latest_version("@tomtastisch/agent-governance"))
 
     def test_returns_none_on_network_failure(self):
         with mock.patch(
-            "urllib.request.urlopen",
+            "tools.socket_freshness._urlopen",
             side_effect=urllib.error.URLError("dns failure"),
         ):
             self.assertIsNone(sf.npm_latest_version("@tomtastisch/agent-governance"))
@@ -271,6 +298,39 @@ class NonBlockingMainContract(unittest.TestCase):
             ),
             lines[0],
         )
+
+    def test_purl_derives_from_package_override(self):
+        with mock.patch.object(sf, "npm_latest_version", return_value="1.7.1") as npm_mock, \
+             mock.patch.object(sf, "socket_known_versions", return_value={"1.7.1"}) as socket_mock:
+            out = io.StringIO()
+            with redirect_stdout(out):
+                code = sf.main(["--package", "@foo/bar", "--org-slug", "org"])
+        self.assertEqual(code, 0)
+        npm_mock.assert_called_once_with("@foo/bar")
+        socket_mock.assert_called_once_with("org", "pkg:npm/@foo/bar", mock.ANY)
+        self.assertIn("socket_purl=pkg:npm/@foo/bar", out.getvalue())
+
+
+class RedirectSafetyContract(unittest.TestCase):
+    def test_redirect_strips_authorization(self):
+        handler = sf._StripAuthRedirectHandler()
+        request = urllib.request.Request(
+            "https://api.socket.dev/v1/orgs/o/purl/versions/x",
+            headers={"Accept": "application/json", "Authorization": "Bearer secret"},
+        )
+        redirected = handler.redirect_request(
+            request,
+            io.BytesIO(b""),
+            302,
+            "Found",
+            http.client.HTTPMessage(),
+            "https://evil.example.net/collect",
+        )
+        self.assertIsNotNone(redirected)
+        assert redirected is not None
+        lowered = {key.lower() for key in redirected.headers}
+        self.assertNotIn("authorization", lowered)
+        self.assertIn("accept", lowered)
 
 
 class SocketConfigContract(unittest.TestCase):

@@ -21,6 +21,7 @@ npm-Registry (`/-/package/{name}/dist-tags`).
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import os
 import sys
@@ -37,12 +38,39 @@ SOCKET_API_BASE = "https://api.socket.dev"
 
 DEFAULT_ORG_SLUG = "tomtastisch-8rpr5"
 DEFAULT_PACKAGE = "@tomtastisch/agent-governance"
-DEFAULT_PURL = "pkg:npm/@tomtastisch/agent-governance"
 
 TOKEN_ENV = "SOCKET_SECURITY_API_KEY"
 
 RETRY_ATTEMPTS = 3
 REQUEST_TIMEOUT = 30
+
+# Fehlerklassen, die als UNAVAILABLE (nie als Abbruch) behandelt werden.
+_HANDLED_ERRORS = (
+    urllib.error.HTTPError,
+    urllib.error.URLError,
+    OSError,
+    http.client.HTTPException,
+    ValueError,
+)
+
+
+class _StripAuthRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Entfernt den Authorization-Header bei Redirects (keine Credential-Weitergabe)."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if redirected is not None:
+            redirected.headers.pop("Authorization", None)
+            redirected.headers.pop("authorization", None)
+        return redirected
+
+
+_OPENER = urllib.request.build_opener(_StripAuthRedirectHandler())
+
+
+def _urlopen(request, timeout=REQUEST_TIMEOUT):
+    """Öffnet eine URL über den redirect-sicheren Opener."""
+    return _OPENER.open(request, timeout=timeout)
 
 
 def _is_retryable_http_error(error):
@@ -53,22 +81,22 @@ def _is_retryable_http_error(error):
 def _read_json(url, headers, attempts=RETRY_ATTEMPTS, timeout=REQUEST_TIMEOUT):
     """Liest ein JSON-Dokument mit begrenzten Retries bei transienten Fehlern.
 
-    Retried werden transiente Transportfehler sowie transiente Serverfehler (5xx).
-    Client-Fehler (4xx, einschließlich 401/403/404/429) und nicht dekodierbare
-    Antworten (ungültiges JSON/Encoding) werden nicht retried, sondern propagiert.
+    Retried werden transiente Transportfehler (inkl. abgeschnittener Antworten)
+    sowie transiente Serverfehler (5xx). Client-Fehler (4xx, einschließlich
+    401/403/404/429) und nicht dekodierbare Antworten werden nicht retried.
     """
     last_error = None
     for _ in range(attempts):
         request = urllib.request.Request(url, headers=headers)
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
+            with _urlopen(request, timeout=timeout) as response:
                 return json.load(response)
         except urllib.error.HTTPError as error:
             if _is_retryable_http_error(error):
                 last_error = error
                 continue
             raise error
-        except (urllib.error.URLError, TimeoutError, OSError) as error:
+        except (urllib.error.URLError, http.client.HTTPException, TimeoutError, OSError) as error:
             last_error = error
     assert last_error is not None  # RETRY_ATTEMPTS >= 1 garantiert einen Durchlauf
     raise last_error
@@ -80,7 +108,7 @@ def npm_latest_version(package=DEFAULT_PACKAGE, registry=NPM_REGISTRY):
     url = f"{registry}/-/package/{encoded}/dist-tags"
     try:
         payload = _read_json(url, headers={"Accept": "application/json"})
-    except (urllib.error.HTTPError, urllib.error.URLError, OSError, ValueError):
+    except _HANDLED_ERRORS:
         return None
     latest = payload.get("latest") if isinstance(payload, dict) else None
     if not isinstance(latest, str) or not latest:
@@ -91,7 +119,8 @@ def npm_latest_version(package=DEFAULT_PACKAGE, registry=NPM_REGISTRY):
 def socket_known_versions(org_slug, purl, token, api_base=SOCKET_API_BASE):
     """Menge der Socket bekannten Versionsstrings für einen PURL oder None.
 
-    None bedeutet: Projektion nicht verfügbar (fehlender Token, Netz-/HTTP-/JSON-Fehler).
+    None bedeutet: Projektion nicht verfügbar (fehlender Token, Netz-/HTTP-/JSON-
+    Fehler oder schemaverletzende Antwort).
     """
     if not token:
         return None
@@ -106,7 +135,7 @@ def socket_known_versions(org_slug, purl, token, api_base=SOCKET_API_BASE):
                 "Authorization": f"Bearer {token}",
             },
         )
-    except (urllib.error.HTTPError, urllib.error.URLError, OSError, ValueError):
+    except _HANDLED_ERRORS:
         return None
 
     versions = payload.get("versions") if isinstance(payload, dict) else None
@@ -115,10 +144,12 @@ def socket_known_versions(org_slug, purl, token, api_base=SOCKET_API_BASE):
 
     known = set()
     for item in versions:
-        if isinstance(item, dict):
-            version = item.get("version")
-            if isinstance(version, str) and version:
-                known.add(version)
+        if not isinstance(item, dict):
+            return None
+        version = item.get("version")
+        if not isinstance(version, str) or not version:
+            return None
+        known.add(version)
     return known
 
 
@@ -136,19 +167,22 @@ def main(argv=None):
         description="Socket-Paketindex-Freshness deterministisch klassifizieren (advisory)."
     )
     parser.add_argument("--org-slug", default=DEFAULT_ORG_SLUG)
-    parser.add_argument("--purl", default=DEFAULT_PURL)
-    parser.add_argument("--package", default=DEFAULT_PACKAGE)
+    parser.add_argument("--purl", default=None)
+    parser.add_argument("--package", default=None)
     args = parser.parse_args(argv)
 
+    package = args.package or DEFAULT_PACKAGE
+    purl = args.purl or f"pkg:npm/{package}"
+
     token = os.environ.get(TOKEN_ENV)
-    npm_version = npm_latest_version(args.package)
-    known = socket_known_versions(args.org_slug, args.purl, token)
+    npm_version = npm_latest_version(package)
+    known = socket_known_versions(args.org_slug, purl, token)
     state = classify(npm_version, known)
 
     print(
         f"SOCKET_FRESHNESS={state} "
         f"npm_latest={npm_version or 'unknown'} "
-        f"socket_purl={args.purl} "
+        f"socket_purl={purl} "
         f"socket_versions={len(known) if known is not None else 'unknown'}"
     )
     return 0
