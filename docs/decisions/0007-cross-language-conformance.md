@@ -29,11 +29,11 @@ Quelle der Strukturdefinitionen. Beide Implementierungen lesen dieselbe Datei:
 - **Python** über `catalog_validator._load_contract_fixture()`, das dieselbe Datei lädt und die
   Feld-/Vokabularmengen daraus ableitet.
 
-Ein Cross-Language-Conformance-Gate (`tests/test_conformance.py`) führt beide Validatoren gegen
-das reale Bundle und eine gemeinsame Mutation-Batterie
-(`tests/contracts/conformance-mutations.json`) aus und erzwingt identische Accept/Reject-Verdicts.
-Der TypeScript-Teil läuft über einen schlanken Node-Probe (`tests/support/conformance_probe.ts`),
-der ausschließlich über den Exit-Code antwortet.
+Ein Cross-Language-Conformance-Gate prüft beide Validatoren gegen das reale Bundle und eine
+gemeinsame Mutation-Batterie (`tests/contracts/conformance-mutations.json`) und erzwingt
+identische Accept/Reject-Verdicts. Die Python-Seite läuft in `tests/test_conformance.py`, die
+TypeScript-Seite in `tests/installer/conformance.test.ts` (`npm test`); beide teilen sich
+ausschließlich die Fixture-Dateien, keine Implementierungslogik.
 
 ## Abgrenzungen
 

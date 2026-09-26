@@ -1,16 +1,22 @@
-"""Cross-Language-Conformance-Gate (#90).
+"""Cross-Language-Conformance-Gate (#90) — Python-Seite.
 
-Koppelt die produktiven TypeScript-Validatoren und die unabhängige
-Python-Testreferenz über einen expliziten Conformance-Vertrag. Beide Validatoren
-bleiben unabhängig, lesen aber dieselbe sprachneutrale Contract-Fixture und
-müssen auf dieselbe Mutation-Batterie identische Verdicts liefern.
+Koppelt die produktiven TypeScript-Validatoren und die unabhängige Python-Testreferenz
+über einen expliziten Conformance-Vertrag. Beide Implementierungen bleiben unabhängig,
+lesen aber dieselbe sprachneutrale Contract-Fixture und prüfen dieselbe Mutation-Batterie:
+
+- `contracts/governance-contract.json` (gemeinsame Strukturdefinitionen)
+- `tests/contracts/conformance-mutations.json` (gemeinsame Mutation-Batterie)
+
+Die TypeScript-Seite desselben Gates läuft in `tests/installer/conformance.test.ts`
+(über `npm test`, inklusive `node_modules`). Diese Datei prüft ausschließlich die
+Python-Referenz gegen dieselben Fixtures; die Sprache ist so unabhängig wie die
+Validierungslogik selbst.
 """
 
 from __future__ import annotations
 
 import json
 import shutil
-import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -22,23 +28,9 @@ ROOT = Path(__file__).resolve().parents[1]
 GOVERNANCE_ROOT = ROOT / "bundle" / "agent-governance"
 CONTRACT_FIXTURE = ROOT / "contracts" / "governance-contract.json"
 MUTATIONS_FIXTURE = ROOT / "tests" / "contracts" / "conformance-mutations.json"
-PROBE = ROOT / "tests" / "support" / "conformance_probe.ts"
 
 
-def run_ts_probe(manifest_root: Path) -> tuple[int, str]:
-    """Führt den produktiven TS-Validator aus; liefert (exit_code, stderr)."""
-    result = subprocess.run(
-        ["node", "--experimental-strip-types", str(PROBE), str(manifest_root)],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
-    return result.returncode, result.stderr
-
-
-def apply_mutation(root: Path, mutation: dict) -> Path:
-    """Kopiert das Bundle, wendet eine Mutation an und liefert den kopierten Root."""
+def _apply_mutation(root: Path, mutation: dict) -> Path:
     target = root / "agent-governance"
     shutil.copytree(GOVERNANCE_ROOT, target)
     relative = mutation["file"]
@@ -76,23 +68,17 @@ class ContractFixtureContract(unittest.TestCase):
 
 
 class CrossLanguageConformance(unittest.TestCase):
-    def test_valid_bundle_is_accepted_by_both_validators(self):
+    def test_valid_bundle_is_accepted_by_python_reference(self):
         load_catalog_contract(GOVERNANCE_ROOT)
-        exit_code, stderr = run_ts_probe(GOVERNANCE_ROOT)
-        self.assertEqual(exit_code, 0, stderr)
 
-    def test_each_mutation_is_rejected_by_both_validators(self):
+    def test_each_mutation_is_rejected_by_python_reference(self):
         mutations = json.loads(MUTATIONS_FIXTURE.read_text(encoding="utf-8"))["mutations"]
         for mutation in mutations:
             with self.subTest(mutation=mutation["id"]):
                 with tempfile.TemporaryDirectory(prefix="agent-governance-conformance-") as directory:
-                    mutated_root = apply_mutation(Path(directory), mutation)
-
+                    mutated_root = _apply_mutation(Path(directory), mutation)
                     with self.assertRaises(CatalogValidationError):
                         load_catalog_contract(mutated_root)
-
-                    exit_code, stderr = run_ts_probe(mutated_root)
-                    self.assertEqual(exit_code, 1, f"TS akzeptierte Mutation {mutation['id']}: {stderr}")
 
     def test_contract_fixture_drives_python_reference(self):
         """Die Python-Referenz leitet ihre Feld-/Vokabularmengen aus der Fixture ab."""

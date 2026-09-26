@@ -69,20 +69,21 @@ Validierungslogik bleibt pro Modul unverändert; nur die *Werte* kommen aus der 
 alle hartkodierten `frozenset(...)`-Konstanten durch die Fixture-Werte. Der Loader ist
 fail-closed: fehlende oder fehlerhaft typisierte Felder brechen den Import ab.
 
-### D5 — Cross-Language-Conformance-Gate vergleicht Verdicts
+### D5 — Cross-Language-Conformance-Gate über geteilte Fixtures
 
-`tests/test_conformance.py` führt **beide** Validatoren gegen dieselbe Menge an Fixtures aus
-und erzwingt identische Accept/Reject-Verdicts:
+Beide Validatoren werden gegen dieselbe Menge an Fixtures geprüft und müssen identische
+Accept/Reject-Verdicts liefern:
 
 1. **Valid-Bundle**: Python-Referenz und TS-Validator akzeptieren das reale Bundle.
-2. **Mutation-Batterie**: Für jede Mutation (aus einer gemeinsamen Fixture
+2. **Mutation-Batterie**: Für jede Mutation (aus der gemeinsamen Fixture
    `tests/contracts/conformance-mutations.json`, beschrieben als `(file, find, replace)`)
-   müssen beide Validatoren dieselbe Verdict liefern (Reject auf der verletzten Struktur).
+   müssen beide Validatoren dasselbe Verdict liefern (Reject auf der verletzten Struktur).
 
-Der TS-Teil wird über einen schlanken Node-Probe (`tests/support/conformance_probe.mjs`)
-ausgeführt, der `validateGovernanceContract` gegen einen übergebenen Manifest-Root aufruft und
-mit Exit-Code 0 (valid) bzw. 1 (invalid) antwortet. Dies entspricht dem bestehenden
-Node-Subprocess-Muster (`routing_shadow.py`, `neutral_harness.py`).
+Das Gate ist sprachbezogen aufgeteilt, teilt sich aber ausschließlich die Fixture-Dateien:
+die Python-Seite prüft die Referenz in `tests/test_conformance.py`, die TypeScript-Seite den
+produktiven Validator in `tests/installer/conformance.test.ts` (läuft über `npm test` mit
+installierten Dependencies). Damit hängt der Python-Testpfad nicht von `node`/`node_modules`
+ab, und die TypeScript-Validierung läuft in ihrer nativen Umgebung.
 
 ## Zielarchitektur
 

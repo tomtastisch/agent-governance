@@ -147,35 +147,33 @@ git commit -m "refactor(conformance): derive python reference field sets from co
 ### Task 5: Cross-Language-Conformance-Gate
 
 **Files:**
-- Create: `tests/support/conformance_probe.mjs`
+- Create: `tests/installer/conformance.test.ts`
 - Create: `tests/test_conformance.py`
 - Create: `tests/contracts/conformance-mutations.json`
 
 **Interfaces:**
-- Consumes: `validateGovernanceContract` (TS) via Node-Probe; `catalog_validator.load_catalog_contract`
+- Consumes: `validateGovernanceContract` (TS) in `npm test`; `catalog_validator.load_catalog_contract`
   (Python).
-- Produces: `tests/test_conformance.py` mit Assertions auf identische Verdicts.
+- Produces: geteilte Mutation-Batterie; je Sprache ein Test mit identischen Accept/Reject-Verdicts.
 
-- [ ] **Step 1: Node-Probe schreiben**
+- [ ] **Step 1: TS-Test schreiben**
 
-`tests/support/conformance_probe.mjs`: nimmt einen Manifest-Root-Pfad, baut das Inventar und
-ruft `validateGovernanceContract` auf; Exit 0 bei Erfolg, Exit 1 bei Validierungsfehler.
+`tests/installer/conformance.test.ts`: validiert das reale Bundle mit `validateGovernanceContract`
+und weist jede Mutation der geteilten Batterie zurück (frische Bundle-Kopie pro Mutation).
 
-- [ ] **Step 2: Mutation-Batterie-Fixture schreiben**
+- [ ] **Step 2: Python-Test schreiben**
+
+`tests/test_conformance.py`: Fixture-Selbstkonsistenz, Python-Referenz akzeptiert das reale Bundle,
+lehnt jede Mutation ab und leitet ihre Konstanten aus der Fixture ab. Kein Node-Aufruf.
+
+- [ ] **Step 3: Mutation-Batterie-Fixture schreiben**
 
 `tests/contracts/conformance-mutations.json`: Liste von `{ "file", "find", "replace" }`
 (relative Pfade unter `bundle/agent-governance/`).
 
-- [ ] **Step 3: Conformance-Test schreiben**
+- [ ] **Step 4: Tests ausführen**
 
-`tests/test_conformance.py`:
-- Fixture-Selbstkonsistenz (beide Sprachen laden dieselbe Fixture).
-- Valid-Bundle: Python und TS akzeptieren beide.
-- Pro Mutation: Python und TS liefern dasselbe Reject-Verdict.
-
-- [ ] **Step 4: Test ausführen**
-
-Run: `python3 -m unittest tests.test_conformance -v`
+Run: `npm test` und `python3 -m unittest tests.test_conformance -v`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
