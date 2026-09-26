@@ -1,14 +1,15 @@
 import { readFileSync } from "node:fs";
 import { parse } from "smol-toml";
+import { governanceContract } from "./contract-fixture.ts";
 import { loadSsotIndex } from "./ssot-manifest.ts";
 import type { PublicCommandDefinition, PublicCommandId } from "./contracts.ts";
 
 export type { PublicCommandDefinition, PublicCommandId } from "./contracts.ts";
 
-const COMMAND_FIELDS = new Set(["id", "path", "description", "capability", "effect", "orchestrates", "interactive"]);
+const COMMAND_FIELDS = new Set(governanceContract.commandFields);
 const COMMAND_ID_PATTERN = /^[a-z][a-z0-9_]*$/;
-const CAPABILITIES = new Set(["transaction", "orchestration"]);
-const EFFECTS = new Set(["read", "write"]);
+const CAPABILITIES = new Set(governanceContract.commandCapabilities);
+const EFFECTS = new Set(governanceContract.commandEffects);
 
 function record(value: unknown, context: string): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error(`${context} must be a table`);

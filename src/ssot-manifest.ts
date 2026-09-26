@@ -1,9 +1,10 @@
 import { readFileSync } from "node:fs";
 import { parseClosedToml, exact, safeRelativePath, table } from "./closed-toml.ts";
 import { resolveManifestPath, resolveSsotFile } from "./catalog-paths.ts";
+import { governanceContract } from "./contract-fixture.ts";
 
-export const SSOT_DOMAIN_IDS = ["routing", "commands", "discovery", "work_items"] as const;
-export type SsotDomainId = (typeof SSOT_DOMAIN_IDS)[number];
+export type SsotDomainId = "routing" | "commands" | "discovery" | "work_items";
+export const SSOT_DOMAIN_IDS = governanceContract.ssotDomains as readonly SsotDomainId[];
 
 export interface SsotIndex {
   readonly schemaVersion: 1;

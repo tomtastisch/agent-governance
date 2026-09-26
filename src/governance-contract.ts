@@ -7,11 +7,12 @@ import { parseDiscoveryCatalogText } from "./discovery-catalog.ts";
 import { parseCommandCatalogText } from "./command-catalog.ts";
 import { parseTemplatesManifestText } from "./templates-catalog.ts";
 import { parseClassificationsText, parseProjectionsText } from "./work-items.ts";
+import { governanceContract } from "./contract-fixture.ts";
 
 const CORE_CATALOGS = ["triggers", "policy_tags", "scopes", "tools"] as const;
 const OPTIONAL_CATALOGS = ["commands", "discovery_signals"] as const;
-const MODULE_FIELDS = ["path", "triggers", "dependencies"] as const;
-const ROLE_FIELDS = ["path", "triggers", "modules"] as const;
+const MODULE_FIELDS = governanceContract.moduleFields;
+const ROLE_FIELDS = governanceContract.roleFields;
 
 interface CatalogTexts {
   readonly triggers: string;
@@ -72,13 +73,13 @@ async function readSsotCatalogs(manifestRoot: string, ssotPath: string, inventor
   const ssotText = await safeIndexedFile(manifestRoot, ssotPath, inventory, "ssot manifest");
   const ssotIndex = parseSsotManifestText(ssotText);
   const routingEntries = ssotIndex.domains.routing;
-  exactCatalogKeys(routingEntries, ["triggers", "policy_tags", "scopes", "tools"], "routing domain");
+  exactCatalogKeys(routingEntries, governanceContract.ssotDomainCatalogs.routing, "routing domain");
   const commandEntries = ssotIndex.domains.commands;
-  exactCatalogKeys(commandEntries, ["commands"], "commands domain");
+  exactCatalogKeys(commandEntries, governanceContract.ssotDomainCatalogs.commands, "commands domain");
   const discoveryEntries = ssotIndex.domains.discovery;
-  exactCatalogKeys(discoveryEntries, ["discovery_signals"], "discovery domain");
+  exactCatalogKeys(discoveryEntries, governanceContract.ssotDomainCatalogs.discovery, "discovery domain");
   const workItemsEntries = ssotIndex.domains.work_items;
-  if (workItemsEntries !== undefined) exactCatalogKeys(workItemsEntries, ["classifications", "github_labels"], "work_items domain");
+  if (workItemsEntries !== undefined) exactCatalogKeys(workItemsEntries, governanceContract.ssotDomainCatalogs.work_items, "work_items domain");
   async function read(relative: string, label: string): Promise<string> {
     const path = `ssot/${relative}`;
     referencedPaths.add(path);
