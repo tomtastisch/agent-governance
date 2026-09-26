@@ -25,6 +25,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Breaking changes:** none
 
+## [1.7.2] — 2026-09-26
+
+### Added
+
+- Socket.dev als externe, nicht-autoritative Supply-Chain-Security-Evidence
+  (#122; SemVer patch): bestehende Socket-GitHub-App als einzige Integration
+  wiederverwendet; minimale Root-`socket.yml` (Schema v2) und deterministischer,
+  read-only Freshness-Readback `CURRENT | STALE | UNAVAILABLE` über die offizielle
+  Socket-API gegen die autoritative npm-`dist-tags.latest`-Version. npm/GitHub
+  bleiben Release-Authority; Socket-Index-Lag blockiert keinen Release und führt
+  nie zu Re-Publish oder Dist-Tag-Mutation. Keine Runtime-Dependency, keine
+  redundante Scanner-Authority, kein HTML-Scraping.
+
+### Changed
+
+- Keine.
+
+### Fixed
+
+- Keine.
+
+### Removed
+
+- Keine.
+
+**Breaking changes:** none
+
 ## [1.7.1] — 2026-09-26
 
 ### Added

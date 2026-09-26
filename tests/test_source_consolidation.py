@@ -332,9 +332,9 @@ class ReleaseMetadataContract(unittest.TestCase):
         version = read(ROOT / "VERSION").strip()
         current = changelog.split(f"## [{version}]", 1)[1].split("\n## [", 1)[0]
         for term in (
-            "Resume-Candidate-Resolution",
-            "RESUME | NO_MATCH | AMBIGUOUS | INVALID",
-            "#95; SemVer patch",
+            "Socket.dev",
+            "CURRENT | STALE | UNAVAILABLE",
+            "#122; SemVer patch",
         ):
             self.assertIn(term, current)
         self.assertIn("**Breaking changes:** none", current)
