@@ -7,11 +7,12 @@ import { parseDiscoveryCatalogText } from "./discovery-catalog.ts";
 import { parseCommandCatalogText } from "./command-catalog.ts";
 import { parseTemplatesManifestText } from "./templates-catalog.ts";
 import { parseClassificationsText, parseProjectionsText } from "./work-items.ts";
+import { governanceContract } from "./contract-fixture.ts";
 
 const CORE_CATALOGS = ["triggers", "policy_tags", "scopes", "tools"] as const;
 const OPTIONAL_CATALOGS = ["commands", "discovery_signals"] as const;
-const MODULE_FIELDS = ["path", "triggers", "dependencies"] as const;
-const ROLE_FIELDS = ["path", "triggers", "modules"] as const;
+const MODULE_FIELDS = governanceContract.moduleFields;
+const ROLE_FIELDS = governanceContract.roleFields;
 
 interface CatalogTexts {
   readonly triggers: string;
@@ -72,13 +73,13 @@ async function readSsotCatalogs(manifestRoot: string, ssotPath: string, inventor
   const ssotText = await safeIndexedFile(manifestRoot, ssotPath, inventory, "ssot manifest");
   const ssotIndex = parseSsotManifestText(ssotText);
   const routingEntries = ssotIndex.domains.routing;
-  exactCatalogKeys(routingEntries, ["triggers", "policy_tags", "scopes", "tools"], "routing domain");
+  exactCatalogKeys(routingEntries, governanceContract.ssotDomainCatalogs.routing, "routing domain");
   const commandEntries = ssotIndex.domains.commands;
-  exactCatalogKeys(commandEntries, ["commands"], "commands domain");
+  exactCatalogKeys(commandEntries, governanceContract.ssotDomainCatalogs.commands, "commands domain");
   const discoveryEntries = ssotIndex.domains.discovery;
-  exactCatalogKeys(discoveryEntries, ["discovery_signals"], "discovery domain");
+  exactCatalogKeys(discoveryEntries, governanceContract.ssotDomainCatalogs.discovery, "discovery domain");
   const workItemsEntries = ssotIndex.domains.work_items;
-  if (workItemsEntries !== undefined) exactCatalogKeys(workItemsEntries, ["classifications", "github_labels"], "work_items domain");
+  if (workItemsEntries !== undefined) exactCatalogKeys(workItemsEntries, governanceContract.ssotDomainCatalogs.work_items, "work_items domain");
   async function read(relative: string, label: string): Promise<string> {
     const path = `ssot/${relative}`;
     referencedPaths.add(path);
@@ -127,7 +128,7 @@ async function readTemplates(manifestRoot: string, rawPath: TomlValue | undefine
 }
 
 function validateIndex(manifestRoot: string, manifest: TomlTable, inventory: ReadonlyMap<string, string>, routing: RoutingCatalogs, referencedPaths: Set<string>): Promise<void> {
-  const routingTable = table(manifest.routing, "release manifest routing"); exact(routingTable, ["unknown", "ambiguous"], "release manifest routing");
+  const routingTable = table(manifest.routing, "release manifest routing"); exact(routingTable, governanceContract.routingFields, "release manifest routing");
   if (routingTable.unknown !== "block" || routingTable.ambiguous !== "block") throw new Error("release manifest routing must fail closed");
 
   const modules = table(manifest.modules, "release manifest modules");
@@ -171,7 +172,7 @@ async function validateContract(manifestRoot: string, manifestText: string, inve
 
   let routing: RoutingCatalogs;
   if (manifest.schema_version === 4) {
-    exact(manifest, ["schema_version", "local_rules", "ssot", "templates", "routing", "modules", "roles"], "release manifest");
+    exact(manifest, governanceContract.manifestFields, "release manifest");
     const ssotPath = safeRelativePath(manifest.ssot, "release manifest ssot path");
     if (ssotPath !== "ssot/manifest.toml") throw new Error("release manifest ssot path must be canonical");
     referencedPaths.add(ssotPath);

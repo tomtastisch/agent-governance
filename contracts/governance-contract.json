@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "fields": {
+    "manifest": ["schema_version", "local_rules", "ssot", "templates", "routing", "modules", "roles"],
+    "routing": ["unknown", "ambiguous"],
+    "ssot_manifest": ["schema_version", "domains"],
+    "vocabulary": ["label", "description"],
+    "module": ["path", "triggers", "dependencies"],
+    "role": ["path", "triggers", "modules"],
+    "tool": ["name", "purpose", "required_on", "useful_on", "policy_tags", "scopes", "evidence", "fallback", "constraints"],
+    "command": ["id", "path", "description", "capability", "effect", "orchestrates", "interactive"],
+    "template": ["path", "category", "format"],
+    "discovery_top_level": ["schema_version", "limits", "confidence", "candidate_classes", "evidence_families", "signals"],
+    "discovery_limits": ["max_depth", "max_files", "max_entries", "max_file_bytes", "max_sqlite_objects", "max_sqlite_columns", "max_duration_ms", "max_metadata_length"],
+    "discovery_confidence": ["high_minimum_score", "high_minimum_families", "high_minimum_independent_sources", "high_requires_runtime", "uncertain_minimum_score"],
+    "discovery_candidate": ["class", "label"],
+    "discovery_family": ["default_strength", "weight"],
+    "discovery_signal": ["id", "family", "source_kinds", "keys", "minimum_matches", "strength"],
+    "work_item_classifications_top_level": ["schema_version", "dimensions", "classifications"],
+    "work_item_dimension": ["label", "cardinality", "description"],
+    "work_item_classification": ["label", "description"],
+    "work_item_projections_top_level": ["schema_version", "projections", "title_markers"],
+    "work_item_projection": ["classification", "name", "description", "color", "aliases"],
+    "work_item_title_marker": ["classification", "marker"]
+  },
+  "domains": {
+    "ssot": ["routing", "commands", "discovery", "work_items"],
+    "ssot_catalogs": {
+      "routing": ["triggers", "policy_tags", "scopes", "tools"],
+      "commands": ["commands"],
+      "discovery": ["discovery_signals"],
+      "work_items": ["classifications", "github_labels"]
+    }
+  },
+  "vocabularies": {
+    "template_categories": ["git", "delivery", "review", "context", "communication", "external_effects"],
+    "template_formats": ["markdown"],
+    "command_capabilities": ["transaction", "orchestration"],
+    "command_effects": ["read", "write"],
+    "discovery_evidence_families": ["runtime", "state", "tooling", "ai_metadata", "package_metadata", "document"],
+    "discovery_source_kinds": ["json", "toml", "plist", "sqlite_schema", "package_metadata"],
+    "discovery_strengths": ["strong", "corroborating", "weak"],
+    "discovery_candidate_classes": { "directory": "DIRECTORY", "app_bundle": "APP_BUNDLE" },
+    "work_item_cardinalities": ["one", "many", "at_most_one", "zero_or_more"]
+  }
+}

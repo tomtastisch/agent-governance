@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import os
 from pathlib import Path, PurePosixPath
 import re
@@ -13,101 +14,226 @@ from typing import Mapping
 
 
 ID_RE = re.compile(r"^[a-z][a-z0-9_]*$")
-MANIFEST_FIELDS = frozenset(
-    {"schema_version", "local_rules", "ssot", "templates", "routing", "modules", "roles"}
-)
-SSOT_MANIFEST_FIELDS = frozenset({"schema_version", "domains"})
-SSOT_DOMAINS = ("routing", "commands", "discovery", "work_items")
-SSOT_DOMAIN_CATALOGS = {
-    "routing": frozenset({"triggers", "policy_tags", "scopes", "tools"}),
-    "commands": frozenset({"commands"}),
-    "discovery": frozenset({"discovery_signals"}),
-    "work_items": frozenset({"classifications", "github_labels"}),
-}
-VOCABULARY_FIELDS = frozenset({"label", "description"})
-MODULE_FIELDS = frozenset({"path", "triggers", "dependencies"})
-ROLE_FIELDS = frozenset({"path", "triggers", "modules"})
-TOOL_FIELDS = frozenset(
-    {
-        "name",
-        "purpose",
-        "required_on",
-        "useful_on",
-        "policy_tags",
-        "scopes",
-        "evidence",
-        "fallback",
-        "constraints",
-    }
-)
-COMMAND_FIELDS = frozenset(
-    {"id", "path", "description", "capability", "effect", "orchestrates", "interactive"}
-)
-COMMAND_CAPABILITIES = frozenset({"transaction", "orchestration"})
-COMMAND_EFFECTS = frozenset({"read", "write"})
-DISCOVERY_TOP_LEVEL_FIELDS = frozenset(
-    {
-        "schema_version",
-        "limits",
-        "confidence",
-        "candidate_classes",
-        "evidence_families",
-        "signals",
-    }
-)
-DISCOVERY_LIMIT_FIELDS = frozenset(
-    {
-        "max_depth",
-        "max_files",
-        "max_entries",
-        "max_file_bytes",
-        "max_sqlite_objects",
-        "max_sqlite_columns",
-        "max_duration_ms",
-        "max_metadata_length",
-    }
-)
-DISCOVERY_CONFIDENCE_FIELDS = frozenset(
-    {
-        "high_minimum_score",
-        "high_minimum_families",
-        "high_minimum_independent_sources",
-        "high_requires_runtime",
-        "uncertain_minimum_score",
-    }
-)
-DISCOVERY_CANDIDATE_FIELDS = frozenset({"class", "label"})
-DISCOVERY_FAMILY_FIELDS = frozenset({"default_strength", "weight"})
-DISCOVERY_SIGNAL_FIELDS = frozenset(
-    {"id", "family", "source_kinds", "keys", "minimum_matches", "strength"}
-)
-DISCOVERY_FAMILIES = frozenset(
-    {"runtime", "state", "tooling", "ai_metadata", "package_metadata", "document"}
-)
-DISCOVERY_SOURCE_KINDS = frozenset(
-    {"json", "toml", "plist", "sqlite_schema", "package_metadata"}
-)
-DISCOVERY_STRENGTHS = frozenset({"strong", "corroborating", "weak"})
-
-TEMPLATE_CATEGORIES = frozenset(
-    {"git", "delivery", "review", "context", "communication", "external_effects"}
-)
-TEMPLATE_FIELDS = frozenset({"path", "category", "format"})
-TEMPLATE_FORMATS = frozenset({"markdown"})
-
-WORK_ITEM_DIMENSION_FIELDS = frozenset({"label", "cardinality", "description"})
-WORK_ITEM_CLASSIFICATION_FIELDS = frozenset({"label", "description"})
-WORK_ITEM_CARDINALITIES = frozenset({"one", "many", "at_most_one", "zero_or_more"})
-WORK_ITEM_PROJECTION_FIELDS = frozenset(
-    {"classification", "name", "description", "color", "aliases"}
-)
-WORK_ITEM_TITLE_MARKER_FIELDS = frozenset({"classification", "marker"})
 WORK_ITEM_COLOR_RE = re.compile(r"^[0-9A-Fa-f]{6}$")
 WORK_ITEM_MARKER_RE = re.compile(r"^\[[A-Z][A-Z0-9_-]*\]$")
 
 
 class CatalogValidationError(RuntimeError):
     """Ein geschlossener Katalog-, Pfad- oder Referenzvertrag ist verletzt."""
+
+
+_CONTRACT_ROOT = Path(__file__).resolve().parents[2]
+
+_CONTRACT_TOP_LEVEL = frozenset({"schema_version", "fields", "domains", "vocabularies"})
+_CONTRACT_FIELD_KEYS = frozenset(
+    {
+        "manifest",
+        "routing",
+        "ssot_manifest",
+        "vocabulary",
+        "module",
+        "role",
+        "tool",
+        "command",
+        "template",
+        "discovery_top_level",
+        "discovery_limits",
+        "discovery_confidence",
+        "discovery_candidate",
+        "discovery_family",
+        "discovery_signal",
+        "work_item_classifications_top_level",
+        "work_item_dimension",
+        "work_item_classification",
+        "work_item_projections_top_level",
+        "work_item_projection",
+        "work_item_title_marker",
+    }
+)
+_CONTRACT_SSOT_DOMAINS = frozenset({"routing", "commands", "discovery", "work_items"})
+_CONTRACT_VOCABULARY_ARRAY_KEYS = frozenset(
+    {
+        "template_categories",
+        "template_formats",
+        "command_capabilities",
+        "command_effects",
+        "discovery_evidence_families",
+        "discovery_source_kinds",
+        "discovery_strengths",
+        "work_item_cardinalities",
+    }
+)
+_CONTRACT_VOCABULARY_MAP_KEYS = frozenset({"discovery_candidate_classes"})
+_CONTRACT_CARDINALITIES = frozenset({"one", "many", "at_most_one", "zero_or_more"})
+
+
+def _closed_keys(data: Mapping[str, object], expected: frozenset[str], context: str) -> None:
+    unknown = set(data) - expected
+    missing = expected - set(data)
+    if unknown:
+        raise CatalogValidationError(f"{context} enthält unbekannte Felder: {sorted(unknown)}")
+    if missing:
+        raise CatalogValidationError(f"{context} enthält fehlende Felder: {sorted(missing)}")
+
+
+def _load_contract_fixture() -> Mapping[str, object]:
+    """Lädt und validiert die gemeinsame sprachneutrale Contract-Fixture (Issue #90).
+
+    Die Fixture ist die einzige Quelle der Strukturdefinitionen (Feldmengen,
+    Domain-/Kataloglisten und Vokabulare). TypeScript und Python lesen dieselbe
+    Datei; die Validierungslogik bleibt je Sprache unabhängig. Der Loader ist
+    fail-closed und validiert ein geschlossenes Schema wie die TS-Seite.
+    """
+    path = _CONTRACT_ROOT / "contracts" / "governance-contract.json"
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, json.JSONDecodeError) as error:
+        raise CatalogValidationError("governance contract fixture fehlt oder ist ungültig") from error
+    if not isinstance(data, dict):
+        raise CatalogValidationError("governance contract fixture muss eine Tabelle sein")
+
+    _closed_keys(data, _CONTRACT_TOP_LEVEL, "contract fixture Top-Level")
+    if type(data.get("schema_version")) is not int or data["schema_version"] != 1:
+        raise CatalogValidationError("contract fixture schema_version muss Integer 1 sein")
+
+    fields = data.get("fields")
+    if not isinstance(fields, Mapping):
+        raise CatalogValidationError("contract fixture fields muss eine Tabelle sein")
+    _closed_keys(fields, _CONTRACT_FIELD_KEYS, "contract fixture fields")
+    for name in _CONTRACT_FIELD_KEYS:
+        _fieldset(data, name)
+
+    domains = data.get("domains")
+    if not isinstance(domains, Mapping):
+        raise CatalogValidationError("contract fixture domains muss eine Tabelle sein")
+    _closed_keys(domains, frozenset({"ssot", "ssot_catalogs"}), "contract fixture domains")
+    ssot = domains.get("ssot")
+    if not isinstance(ssot, list) or not ssot or not all(isinstance(item, str) for item in ssot):
+        raise CatalogValidationError("contract fixture domains.ssot ist ungültig")
+    if frozenset(ssot) != _CONTRACT_SSOT_DOMAINS:
+        raise CatalogValidationError("contract fixture domains.ssot ist nicht kanonisch")
+    catalogs = domains.get("ssot_catalogs")
+    if not isinstance(catalogs, Mapping):
+        raise CatalogValidationError("contract fixture domains.ssot_catalogs muss eine Tabelle sein")
+    _closed_keys(catalogs, _CONTRACT_SSOT_DOMAINS, "contract fixture domains.ssot_catalogs")
+    for domain in _CONTRACT_SSOT_DOMAINS:
+        entries = catalogs[domain]
+        if not isinstance(entries, list) or not entries or not all(isinstance(item, str) for item in entries):
+            raise CatalogValidationError(f"contract fixture domains.ssot_catalogs.{domain} ist ungültig")
+
+    vocabularies = data.get("vocabularies")
+    if not isinstance(vocabularies, Mapping):
+        raise CatalogValidationError("contract fixture vocabularies muss eine Tabelle sein")
+    _closed_keys(
+        vocabularies,
+        _CONTRACT_VOCABULARY_ARRAY_KEYS | _CONTRACT_VOCABULARY_MAP_KEYS,
+        "contract fixture vocabularies",
+    )
+    for name in _CONTRACT_VOCABULARY_ARRAY_KEYS:
+        _vocabulary(data, name)
+    _candidate_classes(data)
+    if _vocabulary(data, "work_item_cardinalities") != _CONTRACT_CARDINALITIES:
+        raise CatalogValidationError(
+            "contract fixture vocabularies.work_item_cardinalities ist nicht kanonisch"
+        )
+
+    return data
+
+
+def _fieldset(data: Mapping[str, object], name: str) -> frozenset[str]:
+    fields = data.get("fields")
+    if not isinstance(fields, Mapping):
+        raise CatalogValidationError("governance contract fixture fields fehlt")
+    value = fields.get(name)
+    if not isinstance(value, list) or not value or not all(isinstance(item, str) for item in value):
+        raise CatalogValidationError(f"governance contract fixture fields.{name} ist ungültig")
+    return frozenset(value)
+
+
+def _vocabulary(data: Mapping[str, object], name: str) -> frozenset[str]:
+    vocabularies = data.get("vocabularies")
+    if not isinstance(vocabularies, Mapping):
+        raise CatalogValidationError("governance contract fixture vocabularies fehlt")
+    value = vocabularies.get(name)
+    if not isinstance(value, list) or not value or not all(isinstance(item, str) for item in value):
+        raise CatalogValidationError(f"governance contract fixture vocabularies.{name} ist ungültig")
+    return frozenset(value)
+
+
+def _domain_list(data: Mapping[str, object]) -> tuple[str, ...]:
+    domains = data.get("domains")
+    if not isinstance(domains, Mapping):
+        raise CatalogValidationError("governance contract fixture domains fehlt")
+    ssot = domains.get("ssot")
+    if not isinstance(ssot, list) or not ssot or not all(isinstance(item, str) for item in ssot):
+        raise CatalogValidationError("governance contract fixture domains.ssot ist ungültig")
+    return tuple(ssot)
+
+
+def _domain_catalogs(data: Mapping[str, object]) -> Mapping[str, frozenset[str]]:
+    domains = data.get("domains")
+    if not isinstance(domains, Mapping):
+        raise CatalogValidationError("governance contract fixture domains fehlt")
+    catalogs = domains.get("ssot_catalogs")
+    if not isinstance(catalogs, Mapping):
+        raise CatalogValidationError("governance contract fixture domains.ssot_catalogs fehlt")
+    result: dict[str, frozenset[str]] = {}
+    for domain, entries in catalogs.items():
+        if not isinstance(entries, list) or not entries or not all(isinstance(item, str) for item in entries):
+            raise CatalogValidationError(f"governance contract fixture domains.ssot_catalogs.{domain} ist ungültig")
+        result[domain] = frozenset(entries)
+    return result
+
+
+def _candidate_classes(data: Mapping[str, object]) -> Mapping[str, str]:
+    vocabularies = data.get("vocabularies")
+    if not isinstance(vocabularies, Mapping):
+        raise CatalogValidationError("governance contract fixture vocabularies fehlt")
+    classes = vocabularies.get("discovery_candidate_classes")
+    if not isinstance(classes, Mapping) or not classes or not all(
+        isinstance(value, str) for value in classes.values()
+    ):
+        raise CatalogValidationError(
+            "governance contract fixture vocabularies.discovery_candidate_classes ist ungültig"
+        )
+    return {str(key): str(value) for key, value in classes.items()}
+
+
+_CONTRACT = _load_contract_fixture()
+
+MANIFEST_FIELDS = _fieldset(_CONTRACT, "manifest")
+SSOT_MANIFEST_FIELDS = _fieldset(_CONTRACT, "ssot_manifest")
+SSOT_DOMAINS = _domain_list(_CONTRACT)
+SSOT_DOMAIN_CATALOGS = _domain_catalogs(_CONTRACT)
+VOCABULARY_FIELDS = _fieldset(_CONTRACT, "vocabulary")
+MODULE_FIELDS = _fieldset(_CONTRACT, "module")
+ROLE_FIELDS = _fieldset(_CONTRACT, "role")
+TOOL_FIELDS = _fieldset(_CONTRACT, "tool")
+COMMAND_FIELDS = _fieldset(_CONTRACT, "command")
+COMMAND_CAPABILITIES = _vocabulary(_CONTRACT, "command_capabilities")
+COMMAND_EFFECTS = _vocabulary(_CONTRACT, "command_effects")
+DISCOVERY_TOP_LEVEL_FIELDS = _fieldset(_CONTRACT, "discovery_top_level")
+DISCOVERY_LIMIT_FIELDS = _fieldset(_CONTRACT, "discovery_limits")
+DISCOVERY_CONFIDENCE_FIELDS = _fieldset(_CONTRACT, "discovery_confidence")
+DISCOVERY_CANDIDATE_FIELDS = _fieldset(_CONTRACT, "discovery_candidate")
+DISCOVERY_FAMILY_FIELDS = _fieldset(_CONTRACT, "discovery_family")
+DISCOVERY_SIGNAL_FIELDS = _fieldset(_CONTRACT, "discovery_signal")
+DISCOVERY_FAMILIES = _vocabulary(_CONTRACT, "discovery_evidence_families")
+DISCOVERY_SOURCE_KINDS = _vocabulary(_CONTRACT, "discovery_source_kinds")
+DISCOVERY_STRENGTHS = _vocabulary(_CONTRACT, "discovery_strengths")
+DISCOVERY_CANDIDATE_CLASSES = _candidate_classes(_CONTRACT)
+DISCOVERY_CANDIDATE_CLASS_IDS = frozenset(DISCOVERY_CANDIDATE_CLASSES)
+TEMPLATE_CATEGORIES = _vocabulary(_CONTRACT, "template_categories")
+TEMPLATE_FIELDS = _fieldset(_CONTRACT, "template")
+TEMPLATE_FORMATS = _vocabulary(_CONTRACT, "template_formats")
+WORK_ITEM_CLASSIFICATIONS_TOP_LEVEL_FIELDS = _fieldset(_CONTRACT, "work_item_classifications_top_level")
+WORK_ITEM_DIMENSION_FIELDS = _fieldset(_CONTRACT, "work_item_dimension")
+WORK_ITEM_CLASSIFICATION_FIELDS = _fieldset(_CONTRACT, "work_item_classification")
+WORK_ITEM_PROJECTIONS_TOP_LEVEL_FIELDS = _fieldset(_CONTRACT, "work_item_projections_top_level")
+WORK_ITEM_PROJECTION_FIELDS = _fieldset(_CONTRACT, "work_item_projection")
+WORK_ITEM_TITLE_MARKER_FIELDS = _fieldset(_CONTRACT, "work_item_title_marker")
+WORK_ITEM_CARDINALITIES = _vocabulary(_CONTRACT, "work_item_cardinalities")
 
 
 @dataclass(frozen=True)
@@ -538,10 +664,10 @@ def _validate_discovery(catalog: Mapping[str, object]) -> Mapping[str, object]:
         raise CatalogValidationError("discovery_signals candidate_classes muss eine Tabelle sein")
     _exact_fields(
         candidate_classes,
-        frozenset({"directory", "app_bundle"}),
+        DISCOVERY_CANDIDATE_CLASS_IDS,
         "discovery_signals candidate_classes",
     )
-    expected_classes = {"directory": "DIRECTORY", "app_bundle": "APP_BUNDLE"}
+    expected_classes = DISCOVERY_CANDIDATE_CLASSES
     for class_id, expected_class in expected_classes.items():
         entry = candidate_classes[class_id]
         if not isinstance(entry, Mapping):
@@ -610,7 +736,7 @@ def _work_item_classification_ids(catalog: Mapping[str, object]) -> frozenset[st
 
 def _validate_work_item_classifications(catalog: Mapping[str, object]) -> Mapping[str, object]:
     _exact_fields(
-        catalog, frozenset({"schema_version", "dimensions", "classifications"}),
+        catalog, WORK_ITEM_CLASSIFICATIONS_TOP_LEVEL_FIELDS,
         "work_items classifications Top-Level",
     )
     if type(catalog.get("schema_version")) is not int or catalog["schema_version"] != 1:
@@ -668,7 +794,7 @@ def _validate_work_item_projections(
     catalog: Mapping[str, object], classifications: Mapping[str, object]
 ) -> Mapping[str, object]:
     _exact_fields(
-        catalog, frozenset({"schema_version", "projections", "title_markers"}),
+        catalog, WORK_ITEM_PROJECTIONS_TOP_LEVEL_FIELDS,
         "work_items github_labels Top-Level",
     )
     if type(catalog.get("schema_version")) is not int or catalog["schema_version"] != 1:

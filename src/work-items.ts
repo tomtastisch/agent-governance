@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { loadSsotIndex } from "./ssot-manifest.ts";
 import { exact, parseClosedToml, table, text, type TomlTable } from "./closed-toml.ts";
+import { governanceContract } from "./contract-fixture.ts";
 
 /**
  * Statische Work-Item-Klassifikation und plattformbezogene Projektionen (Issue #53).
@@ -11,7 +12,7 @@ import { exact, parseClosedToml, table, text, type TomlTable } from "./closed-to
  * Dieses Modul führt keine GitHub-Mutation aus; es liest nur und erzeugt Pläne.
  */
 
-export const CARDINALITIES = ["one", "many", "at_most_one", "zero_or_more"] as const;
+export const CARDINALITIES = governanceContract.workItemCardinalities;
 export type Cardinality = (typeof CARDINALITIES)[number];
 
 export interface ClassificationDimension {
@@ -145,7 +146,7 @@ function isCardinality(raw: unknown): raw is Cardinality {
 
 export function parseClassificationsText(content: string): ClassificationIndex {
   const root = parseClosedToml(content, "classifications catalog");
-  exact(root, ["schema_version", "dimensions", "classifications"], "classifications catalog");
+  exact(root, governanceContract.workItemClassificationsTopLevelFields, "classifications catalog");
   if (root.schema_version !== 1) fail("classifications schema must be 1");
 
   const rawDimensions = table(root.dimensions, "classifications dimensions");
@@ -154,7 +155,7 @@ export function parseClassificationsText(content: string): ClassificationIndex {
   for (const [dimensionId, raw] of Object.entries(rawDimensions)) {
     validateDimensionId(dimensionId);
     const entry = table(raw, `dimensions.${dimensionId}`);
-    exact(entry, ["label", "cardinality", "description"], `dimensions.${dimensionId}`);
+    exact(entry, governanceContract.workItemDimensionFields, `dimensions.${dimensionId}`);
     const cardinality = entry.cardinality;
     if (!isCardinality(cardinality)) fail(`dimensions.${dimensionId}.cardinality is unknown`);
     dimensions[dimensionId] = Object.freeze({
@@ -178,7 +179,7 @@ export function parseClassificationsText(content: string): ClassificationIndex {
     for (const [valueId, raw] of Object.entries(valueTable)) {
       validateValueId(valueId);
       const entry = table(raw, `classifications.${dimensionId}.${valueId}`);
-      exact(entry, ["label", "description"], `classifications.${dimensionId}.${valueId}`);
+      exact(entry, governanceContract.workItemClassificationFields, `classifications.${dimensionId}.${valueId}`);
       const id = `${dimensionId}.${valueId}`;
       if (Object.hasOwn(classifications, id)) fail(`duplicate classification ID: ${id}`);
       const value: ClassificationValue = Object.freeze({
@@ -210,7 +211,7 @@ export function parseClassificationsText(content: string): ClassificationIndex {
 
 export function parseProjectionsText(content: string, index: ClassificationIndex): ProjectionIndex {
   const root = parseClosedToml(content, "github labels projection catalog");
-  exact(root, ["schema_version", "projections", "title_markers"], "github labels projection catalog");
+  exact(root, governanceContract.workItemProjectionsTopLevelFields, "github labels projection catalog");
   if (root.schema_version !== 1) fail("projection schema must be 1");
 
   const rawProjections = table(root.projections, "label projections");
@@ -221,7 +222,7 @@ export function parseProjectionsText(content: string, index: ClassificationIndex
   for (const [projectionId, raw] of Object.entries(rawProjections)) {
     readId(projectionId, "projection id");
     const entry = table(raw, `projections.${projectionId}`);
-    exact(entry, ["classification", "name", "description", "color", "aliases"], `projections.${projectionId}`);
+    exact(entry, governanceContract.workItemProjectionFields, `projections.${projectionId}`);
     const classification = readClassificationReference(entry.classification, `projections.${projectionId}.classification`);
     if (!Object.hasOwn(index.classifications, classification)) fail(`unknown projection classification: ${classification}`);
     if (classificationToProjection.has(classification)) fail(`duplicate projection for classification: ${classification}`);
@@ -252,7 +253,7 @@ export function parseProjectionsText(content: string, index: ClassificationIndex
   for (const [markerId, raw] of Object.entries(rawMarkers)) {
     readId(markerId, "title marker id");
     const entry = table(raw, `title_markers.${markerId}`);
-    exact(entry, ["classification", "marker"], `title_markers.${markerId}`);
+    exact(entry, governanceContract.workItemTitleMarkerFields, `title_markers.${markerId}`);
     const classification = readClassificationReference(entry.classification, `title_markers.${markerId}.classification`);
     if (!Object.hasOwn(index.classifications, classification)) fail(`unknown title marker classification: ${classification}`);
     const marker = text(entry.marker, `title_markers.${markerId}.marker`);

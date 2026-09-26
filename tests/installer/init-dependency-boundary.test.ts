@@ -106,6 +106,7 @@ test("the boundary regression catches a package-manager spawn injected into defa
   await Promise.all([
     cp(join(repositoryRoot, "src"), join(mutationRoot, "src"), { recursive: true }),
     cp(join(repositoryRoot, "bundle"), join(mutationRoot, "bundle"), { recursive: true }),
+    cp(join(repositoryRoot, "contracts"), join(mutationRoot, "contracts"), { recursive: true }),
     symlink(join(repositoryRoot, "node_modules"), join(mutationRoot, "node_modules"), "dir"),
   ]);
   t.after(() => rm(mutationRoot, { recursive: true, force: true }));

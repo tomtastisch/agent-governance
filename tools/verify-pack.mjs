@@ -24,21 +24,22 @@ const paths = report[0].files.map((entry) => entry.path);
 const forbiddenFiles = new Set(["INSTALL.md", "docs/harness-recipes.md"]);
 const runtimeBrandingPath = "assets/branding/agent-governance-terminal.png";
 const runtimeDocs = new Set(["docs/installer-cli-reference.md", "docs/resume-checkpoints.md"]);
+const runtimeContract = "contracts/governance-contract.json";
 for (const path of paths) {
   if (typeof path !== "string") {
     throw new Error(`unexpected tarball path: ${String(path)}`);
   }
-  if (forbiddenFiles.has(path) || path.startsWith("assets/") && path !== runtimeBrandingPath || path.startsWith("docs/") && !runtimeDocs.has(path)) {
+  if (forbiddenFiles.has(path) || path.startsWith("assets/") && path !== runtimeBrandingPath || path.startsWith("docs/") && !runtimeDocs.has(path) || path.startsWith("contracts/") && path !== runtimeContract) {
     throw new Error(`forbidden runtime path: ${path}`);
   }
-  if (path !== runtimeBrandingPath && !runtimeDocs.has(path) && !/^(?:CHANGELOG\.md|LICENSE|README\.md|VERSION|package\.json|release\.files\.sha256|bundle\/|dist\/|prebuilds\/(?:darwin|linux)-(?:arm64|x64)\/agent_governance_fs\.node$)/.test(path)) {
+  if (path !== runtimeBrandingPath && !runtimeDocs.has(path) && path !== runtimeContract && !/^(?:CHANGELOG\.md|LICENSE|README\.md|VERSION|package\.json|release\.files\.sha256|bundle\/|dist\/|prebuilds\/(?:darwin|linux)-(?:arm64|x64)\/agent_governance_fs\.node$)/.test(path)) {
     throw new Error(`unexpected tarball path: ${path}`);
   }
   if (/^(?:integrations|tests|tools)\//.test(path) || /hooks?/i.test(path)) {
     throw new Error(`forbidden runtime path: ${path}`);
   }
 }
-const requiredPaths = ["README.md", "LICENSE", "CHANGELOG.md", "dist/cli.js", "dist/resume-toon.js", "dist/resume-toon.d.ts", "dist/resume-checkpoint.js", "dist/resume-checkpoint.d.ts", "dist/resume-checkpoint-schema.js", "docs/resume-checkpoints.md", "dist/work-items.js", "dist/work-items.d.ts", "bundle/GOVERNANCE.md", "bundle/agent-governance/manifest.toml", "bundle/agent-governance/templates/manifest.toml", "bundle/agent-governance/ssot/manifest.toml", "bundle/agent-governance/ssot/routing/triggers.toml", "bundle/agent-governance/ssot/routing/policy-tags.toml", "bundle/agent-governance/ssot/routing/scopes.toml", "bundle/agent-governance/ssot/routing/tools.toml", "bundle/agent-governance/ssot/commands/commands.toml", "bundle/agent-governance/ssot/discovery/discovery-signals.toml", "bundle/agent-governance/ssot/work-items/classifications.toml", "bundle/agent-governance/ssot/work-items/projections/github-labels.toml", "docs/installer-cli-reference.md", "release.files.sha256", "VERSION", runtimeBrandingPath];
+const requiredPaths = ["README.md", "LICENSE", "CHANGELOG.md", "dist/cli.js", "dist/resume-toon.js", "dist/resume-toon.d.ts", "dist/resume-checkpoint.js", "dist/resume-checkpoint.d.ts", "dist/resume-checkpoint-schema.js", "docs/resume-checkpoints.md", "dist/work-items.js", "dist/work-items.d.ts", runtimeContract, "bundle/GOVERNANCE.md", "bundle/agent-governance/manifest.toml", "bundle/agent-governance/templates/manifest.toml", "bundle/agent-governance/ssot/manifest.toml", "bundle/agent-governance/ssot/routing/triggers.toml", "bundle/agent-governance/ssot/routing/policy-tags.toml", "bundle/agent-governance/ssot/routing/scopes.toml", "bundle/agent-governance/ssot/routing/tools.toml", "bundle/agent-governance/ssot/commands/commands.toml", "bundle/agent-governance/ssot/discovery/discovery-signals.toml", "bundle/agent-governance/ssot/work-items/classifications.toml", "bundle/agent-governance/ssot/work-items/projections/github-labels.toml", "docs/installer-cli-reference.md", "release.files.sha256", "VERSION", runtimeBrandingPath];
 requiredPaths.push("dist/replacement.js", "dist/replacement.d.ts");
 for (const required of requiredPaths) {
   if (!paths.includes(required)) throw new Error(`missing tarball path: ${required}`);

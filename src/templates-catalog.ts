@@ -2,11 +2,12 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import { PACKAGE_RELEASE_ROOT, resolveTemplateFile, resolveTemplatesManifestPath } from "./catalog-paths.ts";
 import { exact, ID, parseClosedToml, safeRelativePath, table, text, type TomlTable } from "./closed-toml.ts";
+import { governanceContract } from "./contract-fixture.ts";
 
-export const TEMPLATE_CATEGORIES = ["git", "delivery", "review", "context", "communication", "external_effects"] as const;
-export type TemplateCategory = (typeof TEMPLATE_CATEGORIES)[number];
+export type TemplateCategory = "git" | "delivery" | "review" | "context" | "communication" | "external_effects";
+export const TEMPLATE_CATEGORIES = governanceContract.templateCategories as readonly TemplateCategory[];
 
-const TEMPLATE_FIELDS = ["path", "category", "format"] as const;
+const TEMPLATE_FIELDS = governanceContract.templateFields;
 
 export interface TemplateEntry {
   readonly id: string;
@@ -43,7 +44,7 @@ export function parseTemplatesManifestText(content: string): TemplateIndex {
     const category = entry.category;
     if (!isCategory(category)) throw new Error(`templates.${id}.category is unknown`);
     const format = text(entry.format, `templates.${id}.format`);
-    if (format !== "markdown") throw new Error(`templates.${id}.format is unsupported`);
+    if (!governanceContract.templateFormats.includes(format)) throw new Error(`templates.${id}.format is unsupported`);
     templates[id] = Object.freeze({ id, path, category, format });
   }
   return Object.freeze({ schemaVersion: 1, templates: Object.freeze(templates) });

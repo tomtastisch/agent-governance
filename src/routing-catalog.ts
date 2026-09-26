@@ -1,6 +1,7 @@
 import { exact, ID, idList, parseClosedToml, table, text, type TomlTable } from "./closed-toml.ts";
+import { governanceContract } from "./contract-fixture.ts";
 
-const TOOL_FIELDS = ["name", "purpose", "required_on", "useful_on", "policy_tags", "scopes", "evidence", "fallback", "constraints"] as const;
+const TOOL_FIELDS = governanceContract.toolFields;
 
 export interface RoutingCatalogs {
   readonly triggers: ReadonlySet<string>;
@@ -17,7 +18,7 @@ function validateVocabulary(catalog: TomlTable, name: "triggers" | "policy_tags"
   for (const [id, raw] of Object.entries(entries)) {
     if (!ID.test(id)) throw new Error(`${name} contains an invalid ID`);
     const entry = table(raw, `${name}.${id}`);
-    exact(entry, ["label", "description"], `${name}.${id}`);
+    exact(entry, governanceContract.vocabularyFields, `${name}.${id}`);
     text(entry.label, `${name}.${id}.label`); text(entry.description, `${name}.${id}.description`);
   }
   return new Set(Object.keys(entries));

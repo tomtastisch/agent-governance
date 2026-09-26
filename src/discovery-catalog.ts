@@ -1,18 +1,12 @@
 import { parse } from "smol-toml";
+import { governanceContract } from "./contract-fixture.ts";
 
-export const EVIDENCE_FAMILIES = [
-  "runtime",
-  "state",
-  "tooling",
-  "ai_metadata",
-  "package_metadata",
-  "document",
-] as const;
-
-export type EvidenceFamily = (typeof EVIDENCE_FAMILIES)[number];
+export type EvidenceFamily = "runtime" | "state" | "tooling" | "ai_metadata" | "package_metadata" | "document";
 export type EvidenceStrength = "strong" | "corroborating" | "weak";
 export type EvidenceSourceKind = "json" | "toml" | "plist" | "sqlite_schema" | "package_metadata";
 export type CandidateClass = "DIRECTORY" | "APP_BUNDLE";
+
+export const EVIDENCE_FAMILIES = governanceContract.discoveryEvidenceFamilies as readonly EvidenceFamily[];
 
 export interface DiscoveryLimits {
   readonly maxDepth: number;
@@ -61,38 +55,16 @@ export interface DiscoveryCatalog {
   readonly signals: readonly DiscoverySignal[];
 }
 
-const TOP_LEVEL_FIELDS = new Set([
-  "schema_version",
-  "limits",
-  "confidence",
-  "candidate_classes",
-  "evidence_families",
-  "signals",
-]);
-const LIMIT_FIELDS = new Set([
-  "max_depth",
-  "max_files",
-  "max_entries",
-  "max_file_bytes",
-  "max_sqlite_objects",
-  "max_sqlite_columns",
-  "max_duration_ms",
-  "max_metadata_length",
-]);
-const CONFIDENCE_FIELDS = new Set([
-  "high_minimum_score",
-  "high_minimum_families",
-  "high_minimum_independent_sources",
-  "high_requires_runtime",
-  "uncertain_minimum_score",
-]);
-const CANDIDATE_CLASS_FIELDS = new Set(["class", "label"]);
-const FAMILY_FIELDS = new Set(["default_strength", "weight"]);
-const SIGNAL_FIELDS = new Set(["id", "family", "source_kinds", "keys", "minimum_matches", "strength"]);
-const CANDIDATE_CLASS_IDS = ["directory", "app_bundle"] as const;
-const CANDIDATE_CLASSES = ["DIRECTORY", "APP_BUNDLE"] as const;
-const STRENGTHS = ["strong", "corroborating", "weak"] as const;
-const SOURCE_KINDS = ["json", "toml", "plist", "sqlite_schema", "package_metadata"] as const;
+const TOP_LEVEL_FIELDS = new Set(governanceContract.discoveryTopLevelFields);
+const LIMIT_FIELDS = new Set(governanceContract.discoveryLimitFields);
+const CONFIDENCE_FIELDS = new Set(governanceContract.discoveryConfidenceFields);
+const CANDIDATE_CLASS_FIELDS = new Set(governanceContract.discoveryCandidateFields);
+const FAMILY_FIELDS = new Set(governanceContract.discoveryFamilyFields);
+const SIGNAL_FIELDS = new Set(governanceContract.discoverySignalFields);
+const CANDIDATE_CLASS_IDS = Object.keys(governanceContract.discoveryCandidateClasses) as ("directory" | "app_bundle")[];
+const CANDIDATE_CLASSES = Object.values(governanceContract.discoveryCandidateClasses) as readonly CandidateClass[];
+const STRENGTHS = governanceContract.discoveryStrengths as readonly EvidenceStrength[];
+const SOURCE_KINDS = governanceContract.discoverySourceKinds as readonly EvidenceSourceKind[];
 
 function record(value: unknown, context: string): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
