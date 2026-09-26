@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "description": "Gemeinsame Mutation-Batterie für das Cross-Language-Conformance-Gate (#90). Jede Mutation wird auf eine frische Bundle-Kopie angewendet; beide Validatoren (TypeScript und Python) müssen dieselbe Verdict (Reject) liefern.",
+  "mutations": [
+    {
+      "id": "unknown_tool_field",
+      "file": "ssot/routing/tools.toml",
+      "find": "name = \"Local Git CLI\"",
+      "replace": "name = \"Local Git CLI\"\nunexpected = true"
+    },
+    {
+      "id": "unknown_module_trigger",
+      "file": "manifest.toml",
+      "find": "triggers = [\"external_effect\", \"security_sensitive_change\"]",
+      "replace": "triggers = [\"external_effect\", \"unknown_module_trigger\"]"
+    },
+    {
+      "id": "unknown_policy_tag",
+      "file": "ssot/routing/tools.toml",
+      "find": "policy_tags = [\"read\", \"write\"]",
+      "replace": "policy_tags = [\"execute\", \"write\"]"
+    },
+    {
+      "id": "unknown_command_capability",
+      "file": "ssot/commands/commands.toml",
+      "find": "capability = \"transaction\"",
+      "replace": "capability = \"execute\""
+    },
+    {
+      "id": "unknown_template_category",
+      "file": "templates/manifest.toml",
+      "find": "category = \"git\"",
+      "replace": "category = \"future\""
+    },
+    {
+      "id": "unknown_discovery_limit_field",
+      "file": "ssot/discovery/discovery-signals.toml",
+      "find": "max_files = 256",
+      "replace": "max_files = 256\nunexpected = true"
+    },
+    {
+      "id": "unknown_work_item_cardinality",
+      "file": "ssot/work-items/classifications.toml",
+      "find": "cardinality = \"one\"",
+      "replace": "cardinality = \"single\""
+    }
+  ]
+}
