@@ -96,6 +96,23 @@ class CrossLanguageConformance(unittest.TestCase):
             set(data["domains"]["ssot_catalogs"]["routing"]),
         )
 
+    def test_python_loader_rejects_malformed_fixture_fail_closed(self):
+        """Die Python-Referenz validiert die Fixture als geschlossenes Schema."""
+        from unittest import mock
+
+        from tests.support import catalog_validator
+
+        with tempfile.TemporaryDirectory(prefix="agent-governance-contract-") as directory:
+            root = Path(directory)
+            (root / "contracts").mkdir()
+            (root / "contracts" / "governance-contract.json").write_text(
+                '{"schema_version": 2, "fields": {}, "domains": {}, "vocabularies": {}}',
+                encoding="utf-8",
+            )
+            with mock.patch.object(catalog_validator, "_CONTRACT_ROOT", root):
+                with self.assertRaises(catalog_validator.CatalogValidationError):
+                    catalog_validator._load_contract_fixture()
+
 
 if __name__ == "__main__":
     unittest.main()

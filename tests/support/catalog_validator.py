@@ -24,13 +24,64 @@ class CatalogValidationError(RuntimeError):
 
 _CONTRACT_ROOT = Path(__file__).resolve().parents[2]
 
+_CONTRACT_TOP_LEVEL = frozenset({"schema_version", "fields", "domains", "vocabularies"})
+_CONTRACT_FIELD_KEYS = frozenset(
+    {
+        "manifest",
+        "routing",
+        "ssot_manifest",
+        "vocabulary",
+        "module",
+        "role",
+        "tool",
+        "command",
+        "template",
+        "discovery_top_level",
+        "discovery_limits",
+        "discovery_confidence",
+        "discovery_candidate",
+        "discovery_family",
+        "discovery_signal",
+        "work_item_classifications_top_level",
+        "work_item_dimension",
+        "work_item_classification",
+        "work_item_projections_top_level",
+        "work_item_projection",
+        "work_item_title_marker",
+    }
+)
+_CONTRACT_SSOT_DOMAINS = frozenset({"routing", "commands", "discovery", "work_items"})
+_CONTRACT_VOCABULARY_ARRAY_KEYS = frozenset(
+    {
+        "template_categories",
+        "template_formats",
+        "command_capabilities",
+        "command_effects",
+        "discovery_evidence_families",
+        "discovery_source_kinds",
+        "discovery_strengths",
+        "work_item_cardinalities",
+    }
+)
+_CONTRACT_VOCABULARY_MAP_KEYS = frozenset({"discovery_candidate_classes"})
+
+
+def _closed_keys(data: Mapping[str, object], expected: frozenset[str], context: str) -> None:
+    unknown = set(data) - expected
+    missing = expected - set(data)
+    if unknown:
+        raise CatalogValidationError(f"{context} enthält unbekannte Felder: {sorted(unknown)}")
+    if missing:
+        raise CatalogValidationError(f"{context} enthält fehlende Felder: {sorted(missing)}")
+
 
 def _load_contract_fixture() -> Mapping[str, object]:
-    """Lädt die gemeinsame sprachneutrale Contract-Fixture (Issue #90).
+    """Lädt und validiert die gemeinsame sprachneutrale Contract-Fixture (Issue #90).
 
     Die Fixture ist die einzige Quelle der Strukturdefinitionen (Feldmengen,
     Domain-/Kataloglisten und Vokabulare). TypeScript und Python lesen dieselbe
-    Datei; die Validierungslogik bleibt je Sprache unabhängig.
+    Datei; die Validierungslogik bleibt je Sprache unabhängig. Der Loader ist
+    fail-closed und validiert ein geschlossenes Schema wie die TS-Seite.
     """
     path = _CONTRACT_ROOT / "contracts" / "governance-contract.json"
     try:
@@ -40,6 +91,48 @@ def _load_contract_fixture() -> Mapping[str, object]:
         raise CatalogValidationError("governance contract fixture fehlt oder ist ungültig") from error
     if not isinstance(data, dict):
         raise CatalogValidationError("governance contract fixture muss eine Tabelle sein")
+
+    _closed_keys(data, _CONTRACT_TOP_LEVEL, "contract fixture Top-Level")
+    if type(data.get("schema_version")) is not int or data["schema_version"] != 1:
+        raise CatalogValidationError("contract fixture schema_version muss Integer 1 sein")
+
+    fields = data.get("fields")
+    if not isinstance(fields, Mapping):
+        raise CatalogValidationError("contract fixture fields muss eine Tabelle sein")
+    _closed_keys(fields, _CONTRACT_FIELD_KEYS, "contract fixture fields")
+    for name in _CONTRACT_FIELD_KEYS:
+        _fieldset(data, name)
+
+    domains = data.get("domains")
+    if not isinstance(domains, Mapping):
+        raise CatalogValidationError("contract fixture domains muss eine Tabelle sein")
+    _closed_keys(domains, frozenset({"ssot", "ssot_catalogs"}), "contract fixture domains")
+    ssot = domains.get("ssot")
+    if not isinstance(ssot, list) or not ssot or not all(isinstance(item, str) for item in ssot):
+        raise CatalogValidationError("contract fixture domains.ssot ist ungültig")
+    if frozenset(ssot) != _CONTRACT_SSOT_DOMAINS:
+        raise CatalogValidationError("contract fixture domains.ssot ist nicht kanonisch")
+    catalogs = domains.get("ssot_catalogs")
+    if not isinstance(catalogs, Mapping):
+        raise CatalogValidationError("contract fixture domains.ssot_catalogs muss eine Tabelle sein")
+    _closed_keys(catalogs, _CONTRACT_SSOT_DOMAINS, "contract fixture domains.ssot_catalogs")
+    for domain in _CONTRACT_SSOT_DOMAINS:
+        entries = catalogs[domain]
+        if not isinstance(entries, list) or not entries or not all(isinstance(item, str) for item in entries):
+            raise CatalogValidationError(f"contract fixture domains.ssot_catalogs.{domain} ist ungültig")
+
+    vocabularies = data.get("vocabularies")
+    if not isinstance(vocabularies, Mapping):
+        raise CatalogValidationError("contract fixture vocabularies muss eine Tabelle sein")
+    _closed_keys(
+        vocabularies,
+        _CONTRACT_VOCABULARY_ARRAY_KEYS | _CONTRACT_VOCABULARY_MAP_KEYS,
+        "contract fixture vocabularies",
+    )
+    for name in _CONTRACT_VOCABULARY_ARRAY_KEYS:
+        _vocabulary(data, name)
+    _candidate_classes(data)
+
     return data
 
 

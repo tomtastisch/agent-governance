@@ -128,7 +128,7 @@ async function readTemplates(manifestRoot: string, rawPath: TomlValue | undefine
 }
 
 function validateIndex(manifestRoot: string, manifest: TomlTable, inventory: ReadonlyMap<string, string>, routing: RoutingCatalogs, referencedPaths: Set<string>): Promise<void> {
-  const routingTable = table(manifest.routing, "release manifest routing"); exact(routingTable, ["unknown", "ambiguous"], "release manifest routing");
+  const routingTable = table(manifest.routing, "release manifest routing"); exact(routingTable, governanceContract.routingFields, "release manifest routing");
   if (routingTable.unknown !== "block" || routingTable.ambiguous !== "block") throw new Error("release manifest routing must fail closed");
 
   const modules = table(manifest.modules, "release manifest modules");
@@ -172,7 +172,7 @@ async function validateContract(manifestRoot: string, manifestText: string, inve
 
   let routing: RoutingCatalogs;
   if (manifest.schema_version === 4) {
-    exact(manifest, ["schema_version", "local_rules", "ssot", "templates", "routing", "modules", "roles"], "release manifest");
+    exact(manifest, governanceContract.manifestFields, "release manifest");
     const ssotPath = safeRelativePath(manifest.ssot, "release manifest ssot path");
     if (ssotPath !== "ssot/manifest.toml") throw new Error("release manifest ssot path must be canonical");
     referencedPaths.add(ssotPath);

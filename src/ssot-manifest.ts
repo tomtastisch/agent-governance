@@ -13,7 +13,7 @@ export interface SsotIndex {
 
 function parseSsotManifest(content: string): SsotIndex {
   const manifest = parseClosedToml(content, "ssot manifest");
-  exact(manifest, ["schema_version", "domains"], "ssot manifest");
+  exact(manifest, governanceContract.ssotManifestFields, "ssot manifest");
   if (manifest.schema_version !== 1) throw new Error("ssot manifest schema is invalid");
   const domains = table(manifest.domains, "ssot manifest domains");
   const domainIds = Object.keys(domains).sort().join("\0");
