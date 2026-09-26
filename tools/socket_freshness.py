@@ -85,8 +85,9 @@ def socket_known_versions(org_slug, purl, token, api_base=SOCKET_API_BASE):
     """
     if not token:
         return None
+    encoded_org = urllib.parse.quote(org_slug, safe="")
     encoded = urllib.parse.quote(purl, safe="")
-    url = f"{api_base}/v1/orgs/{org_slug}/purl/versions/{encoded}"
+    url = f"{api_base}/v1/orgs/{encoded_org}/purl/versions/{encoded}"
     try:
         payload = _read_json(
             url,

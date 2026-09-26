@@ -142,6 +142,18 @@ class SocketKnownVersionsContract(unittest.TestCase):
         )
         self.assertNotIn("/", captured["url"].split("/versions/", 1)[1])
 
+    def test_percent_encodes_org_slug_as_single_path_segment(self):
+        captured = {}
+
+        def fake_open(request, timeout=None):
+            captured["url"] = request.full_url
+            return _json_response({"purl": "pkg:npm/a", "versions": []})
+
+        with mock.patch("urllib.request.urlopen", side_effect=fake_open):
+            sf.socket_known_versions("org/slug", "pkg:npm/a", "token")
+
+        self.assertIn("/v1/orgs/org%2Fslug/purl/versions/", captured["url"])
+
     def test_authorization_header_is_bearer_token(self):
         captured = {}
 
