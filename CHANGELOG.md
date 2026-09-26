@@ -9,17 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Keine.
+
+### Changed
+
+- Keine.
+
+### Fixed
+
+- Keine.
+
+### Removed
+
+- Keine.
+
+**Breaking changes:** none
+
+## [1.7.3] — 2026-09-26
+
+### Added
+
 - Deterministische Documentation-Authority-Parity-Kontrakte: Der CLI-Referenz-Commandbestand,
   die Paketexporte und die dokumentierten SSOT-Domains werden testgetrieben gegen ihre
   Authorities (`ssot/commands/commands.toml`, `package.json.exports`, `ssot/manifest.toml`)
-  gebunden (#86).
-- Statische öffentliche GitHub-Pages-Präsenz als reine Projektion der Authorities (#119):
+  gebunden (#86; SemVer patch).
+- Statische öffentliche GitHub-Pages-Präsenz als reine Projektion der Authorities (#119; SemVer patch):
   englischsprachige Landingpage und Suchintentionsseiten mit korrektem Project-Site-Base-Path,
   eindeutigen Canonicals, Open-Graph-/Preview-Metadaten, validierten strukturierten Daten,
   `robots.txt` und deterministisch erzeugter `sitemap.xml`; reproduzierbarer Build
   (`tools/site_build.py`) plus Regressionstests (`tests/test_site.py`) und
   Least-Privilege-Deployment über die offiziellen GitHub-Actions.
-- Cross-Language-Conformance der Governance-Validatoren (#90): Die produktiven
+- Cross-Language-Conformance der Governance-Validatoren (#90; SemVer patch): Die produktiven
   TypeScript-Validatoren und die unabhängige Python-Testreferenz teilen sich eine
   sprachneutrale Contract-Fixture (`contracts/governance-contract.json`) als einzige Quelle
   der Strukturdefinitionen; ein Conformance-Gate (`tests/test_conformance.py`) erzwingt

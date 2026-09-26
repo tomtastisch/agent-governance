@@ -1,6 +1,6 @@
 {
   "name": "@tomtastisch/agent-governance",
-  "version": "1.7.2",
+  "version": "1.7.3",
   "description": "Interactive and transactional Agent Governance CLI with resume, work-item, and forward-only replacement exports",
   "keywords": [
     "agent-governance",
