@@ -45,10 +45,17 @@ RETRY_ATTEMPTS = 3
 REQUEST_TIMEOUT = 30
 
 
+def _is_retryable_http_error(error):
+    """Transiente Serverfehler (5xx) sind retrybar; 4xx sind es nicht."""
+    return isinstance(error.code, int) and 500 <= error.code <= 599
+
+
 def _read_json(url, headers, attempts=RETRY_ATTEMPTS, timeout=REQUEST_TIMEOUT):
     """Liest ein JSON-Dokument mit begrenzten Retries bei transienten Fehlern.
 
-    HTTP-Fehler (401/403/404/429) werden nicht retried und sofort propagiert.
+    Retried werden transiente Transportfehler sowie transiente Serverfehler (5xx).
+    Client-Fehler (4xx, einschließlich 401/403/404/429) und nicht dekodierbare
+    Antworten (ungültiges JSON/Encoding) werden nicht retried, sondern propagiert.
     """
     last_error = None
     for _ in range(attempts):
@@ -57,6 +64,9 @@ def _read_json(url, headers, attempts=RETRY_ATTEMPTS, timeout=REQUEST_TIMEOUT):
             with urllib.request.urlopen(request, timeout=timeout) as response:
                 return json.load(response)
         except urllib.error.HTTPError as error:
+            if _is_retryable_http_error(error):
+                last_error = error
+                continue
             raise error
         except (urllib.error.URLError, TimeoutError, OSError) as error:
             last_error = error
@@ -70,7 +80,7 @@ def npm_latest_version(package=DEFAULT_PACKAGE, registry=NPM_REGISTRY):
     url = f"{registry}/-/package/{encoded}/dist-tags"
     try:
         payload = _read_json(url, headers={"Accept": "application/json"})
-    except (urllib.error.HTTPError, urllib.error.URLError, OSError, json.JSONDecodeError):
+    except (urllib.error.HTTPError, urllib.error.URLError, OSError, ValueError):
         return None
     latest = payload.get("latest") if isinstance(payload, dict) else None
     if not isinstance(latest, str) or not latest:
@@ -96,7 +106,7 @@ def socket_known_versions(org_slug, purl, token, api_base=SOCKET_API_BASE):
                 "Authorization": f"Bearer {token}",
             },
         )
-    except (urllib.error.HTTPError, urllib.error.URLError, OSError, json.JSONDecodeError):
+    except (urllib.error.HTTPError, urllib.error.URLError, OSError, ValueError):
         return None
 
     versions = payload.get("versions") if isinstance(payload, dict) else None
