@@ -124,6 +124,12 @@ test("abweichendes workItem bei gesetzter Kontext-workItem wird ausgeschlossen",
   assert.equal(result.outcome, "NO_MATCH");
 });
 
+test("gesetztes Kontext-workItem schließt einen Checkpoint ohne workItem aus", async (t) => {
+  const { directory } = await makeStore(t, makeState({ workItem: null }));
+  const result = await resolveResumeCandidates([directory], context({ workItem: "github:issue-95" }));
+  assert.equal(result.outcome, "NO_MATCH");
+});
+
 test("abweichende branch-Bindung wird ausgeschlossen", async (t) => {
   const { directory } = await makeStore(t, makeState({ branch: "feat/other" }));
   const result = await resolveResumeCandidates([directory], context());
@@ -140,6 +146,20 @@ test("abgeschlossener Auftrag wird nicht allein wegen des Checkpoints reaktivier
   const { directory } = await makeStore(t, makeState({ taskStatus: "COMPLETED" }));
   const result = await resolveResumeCandidates([directory], context());
   assert.equal(result.outcome, "NO_MATCH");
+});
+
+test("COMPLETED mit unresolved Effect wird nicht verworfen und bleibt RESUME", async (t) => {
+  const effect = { operationId: "op-1", target: "github:pr-1", action: "create", inputBindings: ["head-a"], state: "PREPARED" as const, readbackReference: null };
+  const { directory, store } = await makeStore(t, makeState());
+  const first = await store.read();
+  const prepared = await store.materialize({ eventId: "prepare", trigger: "effect_prepared", expected: first, state: { ...makeState(), externalEffects: [effect] } });
+  await store.materialize({ eventId: "complete", trigger: "task_completed", expected: prepared, state: { ...makeState(), taskStatus: "COMPLETED", externalEffects: [effect] } });
+  const result = await resolveResumeCandidates([directory], context());
+  assert.equal(result.outcome, "RESUME");
+  if (result.outcome === "RESUME") {
+    assert.equal(result.taskStatus, "COMPLETED");
+    assert.equal(result.externalEffects[0]!.state, "PREPARED");
+  }
 });
 
 test("mehrere ununterscheidbare gültige Stores ergeben AMBIGUOUS", async (t) => {

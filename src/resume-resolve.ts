@@ -12,7 +12,7 @@ export interface ResolveContext {
   readonly dirty?: string;
 }
 
-export type ResumeTaskStatus = "RUNNING" | "FAILED" | "INCOMPLETE";
+export type ResumeTaskStatus = "RUNNING" | "FAILED" | "INCOMPLETE" | "COMPLETED";
 
 export interface ResumeResolution {
   readonly store: string;
@@ -43,7 +43,7 @@ function bindingMatches(context: ResolveContext, cp: ResumeCheckpoint): boolean 
   if (context.branch !== undefined && ids.branch !== context.branch) return false;
   if (context.dirty !== undefined && ids.dirty !== context.dirty) return false;
   if (context.taskId !== undefined && projection.taskId !== context.taskId) return false;
-  if (context.workItem !== undefined && cp.state.workItem !== null && cp.state.workItem !== context.workItem) return false;
+  if (context.workItem !== undefined && cp.state.workItem !== context.workItem) return false;
   return true;
 }
 
@@ -69,7 +69,8 @@ export async function resolveResumeCandidates(candidates: readonly string[], con
       return { outcome: "INVALID", reason: "corrupted checkpoint history", store: path };
     }
     if (cp === null) continue;
-    if (cp.state.taskStatus === "COMPLETED") continue;
+    const unresolvedEffect = (effect: ExternalEffect): boolean => effect.state === "PREPARED" || effect.state === "UNKNOWN";
+    if (cp.state.taskStatus === "COMPLETED" && !cp.state.externalEffects.some(unresolvedEffect)) continue;
     if (!bindingMatches(context, cp)) continue;
     matches.push({
       store: path,

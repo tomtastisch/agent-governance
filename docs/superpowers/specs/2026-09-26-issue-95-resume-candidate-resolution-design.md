@@ -51,7 +51,7 @@ bereitgestellten Bindungen exakt übereinstimmen:
 | `repository` (Pflicht) | `identities.repository` |
 | `scope` | `identities.scope` |
 | `taskId` | `projection.taskId` |
-| `workItem` | `state.workItem` (nur wenn beide nicht leer) |
+| `workItem` | `state.workItem` (exakte Gleichheit, wenn gesetzt; ein gesetztes Kontext-`workItem` schließt einen Checkpoint mit `null` aus) |
 | `worktree` | `identities.worktree` |
 | `branch` | `identities.branch` |
 | `dirty` | `identities.dirty` |
@@ -74,7 +74,11 @@ Pro Candidate (in Eingabereihenfolge):
 2. `store.read()` scheitert (Generationslücke, beschädigter Fingerprint, Schemafehler,
    unbekannte Datei) → **INVALID** `"corrupted checkpoint history"`.
 3. `read()` liefert `null` (leerer Store, keine publizierten Generationen) → überspringen.
-4. `taskStatus === "COMPLETED"` → überspringen (kein automatischer aktiver Resume).
+4. `taskStatus === "COMPLETED"` **und** kein `PREPARED`/`UNKNOWN`-Effekt → überspringen
+   (kein automatischer aktiver Resume). Ein `COMPLETED`-Checkpoint mit offenem
+   External Effect wird nicht verworfen: sein `taskStatus` und die `externalEffects`
+   bleiben im Ergebnis sichtbar, damit der bestehende Readback-/Recovery-Vertrag den
+   Effekt auflösen kann statt ihn blind erneut auszuführen.
 5. Identitätsvergleich scheitert → überspringen.
 6. sonst → match.
 
