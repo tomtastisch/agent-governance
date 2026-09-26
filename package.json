@@ -43,6 +43,7 @@
     "dist",
     "prebuilds",
     "bundle",
+    "contracts",
     "assets/branding/agent-governance-terminal.png",
     "docs/installer-cli-reference.md",
     "docs/resume-checkpoints.md",

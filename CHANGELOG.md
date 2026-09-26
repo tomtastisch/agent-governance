@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `robots.txt` und deterministisch erzeugter `sitemap.xml`; reproduzierbarer Build
   (`tools/site_build.py`) plus Regressionstests (`tests/test_site.py`) und
   Least-Privilege-Deployment über die offiziellen GitHub-Actions.
+- Cross-Language-Conformance der Governance-Validatoren (#90): Die produktiven
+  TypeScript-Validatoren und die unabhängige Python-Testreferenz teilen sich eine
+  sprachneutrale Contract-Fixture (`contracts/governance-contract.json`) als einzige Quelle
+  der Strukturdefinitionen; ein Conformance-Gate (`tests/test_conformance.py`) erzwingt
+  identische Accept/Reject-Verdicts beider Implementierungen gegen eine gemeinsame
+  Mutation-Batterie.
 
 ### Changed
 
