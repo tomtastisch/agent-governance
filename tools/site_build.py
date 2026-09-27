@@ -10,10 +10,17 @@ mutiert das Repository, den npm-Runtime-Pfad oder externe Dienste.
 
 from __future__ import annotations
 
+import argparse
 import json
+import os
+import re
 import shutil
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
+from urllib.error import URLError
+from urllib.parse import quote
+from urllib.request import HTTPRedirectHandler, build_opener
 
 ROOT = Path(__file__).resolve().parents[1]
 SITE_SRC = ROOT / "site"
@@ -29,6 +36,99 @@ PROJECTED_ASSETS = {
 
 class SiteError(Exception):
     """Deterministischer Build-/Verifikationsfehler der Site-Projektion."""
+
+
+class _NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def read_public_json(url: str) -> dict:
+    """Begrenzter Read-only-Abruf; Redirects erweitern die Quellen nicht."""
+    with build_opener(_NoRedirect()).open(url, timeout=20) as response:
+        raw = response.read(1_000_001)
+    if len(raw) > 1_000_000:
+        raise SiteError("Metrikantwort überschreitet die Größenbegrenzung")
+    value = json.loads(raw)
+    if not isinstance(value, dict):
+        raise SiteError("Metrikantwort ist kein JSON-Objekt")
+    return value
+
+
+def unavailable_metric(package: str) -> dict:
+    return {
+        "schemaVersion": 1, "label": "latest / 7d", "message": "nicht verfügbar",
+        "color": "lightgrey", "isError": True, "package": package,
+        "observedAt": datetime.now(timezone.utc).isoformat(),
+        "period": "last-week",
+    }
+
+
+def npm_metrics(package: str) -> dict:
+    """Projiziert Registry-latest und dessen npm-Zähler der letzten sieben Tage."""
+    if not re.fullmatch(r"(?:@[a-z0-9._-]+/)?[a-z0-9._-]+", package):
+        raise SiteError("Ungültiger npm-Paketname")
+    metric = unavailable_metric(package)
+    encoded = quote(package, safe="@")
+    try:
+        latest = read_public_json(f"https://registry.npmjs.org/{encoded}/latest")
+        version = latest.get("version")
+        if latest.get("name") != package or not isinstance(version, str) or not re.fullmatch(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?", version):
+            return metric
+        metric["observedVersion"] = version
+        counts = read_public_json(f"https://api.npmjs.org/versions/{encoded}/last-week")
+        downloads = counts.get("downloads")
+        if counts.get("package") != package or not isinstance(downloads, dict):
+            return metric
+        count = downloads.get(version)
+        if type(count) is not int or count < 0:
+            return metric
+        metric.update(message=str(count), color="blue", isError=False)
+    except (URLError, OSError, ValueError, SiteError):
+        # Ein fehlender Zähler ist weder null noch die paketweite Gesamtzahl.
+        pass
+    return metric
+
+
+def valid_metric(metric: object, package: str) -> bool:
+    """Nur die erwartete Projektion, höchstens 24 Stunden alt, weiterreichen."""
+    if not isinstance(metric, dict) or set(metric) - {"schemaVersion", "label", "message", "color", "isError", "package", "observedAt", "observedVersion", "period"}:
+        return False
+    if metric.get("package") != package or type(metric.get("schemaVersion")) is not int or metric["schemaVersion"] != 1 or metric.get("label") != "latest / 7d" or metric.get("period") != "last-week":
+        return False
+    try:
+        age = (datetime.now(timezone.utc) - datetime.fromisoformat(metric["observedAt"])).total_seconds()
+    except (KeyError, ValueError, TypeError):
+        return False
+    if not 0 <= age <= 86400:
+        return False
+    if metric.get("isError") is True:
+        return metric.get("message") == "nicht verfügbar" and metric.get("color") == "lightgrey"
+    return (
+        metric.get("isError") is False
+        and metric.get("color") == "blue"
+        and isinstance(metric.get("observedVersion"), str)
+        and isinstance(metric.get("message"), str)
+        and re.fullmatch(r"[0-9]+", metric["message"]) is not None
+    )
+
+
+def should_refresh_npm(event: str, attempt: str) -> bool:
+    return event == "schedule" and attempt == "1"
+
+
+def collect_npm_metric(refresh: bool) -> dict:
+    values = canonical_values()
+    package = values["PACKAGE_NAME"]
+    if refresh:
+        return npm_metrics(package)
+    try:
+        metric = read_public_json(f"{values['PUBLIC_URL']}/metrics/npm-latest-7d.json")
+        if valid_metric(metric, package):
+            return metric
+    except (URLError, OSError, ValueError, SiteError):
+        pass
+    return unavailable_metric(package)
 
 
 def _assert_web_safe(value: str, label: str) -> None:
@@ -125,7 +225,7 @@ def sitemap_xml(page_subpaths: list[str], values: dict[str, str]) -> str:
     )
 
 
-def build(root: Path = ROOT, out: Path = DEFAULT_OUT) -> None:
+def build(root: Path = ROOT, out: Path = DEFAULT_OUT, npm_metric: Path | None = None) -> None:
     """Baut die statische Site deterministisch in `out` (Standard: `_site/`)."""
     if not SITE_SRC.is_dir():
         raise SiteError(f"site/-Verzeichnis fehlt: {SITE_SRC}")
@@ -159,6 +259,14 @@ def build(root: Path = ROOT, out: Path = DEFAULT_OUT) -> None:
 
     (out / "sitemap.xml").write_text(sitemap_xml(page_subpaths, values), encoding="utf-8")
 
+    if npm_metric is not None:
+        metric = json.loads(npm_metric.read_text(encoding="utf-8"))
+        if not valid_metric(metric, values["PACKAGE_NAME"]):
+            raise SiteError("Ungültige npm-Metrikprojektion")
+        target = out / "metrics/npm-latest-7d.json"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(metric, ensure_ascii=False) + "\n", encoding="utf-8")
+
     for subpath in page_subpaths:
         expected = out / "index.html" if not subpath else out / subpath / "index.html"
         if not expected.is_file():
@@ -166,14 +274,21 @@ def build(root: Path = ROOT, out: Path = DEFAULT_OUT) -> None:
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 2 or argv[1] != "build":
-        print("usage: site_build.py build", file=sys.stderr)
-        return 2
+    parser = argparse.ArgumentParser()
+    parser.add_argument("mode", choices=("build", "npm-metrics"))
+    parser.add_argument("--npm-metric", type=Path)
+    parser.add_argument("--output", type=Path, default=Path("npm-latest-7d.json"))
+    args = parser.parse_args(argv[1:])
     try:
-        build()
-        print("OK: site projection built from authorities")
+        if args.mode == "npm-metrics":
+            metric = collect_npm_metric(should_refresh_npm(os.environ.get("GITHUB_EVENT_NAME", ""), os.environ.get("GITHUB_RUN_ATTEMPT", "")))
+            args.output.write_text(json.dumps(metric, ensure_ascii=False) + "\n", encoding="utf-8")
+            print("OK: npm metric projection prepared")
+        else:
+            build(npm_metric=args.npm_metric)
+            print("OK: site projection built from authorities")
         return 0
-    except SiteError as error:
+    except (SiteError, OSError, ValueError) as error:
         print(f"FAIL: {error}", file=sys.stderr)
         return 1
 

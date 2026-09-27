@@ -37,8 +37,12 @@ npx agent-governance init
 ```
 
 <!-- #region downloads -->
-[![downloads / 7d](https://img.shields.io/npm/dw/@tomtastisch/agent-governance?style=flat-square)](https://www.npmjs.com/package/@tomtastisch/agent-governance) [![latest / 7d](https://img.shields.io/npm/dw/@tomtastisch/agent-governance?style=flat-square)](https://www.npmjs.com/package/@tomtastisch/agent-governance)
+[![downloads / 7d](https://img.shields.io/npm/dw/@tomtastisch/agent-governance?style=flat-square&label=downloads%20%2F%207d)](https://www.npmjs.com/package/@tomtastisch/agent-governance) [![latest / 7d](https://img.shields.io/endpoint?url=https%3A%2F%2Ftomtastisch.github.io%2Fagent-governance%2Fmetrics%2Fnpm-latest-7d.json&style=flat-square)](https://www.npmjs.com/package/@tomtastisch/agent-governance)
 <!-- #endregion -->
+
+`latest / 7d` zeigt den täglich um 19:17 UTC aus npm aufgelösten Versionsstand.
+Fehlende oder beim Site-Build mehr als 24 Stunden alte Messdaten erscheinen als
+„nicht verfügbar“. Downloadzahlen sind keine Nutzer- oder Installationszahlen.
 
 Der Wizard unterstützt die Zielauswahl durch passive, nicht mutierende Discovery und führt erst
 nach bewusster Bestätigung Install und Verify aus. Für Advanced-Automation, CI und manuelle
