@@ -25,6 +25,7 @@ from urllib.request import HTTPRedirectHandler, build_opener
 ROOT = Path(__file__).resolve().parents[1]
 SITE_SRC = ROOT / "site"
 DEFAULT_OUT = ROOT / "_site"
+NPM_VERSION = re.compile(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?")
 
 # Site-eigene Assets (CSS) liegen unter site/; Branding-/Diagramm-Assets werden
 # aus den bestehenden Repository-Pfaden projiziert und beim Build kopiert.
@@ -73,7 +74,7 @@ def npm_metrics(package: str) -> dict:
     try:
         latest = read_public_json(f"https://registry.npmjs.org/{encoded}/latest")
         version = latest.get("version")
-        if latest.get("name") != package or not isinstance(version, str) or not re.fullmatch(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?", version):
+        if latest.get("name") != package or not isinstance(version, str) or not NPM_VERSION.fullmatch(version):
             return metric
         metric["observedVersion"] = version
         counts = read_public_json(f"https://api.npmjs.org/versions/{encoded}/last-week")
@@ -108,6 +109,7 @@ def valid_metric(metric: object, package: str) -> bool:
         metric.get("isError") is False
         and metric.get("color") == "blue"
         and isinstance(metric.get("observedVersion"), str)
+        and NPM_VERSION.fullmatch(metric["observedVersion"]) is not None
         and isinstance(metric.get("message"), str)
         and re.fullmatch(r"[0-9]+", metric["message"]) is not None
     )
@@ -262,7 +264,7 @@ def build(root: Path = ROOT, out: Path = DEFAULT_OUT, npm_metric: Path | None = 
     if npm_metric is not None:
         metric = json.loads(npm_metric.read_text(encoding="utf-8"))
         if not valid_metric(metric, values["PACKAGE_NAME"]):
-            raise SiteError("Ungültige npm-Metrikprojektion")
+            metric = unavailable_metric(values["PACKAGE_NAME"])
         target = out / "metrics/npm-latest-7d.json"
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(metric, ensure_ascii=False) + "\n", encoding="utf-8")

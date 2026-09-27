@@ -108,6 +108,24 @@ class NpmMetricsTest(unittest.TestCase):
                 with mock.patch.object(site_build, "read_public_json", return_value={**metric, **override}):
                     self.assertTrue(site_build.collect_npm_metric(refresh=False)["isError"])
 
+    def test_invalid_observed_version_is_not_a_success_snapshot(self):
+        metric, _ = self.metric()
+        for version in ("", "invalid-version", "https://other.example", 123):
+            with self.subTest(version=version):
+                self.assertFalse(site_build.valid_metric({**metric, "observedVersion": version}, self.package))
+
+    def test_snapshot_expiring_before_build_becomes_unavailable(self):
+        metric, _ = self.metric()
+        metric["observedAt"] = "2000-01-01T00:00:00+00:00"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "metric.json"
+            source.write_text(json.dumps(metric))
+            site_build.build(out=root / "site", npm_metric=source)
+            projected = json.loads((root / "site/metrics/npm-latest-7d.json").read_text())
+            self.assertTrue(projected["isError"])
+            self.assertEqual(projected["message"], "nicht verfügbar")
+
     def test_only_first_scheduled_attempt_refreshes_npm(self):
         for event, attempt, expected in (("schedule", "1", True), ("schedule", "2", False), ("push", "1", False), ("workflow_dispatch", "1", False)):
             with self.subTest(event=event, attempt=attempt):
