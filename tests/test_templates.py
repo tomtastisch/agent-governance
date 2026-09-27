@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 import shutil
 import sys
@@ -17,36 +18,9 @@ GOVERNANCE_ROOT = ROOT / "bundle" / "agent-governance"
 TEMPLATES_ROOT = GOVERNANCE_ROOT / "templates"
 VALIDATOR = ROOT / "tests" / "support" / "catalog_validator.py"
 
-TEMPLATE_FIELDS = {"path", "category", "format"}
-CATEGORIES = {
-    "git",
-    "delivery",
-    "review",
-    "context",
-    "communication",
-    "external_effects",
-}
-TEMPLATE_DIRS = {
-    "git",
-    "delivery",
-    "review",
-    "context",
-    "communication",
-    "external-effects",
-}
-EXPECTED_TEMPLATES = {
-    "git_commit": ("git/commit.md", "git"),
-    "git_branch": ("git/branch.md", "git"),
-    "delivery_push_pr_checkpoint": ("delivery/push-pr-checkpoint.md", "delivery"),
-    "delivery_pull_request": ("delivery/pull-request.md", "delivery"),
-    "delivery_release_checkpoint": ("delivery/release-checkpoint.md", "delivery"),
-    "review_finding": ("review/finding.md", "review"),
-    "context_handoff": ("context/handoff.md", "context"),
-    "communication_status": ("communication/status.md", "communication"),
-    "communication_tool_error_blocker": ("communication/tool-error-blocker.md", "communication"),
-    "communication_completion": ("communication/completion.md", "communication"),
-    "external_effects_approval_checkpoint": ("external-effects/approval-checkpoint.md", "external_effects"),
-}
+EXPECTED_TEMPLATES = json.loads((ROOT / "tests/contracts/templates.json").read_text(encoding="utf-8"))
+CATEGORIES = {entry["category"] for entry in EXPECTED_TEMPLATES.values()}
+TEMPLATE_DIRS = {str(Path(entry["path"]).parent) for entry in EXPECTED_TEMPLATES.values()}
 CONTRACT_SECTIONS = (
     "## Verantwortung",
     "## Pflichtfelder",
@@ -77,13 +51,10 @@ class TemplateRegistryContract(unittest.TestCase):
         self.assertEqual(set(registry), {"schema_version", "templates"})
         self.assertEqual(registry["schema_version"], 1)
         templates = registry["templates"]
-        self.assertEqual(set(templates), set(EXPECTED_TEMPLATES))
-        for template_id, (path, category) in EXPECTED_TEMPLATES.items():
-            entry = templates[template_id]
-            self.assertEqual(set(entry), TEMPLATE_FIELDS, template_id)
-            self.assertEqual(entry["path"], path, template_id)
-            self.assertEqual(entry["category"], category, template_id)
-            self.assertEqual(entry["format"], "markdown", template_id)
+        self.assertEqual(templates, EXPECTED_TEMPLATES)
+        # Exercise the independent reference validator, not only the raw TOML reader.
+        contract = load_validator(self).load_catalog_contract(GOVERNANCE_ROOT)
+        self.assertEqual(set(contract.template_paths), {TEMPLATES_ROOT / entry["path"] for entry in EXPECTED_TEMPLATES.values()})
 
     def test_every_registered_template_file_exists(self):
         registry = load_registry()

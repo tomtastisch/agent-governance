@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { templatesOracle } from "./catalog-oracles.ts";
 import { loadTemplateIndex, parseTemplatesManifestText, TEMPLATE_CATEGORIES } from "../../src/templates-catalog.ts";
 
 const VALID = `schema_version = 1
@@ -18,20 +19,6 @@ category = "git"
 format = "markdown"
 `;
 
-const CANONICAL_IDS = [
-  "git_commit",
-  "git_branch",
-  "delivery_push_pr_checkpoint",
-  "delivery_pull_request",
-  "delivery_release_checkpoint",
-  "review_finding",
-  "context_handoff",
-  "communication_status",
-  "communication_tool_error_blocker",
-  "communication_completion",
-  "external_effects_approval_checkpoint",
-];
-
 test("templates manifest accepts closed entries", () => {
   const index = parseTemplatesManifestText(VALID);
   assert.equal(index.schemaVersion, 1);
@@ -44,7 +31,7 @@ test("templates manifest accepts closed entries", () => {
 });
 
 test("template categories form a closed ownership model", () => {
-  assert.deepEqual([...TEMPLATE_CATEGORIES].sort(), ["communication", "context", "delivery", "external_effects", "git", "review"]);
+  assert.deepEqual([...TEMPLATE_CATEGORIES].sort(), [...new Set(Object.values(templatesOracle).map(entry => entry.category))].sort());
 });
 
 const rejections: ReadonlyArray<[string, string, RegExp]> = [
@@ -66,8 +53,11 @@ for (const [label, text, pattern] of rejections) {
 
 test("the canonical template registry registers exactly the real generic templates", () => {
   const { index, templateFile } = loadTemplateIndex();
-  assert.deepEqual(Object.keys(index.templates).sort(), [...CANONICAL_IDS].sort());
-  for (const id of CANONICAL_IDS) {
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(index.templates).map(([id, { path, category, format }]) => [id, { path, category, format }])),
+    templatesOracle,
+  );
+  for (const id of Object.keys(templatesOracle)) {
     const resolved = templateFile(id);
     assert.match(resolved, /templates\/.+\.md$/);
   }
