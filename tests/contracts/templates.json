@@ -1,0 +1,13 @@
+{
+  "git_commit": {"path": "git/commit.md", "category": "git", "format": "markdown"},
+  "git_branch": {"path": "git/branch.md", "category": "git", "format": "markdown"},
+  "delivery_push_pr_checkpoint": {"path": "delivery/push-pr-checkpoint.md", "category": "delivery", "format": "markdown"},
+  "delivery_pull_request": {"path": "delivery/pull-request.md", "category": "delivery", "format": "markdown"},
+  "delivery_release_checkpoint": {"path": "delivery/release-checkpoint.md", "category": "delivery", "format": "markdown"},
+  "review_finding": {"path": "review/finding.md", "category": "review", "format": "markdown"},
+  "context_handoff": {"path": "context/handoff.md", "category": "context", "format": "markdown"},
+  "communication_status": {"path": "communication/status.md", "category": "communication", "format": "markdown"},
+  "communication_tool_error_blocker": {"path": "communication/tool-error-blocker.md", "category": "communication", "format": "markdown"},
+  "communication_completion": {"path": "communication/completion.md", "category": "communication", "format": "markdown"},
+  "external_effects_approval_checkpoint": {"path": "external-effects/approval-checkpoint.md", "category": "external_effects", "format": "markdown"}
+}
