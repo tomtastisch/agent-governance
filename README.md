@@ -36,6 +36,10 @@ npm i @tomtastisch/agent-governance
 npx agent-governance init
 ```
 
+<!-- #region downloads -->
+[![downloads / 7d](https://img.shields.io/npm/dw/@tomtastisch/agent-governance?style=flat-square)](https://www.npmjs.com/package/@tomtastisch/agent-governance) [![latest / 7d](https://img.shields.io/npm/dw/@tomtastisch/agent-governance?style=flat-square)](https://www.npmjs.com/package/@tomtastisch/agent-governance)
+<!-- #endregion -->
+
 Der Wizard unterstützt die Zielauswahl durch passive, nicht mutierende Discovery und führt erst
 nach bewusster Bestätigung Install und Verify aus. Für Advanced-Automation, CI und manuelle
 Diagnose erklären die
