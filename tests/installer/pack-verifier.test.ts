@@ -287,3 +287,17 @@ test("die native Plattformmatrix bleibt verpflichtend", async (t) => {
   assert.notEqual(unsupported.status, 0);
   assert.match(unsupported.stderr, /unexpected native tarball path/);
 });
+
+for (const field of ["bin", "exports"] as const) {
+  test(`deklarierte ${field}-Ziele können private lokale Regeln nicht veröffentlichen`, async (t) => {
+    const { root, paths } = await allowlistedFixture(t);
+    const privatePath = "bundle/agent-governance/local/user-rules.md";
+    await addFixturePath(root, paths, privatePath);
+    const metadata = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
+    metadata[field].extra = `./${privatePath}`;
+    await writeFile(join(root, "package.json"), JSON.stringify(metadata));
+    const result = verify(root, report(paths));
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /unlisted bundle target/);
+  });
+}

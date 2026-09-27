@@ -67,6 +67,9 @@ for (const value of metadata.files) {
 async function includeTargets(value) {
   if (typeof value === "string") {
     const path = packagePath(value, true);
+    if (path.startsWith("bundle/") && !release.inventory.has(path)) {
+      throw new Error(`unlisted bundle target: ${path}`);
+    }
     if (!(await safeEntry(path)).isFile()) throw new Error(`package target must be a file: ${path}`);
     requiredPaths.add(path);
   } else if (value !== null && typeof value === "object") {
