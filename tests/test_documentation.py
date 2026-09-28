@@ -742,12 +742,15 @@ class ReleaseMetadataContract(unittest.TestCase):
         self.assertIn("https://buymeacoffee.com/tomtastisch", README)
         self.assertIn(PACKAGE["license"], README)
         current = CHANGELOG.split(f"## [{VERSION}]", 1)[1].split("\n## [", 1)[0]
+        for term in ("README-Download-Badges", "Registry-`latest`", "#138"):
+            self.assertIn(term, current)
+        conformance_release = CHANGELOG.split("## [1.7.3]", 1)[1].split("\n## [", 1)[0]
         for term in (
             "Cross-Language-Conformance",
             "Contract-Fixture",
             "#90; SemVer patch",
         ):
-            self.assertIn(term, current)
+            self.assertIn(term, conformance_release)
         self.assertIn("**Breaking changes:** none", current)
         recovery_patch = CHANGELOG.split("## [0.4.1]", 1)[1].split("\n## [", 1)[0]
         self.assertIn("**Breaking changes:** none", recovery_patch)
