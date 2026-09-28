@@ -6,11 +6,8 @@
 
 Agent Governance verbindet harness-neutrale Regeln mit sicherer Installation und deterministischen Verträgen für Resume, Work Items und Sources of Truth.
 
-[![npm](https://img.shields.io/npm/v/@tomtastisch/agent-governance?style=flat-square)](https://www.npmjs.com/package/@tomtastisch/agent-governance) [![CI](https://github.com/tomtastisch/agent-governance/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/tomtastisch/agent-governance/actions/workflows/ci.yml) [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-0D9BF2?style=flat-square)](https://github.com/tomtastisch/agent-governance/blob/main/LICENSE)
+[![npm](https://img.shields.io/npm/v/@tomtastisch/agent-governance?style=flat-square)](https://www.npmjs.com/package/@tomtastisch/agent-governance) [![CI](https://github.com/tomtastisch/agent-governance/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/tomtastisch/agent-governance/actions/workflows/ci.yml) [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-0D9BF2?style=flat-square)](https://github.com/tomtastisch/agent-governance/blob/main/LICENSE)[![downloads / 7d](https://img.shields.io/npm/dw/@tomtastisch/agent-governance?style=flat-square&label=downloads%20%2F%207d)](https://www.npmjs.com/package/@tomtastisch/agent-governance) 
 
-<!-- #region downloads -->
-[![downloads / 7d](https://img.shields.io/npm/dw/@tomtastisch/agent-governance?style=flat-square&label=downloads%20%2F%207d)](https://www.npmjs.com/package/@tomtastisch/agent-governance) 
-<!-- #endregion -->
 
 ## Was ist Agent Governance?
 
