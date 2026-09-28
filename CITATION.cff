@@ -29,6 +29,5 @@ keywords:
   - governance
   - runtime
 license: Apache-2.0
-commit: 931f8b26a9e5cbd4cf370107d5638a1f9c8f7681
-version: 1.7.4
+version: 1.7.5
 date-released: '2026-09-28'

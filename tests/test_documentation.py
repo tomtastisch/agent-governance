@@ -742,8 +742,11 @@ class ReleaseMetadataContract(unittest.TestCase):
         self.assertIn("https://buymeacoffee.com/tomtastisch", README)
         self.assertIn(PACKAGE["license"], README)
         current = CHANGELOG.split(f"## [{VERSION}]", 1)[1].split("\n## [", 1)[0]
-        for term in ("README-Download-Badges", "Registry-`latest`", "#138"):
+        for term in ("CITATION.cff", "Citation-Sync", "CHANGELOG", "`commit`", "Zenodo"):
             self.assertIn(term, current)
+        badges_release = CHANGELOG.split("## [1.7.4]", 1)[1].split("\n## [", 1)[0]
+        for term in ("README-Download-Badges", "Registry-`latest`", "#138"):
+            self.assertIn(term, badges_release)
         conformance_release = CHANGELOG.split("## [1.7.3]", 1)[1].split("\n## [", 1)[0]
         for term in (
             "Cross-Language-Conformance",

@@ -331,8 +331,11 @@ class ReleaseMetadataContract(unittest.TestCase):
         changelog = read(ROOT / "CHANGELOG.md")
         version = read(ROOT / "VERSION").strip()
         current = changelog.split(f"## [{version}]", 1)[1].split("\n## [", 1)[0]
-        for term in ("README-Download-Badges", "Registry-`latest`", "#138"):
+        for term in ("CITATION.cff", "Citation-Sync", "CHANGELOG", "`commit`", "Zenodo"):
             self.assertIn(term, current)
+        badges_release = changelog.split("## [1.7.4]", 1)[1].split("\n## [", 1)[0]
+        for term in ("README-Download-Badges", "Registry-`latest`", "#138"):
+            self.assertIn(term, badges_release)
         conformance_release = changelog.split("## [1.7.3]", 1)[1].split("\n## [", 1)[0]
         for term in (
             "Cross-Language-Conformance",

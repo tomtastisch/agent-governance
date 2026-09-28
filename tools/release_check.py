@@ -376,8 +376,59 @@ def _check_version_release_metadata(root, r):
     if not _exists("CHANGELOG.md", root):
         r.add_error("CHANGELOG.md fehlt — aktueller CHANGELOG erforderlich")
     else:
-        _check_changelog_sections(root, version, r)
+        release_date = _check_changelog_sections(root, version, r)
+        _check_citation(root, version, release_date, r)
     return version
+
+
+def citation_fields(source):
+    """Liest die geschlossene CFF-Root-Grammatik; kein allgemeiner YAML-Parser.
+
+    Root-Schlüssel sind unquotiert und eindeutig. Releasefelder sind einzeilige
+    Skalare; Aliase, Merge-Keys und zusätzliche YAML-Dokumente sind unzulässig.
+    Andere Werte und eingerückte Metadaten bleiben unverändert.
+    """
+    fields = {}
+    current = None
+    for line in source.splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if line[0].isspace():
+            if current is None or current in {"version", "date-released", "commit"}:
+                raise ValueError("CITATION.cff: unerlaubte Fortsetzung eines Releasefelds")
+            continue
+        match = re.fullmatch(r"([a-z][a-z0-9-]*):(?:[ \t]+(.*))?", line)
+        if not match or match[1] in fields:
+            raise ValueError("CITATION.cff: ungültiger oder doppelter Root-Schlüssel")
+        current = match[1]
+        fields[current] = match[2] or ""
+    for key in ("version", "date-released", "commit"):
+        if key not in fields:
+            if key == "commit":
+                continue
+            raise ValueError(f"CITATION.cff: {key} fehlt")
+        scalar = re.fullmatch(r"(?:'([^'\r\n]*)'|\"([^\"\\\r\n]*)\"|([A-Za-z0-9.+-]+))(?:[ \t]+#.*)?[ \t]*", fields[key])
+        if scalar is None:
+            raise ValueError(f"CITATION.cff: {key} benötigt einen einfachen einzeiligen Skalar")
+        fields[key] = next(value for value in scalar.groups() if value is not None)
+    return fields
+
+
+def _check_citation(root, version, release_date, r):
+    path = os.path.join(root, "CITATION.cff")
+    try:
+        if not stat.S_ISREG(os.lstat(path).st_mode):
+            raise ValueError("CITATION.cff muss eine reguläre Nicht-Symlink-Datei sein")
+        fields = citation_fields(_read("CITATION.cff", root))
+    except (OSError, UnicodeError, ValueError) as error:
+        r.add_error(f"CITATION.cff: {error}")
+        return
+    if fields["version"] != version:
+        r.add_error(f"CITATION.cff.version weicht von VERSION ({version}) ab")
+    if release_date is not None and fields["date-released"] != release_date:
+        r.add_error(f"CITATION.cff.date-released weicht vom CHANGELOG-Datum ({release_date}) ab")
+    if "commit" in fields:
+        r.add_error("CITATION.cff darf kein commit-Feld enthalten")
 
 
 def _check_version_projections(root, version, r):
@@ -439,9 +490,10 @@ def _check_no_competing_source(root, r):
                 r.add_error(f"{rel}: parallele Versionsdatei neben VERSION")
 
 
-def _check_changelog_sections(root, version, r):
+def _check_changelog_sections(root, version, r, changelog=None):
     """Abschnittsweise CHANGELOG-Validierung (Greptile-Finding #2)."""
-    changelog = _read("CHANGELOG.md", root)
+    if changelog is None:
+        changelog = _read("CHANGELOG.md", root)
     sections = _split_changelog_sections(changelog)
 
     if not sections:
@@ -554,6 +606,8 @@ def _check_changelog_sections(root, version, r):
         r.add_error(f"[{version}] fehlen erforderliche Kategorien: {sorted(missing)}")
     if current_meta["marker"] is None:
         r.add_error(f"[{version}] fehlt der Marker '**Breaking changes:** none' oder '**Breaking changes:** present'")
+
+    return current_date if r.ok else None
 
 
 def _semver_cmp(a, b):

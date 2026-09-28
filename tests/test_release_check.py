@@ -78,6 +78,14 @@ def _write_documentation_tree(root, readme=None):
         os.path.join(root, "package-lock.json"),
         json.dumps({"version": version, "packages": {"": {"version": version}}}),
     )
+    release_date = "2026-07-27"
+    changelog_path = os.path.join(root, "CHANGELOG.md")
+    if os.path.exists(changelog_path):
+        with open(changelog_path, encoding="utf-8") as handle:
+            match = re.search(rf"^## \[{re.escape(version)}\] — (\d{{4}}-\d{{2}}-\d{{2}})$", handle.read(), re.MULTILINE)
+            if match:
+                release_date = match[1]
+    _write(os.path.join(root, "CITATION.cff"), f"cff-version: 1.2.0\nversion: {version}\ndate-released: '{release_date}'\n")
     for path in _CANONICAL_DOCUMENT_PATHS:
         if path != "CHANGELOG.md":
             _write(os.path.join(root, path), f"fixture for {path}\n")
@@ -363,7 +371,6 @@ class TreeChangelogSections(unittest.TestCase):
 
     def test_semver_order_descending_is_ok(self):
         _write(os.path.join(self.root, "VERSION"), "0.2.0\n")
-        _write_documentation_tree(self.root)
         self._cl(
             "## [Unreleased]\n### Added\n- item\n### Changed\n- Keine.\n"
             "### Fixed\n- Keine.\n### Removed\n- Keine.\n\n**Breaking changes:** none\n\n"
@@ -371,6 +378,7 @@ class TreeChangelogSections(unittest.TestCase):
             "### Fixed\n- Keine.\n### Removed\n- Keine.\n\n**Breaking changes:** none\n\n"
             "## [0.1.0] — 2026-07-27\n### Added\n- older\n\n**Breaking changes:** none\n"
         )
+        _write_documentation_tree(self.root)
         r = check_tree(root=self.root)
         self.assertTrue(r.ok, f"Erwartet OK, Fehler: {r.errors}")
 
@@ -893,10 +901,11 @@ class TagConsistencyBase(unittest.TestCase):
         self._git("config", "user.email", "test@test")
         self._git("config", "user.name", "Test")
         self._write_version_metadata(version)
-        self._git("add", "VERSION", "package.json", "package-lock.json", "CHANGELOG.md")
+        self._git("add", "VERSION", "package.json", "package-lock.json", "CHANGELOG.md", "CITATION.cff")
         self._git("-c", "commit.gpgsign=false", "commit", "-m", "init")
 
     def _write_version_metadata(self, version):
+        _write(os.path.join(self.root, "CITATION.cff"), f"cff-version: 1.2.0\nversion: {version}\ndate-released: '2026-08-25'\n")
         _write(os.path.join(self.root, "VERSION"), f"{version}\n")
         _write(os.path.join(self.root, "package.json"), json.dumps({"version": version}))
         _write(
@@ -954,7 +963,7 @@ class TagLightweightVsAnnotated(TagConsistencyBase):
         self._init_git("0.1.0")
         head = self._git("rev-parse", "HEAD")
         self._write_version_metadata("0.2.0")
-        self._git("add", "VERSION", "package.json", "package-lock.json", "CHANGELOG.md")
+        self._git("add", "VERSION", "package.json", "package-lock.json", "CHANGELOG.md", "CITATION.cff")
         self._git("-c", "commit.gpgsign=false", "commit", "-m", "bump")
         self._git("-c", "tag.gpgsign=false", "tag", "-m", "release", "v0.2.0")
         r = check_tag(root=self.root, tag_ref="v0.2.0", expected_commit=head, verifier=self.mock_verifier)
@@ -986,7 +995,7 @@ class TagImmutableCommitBinding(TagConsistencyBase):
         # Divergenter/Orphan-Commit als HEAD, von dem der Tag-Commit nicht erreichbar ist
         self._git("checkout", "--orphan", "orphan")
         self._write_version_metadata("0.1.0")
-        self._git("add", "VERSION", "package.json", "package-lock.json", "CHANGELOG.md")
+        self._git("add", "VERSION", "package.json", "package-lock.json", "CHANGELOG.md", "CITATION.cff")
         self._git("-c", "commit.gpgsign=false", "commit", "-m", "orphan")
         r = check_tag(root=self.root, verifier=self.mock_verifier)
         self.assertFalse(r.ok)
@@ -998,7 +1007,7 @@ class TagImmutableCommitBinding(TagConsistencyBase):
         self._tag(self.root, "v0.2.0")
         # main rückt auf 0.2.0 vor; der Tag bleibt auf dem alten Vorfahren
         self._write_version_metadata("0.2.0")
-        self._git("add", "VERSION", "package.json", "package-lock.json", "CHANGELOG.md")
+        self._git("add", "VERSION", "package.json", "package-lock.json", "CHANGELOG.md", "CITATION.cff")
         self._git("-c", "commit.gpgsign=false", "commit", "-m", "bump")
         r = check_tag(root=self.root, tag_ref="v0.2.0", verifier=self.mock_verifier)
         self.assertFalse(r.ok)
@@ -1013,7 +1022,7 @@ class TagImmutableCommitBinding(TagConsistencyBase):
         self._tag(self.root, "v0.2.0")
         # main konsistent auf 0.2.0
         self._write_version_metadata("0.2.0")
-        self._git("add", "VERSION", "package.json", "package-lock.json", "CHANGELOG.md")
+        self._git("add", "VERSION", "package.json", "package-lock.json", "CHANGELOG.md", "CITATION.cff")
         self._git("-c", "commit.gpgsign=false", "commit", "-m", "consistent main")
         r = check_tag(root=self.root, tag_ref="v0.2.0", verifier=self.mock_verifier)
         self.assertFalse(r.ok)
