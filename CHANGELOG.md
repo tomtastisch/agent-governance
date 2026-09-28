@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Keine.
+
+### Changed
+
+- Keine.
+
+### Fixed
+
+- Keine.
+
+### Removed
+
+- Keine.
+
+**Breaking changes:** none
+
+## [1.7.4] — 2026-09-28
+
+### Added
+
 - Dynamische README-Download-Badges für die letzten sieben Tage: paketweite Downloads
   über npm/Shields und die täglich aus Registry-`latest` abgeleitete Versionskennzahl
   als Projektion im bestehenden Pages-Build (#138). Fehlende oder veraltete Daten
