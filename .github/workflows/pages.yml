@@ -8,6 +8,8 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  schedule:
+    - cron: "37 7 * * *"
 
 permissions:
   contents: read
@@ -29,10 +31,14 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.11"
+      # Nur der erste tägliche Schedule löst npm auf. Push, Dispatch und
+      # Wiederholungen lesen ausschließlich den veröffentlichten Pages-Snapshot.
+      - name: Prepare daily npm metric projection
+        run: python3 tools/site_build.py npm-metrics --output "$RUNNER_TEMP/npm-latest-7d.json"
       - name: Build and verify the site projection
         run: |
-          python3 tools/site_build.py build
-          python3 -m unittest tests.test_site -v
+          python3 tools/site_build.py build --npm-metric "$RUNNER_TEMP/npm-latest-7d.json"
+          python3 -m unittest tests.test_site tests.test_npm_metrics -v
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:

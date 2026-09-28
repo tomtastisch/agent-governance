@@ -9,7 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Keine.
+- Dynamische README-Download-Badges für die letzten sieben Tage: paketweite Downloads
+  über npm/Shields und die täglich aus Registry-`latest` abgeleitete Versionskennzahl
+  als Projektion im bestehenden Pages-Build (#138). Fehlende oder veraltete Daten
+  werden ausdrücklich als nicht verfügbar dargestellt; keine Nutzerzählung.
 
 ### Changed
 
