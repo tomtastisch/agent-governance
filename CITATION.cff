@@ -1,0 +1,34 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: Agent Governance
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Tom
+    family-names: Werner
+    email: tomtastisch@icloud.com
+    orcid: 'https://orcid.org/0009-0004-3175-6940'
+repository-code: 'https://github.com/tomtastisch/agent-governance'
+url: 'https://tomtastisch.github.io/agent-governance/'
+abstract: >-
+  Agent Governance verbindet harness-neutrale Regeln mit
+  sicherer Installation und deterministischen Verträgen für
+  Resume, Work Items und Sources of Truth.
+keywords:
+  - agent-governance
+  - llm
+  - security
+  - ai-agents
+  - ai-security
+  - coding-agents
+  - policy-as-code
+  - governance
+  - runtime
+license: Apache-2.0
+commit: 931f8b26a9e5cbd4cf370107d5638a1f9c8f7681
+version: 1.7.4
+date-released: '2026-09-28'
