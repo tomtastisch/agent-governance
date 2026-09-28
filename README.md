@@ -8,6 +8,10 @@ Agent Governance verbindet harness-neutrale Regeln mit sicherer Installation und
 
 [![npm](https://img.shields.io/npm/v/@tomtastisch/agent-governance?style=flat-square)](https://www.npmjs.com/package/@tomtastisch/agent-governance) [![CI](https://github.com/tomtastisch/agent-governance/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/tomtastisch/agent-governance/actions/workflows/ci.yml) [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-0D9BF2?style=flat-square)](https://github.com/tomtastisch/agent-governance/blob/main/LICENSE)
 
+<!-- #region downloads -->
+[![downloads / 7d](https://img.shields.io/npm/dw/@tomtastisch/agent-governance?style=flat-square&label=downloads%20%2F%207d)](https://www.npmjs.com/package/@tomtastisch/agent-governance) 
+<!-- #endregion -->
+
 ## Was ist Agent Governance?
 
 Das Projekt liefert ein geschlossenes, versioniertes Governance-Bundle, einen providerneutralen,
@@ -77,14 +81,6 @@ wird erneut klassifiziert und der erforderliche Regelbestand geladen.
 - [Normative Governancequelle](https://github.com/tomtastisch/agent-governance/blob/main/bundle/GOVERNANCE.md)
 
 ## Support und Lizenz
-
-<!-- #region downloads -->
-[![downloads / 7d](https://img.shields.io/npm/dw/@tomtastisch/agent-governance?style=flat-square&label=downloads%20%2F%207d)](https://www.npmjs.com/package/@tomtastisch/agent-governance) [![latest / 7d](https://img.shields.io/endpoint?url=https%3A%2F%2Ftomtastisch.github.io%2Fagent-governance%2Fmetrics%2Fnpm-latest-7d.json&style=flat-square)](https://www.npmjs.com/package/@tomtastisch/agent-governance)
-<!-- #endregion -->
-
-`latest / 7d` zeigt den täglich um 07:37 UTC aus npm aufgelösten Versionsstand.
-Fehlende oder beim Site-Build mehr als 24 Stunden alte Messdaten erscheinen als
-„nicht verfügbar“. Downloadzahlen sind keine Nutzer- oder Installationszahlen.
 
 [![Buy Me a Coffee](https://img.buymeacoffee.com/button-api/?text=Buy%20me%20a%20coffee&emoji=&slug=tomtastisch&button_colour=FFDD00&font_colour=000000&font_family=Cookie&outline_colour=000000&coffee_colour=ffffff)](https://buymeacoffee.com/tomtastisch)
 
