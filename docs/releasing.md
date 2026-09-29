@@ -19,12 +19,17 @@ python3 tools/release_manifest.py check
 Der Citation-Sync schreibt nur `CITATION.cff.version` und `date-released` und entfernt
 `commit`. Andere CFF-Inhalte bleiben bytegleich. Eine erneute Ausführung ist
 idempotent. Die CFF verwendet eindeutige, unquotierte Root-Schlüssel und einfache,
-einzeilige Releasewerte; mehrdeutige Formen, fehlende Felder oder Symlink-Eingaben
-werden abgewiesen. Es gibt keine Datumsoption und keinen Zeitstempel aus der Uhr.
+einzeilige Releasewerte. Die unterstützte YAML-Teilmenge umfasst einfache
+Root-Skalare, eingerückte Textblöcke, Autorenlisten aus einfachen Mappings und
+Keyword-Listen. Andere Strukturen, mehrdeutige Formen, fehlende Releasefelder,
+Steuerzeichen oder Symlink-Eingaben werden abgewiesen. LF-, CRLF- und CR-Zeilenenden
+bleiben erhalten. Das ist eine Layoutprüfung, keine vollständige CFF-Schemaprüfung. Es gibt keine Datumsoption und keinen Zeitstempel aus der Uhr.
 
 Das bestehende Release-Metadaten-Gate prüft die CFF-Projektionen unabhängig vom
 Schreibvorgang. Fehlender Sync, Versions-/Datumsdrift und ein `commit`-Feld blockieren
 die Tree-Prüfung sowie die Metadatenprüfung vor Tag/Release/Registry-Aktionen.
+Tag- und Release-Checks lesen CFF und CHANGELOG zusätzlich aus regulären Blobs des
+aufgelösten Tag-Commits; eine spätere Korrektur auf `main` verdeckt keinen Tag-Drift.
 
 Anschließend gelten unverändert die Repository-Gates und unabhängigen Reviews,
 der geschützte PR-/Merge-Weg, der signierte `v<VERSION>`-Tag und der Workflow

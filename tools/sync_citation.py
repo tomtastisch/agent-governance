@@ -10,7 +10,7 @@ from pathlib import Path
 import sys
 
 from release_check import CheckResult, _check_changelog_sections, citation_fields
-from sync_version import _read_regular_bytes, _read_version_with_identity, _replace_all_atomically
+from sync_version import _read_regular_bytes, _read_version_with_identity, _replace_all_atomically, _require_identity
 
 
 def synchronize(root: Path) -> None:
@@ -29,17 +29,21 @@ def synchronize(root: Path) -> None:
     for line in source.splitlines(keepends=True):
         if line.startswith("commit:"):
             continue
-        ending = "\r\n" if line.endswith("\r\n") else "\n" if line.endswith("\n") else ""
+        ending = line[len(line.rstrip("\r\n")):]
         if line.startswith("version:"):
             line = f"version: {version}{ending}"
         elif line.startswith("date-released:"):
             line = f"date-released: '{release_date}'{ending}"
         projected.append(line)
     output = "".join(projected).encode("utf-8")
+    citation_fields(output.decode("utf-8"))
+    identities = {root / "VERSION": version_identity, changelog_path: changelog_identity, citation_path: citation_identity}
+    for path, identity in identities.items():
+        _require_identity(path, identity)
     if output != citation:
         _replace_all_atomically(
             {citation_path: output},
-            {root / "VERSION": version_identity, changelog_path: changelog_identity, citation_path: citation_identity},
+            identities,
         )
 
 

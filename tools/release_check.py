@@ -17,11 +17,17 @@ from datetime import date as calendar_date
 import hashlib
 import json
 import os
+from pathlib import Path
 import re
 import stat
 import subprocess
 import sys
 from urllib.parse import quote, urlsplit
+
+if __package__:
+    from .sync_version import _read_regular_bytes
+else:
+    from sync_version import _read_regular_bytes
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -381,27 +387,76 @@ def _check_version_release_metadata(root, r):
     return version
 
 
-def citation_fields(source):
-    """Liest die geschlossene CFF-Root-Grammatik; kein allgemeiner YAML-Parser.
+def _citation_scalar(value):
+    """Validiert einen Skalar aus der bewusst begrenzten YAML-Teilmenge."""
+    if value.startswith("'"):
+        valid = re.fullmatch(r"'(?:[^']|'')*'(?: +#.*)? *", value) is not None
+    elif value.startswith('"'):
+        try:
+            parsed, end = json.JSONDecoder().raw_decode(value)
+            valid = isinstance(parsed, str) and re.fullmatch(r"(?: +#.*)? *", value[end:]) is not None
+        except ValueError:
+            valid = False
+    else:
+        valid = bool(value) and value[0] not in "!&*[]{}|>%@`,?:-" and not re.search(r":(?:\s|$)", value)
+    if not valid:
+        raise ValueError("CITATION.cff: ungültiger oder nicht unterstützter YAML-Skalar")
 
-    Root-Schlüssel sind unquotiert und eindeutig. Releasefelder sind einzeilige
-    Skalare; Aliase, Merge-Keys und zusätzliche YAML-Dokumente sind unzulässig.
-    Andere Werte und eingerückte Metadaten bleiben unverändert.
+
+def citation_fields(source):
+    """Validiert die CFF-Layout-Teilmenge ohne allgemeine YAML-Konstruktion.
+
+    Eindeutige Root-Skalare, Textblöcke, Autoren-Mappings und Keyword-Listen.
+    Nicht unterstützte Strukturen scheitern geschlossen; keine Schema-Authority.
     """
+    if any((ord(char) < 32 and char not in "\r\n") or 127 <= ord(char) <= 159 or char in "\u2028\u2029\ufffe\uffff" for char in source):
+        raise ValueError("CITATION.cff: nicht unterstütztes Steuerzeichen")
     fields = {}
     current = None
+    author_keys = None
+    block_indent = None
     for line in source.splitlines():
-        if not line.strip() or line.lstrip().startswith("#"):
+        if not line.strip():
             continue
-        if line[0].isspace():
-            if current is None or current in {"version", "date-released", "commit"}:
-                raise ValueError("CITATION.cff: unerlaubte Fortsetzung eines Releasefelds")
+        if fields.get(current) in {">", ">-", "|", "|-"} and line.startswith("  "):
+            indent = len(line) - len(line.lstrip(" "))
+            if block_indent is None:
+                block_indent = indent
+            if indent < block_indent:
+                raise ValueError("CITATION.cff: inkonsistente Textblock-Einrückung")
             continue
-        match = re.fullmatch(r"([a-z][a-z0-9-]*):(?:[ \t]+(.*))?", line)
+        if line.lstrip().startswith("#"):
+            continue
+        if line.startswith(" "):
+            value = fields.get(current)
+            if current == "keywords" and value == "" and line.startswith("  - "):
+                _citation_scalar(line[4:])
+                continue
+            if current == "authors" and value == "":
+                if line.startswith("  - "):
+                    author_keys = set()
+                elif not line.startswith("    ") or author_keys is None:
+                    raise ValueError("CITATION.cff: ungültige Autorenstruktur")
+                match = re.fullmatch(r"([a-z][a-z0-9-]*): +(.+)", line[4:])
+                if not match or match[1] in author_keys:
+                    raise ValueError("CITATION.cff: ungültiger oder doppelter Autorenschlüssel")
+                author_keys.add(match[1])
+                _citation_scalar(match[2])
+                continue
+            raise ValueError("CITATION.cff: unerlaubte Einrückung oder Feldfortsetzung")
+        match = re.fullmatch(r"([a-z][a-z0-9-]*):(?: +(.*))?", line)
         if not match or match[1] in fields:
             raise ValueError("CITATION.cff: ungültiger oder doppelter Root-Schlüssel")
         current = match[1]
-        fields[current] = match[2] or ""
+        value = match[2] or ""
+        fields[current] = value
+        author_keys = None
+        block_indent = None
+        if value == "" and current in {"authors", "keywords"}:
+            continue
+        if value in {">", ">-", "|", "|-"} and current not in {"version", "date-released", "commit"}:
+            continue
+        _citation_scalar(value)
     for key in ("version", "date-released", "commit"):
         if key not in fields:
             if key == "commit":
@@ -415,13 +470,20 @@ def citation_fields(source):
 
 
 def _check_citation(root, version, release_date, r):
-    path = os.path.join(root, "CITATION.cff")
     try:
-        if not stat.S_ISREG(os.lstat(path).st_mode):
-            raise ValueError("CITATION.cff muss eine reguläre Nicht-Symlink-Datei sein")
-        fields = citation_fields(_read("CITATION.cff", root))
+        content, _identity = _read_regular_bytes(Path(root) / "CITATION.cff")
+        source = content.decode("utf-8")
     except (OSError, UnicodeError, ValueError) as error:
         r.add_error(f"CITATION.cff: {error}")
+        return
+    _check_citation_values(source, version, release_date, r)
+
+
+def _check_citation_values(source, version, release_date, r):
+    try:
+        fields = citation_fields(source)
+    except ValueError as error:
+        r.add_error(str(error))
         return
     if fields["version"] != version:
         r.add_error(f"CITATION.cff.version weicht von VERSION ({version}) ab")
@@ -802,6 +864,28 @@ def _git_show_commit_file(commit, rel, root):
     return out, None
 
 
+def _check_tag_citation(root, commit, version, r):
+    sources = {}
+    for rel in ("CITATION.cff", "CHANGELOG.md"):
+        entry, error, code = GitRunner.run(["ls-tree", commit, "--", rel], root)
+        match = re.fullmatch(r"100(?:644|755) blob ([0-9a-f]{40})\t" + re.escape(rel), entry)
+        if code or match is None:
+            r.add_error(f"Tag-Tree {rel}: regulärer Blob fehlt oder ist ungültig")
+            continue
+        result = subprocess.run(["git", "cat-file", "blob", match[1]], cwd=root, capture_output=True, timeout=15)
+        try:
+            if result.returncode:
+                raise ValueError("Blob nicht lesbar")
+            sources[rel] = result.stdout.decode("utf-8")
+        except (ValueError, UnicodeError) as error:
+            r.add_error(f"Tag-Tree {rel}: {error}")
+    if len(sources) == 2:
+        tag_result = CheckResult()
+        release_date = _check_changelog_sections(root, version, tag_result, sources["CHANGELOG.md"])
+        _check_citation_values(sources["CITATION.cff"], version, release_date, tag_result)
+        r.errors.extend(f"Tag-Tree: {error}" for error in tag_result.errors)
+
+
 def check_tag(root=None, tag_ref=None, expected_commit=None, verifier=None):
     """Prüft Konsistenz eines Git-Tags gegen VERSION.
 
@@ -893,6 +977,8 @@ def check_tag(root=None, tag_ref=None, expected_commit=None, verifier=None):
                     f"weicht von VERSION ({version}) ab"
                 )
 
+    _check_tag_citation(root, tag_commit, version, r)
+
     # ── Signaturprüfung (blockierend wenn README signierten Tag verlangt) ──
     vf = verifier or GitRunner.verify_signature
     sig_ok, sig_detail = vf(tag_ref, root)
@@ -964,6 +1050,7 @@ def check_release(root=None, tag_ref=None, gh=None, verifier=None):
         r.add_error(f"Lokaler Tag '{tag_ref}' nicht auf Commit auflösbar: {peel_err}")
         return r
 
+    _check_tag_citation(root, local_commit, version, r)
     vf = verifier or GitRunner.verify_signature
     sig_ok, sig_detail = vf(tag_ref, root)
     if not sig_ok:

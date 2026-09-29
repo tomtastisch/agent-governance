@@ -111,3 +111,108 @@ class CitationContract(unittest.TestCase):
             self.cff.unlink()
             self.cff.symlink_to(target)
             self.assertFalse(check_tree(str(self.root)).ok)
+
+    def test_reine_cr_zeilenenden_bleiben_erhalten(self):
+        self.cff.write_bytes(CITATION.replace('version: 0.1.0', 'version: 0.0.9').replace('\n', '\r').encode())
+        result = self.run_sync()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.cff.read_bytes(), CITATION.replace('\n', '\r').encode())
+
+    def test_ungueltige_syntax_in_erhaltenen_feldern_blockiert_gate_und_sync(self):
+        for invalid in ('title: [', 'title: "offen', 'title: !tag Inhalt', 'title: &anchor Inhalt', 'title: falsch: wert', 'abstract: >-\n    Text\n  falsche Einrückung', 'title: Steuerzeichen\x81'):
+            with self.subTest(invalid=invalid):
+                self.cff.write_text(CITATION.replace('title: Beispiel', invalid))
+                before = self.cff.read_bytes()
+                self.assertFalse(check_tree(str(self.root)).ok)
+                self.assertNotEqual(self.run_sync().returncode, 0)
+                self.assertEqual(self.cff.read_bytes(), before)
+
+    def test_gate_blockiert_austausch_zwischen_stat_und_lesen(self):
+        from unittest import mock
+        import tools.release_check as checker
+        real_lstat = checker.os.lstat
+        with tempfile.TemporaryDirectory() as external:
+            target = Path(external) / 'CITATION.cff'
+            target.write_text(CITATION)
+            swapped = False
+            def swap(path, *args, **kwargs):
+                nonlocal swapped
+                info = real_lstat(path, *args, **kwargs)
+                if Path(path) == self.cff and not swapped:
+                    swapped = True
+                    self.cff.unlink()
+                    self.cff.symlink_to(target)
+                return info
+            with mock.patch.object(checker.os, 'lstat', side_effect=swap):
+                result = check_tree(str(self.root))
+            self.assertTrue(swapped)
+            self.assertFalse(result.ok)
+
+    def test_noop_prueft_quellidentitaeten_vor_erfolgreicher_rueckkehr(self):
+        from unittest import mock
+        sys.path.insert(0, str(ROOT / 'tools'))
+        import sync_citation
+        original_parser = sync_citation.citation_fields
+        for name in ('VERSION', 'CHANGELOG.md', 'CITATION.cff'):
+            with self.subTest(name=name):
+                path = self.root / name
+                before = path.read_bytes()
+                def change(source):
+                    result = original_parser(source)
+                    path.write_bytes(before + b'\n')
+                    return result
+                try:
+                    with mock.patch.object(sync_citation, 'citation_fields', side_effect=change):
+                        with self.assertRaises(OSError):
+                            sync_citation.synchronize(self.root)
+                    self.assertEqual(path.read_bytes(), before + b'\n')
+                finally:
+                    path.write_bytes(before)
+
+    def test_eingerueckte_yaml_strukturen_werden_validiert(self):
+        for invalid in ('authors:\n  - family-names: [', 'authors:\n  - family-names: Beispiel\n    family-names: doppelt', 'keywords:\n    - Beispiel', 'title: Beispiel\n  fortsetzung', 'keywords:\n  - *alias'):
+            with self.subTest(invalid=invalid):
+                self.cff.write_text(CITATION.replace('authors:\n  - family-names: Beispiel', invalid))
+                before = self.cff.read_bytes()
+                self.assertFalse(check_tree(str(self.root)).ok)
+                self.assertNotEqual(self.run_sync().returncode, 0)
+                self.assertEqual(self.cff.read_bytes(), before)
+
+    def test_textblock_interpunktion_bleibt_gueltiger_text(self):
+        source = CITATION.replace('title: Beispiel', 'title: Beispiel\nabstract: >-\n  Text mit [Klammern], {Formen}: und !Zeichen.\n  \"Zitate\" sind hier ebenfalls Text.')
+        self.cff.write_text(source)
+        self.assertTrue(check_tree(str(self.root)).ok)
+        self.assertEqual(self.run_sync().returncode, 0)
+        self.assertEqual(self.cff.read_text(), source)
+
+
+from test_release_check import TagConsistencyBase
+from tools.release_check import check_tag
+
+
+class CitationTagTreeContract(TagConsistencyBase):
+    def assert_tag_drift_rejected(self, name, transform):
+        self._init_git()
+        path = Path(self.root) / name
+        original = path.read_text()
+        path.write_text(transform(original))
+        self._git('add', name)
+        self._git('-c', 'commit.gpgsign=false', 'commit', '-m', 'abweichende Tag-Metadaten')
+        self._tag(self.root, 'v0.1.0')
+        path.write_text(original)
+        self._git('add', name)
+        self._git('-c', 'commit.gpgsign=false', 'commit', '-m', 'nur main korrigiert')
+        result = check_tag(root=self.root, verifier=self.mock_verifier)
+        self.assertFalse(result.ok, result.errors)
+
+    def test_tag_commit_feld_wird_nicht_durch_main_korrektur_verdeckt(self):
+        self.assert_tag_drift_rejected('CITATION.cff', lambda source: source + 'commit: abc\n')
+
+    def test_tag_versionsdrift_wird_nicht_durch_main_korrektur_verdeckt(self):
+        self.assert_tag_drift_rejected('CITATION.cff', lambda source: source.replace('version: 0.1.0', 'version: 0.0.9'))
+
+    def test_tag_datumsdrift_wird_nicht_durch_main_korrektur_verdeckt(self):
+        self.assert_tag_drift_rejected('CITATION.cff', lambda source: source.replace('2026-08-25', '2020-01-01'))
+
+    def test_tag_changelog_wird_als_datumsquelle_geprueft(self):
+        self.assert_tag_drift_rejected('CHANGELOG.md', lambda source: source.replace('2026-08-25', '2026-08-26'))
