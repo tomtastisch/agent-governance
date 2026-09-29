@@ -25,6 +25,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Breaking changes:** none
 
+## [1.7.5] — 2026-09-29
+
+### Added
+
+- Zitiermetadaten in `CITATION.cff` für die Archivierung veröffentlichter GitHub-Releases
+  durch die aktivierte Zenodo-Integration.
+- Deterministischer Citation-Sync aus `VERSION` und dem aktuellen datierten
+  CHANGELOG-Abschnitt; das bestehende Release-Gate blockiert Versions-/Datumsdrift
+  und ein erneut eingeführtes `commit`-Feld.
+
+### Changed
+
+- Release-Metadaten auf 1.7.5 synchronisiert; keine funktionalen Änderungen an
+  Runtime, CLI oder öffentlichen APIs.
+
+### Fixed
+
+- Keine.
+
+### Removed
+
+- Das manuell zu pflegende `commit`-Feld aus `CITATION.cff`.
+
+**Breaking changes:** none
+
 ## [1.7.4] — 2026-09-28
 
 ### Added
