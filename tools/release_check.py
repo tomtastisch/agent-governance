@@ -430,6 +430,8 @@ def citation_fields(source):
                 raise ValueError("CITATION.cff: inkonsistente Textblock-Einrückung")
             continue
         if line.lstrip().startswith("#"):
+            if fields.get(current) in {">", ">-", "|", "|-"}:
+                current = None
             continue
         if line.startswith(" "):
             value = fields.get(current)

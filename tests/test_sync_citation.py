@@ -232,6 +232,27 @@ class CitationContract(unittest.TestCase):
         self.assertEqual(self.run_sync().returncode, 0)
         self.assertEqual(self.cff.read_text(), source)
 
+    def test_kommentar_ausserhalb_textblock_beendet_dessen_fortsetzung(self):
+        for marker in ('>', '>-', '|', '|-'):
+            for comment in ('# Kommentar', ' # Kommentar'):
+                with self.subTest(marker=marker, comment=comment):
+                    source = CITATION + 'abstract: ' + marker + '\n  erste Zeile\n' + comment + '\n  zweite Zeile\n'
+                    self.cff.write_text(source)
+                    before = self.cff.read_bytes()
+                    self.assertFalse(check_tree(str(self.root)).ok)
+                    self.assertNotEqual(self.run_sync().returncode, 0)
+                    self.assertEqual(self.cff.read_bytes(), before)
+
+    def test_textblock_erhaelt_eingerueckte_rauten_und_abschliessenden_kommentar(self):
+        for marker in ('>', '>-', '|', '|-'):
+            with self.subTest(marker=marker):
+                source = CITATION + 'abstract: ' + marker + '\n  erste Zeile\n  # Blockinhalt\n  zweite Zeile\n# Kommentar\nlicense: Apache-2.0\n'
+                self.cff.write_text(source)
+                self.assertTrue(check_tree(str(self.root)).ok)
+                result = self.run_sync()
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(self.cff.read_bytes(), source.encode())
+
 
 from test_release_check import TagConsistencyBase
 from tools.release_check import check_tag
