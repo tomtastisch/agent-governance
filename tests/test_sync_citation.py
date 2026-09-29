@@ -127,6 +127,31 @@ class CitationContract(unittest.TestCase):
                 self.assertNotEqual(self.run_sync().returncode, 0)
                 self.assertEqual(self.cff.read_bytes(), before)
 
+    def test_isolierte_surrogat_escapes_blockieren_gate_und_sync(self):
+        for value in (r'"\ud800"', r'"\udbff"', r'"\udc00"', r'"\udfff"', r'"Text\ud800Ende"', r'"\udc00\ud800"'):
+            for field in ('title: ' + value, 'authors:\n  - family-names: ' + value, 'keywords:\n  - ' + value):
+                with self.subTest(field=field):
+                    source = CITATION.replace('title: Beispiel\nauthors:\n  - family-names: Beispiel', field)
+                    self.cff.write_text(source)
+                    before = self.cff.read_bytes()
+                    result = check_tree(str(self.root))
+                    self.assertFalse(result.ok, result.errors)
+                    self.assertTrue(any('YAML-Skalar' in error for error in result.errors), result.errors)
+                    self.assertNotEqual(self.run_sync().returncode, 0)
+                    self.assertEqual(self.cff.read_bytes(), before)
+
+    def test_gueltige_unicode_skalare_bleiben_bytegleich(self):
+        for value in ('"Grüße 日本語 😀"', r'"Gr\u00fc\u00dfe"', r'"\ud7ff\ue000"', r'"\ud83d\ude00"', r'"\\ud800"'):
+            with self.subTest(value=value):
+                source = CITATION.replace('title: Beispiel', 'title: ' + value)
+                self.cff.write_text(source)
+                before = self.cff.read_bytes()
+                result = check_tree(str(self.root))
+                self.assertTrue(result.ok, result.errors)
+                sync = self.run_sync()
+                self.assertEqual(sync.returncode, 0, sync.stderr)
+                self.assertEqual(self.cff.read_bytes(), before)
+
     def test_gate_blockiert_austausch_zwischen_stat_und_lesen(self):
         from unittest import mock
         import tools.release_check as checker

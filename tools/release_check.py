@@ -394,7 +394,11 @@ def _citation_scalar(value):
     elif value.startswith('"'):
         try:
             parsed, end = json.JSONDecoder().raw_decode(value)
-            valid = isinstance(parsed, str) and re.fullmatch(r"(?: +#.*)? *", value[end:]) is not None
+            valid = (
+                isinstance(parsed, str)
+                and not any(0xD800 <= ord(char) <= 0xDFFF for char in parsed)
+                and re.fullmatch(r"(?: +#.*)? *", value[end:]) is not None
+            )
         except ValueError:
             valid = False
     else:
