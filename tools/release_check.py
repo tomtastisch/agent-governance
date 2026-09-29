@@ -434,7 +434,7 @@ def citation_fields(source):
         if line.startswith(" "):
             value = fields.get(current)
             if current == "keywords" and value == "" and line.startswith("  - "):
-                _citation_scalar(line[4:])
+                _citation_scalar(line[4:].lstrip(" "))
                 continue
             if current == "authors" and value == "":
                 if line.startswith("  - "):

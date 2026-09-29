@@ -152,6 +152,28 @@ class CitationContract(unittest.TestCase):
                 self.assertEqual(sync.returncode, 0, sync.stderr)
                 self.assertEqual(self.cff.read_bytes(), before)
 
+    def test_keyword_trennraum_umgeht_keine_skalarvalidierung(self):
+        for value in (r'"\ud800"', r'"\udfff"', '"offen', '[flow]', '!tag Text', '&anchor Text', '*alias'):
+            for spacing in ('  ', '   '):
+                with self.subTest(value=value, spacing=spacing):
+                    source = CITATION.replace('version: 0.1.0', 'version: 0.0.9') + 'keywords:\n  -' + spacing + value + '\n'
+                    self.cff.write_text(source)
+                    before = self.cff.read_bytes()
+                    result = check_tree(str(self.root))
+                    self.assertTrue(any('YAML-Skalar' in error for error in result.errors), result.errors)
+                    self.assertNotEqual(self.run_sync().returncode, 0)
+                    self.assertEqual(self.cff.read_bytes(), before)
+
+    def test_keyword_trennraum_erhaelt_gueltige_unicodewerte_beim_sync(self):
+        for value in ('"Grüße 😀"', r'"\ud83d\ude00"', r'"\\ud800"', 'Beispiel'):
+            with self.subTest(value=value):
+                source = CITATION + 'keywords:\n  -   ' + value + '\n'
+                self.cff.write_text(source.replace('version: 0.1.0', 'version: 0.0.9'))
+                result = self.run_sync()
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(self.cff.read_bytes(), source.encode())
+                self.assertTrue(check_tree(str(self.root)).ok)
+
     def test_gate_blockiert_austausch_zwischen_stat_und_lesen(self):
         from unittest import mock
         import tools.release_check as checker
@@ -241,3 +263,6 @@ class CitationTagTreeContract(TagConsistencyBase):
 
     def test_tag_changelog_wird_als_datumsquelle_geprueft(self):
         self.assert_tag_drift_rejected('CHANGELOG.md', lambda source: source.replace('2026-08-25', '2026-08-26'))
+
+    def test_tag_keyword_surrogat_wird_nicht_durch_main_korrektur_verdeckt(self):
+        self.assert_tag_drift_rejected('CITATION.cff', lambda source: source + 'keywords:\n  -  "\\ud800"\n')
