@@ -24,8 +24,9 @@ else:
 
 
 METADATA = ("VERSION", "CHANGELOG.md", "package.json", "package-lock.json", "CITATION.cff", "release.files.sha256")
-# Arbeits-/Builddaten gehören nicht zum Release-Quellbaum.
-EXCLUDED_DIRS = {".git", ".worktrees", "node_modules", "dist", "prebuilds", "_site", "__pycache__", ".pytest_cache"}
+# Nur diese Root-Verzeichnisse sind auch für check_tree irrelevant. Unterhalb
+# von bundle darf kein Name Payload aus dem bestehenden Manifestvertrag ausblenden.
+EXCLUDED_DIRS = {".git", "node_modules", "dist", "tests", ".github"}
 
 
 def target_version(current: str, bump: str | None, target: str | None) -> str:
@@ -60,12 +61,17 @@ def cut_changelog(source: str, current: str, target: str, release_date: str, roo
     for index, heading in enumerate(headings):
         section_end = headings[index + 1].start() if index + 1 < len(headings) else len(source)
         section = source[heading.end() + 1:section_end]
-        section_categories = re.findall(r"^### (.*)$", section, re.MULTILINE)
+        section_categories = release_check.CATEGORY_HEADING_RE.findall(section)
+        for line in section.splitlines():
+            if line.startswith("###"):
+                match = release_check.CATEGORY_HEADING_RE.fullmatch(line)
+                if match is None or line != f"### {match[1]}":
+                    raise ValueError("nichtkanonische CHANGELOG-Kategorie")
         if len(section_categories) != len(set(section_categories)) or not set(section_categories) <= release_check.VALID_CATEGORIES:
             raise ValueError("mehrdeutige CHANGELOG-Kategorien")
         if len(release_check.BREAKING_MARKER_RE.findall(section)) != 1:
             raise ValueError("mehrdeutiger Breaking-Marker")
-    categories = re.findall(r"^### (.*)$", body, re.MULTILINE)
+    categories = release_check.CATEGORY_HEADING_RE.findall(body)
     result = release_check.CheckResult()
     existing_date = release_check._check_changelog_sections(root, current, result, source)
     if not result.ok:
@@ -78,21 +84,30 @@ def cut_changelog(source: str, current: str, target: str, release_date: str, roo
     return source[:start] + empty_body + f"## [{target}] — {release_date}\n" + body + source[end:]
 
 
-def snapshot(root: Path) -> tuple[dict[Path, bytes], dict[Path, sync_version.FileIdentity]]:
-    contents, identities = {}, {}
-    for base, directories, files in os.walk(root, followlinks=False):
-        directories[:] = sorted(name for name in directories if name not in EXCLUDED_DIRS)
+def snapshot(root: Path):
+    contents, identities, directory_identities = {}, {}, {}
+
+    def traversal_error(error):
+        raise error
+
+    for base, directories, files in os.walk(root, followlinks=False, onerror=traversal_error):
+        base = Path(base)
+        directory_identities[base.relative_to(root)] = sync_version._identity(base.lstat())
+        directories[:] = sorted(name for name in directories if base != root or name not in EXCLUDED_DIRS)
         for name in directories:
-            if not stat.S_ISDIR((Path(base) / name).lstat().st_mode):
+            if not stat.S_ISDIR((base / name).lstat().st_mode):
                 raise ValueError("Release-Quellbaum darf keine Verzeichnislinks enthalten")
         for name in sorted(files):
-            if name == ".git" or name == ".DS_Store":
+            if base == root and name == ".git":
                 continue
-            path = Path(base) / name
+            path = base / name
+            relative = path.relative_to(root)
+            if relative.as_posix() in release_manifest.EXCLUDED | {"profile/profile.md"} or (base == root and (name == ".env" or name.startswith(".env."))):
+                continue
             content, identity = sync_version._read_regular_bytes(path)
-            contents[path.relative_to(root)] = content
+            contents[relative] = content
             identities[path] = identity
-    return contents, identities
+    return contents, identities, directory_identities
 
 
 def prepare(root: Path, *, bump: str | None = None, target: str | None = None, release_date: str) -> str:
@@ -101,7 +116,7 @@ def prepare(root: Path, *, bump: str | None = None, target: str | None = None, r
     date.fromisoformat(release_date)
     current = sync_version.read_version(root)
     version = target_version(current, bump, target)
-    contents, identities = snapshot(root)
+    contents, identities, directories = snapshot(root)
     for name in METADATA:
         if Path(name) not in contents:
             raise ValueError(f"{name} fehlt")
@@ -111,6 +126,8 @@ def prepare(root: Path, *, bump: str | None = None, target: str | None = None, r
     changelog = cut_changelog(contents[Path("CHANGELOG.md")].decode("utf-8"), current, version, release_date, root)
     with tempfile.TemporaryDirectory(prefix="agent-governance-prepare-") as directory:
         candidate = Path(directory)
+        for relative in directories:
+            (candidate / relative).mkdir(parents=True, exist_ok=True)
         for relative, content in contents.items():
             path = candidate / relative
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -128,9 +145,15 @@ def prepare(root: Path, *, bump: str | None = None, target: str | None = None, r
             raise ValueError("Release-Manifest driftet")
         planned = {root / name: (candidate / name).read_bytes() for name in METADATA}
     # Keine Eingabeänderung oder neue Datei während der Kandidatenprüfung übernehmen.
-    _current_contents, current_identities = snapshot(root)
-    if current_identities != identities:
+    _current_contents, current_identities, current_directories = snapshot(root)
+    if current_identities != identities or current_directories != directories:
         raise ValueError("Release-Quellbaum während Vorbereitung verändert")
+    # Auch ein No-op bestätigt nur frisch gebundene Eingaben.
+    for path, identity in identities.items():
+        sync_version._require_identity(path, identity)
+    for relative, identity in directories.items():
+        if sync_version._identity((root / relative).lstat()) != identity:
+            raise OSError("Release-Verzeichnis während Vorbereitung verändert")
     changed = {path: content for path, content in planned.items() if content != contents[path.relative_to(root)]}
     if changed:
         sync_version._replace_all_atomically(changed, identities)

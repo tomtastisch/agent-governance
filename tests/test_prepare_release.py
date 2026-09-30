@@ -1,5 +1,6 @@
 """Prepare muss reale Metadaten vollständig materialisieren oder unverändert lassen."""
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -173,6 +174,83 @@ class PrepareReleaseContract(unittest.TestCase):
         result = self.run_prepare("--bump", "minor", "--date", "2026-09-30")
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(self.snapshot(), before)
+
+    def test_sec_payload_unter_buildnamen_bleibt_im_manifest(self):
+        directory = self.root / "bundle" / "dist"
+        directory.mkdir()
+        (directory / "fixture.md").write_text("Payload\n")
+        result = self.run_prepare("--bump", "minor", "--date", "2026-09-30")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.root / "release.files.sha256").read_text(), prepare_release.release_manifest.render(self.root))
+
+    def test_sec_leere_verzeichnisse_und_versteckte_payload_links_blockieren(self):
+        before = self.snapshot()
+        empty = self.root / "docs" / "images"
+        empty.mkdir()
+        self.assertNotEqual(self.run_prepare("--bump", "minor", "--date", "2026-09-30").returncode, 0)
+        self.assertEqual(self.snapshot(), before)
+        empty.rmdir()
+        link = self.root / "bundle" / "dist"
+        with tempfile.TemporaryDirectory() as outside:
+            link.symlink_to(outside, target_is_directory=True)
+            self.assertNotEqual(self.run_prepare("--bump", "minor", "--date", "2026-09-30").returncode, 0)
+            self.assertEqual(self.snapshot(), before)
+
+    @unittest.skipIf(os.geteuid() == 0, "root kann chmod(0)-Fixture weiterhin lesen")
+    def test_sec_unlesbarer_payload_bricht_vor_mutation_ab(self):
+        directory = self.root / "bundle" / "unreadable"
+        directory.mkdir()
+        (directory / "fixture.md").write_text("Payload\n")
+        before = self.snapshot()
+        directory.chmod(0)
+        try:
+            self.assertNotEqual(self.run_prepare("--bump", "minor", "--date", "2026-09-30").returncode, 0)
+            self.assertEqual(self.snapshot(), before)
+        finally:
+            directory.chmod(0o700)
+
+    def test_sec_nichtkanonische_kategorie_trenner_blockieren(self):
+        for separator in ("\t", "  "):
+            with self.subTest(separator=separator):
+                (self.root / "CHANGELOG.md").write_text(_CHANGELOG_MIN.replace("### Added\n", f"### Added\n###{separator}Added\n", 1))
+                before = self.snapshot()
+                self.assertNotEqual(self.run_prepare("--bump", "minor", "--date", "2026-09-30").returncode, 0)
+                self.assertEqual(self.snapshot(), before)
+
+    def test_sec_noop_prueft_identitaeten_nach_finalem_snapshot(self):
+        prepare_release.prepare(self.root, target="0.2.0", release_date="2026-09-30")
+        read = sync_version._read_regular_bytes
+        reads = 0
+
+        def mutate_after_read(path):
+            nonlocal reads
+            result = read(path)
+            if path == self.root / "VERSION":
+                reads += 1
+                if reads == 3:
+                    path.write_text("9.9.9\n")
+            return result
+
+        with mock.patch.object(sync_version, "_read_regular_bytes", side_effect=mutate_after_read):
+            with self.assertRaises(OSError):
+                prepare_release.prepare(self.root, target="0.2.0", release_date="2026-09-30")
+        self.assertEqual((self.root / "VERSION").read_text(), "9.9.9\n")
+
+    def test_sec_bekannte_private_dateien_werden_nicht_in_kandidaten_kopiert(self):
+        private = (".env", "profile/profile.md", "bundle/agent-governance/local/user-rules.md")
+        for relative in private:
+            path = self.root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("synthetische private Fixture\n")
+        original_render = prepare_release.release_manifest.render
+
+        def inspect(candidate):
+            for relative in private:
+                self.assertFalse((candidate / relative).exists(), relative)
+            return original_render(candidate)
+
+        with mock.patch.object(prepare_release.release_manifest, "render", side_effect=inspect):
+            prepare_release.prepare(self.root, target="0.2.0", release_date="2026-09-30")
 
 
 if __name__ == "__main__":

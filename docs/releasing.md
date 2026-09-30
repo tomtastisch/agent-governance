@@ -36,7 +36,11 @@ Prepare prüft einen isolierten Kandidaten mit den bestehenden Version-, Citatio
 und Tree-Primitiven. Erst danach übernimmt die vorhandene transaktionale Sync-/Rollback-Primitive
 die sechs Metadatendateien gemeinsam. Reguläre Eingaben werden an ihre Dateiidentitäten gebunden;
 beobachtbare Änderungen während der Vorbereitung, Symlinks und unsichere Dateitypen blockieren
-die Übernahme. Fehler vor Übernahme verändern keine Release-Metadaten; abfangbare Schreibfehler
+die Übernahme. Fehler vor Übernahme verändern keine Release-Metadaten. Die Kopie erhält
+prüfrelevante leere Verzeichnisse und verschachtelte
+Payload-Pfade; Traversierungsfehler brechen ab. Private lokale Regeln, `profile/profile.md`
+und Root-`.env`-Dateien werden nicht kopiert. Auch ein idempotenter No-op prüft seine
+Eingabeidentitäten unmittelbar vor erfolgreicher Rückkehr erneut. Abfangbare Schreibfehler
 werden zurückgerollt. SIGKILL/Stromausfall oder ein fehlgeschlagener Rollback sind keine zugesagte
 Mehrdatei-Crash-Atomarität: erhaltene `.sync-version-*`-Backups erfordern Prüfung vor Wiederholung.
 Concurrent Writer während der finalen Rename-Sequenz sind wie bei der bestehenden Sync-Primitive
