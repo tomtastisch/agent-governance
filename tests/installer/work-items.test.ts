@@ -65,6 +65,28 @@ test("dimensions declare explicit cardinality", () => {
   );
 });
 
+test("Delivery-Slice projiziert unabhängig vom SemVer-Impact und erkennt Rollenwidersprüche", () => {
+  const { classifications, projections } = loadWorkItemSsot();
+  const slice = resolveClassification(classifications, "delivery_role.slice");
+  assert.equal(slice.dimension, "delivery_role");
+  for (const impact of [[], ["semver.major"], ["semver.minor"]]) {
+    assert.deepEqual(validateWorkItemClassification(classifications,
+      ["type.feature", "area.workflow", slice.id, ...impact]).violations, []);
+  }
+  const conflicting = { ...classifications, classifications: {
+    ...classifications.classifications,
+    "delivery_role.owner": { ...slice, id: "delivery_role.owner", value: "owner" },
+  } };
+  assert.ok(validateWorkItemClassification(conflicting,
+    ["type.feature", "area.workflow", slice.id, "delivery_role.owner"])
+    .violations.some(v => v.dimension === "delivery_role"));
+  const plan = buildLabelProjectionPlan(projections, []);
+  assert.equal(plan.entries.find(e => e.classification === slice.id)?.labelName, "delivery-slice");
+  assert.deepEqual(classifyLabels(projections, [{ name: "delivery-slice", color: "FBCA04", description: "" }]), [slice.id]);
+  assert.equal(buildLabelProjectionPlan(projections, [{ name: "delivery-slice", color: "000000", description: "fremd", managed: false }])
+    .entries.find(e => e.labelName === "delivery-slice")?.action, "CONFLICT");
+});
+
 test("work-item required classifications and projection names match the independent oracle", () => {
   const { classifications, projections } = loadWorkItemSsot();
   for (const id of workItemsOracle.required_classifications) {
@@ -276,7 +298,7 @@ test("managed label matching a projection yields NOOP", () => {
   const plan = buildLabelProjectionPlan(projections, inventory([
     { name: "semver:patch", color: "0E8A16", description: "Erfordert voraussichtlich eine rückwärtskompatible Korrektur oder Dokumentationsänderung" },
   ]));
-  assert.equal(plan.entries.length, 18);
+  assert.equal(plan.entries.length, 19);
   assert.deepEqual(plan.entries.find((e) => e.labelName === "semver:patch"), {
     action: "NOOP",
     classification: "semver.patch",
@@ -296,7 +318,7 @@ test("managed label drift yields UPDATE without mutation", () => {
 test("missing managed label yields CREATE without mutation", () => {
   const { projections } = loadWorkItemSsot();
   const plan = buildLabelProjectionPlan(projections, inventory([]));
-  assert.equal(plan.entries.filter((e) => e.action === "CREATE").length, 18);
+  assert.equal(plan.entries.filter((e) => e.action === "CREATE").length, 19);
 });
 
 test("external label yields UNMANAGED", () => {
@@ -414,7 +436,7 @@ test("the real GitHub label inventory classifies without any GitHub mutation", (
   const plan = buildLabelProjectionPlan(projections, realLabels);
   const counts = (action: string) => plan.entries.filter((e) => e.action === action).length;
   assert.equal(counts("NOOP"), 8);
-  assert.equal(counts("CREATE"), 10);
+  assert.equal(counts("CREATE"), 11);
   assert.equal(counts("CANDIDATE"), 2);
   assert.equal(counts("UNMANAGED"), 11);
   assert.equal(counts("CONFLICT"), 0);

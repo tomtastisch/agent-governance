@@ -164,7 +164,8 @@ def current_version_literal_violations(root: Path, version: str) -> list[str]:
             if path.relative_to(root).as_posix() in {
                 "tests/test_installer_distribution.py", "tools/verify-licenses.mjs",
             }:
-                line = line.replace(f'"@clack/prompts": "{version}"', '"@clack/prompts": "<dependency-version>"')
+                for dependency in ("@clack/prompts", "smol-toml"):
+                    line = line.replace(f'"{dependency}": "{version}"', f'"{dependency}": "<dependency-version>"')
             if version in line and number not in allowed_lines:
                 violations.append(f"{path.relative_to(root).as_posix()}:{number}")
     return violations
@@ -327,12 +328,13 @@ class HistoricalEvidenceContract(unittest.TestCase):
         self.assertEqual(unmarked, [])
 
 class ReleaseMetadataContract(unittest.TestCase):
-    def test_current_version_declares_documentation_release(self):
+    def test_historical_releases_retain_their_documented_contracts(self):
         changelog = read(ROOT / "CHANGELOG.md")
         version = read(ROOT / "VERSION").strip()
         current = changelog.split(f"## [{version}]", 1)[1].split("\n## [", 1)[0]
+        citation_release = changelog.split("## [1.7.5]", 1)[1].split("\n## [", 1)[0]
         for term in ("CITATION.cff", "Citation-Sync", "CHANGELOG", "`commit`", "Zenodo"):
-            self.assertIn(term, current)
+            self.assertIn(term, citation_release)
         badges_release = changelog.split("## [1.7.4]", 1)[1].split("\n## [", 1)[0]
         for term in ("README-Download-Badges", "Registry-`latest`", "#138"):
             self.assertIn(term, badges_release)
@@ -384,6 +386,8 @@ class ReleaseMetadataContract(unittest.TestCase):
                 f"value = '{version}'\n"
                 f'"@clack/prompts": "{version}"\n'
                 f'"@clack/prompts": "{version}", "version": "{version}"\n'
+                f'"smol-toml": "{version}"\n'
+                f'"smol-toml": "{version}", "version": "{version}"\n'
             )
             distribution_test.write_text(dependency_lines, encoding="utf-8")
             (root / "tools" / "verify-licenses.mjs").write_text(dependency_lines, encoding="utf-8")
@@ -396,11 +400,13 @@ class ReleaseMetadataContract(unittest.TestCase):
                 "tests/test_ci_workflow.py:1",
                 "tests/test_installer_distribution.py:1",
                 "tests/test_installer_distribution.py:3",
+                "tests/test_installer_distribution.py:5",
                 "tools/productive.mjs:1",
                 "tools/productive.sh:1",
                 "tools/productive.ts:1",
                 "tools/verify-licenses.mjs:1",
                 "tools/verify-licenses.mjs:3",
+                "tools/verify-licenses.mjs:5",
             ],
         )
 

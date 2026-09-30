@@ -12,6 +12,13 @@
 # eine GitHub-Mutation aus.
 schema_version = 1
 
+[projections.delivery_slice]
+classification = "delivery_role.slice"
+name = "delivery-slice"
+description = "Teil eines Release-Parents; keine eigenständige SemVer- oder Releaseentscheidung"
+color = "FBCA04"
+aliases = []
+
 [projections.semver_major]
 classification = "semver.major"
 name = "semver:major"

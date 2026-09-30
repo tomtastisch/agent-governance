@@ -19,6 +19,8 @@ Er implementiert keine Releaseengine.
 
 ## Optionale Felder
 
+- `Release owner / PR` und `Preparation evidence` binden den vorhandenen Liefer-/Release-PR
+  und den deterministischen Prepare-Lauf vor dem finalen Exact Head nach DEL-006.
 - `Tag identity/signature` und `Registry read-back` dürfen `pending` sein, wenn der Nachweis noch
   aussteht; leere Findings werden als `none` benannt.
 

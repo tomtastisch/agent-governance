@@ -107,7 +107,20 @@ class RoutingPerformance(unittest.TestCase):
         current = loaded_rules(BUNDLE, self.routes["publishing"])
         for rule in LOCAL | PROMOTION | SECURITY | {f"ENF-{i:03}" for i in range(1, 6)} | (KERNEL - {"GOV-006"}):
             with self.subTest(rule=rule):
-                self.assertEqual(semantic_text(current[rule]), semantic_text(BASELINE["rules"][rule]["text"]))
+                expected = BASELINE["rules"][rule]["text"]
+                if rule == "DEL-006":
+                    # #152 erweitert den Vertrag ausdrücklich; die historische Baseline
+                    # bleibt unverändert und jede weitere Abweichung wird weiterhin erkannt.
+                    expected += """
+Release-/Versionsmetadaten werden vor dem finalen Exact-Head-Gate im bereits autorisierten
+Liefer-/Release-PR deterministisch materialisiert, sofern der konkrete Repositoryvertrag keinen
+ausdrücklich anderen Weg vorsieht. Die Releaseentscheidung liegt beim Release Owner; ein
+Delivery-Slice begründet durch seine Zugehörigkeit keine eigenständige Versionsentscheidung.
+Compatibility Impact, Release Ownership und Issue-Hierarchie sind getrennte Aussagen. Nach einer
+Metadatenänderung werden die betroffenen Gates gemäß DEL-002 am neuen Exact Head erneuert.
+Vorbereitung autorisiert weder Merge noch Tag, Veröffentlichung oder Registry-Promotion.
+"""
+                self.assertEqual(semantic_text(current[rule]), semantic_text(expected))
 
     def test_resume_regeln_bleiben_unveraendert_geladen(self):
         current = loaded_rules(BUNDLE, self.routes["resume"])

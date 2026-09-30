@@ -25,18 +25,11 @@ import sys
 from urllib.parse import quote, urlsplit
 
 if __package__:
-    from .sync_version import _read_regular_bytes
+    from .sync_version import SEMVER_RE, _read_regular_bytes
 else:
-    from sync_version import _read_regular_bytes
+    from sync_version import SEMVER_RE, _read_regular_bytes
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-SEMVER_RE = re.compile(
-    r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
-    r"(?:-((?:0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)"
-    r"(?:\.(?:0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*))?"
-    r"(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"
-)
 
 VALID_CATEGORIES = {"Added", "Changed", "Fixed", "Removed", "Deprecated", "Security"}
 REQUIRED_CATEGORIES = {"Added", "Changed", "Fixed", "Removed"}
@@ -313,7 +306,7 @@ def _validate_release_trust_anchor(root):
 
 
 def _is_valid_semver(v):
-    return bool(SEMVER_RE.match(v))
+    return bool(SEMVER_RE.fullmatch(v))
 
 
 def _split_changelog_sections(changelog):

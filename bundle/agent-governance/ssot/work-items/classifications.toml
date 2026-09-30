@@ -40,7 +40,17 @@ cardinality = "at_most_one"
 description = """
 Beschreibt die erwartete beziehungsweise klassifizierte öffentliche Versionsauswirkung. Diese
 Klassifikation ersetzt keine abschließende Releasebewertung gegen den tatsächlich gelieferten
-öffentlichen Vertrag.
+öffentlichen Vertrag. Sie wird nicht aus einer Parent-Zuordnung vererbt und bestimmt weder
+Release-Ownership noch Issue-Hierarchie. In einem gemeinsam veröffentlichten Programm darf
+der Impact am Release-Parent aggregiert werden; semver.none ist kein Ersatz für eine Delivery-Rolle.
+"""
+
+[dimensions.delivery_role]
+label = "Delivery Role"
+cardinality = "at_most_one"
+description = """
+Beschreibt die Rolle bei der Lieferung, unabhängig von Compatibility Impact und Issue-Hierarchie.
+Die native Parent-/Sub-Issue-Beziehung bleibt die strukturelle Authority.
 """
 
 [classifications.type.feature]
@@ -150,3 +160,11 @@ description = "Erfordert voraussichtlich keine neue Paketversion."
 [classifications.semver.pending]
 label = "Pending"
 description = "SemVer-Auswirkung ist noch nicht ausreichend geklärt."
+
+[classifications.delivery_role.slice]
+label = "Delivery Slice"
+description = """
+Bestandteil eines übergeordneten Releases beziehungsweise Release-Parents ohne eigenständige
+SemVer- oder Releaseentscheidung. Der Slice kann öffentlich versionsrelevante oder Breaking
+Changes enthalten; die Releaseentscheidung liegt beim Parent.
+"""

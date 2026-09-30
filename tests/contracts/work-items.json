@@ -1,5 +1,5 @@
 {
-  "dimensions": {"type": "one", "area": "many", "horizon": "at_most_one", "semver": "at_most_one"},
-  "required_classifications": ["type.refactor", "semver.patch", "horizon.future"],
-  "required_projection_names": ["semver:major", "semver:minor", "semver:patch", "semver:none", "semver:pending", "future"]
+  "dimensions": {"type": "one", "area": "many", "horizon": "at_most_one", "semver": "at_most_one", "delivery_role": "at_most_one"},
+  "required_classifications": ["type.refactor", "semver.patch", "horizon.future", "delivery_role.slice"],
+  "required_projection_names": ["semver:major", "semver:minor", "semver:patch", "semver:none", "semver:pending", "future", "delivery-slice"]
 }
