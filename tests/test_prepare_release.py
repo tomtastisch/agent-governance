@@ -217,6 +217,17 @@ class PrepareReleaseContract(unittest.TestCase):
                 self.assertNotEqual(self.run_prepare("--bump", "minor", "--date", "2026-09-30").returncode, 0)
                 self.assertEqual(self.snapshot(), before)
 
+    def test_sec_eingerueckte_und_tabgetrennte_atx_ueberschriften_blockieren(self):
+        initial = self.snapshot()
+        for heading in (" ### Added", "  ### Added", "   ### Added", " ## [Unreleased]", "  ## [Unreleased]", "   ## [Unreleased]", "##\t[Unreleased]"):
+            with self.subTest(heading=heading):
+                for name, data in initial.items():
+                    (self.root / name).write_bytes(data)
+                (self.root / "CHANGELOG.md").write_text(_CHANGELOG_MIN.replace("### Added\n", f"### Added\n{heading}\n", 1))
+                before = self.snapshot()
+                self.assertNotEqual(self.run_prepare("--bump", "minor", "--date", "2026-09-30").returncode, 0)
+                self.assertEqual(self.snapshot(), before)
+
     def test_sec_noop_prueft_identitaeten_nach_finalem_snapshot(self):
         prepare_release.prepare(self.root, target="0.2.0", release_date="2026-09-30")
         read = sync_version._read_regular_bytes

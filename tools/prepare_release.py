@@ -50,6 +50,10 @@ def target_version(current: str, bump: str | None, target: str | None) -> str:
 def cut_changelog(source: str, current: str, target: str, release_date: str, root: Path) -> str:
     if "\r" in source:
         raise ValueError("CHANGELOG benötigt die Repositorykonvention LF")
+    for line in source.splitlines():
+        heading = line.lstrip()
+        if heading.startswith("##") and (heading != line or not line.startswith(("## ", "### "))):
+            raise ValueError("nichtkanonische CHANGELOG-Überschrift")
     headings = list(re.finditer(r"^## .*$", source, re.MULTILINE))
     if len(headings) < 2 or headings[0][0] != "## [Unreleased]":
         raise ValueError("CHANGELOG benötigt genau einen führenden Unreleased-Bereich und Releasehistorie")
