@@ -16,13 +16,14 @@ TREES = ("bundle",)
 EXCLUDED = {"bundle/agent-governance/local/user-rules.md"}
 
 
-def payload_files() -> list[Path]:
+def payload_files(root: Path | None = None) -> list[Path]:
+    root = ROOT if root is None else root
     files: list[Path] = []
     for relative in TOP_LEVEL:
-        files.append(ROOT / relative)
+        files.append(root / relative)
     for tree in TREES:
-        for candidate in (ROOT / tree).rglob("*"):
-            relative = candidate.relative_to(ROOT).as_posix()
+        for candidate in (root / tree).rglob("*"):
+            relative = candidate.relative_to(root).as_posix()
             mode = candidate.lstat().st_mode
             if stat.S_ISLNK(mode):
                 raise RuntimeError(f"payload link is forbidden: {relative}")
@@ -30,13 +31,14 @@ def payload_files() -> list[Path]:
                 files.append(candidate)
             elif not stat.S_ISDIR(mode) and relative not in EXCLUDED:
                 raise RuntimeError(f"unexpected payload type: {relative}")
-    return sorted(files, key=lambda item: item.relative_to(ROOT).as_posix().encode())
+    return sorted(files, key=lambda item: item.relative_to(root).as_posix().encode())
 
 
-def render() -> str:
+def render(root: Path | None = None) -> str:
+    root = ROOT if root is None else root
     lines = []
-    for path in payload_files():
-        relative = path.relative_to(ROOT).as_posix()
+    for path in payload_files(root):
+        relative = path.relative_to(root).as_posix()
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
         lines.append(f"{digest}  {relative}")
     return "\n".join(lines) + "\n"

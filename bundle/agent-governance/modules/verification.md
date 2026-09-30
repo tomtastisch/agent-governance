@@ -35,6 +35,14 @@ implementierten Stand. Verhaltens-, Kompatibilitäts- und Migrationsänderungen 
 für das Repository festgelegten Versionierung erfasst; Zukunftspläne erscheinen nicht als
 bereits verfügbare Funktion.
 
+Release-/Versionsmetadaten werden vor dem finalen Exact-Head-Gate im bereits autorisierten
+Liefer-/Release-PR deterministisch materialisiert, sofern der konkrete Repositoryvertrag keinen
+ausdrücklich anderen Weg vorsieht. Die Releaseentscheidung liegt beim Release Owner; ein
+Delivery-Slice begründet durch seine Zugehörigkeit keine eigenständige Versionsentscheidung.
+Compatibility Impact, Release Ownership und Issue-Hierarchie sind getrennte Aussagen. Nach einer
+Metadatenänderung werden die betroffenen Gates gemäß DEL-002 am neuen Exact Head erneuert.
+Vorbereitung autorisiert weder Merge noch Tag, Veröffentlichung oder Registry-Promotion.
+
 ## Grenze zur Lieferentscheidung
 
 Lokale Evidence erlaubt ausschließlich die Aussage „lokal verifiziert“ im geprüften Scope.
@@ -44,4 +52,3 @@ Vor PR-/Review-Promotion, Integration, Release, Publishing oder einer Aussage wi
 `quality_review` beziehungsweise `security_review`; der passende Rollentrigger lädt die Rolle.
 Kein lokaler Test ersetzt diese Gates. Bei unklarer Grenze gilt
 [GOV-004](../../GOVERNANCE.md#gov-004--fail-closed).
-

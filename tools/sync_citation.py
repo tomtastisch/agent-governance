@@ -9,8 +9,12 @@ import argparse
 from pathlib import Path
 import sys
 
-from release_check import CheckResult, _check_changelog_sections, citation_fields
-from sync_version import _read_regular_bytes, _read_version_with_identity, _replace_all_atomically, _require_identity
+if __package__:
+    from .release_check import CheckResult, _check_changelog_sections, citation_fields
+    from .sync_version import _read_regular_bytes, _read_version_with_identity, _replace_all_atomically, _require_identity
+else:
+    from release_check import CheckResult, _check_changelog_sections, citation_fields
+    from sync_version import _read_regular_bytes, _read_version_with_identity, _replace_all_atomically, _require_identity
 
 
 def synchronize(root: Path) -> None:

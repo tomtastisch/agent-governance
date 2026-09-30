@@ -25,6 +25,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Breaking changes:** none
 
+## [1.8.0] — 2026-09-30
+
+### Added
+
+- Kanonische Delivery-Slice-Klassifikation `delivery_role.slice` und managed
+  GitHub-Projektion `delivery-slice`; Release Ownership, Compatibility Impact und native
+  Issue-Hierarchie sind unabhängig (#152; SemVer minor).
+- Deterministische Release-Vorbereitung über `tools/prepare_release.py`: Bump-Intent
+  oder explizites Ziel, byteerhaltender Changelog-Cut und vorhandene Version-/Citation-/
+  Manifest-/Check-Primitiven mit gemeinsamer transaktionaler Metadatenübernahme.
+
+### Changed
+
+- Versionsmaterialisierung im bestehenden Liefer-/Release-PR vor dem finalen Exact-Head-Gate;
+  kein separater Version-only-PR und kein Post-Merge-Bump im normalen Releasevertrag.
+- Delivery-Slice-Zuordnung des 2.0-Programms #146–#151; die Releaseentscheidung bleibt bei #145.
+
+### Fixed
+
+- Keine.
+
+### Removed
+
+- Keine.
+
+**Breaking changes:** none
+
 ## [1.7.5] — 2026-09-29
 
 ### Added

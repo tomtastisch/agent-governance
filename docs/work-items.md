@@ -50,3 +50,17 @@ Kardinalitäten (`CARDINALITIES`), Dimensionen, Klassifikationswerte und Projekt
 ausschließlich der SSOT; diese Referenz wiederholt sie nicht. GitHub-Labels werden aus dem
 `ProjectionPlan` heraus durch den Aufrufer angelegt oder gepflegt — dieses Modul mutiert niemals
 selbst.
+
+## Delivery-Slices und Release Ownership
+
+`delivery_role.slice` wird aus der bestehenden Klassifikations-SSOT als managed GitHub-Label
+`delivery-slice` projiziert. Die native GitHub-Parent-/Sub-Issue-Beziehung bleibt die strukturelle
+Authority. Compatibility Impact, Release Ownership und Issue-Hierarchie sind unabhängig:
+ein Slice kann Breaking Changes enthalten, während die Releaseentscheidung und der aggregierte
+SemVer-Impact beim Release-Parent liegen. `semver:*` wird nicht aus der Zugehörigkeit vererbt;
+`semver:none` ersetzt keine Delivery-Rolle. Die optionale Rolle verwendet die vorhandene
+Kardinalitätsprüfung; Labelkollisionen bleiben im vorhandenen Projection-Plan sichtbar.
+
+Für das 2.0-Programm ist #145 der Release Owner mit Ziel 2.0.0 und `semver:major`.
+#146–#151 tragen `delivery-slice` ohne eigenständige SemVer-/Releaseentscheidung.
+Die Versionstechnik und der Prepare-Pfad sind in [releasing.md](releasing.md) beschrieben.
