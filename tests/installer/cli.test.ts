@@ -40,6 +40,17 @@ test("CLI routes init through its orchestration handler without constructing a t
   const output: string[] = [];
   const exitCode = await runCli(["init"], (value) => output.push(value), () => {}, {
     createTransaction: () => { transactionCalls += 1; throw new Error("transaction command must not back init"); },
+    initOptions: {
+      isTTY: true,
+      environment: { home: "/synthetic/home", platform: "linux" },
+      releaseRoot: "/synthetic/release",
+    },
+    initPrompt: {
+      dispose: () => {},
+      step: () => {},
+      selectTargets: async () => { return []; },
+      confirm: async () => { return true; },
+    },
     init: async () => {
       initCalls += 1;
       return { schemaVersion: 1, command: "init", outcome: "SUCCESS", targets: [] };

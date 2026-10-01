@@ -60,12 +60,24 @@ export function renderCommandHelp(id: PublicCommandId, commands: readonly Public
   const isOrchestration = command.capability === "orchestration";
   const path = command.path.join(" ");
   const usageArgs = isOrchestration
-    ? ""
+    ? id === "init"
+      ? " [tools] [--skip-tools] [--json]"
+      : ""
     : " --target-root <absolute-path> --entry-file <relative.md> --scope global --installation-root <absolute-path> [options]";
   const usage = `${t.cyan("Usage:")} agent-governance ${t.cyan(path)}${usageArgs === "" ? "" : t.dim(usageArgs)}`;
-  const options = isOrchestration
-    ? [{ name: "-h, --help", description: "Show this help." }]
-    : COMMAND_OPTIONS;
+  let options: readonly { name: string; description: string }[];
+  if (id === "init") {
+    options = [
+      { name: "tools", description: "Run only the tool preparation step." },
+      { name: "--skip-tools", description: "Skip the tool preparation step in full init." },
+      { name: "--json", description: "Emit structured JSON." },
+      { name: "-h, --help", description: "Show this help." },
+    ];
+  } else if (isOrchestration) {
+    options = [{ name: "-h, --help", description: "Show this help." }];
+  } else {
+    options = COMMAND_OPTIONS;
+  }
   const width = Math.max(...options.map(({ name }) => name.length));
   const optionLines = options.map(({ name, description }) => `  ${t.cyan(name.padEnd(width))}  ${t.dim(description)}`);
   return [

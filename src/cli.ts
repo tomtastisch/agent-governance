@@ -11,6 +11,7 @@ import { runInit } from "./init/orchestrator.ts";
 import { resolveLatestRelease } from "./installer/latest.ts";
 import { createClackPrompt } from "./init/prompt.ts";
 import type { InitOptions, InitPrompt, InitResult } from "./init/types.ts";
+import { runToolPreparation } from "./init/tool-preparation/index.ts";
 import { InstallerTransaction } from "./transaction.ts";
 import { loadCommandCatalog } from "./command-catalog.ts";
 import { PUBLIC_COMMAND_HANDLERS, renderCommandHelp, renderGlobalHelp } from "./public-commands.ts";
@@ -23,12 +24,36 @@ export interface CliDependencies {
   readonly initOptions?: InitOptions;
   readonly initPrompt?: InitPrompt;
 }
-const VALUE_OPTIONS = new Set(["--target-root", "--entry-file", "--scope", "--installation-root", "--local-rules"]);
-function parse(argv: readonly string[], publicCommands: readonly PublicCommandId[]): { command: PublicCommandId; request?: InstallerRequest; json: boolean } {
+const VALUE_OPTIONS = new Set(["--target-root", "--entry-file", "--scope", "--installation-root", "--local-rules", "--skip-tools"]);
+
+type InitSubcommand = "full" | "tools";
+
+function parse(argv: readonly string[], publicCommands: readonly PublicCommandId[]): { command: PublicCommandId; request?: InstallerRequest; json: boolean; initSubcommand?: InitSubcommand; skipTools?: boolean } {
   const command = argv[0]; if (command === undefined || !publicCommands.includes(command as PublicCommandId)) throw new Error("unknown or missing command");
   if (command === "init") {
-    if (argv.length !== 1) throw new Error(`unknown option ${String(argv[1])}`);
-    return { command, json: false };
+    let json = false;
+    let initSubcommand: InitSubcommand | undefined;
+    let skipTools = false;
+    for (let index = 1; index < argv.length; index += 1) {
+      const option = argv[index];
+      if (option === "--json") {
+        if (json) throw new Error("duplicate option --json");
+        json = true;
+        continue;
+      }
+      if (option === "--skip-tools") {
+        if (skipTools) throw new Error("duplicate option --skip-tools");
+        skipTools = true;
+        continue;
+      }
+      if (option === undefined || option.startsWith("--")) throw new Error(`unknown option ${String(option)}`);
+      if (initSubcommand !== undefined) throw new Error(`unknown option ${String(option)}`);
+      if (option !== "tools") throw new Error(`unknown subcommand ${option}`);
+      initSubcommand = "tools";
+    }
+    if (initSubcommand === "tools" && skipTools) throw new Error("INVALID_INVOCATION: 'init tools' and '--skip-tools' are mutually exclusive");
+    if (initSubcommand === undefined) initSubcommand = "full";
+    return { command, json, initSubcommand, skipTools };
   }
   const values = new Map<string, string>(); let json = false; let dryRun = false; let nonInteractive = false;
   for (let index = 1; index < argv.length; index += 1) { const option = argv[index]; if (option === "--json") { if (json) throw new Error("duplicate option --json"); json = true; continue; } if (option === "--dry-run") { if (dryRun) throw new Error("duplicate option --dry-run"); dryRun = true; continue; } if (option === "--non-interactive") { if (nonInteractive) throw new Error("duplicate option --non-interactive"); nonInteractive = true; continue; } if (option === undefined || !VALUE_OPTIONS.has(option)) throw new Error(`unknown option ${String(option)}`); if (values.has(option)) throw new Error(`duplicate option ${option}`); const value = argv[++index]; if (value === undefined || value.startsWith("--") || /[\0\r\n]/.test(value)) throw new Error(`missing or unsafe value for ${option}`); values.set(option, value); }
@@ -66,37 +91,89 @@ export async function runCli(argv: readonly string[], out: Writer = console.log,
   const publicCommands = definitions.map(({ id }) => id);
   const helpTheme = createTerminalTheme();
   if (argv.length === 1 && isHelp(argv[0])) { out(renderGlobalHelp(definitions, helpTheme)); return EXIT_CODES.SUCCESS; }
-  if (argv.length === 2 && publicCommands.includes(argv[0] as PublicCommandId) && isHelp(argv[1])) { out(renderCommandHelp(argv[0] as PublicCommandId, definitions, helpTheme)); return EXIT_CODES.SUCCESS; }
+  if (argv.length >= 2 && publicCommands.includes(argv[0] as PublicCommandId) && argv.some(isHelp)) { out(renderCommandHelp(argv[0] as PublicCommandId, definitions, helpTheme)); return EXIT_CODES.SUCCESS; }
   let parsed: ReturnType<typeof parse>; try { parsed = parse(argv, publicCommands); } catch (cause) { error(JSON.stringify({ schemaVersion: 1, outcome: "INVALID_INVOCATION", error: (cause as Error).message })); return EXIT_CODES.INVALID_INVOCATION; }
   try {
     let transaction: InstallerTransaction | undefined;
-    const result = await PUBLIC_COMMAND_HANDLERS[parsed.command]({
-      transaction: () => {
-        if (parsed.request === undefined) throw new Error("transaction request is unavailable");
-        transaction ??= (dependencies.createTransaction ?? ((request) => new InstallerTransaction(request)))(parsed.request);
-        return transaction;
-      },
-      init: dependencies.init ?? (async () => {
-        const initOptions = dependencies.initOptions ?? defaultInitOptions();
-        const prompt = dependencies.initPrompt ?? createClackPrompt({
+    let result: unknown;
+
+    if (parsed.command === "init") {
+      const initOptions = dependencies.initOptions ?? defaultInitOptions();
+      const prompt = dependencies.initPrompt ?? createClackPrompt({
+        columns: Number.parseInt(process.env.COLUMNS ?? "", 10) || process.stdout.columns,
+        environment: process.env,
+      });
+
+      if (dependencies.initPrompt === undefined && initOptions.isTTY) {
+        await renderBranding({
+          write: (value) => out(value.trimEnd()),
           columns: Number.parseInt(process.env.COLUMNS ?? "", 10) || process.stdout.columns,
           environment: process.env,
         });
-        if (dependencies.initPrompt === undefined && initOptions.isTTY) {
-          await renderBranding({
-            write: (value) => out(value.trimEnd()),
+      }
+
+      if (parsed.initSubcommand === "tools") {
+        if (!initOptions.isTTY) {
+          result = Object.freeze({
+            schemaVersion: 1,
+            command: "init",
+            outcome: "INVALID_INVOCATION",
+            reason: "NON_TTY",
+            guidance: "Tool preparation requires a TTY.",
+            targets: [],
+          });
+        } else {
+          const preparationResults = await runToolPreparation(parsed.skipTools ?? false);
+          result = Object.freeze({
+            schemaVersion: 1,
+            command: "init",
+            outcome: "SUCCESS",
+            toolPreparation: preparationResults,
+          });
+        }
+      } else {
+        if (dependencies.init) {
+          result = await dependencies.init();
+        } else {
+          result = await runInit(initOptions, {
+            discoverHarnesses: createAgntnHarnessesAdapter().discover,
+            resolveLatestRelease,
+            prompt,
+            createTransaction: dependencies.createTransaction ?? ((request) => new InstallerTransaction(request)),
+            skipTools: parsed.skipTools ?? false,
+          });
+        }
+      }
+    } else {
+      result = await PUBLIC_COMMAND_HANDLERS[parsed.command]({
+        transaction: () => {
+          if (parsed.request === undefined) throw new Error("transaction request is unavailable");
+          transaction ??= (dependencies.createTransaction ?? ((request) => new InstallerTransaction(request)))(parsed.request);
+          return transaction;
+        },
+        init: dependencies.init ?? (async () => {
+          const initOptions = dependencies.initOptions ?? defaultInitOptions();
+          const prompt = dependencies.initPrompt ?? createClackPrompt({
             columns: Number.parseInt(process.env.COLUMNS ?? "", 10) || process.stdout.columns,
             environment: process.env,
           });
-        }
-        return runInit(initOptions, {
-          discoverHarnesses: createAgntnHarnessesAdapter().discover,
-          resolveLatestRelease,
-          prompt,
-          createTransaction: dependencies.createTransaction ?? ((request) => new InstallerTransaction(request)),
-        });
-      }),
-    });
+          if (dependencies.initPrompt === undefined && initOptions.isTTY) {
+            await renderBranding({
+              write: (value) => out(value.trimEnd()),
+              columns: Number.parseInt(process.env.COLUMNS ?? "", 10) || process.stdout.columns,
+              environment: process.env,
+            });
+          }
+          return runInit(initOptions, {
+            discoverHarnesses: createAgntnHarnessesAdapter().discover,
+            resolveLatestRelease,
+            prompt,
+            createTransaction: dependencies.createTransaction ?? ((request) => new InstallerTransaction(request)),
+          });
+        }),
+      });
+    }
+
     const structured = typeof result === "object" && result !== null ? result as Record<string, unknown> : undefined;
     out(parsed.json ? JSON.stringify(result) : structured !== undefined && typeof structured.outcome === "string" && typeof structured.state === "string" && typeof structured.phase === "string" ? `${structured.outcome}: ${structured.state} (${structured.phase})` : JSON.stringify(result));
     return isOutcome(structured?.outcome) ? exitCodeFor(structured.outcome) : EXIT_CODES.SUCCESS;

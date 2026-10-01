@@ -3,9 +3,11 @@ import { lstat } from "node:fs/promises";
 
 import { resolveTarget } from "./bindings.ts";
 import { resolveSupport } from "./support.ts";
+import { runToolPreparation } from "./tool-preparation/index.ts";
 import {
   INIT_CANCELLED,
   INIT_STEPS,
+  INIT_STEPS_NO_TOOLS,
   type DiscoveredHarness,
   type HarnessRow,
   type InitDependencies,
@@ -119,15 +121,20 @@ export async function runInit(options: InitOptions, dependencies: InitDependenci
     });
   }
 
+  const skipTools = dependencies.skipTools ?? false;
+  const steps = skipTools ? INIT_STEPS_NO_TOOLS : INIT_STEPS;
+
   try {
     const installationRoot = options.installationRoot ?? join(options.environment.home, ".agent-governance");
 
-    dependencies.prompt.step(INIT_STEPS[0]!);
+    // Step 1: Umgebung prüfen
+    dependencies.prompt.step(steps[0]!);
     const discovered = await dependencies.discoverHarnesses({ environment: options.environment });
     const latestVersion = await dependencies.resolveLatestRelease();
     const rows = await buildRows(discovered, options, installationRoot, latestVersion, dependencies);
 
-    dependencies.prompt.step(INIT_STEPS[1]!);
+    // Step 2: Coding-Harnesses auswählen
+    dependencies.prompt.step(steps[1]!);
     const selections = await dependencies.prompt.selectTargets(rows);
     if (selections === INIT_CANCELLED) return cancelled();
     if (selections.length === 0) throw new Error("no init targets selected");
@@ -137,7 +144,16 @@ export async function runInit(options: InitOptions, dependencies: InitDependenci
     const keys = resolved.map(({ target }) => targetKey(target));
     if (new Set(keys).size !== keys.length) throw new Error("duplicate init target");
 
-    dependencies.prompt.step(INIT_STEPS[2]!);
+    // Step 3: Tools vorbereiten (only if not skipped)
+    let toolPreparationResults: readonly import("./tool-preparation/types.ts").ToolPreparationResult[] = Object.freeze([]);
+    if (!skipTools) {
+      dependencies.prompt.step(steps[2]!);
+      toolPreparationResults = await runToolPreparation(false);
+    }
+
+    // Step 4 (or 3 if tools skipped): Prüfen und einrichten
+    const setupStepIndex = skipTools ? 2 : 3;
+    dependencies.prompt.step(steps[setupStepIndex]!);
     const prepared: PreparedTarget[] = [];
     for (const { selection, target } of resolved) {
       const transaction = dependencies.createTransaction({
@@ -183,6 +199,7 @@ export async function runInit(options: InitOptions, dependencies: InitDependenci
       command: "init",
       outcome: "SUCCESS",
       targets: Object.freeze(completed),
+      toolPreparation: toolPreparationResults,
     });
   } finally {
     dependencies.prompt.dispose();

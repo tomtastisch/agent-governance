@@ -29,10 +29,15 @@ test("the current release real init path never starts a package manager or depen
     Object.defineProperty(childProcess, method, {
       configurable: true,
       value: (...args: unknown[]) => {
-        if (method === "execFileSync" && String(args[0]) === "which") {
+        const cmd = String(args[0]);
+        const cmdArgs = Array.isArray(args[1]) ? args[1].map(String) : [];
+        if (method === "execFileSync" && cmd === "which") {
           return (originals.get(method) as (...values: unknown[]) => unknown)(...args);
         }
-        intercepted.push(`${method}:${String(args[0])}`);
+        if (cmd === "gh" && cmdArgs.some((arg) => ["--version", "auth", "status", "login"].includes(arg))) {
+          return (originals.get(method) as (...values: unknown[]) => unknown)(...args);
+        }
+        intercepted.push(`${method}:${cmd}`);
         throw new Error(`init attempted forbidden child process via ${method}`);
       },
       writable: true,
