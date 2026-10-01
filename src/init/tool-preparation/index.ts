@@ -5,8 +5,9 @@ const PREPARATION_MODULES: readonly ToolPreparationModule[] = Object.freeze([ghP
 
 async function promptUserAuthorization(module: ToolPreparationModule, message: string): Promise<boolean> {
   const { stdin, stdout } = process;
-  return new Promise((resolve) => {
-    const theme = require("../../terminal/theme.ts").createTerminalTheme({ color: true });
+  return new Promise(async (resolve) => {
+    const { createTerminalTheme } = await import("../../terminal/theme.ts");
+    const theme = createTerminalTheme({ color: true });
     console.log(`${theme.cyan("USER:")} ${message}`);
     console.log(`${theme.dim("Press 'y' to continue, any other key to skip:")}`);
     
