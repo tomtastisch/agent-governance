@@ -1,5 +1,6 @@
 import type { InstallResult, InstallerCommand, InstallerRequest, InstallState } from "../contracts.ts";
 import type { ToolPreparationResult } from "./tool-preparation/types.ts";
+import type { InterruptedFailure } from "../errors.ts";
 
 export interface InitEnvironment {
   readonly home: string;
@@ -142,4 +143,9 @@ export type InitResult =
       readonly reason: "CANCELLED";
       readonly targets: readonly [];
       readonly toolPreparation?: readonly ToolPreparationResult[];
+      readonly phase?: InterruptedFailure["phase"];
+      readonly rollbackStatus?: InterruptedFailure["rollbackStatus"];
+      readonly signal?: InterruptedFailure["signal"];
+      readonly code?: string;
+      readonly resourceId?: string;
     };

@@ -28,7 +28,7 @@ interface PreparedTarget extends InitPlannedTarget {
 
 const NO_TARGETS = Object.freeze([]) as readonly [];
 
-function cancelled(toolPreparation?: readonly ToolPreparationResult[]): InitResult {
+function cancelled(toolPreparation?: readonly ToolPreparationResult[], interruption?: InterruptedFailure): InitResult {
   return Object.freeze({
     schemaVersion: 1,
     command: "init",
@@ -36,6 +36,13 @@ function cancelled(toolPreparation?: readonly ToolPreparationResult[]): InitResu
     reason: "CANCELLED",
     targets: NO_TARGETS,
     ...(toolPreparation === undefined ? {} : { toolPreparation }),
+    ...(interruption === undefined ? {} : {
+      phase: interruption.phase,
+      rollbackStatus: interruption.rollbackStatus,
+      signal: interruption.signal,
+      code: interruption.code,
+      resourceId: interruption.resourceId,
+    }),
   });
 }
 
@@ -63,7 +70,7 @@ export async function runInitTools(options: InitOptions, prepareTools = runToolP
       schemaVersion: 1, command: "init", outcome: "SUCCESS", targets: NO_TARGETS, toolPreparation: results,
     });
   } catch (cause) {
-    if (cause instanceof InterruptedFailure && cause.signal === "SIGINT") return cancelled();
+    if (cause instanceof InterruptedFailure && cause.signal === "SIGINT") return cancelled(undefined, cause);
     throw cause;
   }
 }
@@ -237,7 +244,7 @@ export async function runInit(options: InitOptions, dependencies: InitDependenci
       toolPreparation: toolPreparationResults,
     });
   } catch (cause) {
-    if (cause instanceof InterruptedFailure && cause.signal === "SIGINT") return cancelled(toolPreparationResults);
+    if (cause instanceof InterruptedFailure && cause.signal === "SIGINT") return cancelled(toolPreparationResults, cause);
     throw cause;
   } finally {
     dependencies.prompt.dispose();

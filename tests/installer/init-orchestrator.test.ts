@@ -312,3 +312,21 @@ test("later target cancellation retains completed tool preparation without targe
     assert.equal(events.some(event => event.startsWith("install:") || event.startsWith("update:")), false);
   }
 });
+
+test("full init preserves target transaction interruption recovery metadata", async () => {
+  for (const operation of ["plan", "install", "update", "verify"] as const) {
+    const transaction = fakeTransaction([], "/synthetic/target", operation === "update" ? "OUTDATED" : "FRESH");
+    const failure = new InterruptedFailure("SIGINT", operation === "plan" ? "plan" : "activate", "SUCCEEDED");
+    const interrupted = { ...transaction, [operation]: async () => { throw failure; } };
+    const result = await runInit(options("/synthetic/home"), {
+      discoverHarnesses: async () => [], resolveLatestRelease: async () => undefined,
+      prompt: prompt([{ manualInput: { targetRoot: "/synthetic/target", entryFile: "AGENTS.md" } }], []),
+      prepareTools: async () => [{ toolId: "github_cli", status: "READY" }], createTransaction: () => interrupted,
+    });
+    assert.equal(result.outcome, "INTERRUPTED");
+    if (result.outcome !== "INTERRUPTED") throw new Error("missing interruption");
+    assert.equal(result.phase, failure.phase);
+    assert.equal(result.rollbackStatus, "SUCCEEDED");
+    assert.equal(result.signal, "SIGINT");
+  }
+});

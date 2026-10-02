@@ -32,14 +32,24 @@ function createDefaultDependencies(overrides: Partial<GhPreparationDependencies>
       const child = spawn(command, args, { stdio: options?.stdio ?? ["ignore", "pipe", "pipe"] });
       let stdout = "";
       let stderr = "";
+      let interruption: "SIGINT" | "SIGTERM" | undefined;
+      const forwardInterrupt = (): void => { interruption = "SIGINT"; child.kill("SIGINT"); };
+      const forwardTerminate = (): void => { interruption = "SIGTERM"; child.kill("SIGTERM"); };
+      const cleanup = (): void => {
+        process.off("SIGINT", forwardInterrupt);
+        process.off("SIGTERM", forwardTerminate);
+      };
+      process.on("SIGINT", forwardInterrupt);
+      process.on("SIGTERM", forwardTerminate);
       child.stdout?.on("data", (data: Buffer) => { stdout += data.toString(); });
       child.stderr?.on("data", (data: Buffer) => { stderr += data.toString(); });
       child.on("close", (code, signal) => {
-        if (signal === "SIGINT" || signal === "SIGTERM" || code === 130 || code === 143) {
-          reject(new InterruptedFailure(signal === "SIGTERM" || code === 143 ? "SIGTERM" : "SIGINT", "inspect", "NOT_REQUIRED"));
+        cleanup();
+        if (interruption !== undefined || signal === "SIGINT" || signal === "SIGTERM" || code === 130 || code === 143) {
+          reject(new InterruptedFailure(interruption ?? (signal === "SIGTERM" || code === 143 ? "SIGTERM" : "SIGINT"), "inspect", "NOT_REQUIRED"));
         } else resolve({ exitCode: code ?? 1, stdout, stderr });
       });
-      child.on("error", () => resolve({ exitCode: 127, stdout, stderr: "command not found" }));
+      child.on("error", () => { cleanup(); resolve({ exitCode: 127, stdout, stderr: "command not found" }); });
     }));
 
   return {

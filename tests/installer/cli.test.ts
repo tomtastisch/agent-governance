@@ -129,3 +129,22 @@ test("transaction help rejects extra, duplicate and incomplete arguments", async
     assert.equal(await runCli(argv, () => {}, () => {}), 2, argv.join(" "));
   }
 });
+
+test("init JSON serializes caught preparation and full-init failures only on stdout", async () => {
+  for (const toolsOnly of [false, true]) {
+    for (const cause of [new Error("synthetic failure"), new InstallerFailure("VERIFY", "verify", "installation", "UNSAFE_STATE", "synthetic failure"), new InterruptedFailure("SIGTERM", "activate", "SUCCEEDED")]) {
+      const output: string[] = []; const errors: string[] = [];
+      const exit = await runCli(["init", ...(toolsOnly ? ["tools"] : []), "--json"], value => output.push(value), value => errors.push(value), {
+        initOptions: { isTTY: true, environment: { home: "/synthetic/home", platform: "linux" }, releaseRoot: "/synthetic/release" },
+        initPrompt: { dispose() {}, step() {}, selectTargets: async () => [], confirm: async () => false },
+        init: async () => { throw cause; }, prepareTools: async () => { throw cause; },
+      });
+      assert.equal(exit, cause instanceof InterruptedFailure ? 143 : 4);
+      assert.equal(output.length, 1);
+      assert.equal(errors.length, 0);
+      const result = JSON.parse(output[0]!);
+      assert.equal(result.outcome, cause instanceof InterruptedFailure ? "INTERRUPTED" : "UNSAFE_STATE");
+      if (cause instanceof InterruptedFailure) assert.equal(result.rollbackStatus, "SUCCEEDED");
+    }
+  }
+});

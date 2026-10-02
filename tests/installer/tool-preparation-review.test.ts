@@ -131,3 +131,36 @@ test("CLI JSON preparation accepts terminal stdin with redirected stdout", async
     else assert.equal(result.reason, "NON_TTY");
   }
 });
+
+test("signals sent only to the CLI reach preparation children and wait for child close", async () => {
+  const { spawn } = await import("node:child_process");
+  const { mkdir, writeFile, rm } = await import("node:fs/promises");
+  const { join } = await import("node:path");
+  const { createTestRoot } = await import("../fixtures/installer/workspace.ts");
+  const root = await createTestRoot("gh-signal-forwarding-");
+  try {
+    await mkdir(join(root, "bin"));
+    await writeFile(join(root, "bin", "gh"), `#!${process.execPath}\nprocess.on('SIGINT', finish); process.on('SIGTERM', finish);\nfunction finish() { process.stderr.write('CHILD_SIGNAL_RECEIVED\\n'); setTimeout(() => { process.stderr.write('CHILD_STOPPED\\n'); process.exit(0); }, 50); }\nprocess.stderr.write('CHILD_READY\\n'); setTimeout(() => process.exit(99), 2000);\n`, { mode: 0o755 });
+    for (const signal of ["SIGINT", "SIGTERM"] as const) {
+      const child = spawn(process.execPath, ["--experimental-strip-types", "--input-type=module", "-e", `
+        import { createGhPreparationModule } from './src/init/tool-preparation/gh.ts';
+        import { runCli } from './src/cli.ts';
+        const module = createGhPreparationModule({ checkGhExists: async () => ({ exists: true, version: 'synthetic' }), checkGhAuth: async () => ({ authenticated: false, user: undefined }), write: () => {} });
+        process.exitCode = await runCli(['init','tools','--json'], console.log, console.error, {
+          initOptions: { isTTY: true, environment: { home: '/synthetic/home', platform: 'linux' }, releaseRoot: '/synthetic/release' },
+          prepareTools: async () => [await module.prepare({ authorizeInstall: false, authorizeLogin: true })],
+        });
+      `], { env: { ...process.env, PATH: join(root, "bin") }, stdio: ["ignore", "pipe", "pipe"] });
+      let output = ""; let errors = ""; let sent = false;
+      const closed = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(resolve => child.on("close", (code, signal) => resolve({ code, signal })));
+      const timer = setTimeout(() => child.kill("SIGKILL"), 5000);
+      child.stdout.on("data", chunk => { output += chunk; });
+      child.stderr.on("data", chunk => { errors += chunk; if (!sent && errors.includes("CHILD_READY")) { sent = true; child.kill(signal); } });
+      const result = await closed; clearTimeout(timer);
+      assert.equal(result.code, signal === "SIGINT" ? 130 : 143, errors);
+      assert.match(errors, /CHILD_SIGNAL_RECEIVED/);
+      assert.match(errors, /CHILD_STOPPED/);
+      assert.equal(JSON.parse(output).signal, signal);
+    }
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
