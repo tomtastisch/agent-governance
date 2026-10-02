@@ -292,3 +292,23 @@ test("full init preserves explicit skip and decline without skipping target veri
     assert.equal(events.some(event => event.includes("Tools vorbereiten")), !skipTools);
   }
 });
+
+test("later target cancellation retains completed tool preparation without target mutation", async () => {
+  for (const confirmation of [false, INIT_CANCELLED, "interrupt"] as const) {
+    const events: string[] = [];
+    const tools = [{ toolId: "github_cli", status: "READY" as const, message: "Installed and authenticated after consent." }];
+    const initPrompt = prompt([{ manualInput: { targetRoot: "/synthetic/target", entryFile: "AGENTS.md" } }], events, confirmation === "interrupt" ? true : confirmation);
+    const cancellationPrompt: InitPrompt = confirmation === "interrupt"
+      ? { ...initPrompt, confirm: async () => { throw new InterruptedFailure("SIGINT", "inspect", "NOT_REQUIRED"); } }
+      : initPrompt;
+    const result = await runInit(options("/synthetic/home"), {
+      discoverHarnesses: async () => [], resolveLatestRelease: async () => undefined,
+      prompt: cancellationPrompt, prepareTools: async () => tools,
+      createTransaction: () => fakeTransaction(events, "/synthetic/target"),
+    });
+    assert.equal(result.outcome, "INTERRUPTED");
+    assert.deepEqual(result.toolPreparation, tools);
+    assert.deepEqual(result.targets, []);
+    assert.equal(events.some(event => event.startsWith("install:") || event.startsWith("update:")), false);
+  }
+});

@@ -272,3 +272,17 @@ test("unsupported platforms never attempt a package manager", async () => {
   assert.equal(result.status, "UNAVAILABLE");
   assert.match(result.message!, /cli.github.com/);
 });
+
+test("authorized login fails when gh disappears after inspection without installing", async () => {
+  let exists = true;
+  const module = createGhPreparationModule(createMockDeps({
+    checkGhExists: async () => ({ exists, version: exists ? "2.40.0" : undefined }),
+    checkGhAuth: async () => ({ authenticated: false, user: undefined }),
+    runGhAuthLogin: async () => { throw new Error("missing gh must not launch login"); },
+    runAptUpdate: async () => { throw new Error("login consent cannot authorize installation"); },
+    runBrewInstall: async () => { throw new Error("login consent cannot authorize installation"); },
+  }));
+  assert.equal((await module.inspect()).status, "AUTH_REQUIRED");
+  exists = false;
+  assert.equal((await module.prepare({ authorizeInstall: false, authorizeLogin: true })).status, "UNAVAILABLE");
+});

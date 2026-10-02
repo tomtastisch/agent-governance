@@ -141,4 +141,5 @@ export type InitResult =
       readonly outcome: "INTERRUPTED";
       readonly reason: "CANCELLED";
       readonly targets: readonly [];
+      readonly toolPreparation?: readonly ToolPreparationResult[];
     };

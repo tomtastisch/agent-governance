@@ -28,13 +28,14 @@ interface PreparedTarget extends InitPlannedTarget {
 
 const NO_TARGETS = Object.freeze([]) as readonly [];
 
-function cancelled(): InitResult {
+function cancelled(toolPreparation?: readonly ToolPreparationResult[]): InitResult {
   return Object.freeze({
     schemaVersion: 1,
     command: "init",
     outcome: "INTERRUPTED",
     reason: "CANCELLED",
     targets: NO_TARGETS,
+    ...(toolPreparation === undefined ? {} : { toolPreparation }),
   });
 }
 
@@ -154,6 +155,7 @@ export async function runInit(options: InitOptions, dependencies: InitDependenci
 
   const skipTools = dependencies.skipTools ?? false;
   const steps = skipTools ? INIT_STEPS_NO_TOOLS : INIT_STEPS;
+  let toolPreparationResults: readonly ToolPreparationResult[] = Object.freeze([]);
 
   try {
     const installationRoot = options.installationRoot ?? join(options.environment.home, ".agent-governance");
@@ -176,7 +178,6 @@ export async function runInit(options: InitOptions, dependencies: InitDependenci
     if (new Set(keys).size !== keys.length) throw new Error("duplicate init target");
 
     // Step 3: Tools vorbereiten (only if not skipped)
-    let toolPreparationResults: readonly ToolPreparationResult[] = Object.freeze([]);
     if (!skipTools) {
       dependencies.prompt.step(steps[2]!);
       dependencies.prompt.dispose();
@@ -209,7 +210,7 @@ export async function runInit(options: InitOptions, dependencies: InitDependenci
       ({ target, status, plan, displayName }) => Object.freeze({ target, status, plan, displayName }),
     );
     const approved = await dependencies.prompt.confirm(approvalPlans);
-    if (approved === INIT_CANCELLED || !approved) return cancelled();
+    if (approved === INIT_CANCELLED || !approved) return cancelled(toolPreparationResults);
 
     const completed: InitTargetResult[] = [];
     for (const item of prepared) {
@@ -236,7 +237,7 @@ export async function runInit(options: InitOptions, dependencies: InitDependenci
       toolPreparation: toolPreparationResults,
     });
   } catch (cause) {
-    if (cause instanceof InterruptedFailure && cause.signal === "SIGINT") return cancelled();
+    if (cause instanceof InterruptedFailure && cause.signal === "SIGINT") return cancelled(toolPreparationResults);
     throw cause;
   } finally {
     dependencies.prompt.dispose();

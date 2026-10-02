@@ -94,3 +94,40 @@ exit 99
     }
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test("authorization catchable signals restore raw mode and remove temporary handlers", async () => {
+  const { EventEmitter } = await import("node:events");
+  for (const [signal, code] of [["SIGTERM", 143], ["SIGINT", 130]] as const) {
+    const signals = new EventEmitter();
+    const input = Object.assign(new PassThrough(), { isTTY: true, isRaw: false, setRawMode(value: boolean) { this.isRaw = value; return this; } });
+    const pending = preparation.promptUserAuthorization({ toolId: "github_cli" } as ToolPreparationModule, "Login?", { stdin: input, write: () => {}, signals });
+    signals.emit(signal);
+    // A normal input event must not be needed to restore the terminal.
+    assert.equal(input.isRaw, false);
+    input.end();
+    await assert.rejects(pending, (error: unknown) => error instanceof InterruptedFailure && error.exitCode === code);
+    assert.equal(input.listenerCount("data"), 0);
+    assert.equal(signals.listenerCount("SIGINT"), 0);
+    assert.equal(signals.listenerCount("SIGTERM"), 0);
+  }
+});
+
+test("CLI JSON preparation accepts terminal stdin with redirected stdout", async () => {
+  const { spawnSync } = await import("node:child_process");
+  for (const inputTTY of [true, false]) {
+    const child = spawnSync(process.execPath, ["--experimental-strip-types", "--input-type=module", "-e", `
+      import { runCli } from './src/cli.ts';
+      Object.defineProperty(process.stdin, 'isTTY', { value: ${inputTTY} });
+      Object.defineProperty(process.stdout, 'isTTY', { value: false });
+      process.exitCode = await runCli(['init','tools','--json'], console.log, console.error, {
+        prepareTools: async () => [{ toolId: 'github_cli', status: 'READY' }],
+        createTransaction: () => { throw new Error('tools-only cannot start target setup'); },
+      });
+    `], { encoding: "utf8", timeout: 5000 });
+    assert.equal(child.status, inputTTY ? 0 : 2, child.stderr);
+    const result = JSON.parse(child.stdout);
+    assert.equal(result.outcome, inputTTY ? "SUCCESS" : "INVALID_INVOCATION");
+    if (inputTTY) assert.deepEqual(result.toolPreparation, [{ toolId: "github_cli", status: "READY" }]);
+    else assert.equal(result.reason, "NON_TTY");
+  }
+});

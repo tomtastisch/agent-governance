@@ -11,9 +11,14 @@ export async function promptUserAuthorization(
   io: {
     stdin: { readonly isTTY?: boolean; readonly isRaw?: boolean; setRawMode(value: boolean): unknown; on(event: string, listener: (...args: any[]) => void): unknown; off(event: string, listener: (...args: any[]) => void): unknown; resume(): unknown; pause(): unknown };
     write: (value: string) => void;
+    signals?: {
+      on(signal: "SIGINT" | "SIGTERM", listener: () => void): unknown;
+      off(signal: "SIGINT" | "SIGTERM", listener: () => void): unknown;
+    };
   } = { stdin: process.stdin, write: value => { process.stderr.write(value); } },
 ): Promise<boolean> {
   const { stdin, write } = io;
+  const signals = io.signals ?? process;
   const theme = createTerminalTheme();
   write(`${theme.cyan("USER:")} ${message}\n`);
   if (!stdin.isTTY) {
@@ -27,11 +32,19 @@ export async function promptUserAuthorization(
       stdin.off("data", onData);
       stdin.off("end", onEnd);
       stdin.off("error", onError);
+      signals.off("SIGINT", onInterrupt);
+      signals.off("SIGTERM", onTerminate);
       stdin.setRawMode(wasRaw);
       stdin.pause();
     };
     const onEnd = (): void => { cleanup(); resolve(false); };
     const onError = (error: Error): void => { cleanup(); reject(error); };
+    const interrupt = (signal: "SIGINT" | "SIGTERM"): void => {
+      cleanup();
+      reject(new InterruptedFailure(signal, "inspect", "NOT_REQUIRED"));
+    };
+    const onInterrupt = (): void => { interrupt("SIGINT"); };
+    const onTerminate = (): void => { interrupt("SIGTERM"); };
     const onData = (data: Buffer): void => {
       cleanup();
       if (data.includes(0x03)) {
@@ -44,6 +57,8 @@ export async function promptUserAuthorization(
     stdin.on("data", onData);
     stdin.on("end", onEnd);
     stdin.on("error", onError);
+    signals.on("SIGINT", onInterrupt);
+    signals.on("SIGTERM", onTerminate);
     stdin.setRawMode(true);
     stdin.resume();
   });

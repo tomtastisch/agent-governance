@@ -116,15 +116,17 @@ test("the boundary regression catches a package-manager spawn injected into defa
   t.after(() => rm(mutationRoot, { recursive: true, force: true }));
 
   const cliPath = join(mutationRoot, "src", "cli.ts");
-  const mutated = (await readFile(cliPath, "utf8"))
+  const originalSource = await readFile(cliPath, "utf8");
+  const mutated = originalSource
     .replace(
       'import { fileURLToPath } from "node:url";',
       'import { fileURLToPath } from "node:url";\nimport { spawnSync } from "node:child_process";',
     )
     .replace(
-      "  const isTTY = Boolean(process.stdin.isTTY && process.stdout.isTTY);",
-      '  spawnSync("npm", ["--version"]);\n  const isTTY = Boolean(process.stdin.isTTY && process.stdout.isTTY);',
+      "function defaultInitOptions(): InitOptions {",
+      'function defaultInitOptions(): InitOptions {\n  spawnSync("npm", ["--version"]);',
     );
+  assert.ok(mutated.includes('  spawnSync("npm", ["--version"]);'), "boundary mutation must be injected");
   await writeFile(cliPath, mutated, "utf8");
 
   const childProcess = require("node:child_process") as typeof import("node:child_process");

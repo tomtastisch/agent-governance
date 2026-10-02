@@ -161,6 +161,13 @@ export function createGhPreparationModule(deps?: Partial<GhPreparationDependenci
       const { exists } = await d.checkGhExists();
 
       if (!exists) {
+        if (authorizeLogin && !authorizeInstall) {
+          return Object.freeze({
+            toolId: GH_TOOL_ID,
+            status: "UNAVAILABLE",
+            message: `gh disappeared before the authorized login. ${d.formatInstallGuidance()}`,
+          });
+        }
         if (!authorizeInstall) {
           return Object.freeze({
             toolId: GH_TOOL_ID,
