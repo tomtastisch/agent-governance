@@ -5,7 +5,10 @@ import type { ToolPreparationResult } from "../../src/init/tool-preparation/type
 
 function createMockDeps(overrides: Partial<GhPreparationDependencies> = {}): GhPreparationDependencies {
   return {
-    runCommand: async () => ({ exitCode: 0, stdout: "", stderr: "" }),
+    platform: () => "linux",
+    effectiveUserId: () => 0,
+    write: () => {},
+    runCommand: async () => { throw new Error("unexpected external process"); },
     checkGhExists: async () => ({ exists: false, version: undefined }),
     checkGhAuth: async () => ({ authenticated: false, user: undefined }),
     runGhAuthLogin: async () => true,
@@ -37,7 +40,7 @@ test("gh module: MISSING + authorize install + install succeeds => READY", async
   let aptInstallCalled = false;
   let brewInstallCalled = false;
   let checkGhExistsCallCount = 0;
-  const currentPlatform = process.platform;
+  const currentPlatform = "linux";
   
   const deps = createMockDeps({
     checkGhExists: async () => {
@@ -69,6 +72,7 @@ test("gh module: MISSING + authorize install + install fails => UNAVAILABLE", as
     checkGhExists: async () => ({ exists: false, version: undefined }),
     runAptUpdate: async () => true,
     runAptInstall: async () => false,
+    runBrewInstall: async () => false,
     checkAptAvailable: async () => true,
   });
   const module = createGhPreparationModule(deps);
@@ -90,16 +94,18 @@ test("gh module: PRESENT + AUTH_REQUIRED + decline login => SKIPPED", async () =
   assert.equal(result.message, "User declined gh authentication.");
 });
 
-test("gh module: PRESENT + AUTH_REQUIRED + authorize login + login succeeds => READY", async () => {
-  const deps = createMockDeps({
+test("gh module: successful login must be called and verified freshly", async () => {
+  let authenticated = false;
+  let checks = 0;
+  let logins = 0;
+  const module = createGhPreparationModule(createMockDeps({
     checkGhExists: async () => ({ exists: true, version: "2.40.0" }),
-    checkGhAuth: async () => ({ authenticated: true, user: "testuser" }),
-    runGhAuthLogin: async () => true,
-  });
-  const module = createGhPreparationModule(deps);
-  const result = await module.prepare({ authorizeInstall: true, authorizeLogin: true });
-  assert.equal(result.toolId, "github_cli");
-  assert.equal(result.status, "READY");
+    checkGhAuth: async () => { checks++; return { authenticated, user: undefined }; },
+    runGhAuthLogin: async () => { logins++; authenticated = true; return true; },
+  }));
+  assert.equal((await module.prepare({ authorizeInstall: false, authorizeLogin: true })).status, "READY");
+  assert.equal(logins, 1);
+  assert.equal(checks, 2);
 });
 
 test("gh module: PRESENT + AUTH_REQUIRED + authorize login + login fails => AUTH_REQUIRED", async () => {
@@ -182,17 +188,87 @@ test("gh module: non-TTY handled by orchestrator not module", async () => {
   assert.equal(result.message, "User declined gh installation.");
 });
 
-test("gh module: cancellation via Ctrl+C propagates", async () => {
-  let cancelled = false;
-  const deps = createMockDeps({
-    checkGhExists: async () => ({ exists: false, version: undefined }),
-    runAptInstall: async () => { cancelled = true; return false; },
-    checkAptAvailable: async () => true,
-    runAptUpdate: async () => true,
+test("default gh operations honor the injected runner, host and stderr boundary", async () => {
+  const calls: { command: string; args: readonly string[]; options: unknown }[] = [];
+  let authenticated = false;
+  const module = createGhPreparationModule({
+    runCommand: async (command, args, options) => {
+      calls.push({ command, args, options });
+      if (args[0] === "--version") return { exitCode: 0, stdout: "gh version 2.40.0", stderr: "" };
+      if (args[1] === "login") authenticated = true;
+      return { exitCode: authenticated ? 0 : 1, stdout: "", stderr: "" };
+    },
   });
-  const module = createGhPreparationModule(deps);
-  // Test that the module can be interrupted - this is more of an integration test
-  // The actual cancellation handling is in the orchestrator
+  assert.equal((await module.prepare({ authorizeInstall: false, authorizeLogin: true })).status, "READY");
+  const login = calls.find(call => call.args[1] === "login");
+  assert.ok(login, "injected runner must handle the actual login");
+  assert.deepEqual(login.args, ["auth", "login", "--web", "--hostname", "github.com"]);
+  assert.deepEqual(login.options, { stdio: ["inherit", 2, 2] });
+  assert.ok(calls.filter(call => call.args[1] === "status").length >= 2);
+  for (const call of calls.filter(call => call.args[1] === "status")) {
+    assert.deepEqual(call.args, ["auth", "status", "--active", "--hostname", "github.com"]);
+  }
+});
+
+test("Linux prerequisites are read-only and unprivileged installation gives manual guidance", async () => {
+  const calls: string[] = [];
+  const module = createGhPreparationModule({
+    platform: () => "linux", effectiveUserId: () => 1000, write: () => {},
+    checkGhExists: async () => ({ exists: false, version: undefined }),
+    runCommand: async (command, args) => { calls.push([command, ...args].join(" ")); return { exitCode: 0, stdout: "", stderr: "" }; },
+  });
+  const result = await module.prepare({ authorizeInstall: true, authorizeLogin: false });
+  assert.equal(result.status, "UNAVAILABLE");
+  assert.match(result.message!, /sudo apt/);
+  assert.match(result.message!, /without elevating/);
+  assert.deepEqual(calls, ["which apt"]);
+});
+
+test("root Linux update and install run once as separate argv and require fresh gh", async () => {
+  const calls: string[] = [];
+  let exists = false;
+  const module = createGhPreparationModule({
+    platform: () => "linux", effectiveUserId: () => 0, write: () => {},
+    checkGhExists: async () => { calls.push("inspect gh"); return { exists, version: undefined }; },
+    checkGhAuth: async () => ({ authenticated: true, user: undefined }),
+    runCommand: async (command, args) => {
+      calls.push([command, ...args].join(" "));
+      if (args[0] === "install") exists = true;
+      return { exitCode: 0, stdout: "", stderr: "" };
+    },
+  });
+  assert.equal((await module.prepare({ authorizeInstall: true, authorizeLogin: false })).status, "READY");
+  assert.deepEqual(calls, ["inspect gh", "which apt", "apt update", "apt install -y gh", "inspect gh", "inspect gh"]);
+});
+
+test("macOS installation uses only brew and read-back rejects a missing executable", async () => {
+  const calls: string[] = [];
+  const module = createGhPreparationModule({
+    platform: () => "darwin", write: () => {},
+    checkGhExists: async () => ({ exists: false, version: undefined }),
+    checkGhAuth: async () => { throw new Error("missing gh must not authenticate"); },
+    runCommand: async (command, args) => { calls.push([command, ...args].join(" ")); return { exitCode: 0, stdout: "", stderr: "" }; },
+  });
+  assert.equal((await module.prepare({ authorizeInstall: true, authorizeLogin: false })).status, "UNAVAILABLE");
+  assert.deepEqual(calls, ["which brew", "brew install gh"]);
+});
+
+test("provider exit success without authentication read-back cannot report READY", async () => {
+  const module = createGhPreparationModule(createMockDeps({
+    checkGhExists: async () => ({ exists: true, version: "2.40.0" }),
+    checkGhAuth: async () => ({ authenticated: false, user: undefined }),
+    runGhAuthLogin: async () => true,
+  }));
+  assert.equal((await module.prepare({ authorizeInstall: false, authorizeLogin: true })).status, "UNAVAILABLE");
+});
+
+test("unsupported platforms never attempt a package manager", async () => {
+  const module = createGhPreparationModule({
+    platform: () => "win32", write: () => {},
+    checkGhExists: async () => ({ exists: false, version: undefined }),
+    runCommand: async () => { throw new Error("unsupported platform must not spawn"); },
+  });
   const result = await module.prepare({ authorizeInstall: true, authorizeLogin: true });
-  assert.ok(["UNAVAILABLE", "SKIPPED"].includes(result.status));
+  assert.equal(result.status, "UNAVAILABLE");
+  assert.match(result.message!, /cli.github.com/);
 });

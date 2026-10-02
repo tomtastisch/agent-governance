@@ -94,6 +94,7 @@ export interface InitDependencies {
   readonly prompt: InitPrompt;
   readonly createTransaction: (request: InstallerRequest) => InitTransaction;
   readonly skipTools?: boolean;
+  readonly prepareTools?: (skipTools: boolean) => Promise<readonly ToolPreparationResult[]>;
 }
 
 export interface InitOptions {
@@ -116,6 +117,15 @@ export type InitResult =
       readonly outcome: "SUCCESS";
       readonly targets: readonly InitTargetResult[];
       readonly toolPreparation?: readonly ToolPreparationResult[];
+    }
+  | {
+      readonly schemaVersion: 1;
+      readonly command: "init";
+      readonly outcome: "UNSAFE_STATE";
+      readonly reason: "TOOL_PREPARATION_FAILED";
+      readonly guidance: string;
+      readonly targets: readonly [];
+      readonly toolPreparation: readonly ToolPreparationResult[];
     }
   | {
       readonly schemaVersion: 1;

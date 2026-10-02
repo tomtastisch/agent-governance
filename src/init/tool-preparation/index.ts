@@ -1,85 +1,81 @@
+import { InterruptedFailure } from "../../errors.ts";
+import { createTerminalTheme } from "../../terminal/theme.ts";
 import type { ToolPreparationModule, ToolPreparationOrchestrator, ToolPreparationResult } from "./types.ts";
 import { ghPreparationModule } from "./gh.ts";
 
 const PREPARATION_MODULES: readonly ToolPreparationModule[] = Object.freeze([ghPreparationModule]);
 
-async function promptUserAuthorization(module: ToolPreparationModule, message: string): Promise<boolean> {
-  const { stdin, stdout, stderr } = process;
-
-  // If not a TTY, skip interactively (safe default for CI/non-interactive environments)
+export async function promptUserAuthorization(
+  _module: ToolPreparationModule,
+  message: string,
+  io: {
+    stdin: { readonly isTTY?: boolean; readonly isRaw?: boolean; setRawMode(value: boolean): unknown; on(event: string, listener: (...args: any[]) => void): unknown; off(event: string, listener: (...args: any[]) => void): unknown; resume(): unknown; pause(): unknown };
+    write: (value: string) => void;
+  } = { stdin: process.stdin, write: value => { process.stderr.write(value); } },
+): Promise<boolean> {
+  const { stdin, write } = io;
+  const theme = createTerminalTheme();
+  write(`${theme.cyan("USER:")} ${message}\n`);
   if (!stdin.isTTY) {
-    const { createTerminalTheme } = await import("../../terminal/theme.ts");
-    const theme = createTerminalTheme({ color: true });
-    stderr.write(`${theme.cyan("USER:")} ${message}\n`);
-    stderr.write(`${theme.dim("Non-interactive environment, skipping preparation.\n")}`);
+    write("Non-interactive environment, skipping preparation.\n");
     return false;
   }
-
-  return new Promise(async (resolve) => {
-    const { createTerminalTheme } = await import("../../terminal/theme.ts");
-    const theme = createTerminalTheme({ color: true });
-    stderr.write(`${theme.cyan("USER:")} ${message}\n`);
-    stderr.write(`${theme.dim("Press 'y' to continue, any other key to skip:\n")}`);
-
-    const onData = (data: Buffer) => {
-      // Handle Ctrl+C (\x03) as cancellation
-      if (data[0] === 0x03) {
-        stdin.off("data", onData);
-        stdin.setRawMode(false);
-        stdin.pause();
-        stderr.write("\n");
-        resolve(false); // Treat Ctrl+C as cancellation
-        return;
-      }
-
+  write("Press 'y' to continue, any other key to skip:\n");
+  const wasRaw = Boolean(stdin.isRaw);
+  return new Promise((resolve, reject) => {
+    const cleanup = (): void => {
       stdin.off("data", onData);
-      stdin.setRawMode(false);
+      stdin.off("end", onEnd);
+      stdin.off("error", onError);
+      stdin.setRawMode(wasRaw);
       stdin.pause();
-      resolve(data.toString().toLowerCase().trim() === "y");
     };
-
+    const onEnd = (): void => { cleanup(); resolve(false); };
+    const onError = (error: Error): void => { cleanup(); reject(error); };
+    const onData = (data: Buffer): void => {
+      cleanup();
+      if (data.includes(0x03)) {
+        write("\n");
+        reject(new InterruptedFailure("SIGINT", "inspect", "NOT_REQUIRED"));
+      } else {
+        resolve(data.toString().toLowerCase().trim() === "y");
+      }
+    };
+    stdin.on("data", onData);
+    stdin.on("end", onEnd);
+    stdin.on("error", onError);
     stdin.setRawMode(true);
     stdin.resume();
-    stdin.on("data", onData);
   });
 }
 
-function createToolPreparationOrchestrator(): ToolPreparationOrchestrator {
+export function createToolPreparationOrchestrator(dependencies: {
+  readonly modules?: readonly ToolPreparationModule[];
+  readonly authorize?: typeof promptUserAuthorization;
+} = {}): ToolPreparationOrchestrator {
+  const modules = dependencies.modules ?? PREPARATION_MODULES;
+  const authorize = dependencies.authorize ?? promptUserAuthorization;
   return Object.freeze({
     async run({ skipTools }: { readonly skipTools: boolean }): Promise<readonly ToolPreparationResult[]> {
-      if (skipTools) {
-        return Object.freeze([]);
-      }
-
+      if (skipTools) return Object.freeze([]);
       const results: ToolPreparationResult[] = [];
-
-      for (const module of PREPARATION_MODULES) {
-        const inspectResult = await module.inspect();
-
-        if (inspectResult.status === "READY") {
-          results.push(inspectResult);
-          continue;
-        }
-
-        let authorizeInstall = false;
-        let authorizeLogin = false;
-
-        if (inspectResult.status === "MISSING") {
-          authorizeInstall = await promptUserAuthorization(module, inspectResult.message ?? `Install ${module.toolId}?`);
-        }
-
-        if (inspectResult.status === "AUTH_REQUIRED" || (inspectResult.status === "MISSING" && authorizeInstall)) {
-          // Re-inspect after potential installation
-          const freshInspect = await module.inspect();
-          if (freshInspect.status === "AUTH_REQUIRED") {
-            authorizeLogin = await promptUserAuthorization(module, freshInspect.message ?? `Authenticate ${module.toolId}?`);
+      for (const module of modules) {
+        let state = await module.inspect();
+        if (state.status === "MISSING") {
+          const allowed = await authorize(module, `${state.message ?? module.toolId}\nAuthorize installation of ${module.toolId}?`);
+          const installed = await module.prepare({ authorizeInstall: allowed, authorizeLogin: false });
+          if (!allowed || installed.status === "UNAVAILABLE" || installed.status === "MISSING") {
+            results.push(installed);
+            continue;
           }
+          state = await module.inspect();
         }
-
-        const prepareResult = await module.prepare({ authorizeInstall, authorizeLogin });
-        results.push(prepareResult);
+        if (state.status === "AUTH_REQUIRED") {
+          const allowed = await authorize(module, `${state.message ?? module.toolId}\nAuthorize provider web login for ${module.toolId}?`);
+          state = await module.prepare({ authorizeInstall: false, authorizeLogin: allowed });
+        }
+        results.push(state);
       }
-
       return Object.freeze(results);
     },
   });

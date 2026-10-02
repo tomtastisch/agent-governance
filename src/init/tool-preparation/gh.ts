@@ -1,13 +1,17 @@
+import { InterruptedFailure } from "../../errors.ts";
 import { spawn } from "node:child_process";
 import { platform } from "node:os";
 
 import { createTerminalTheme } from "../../terminal/theme.ts";
-import type { ToolPreparationModule, ToolPreparationResult, ToolPreparationStatus } from "./types.ts";
+import type { ToolPreparationModule, ToolPreparationResult } from "./types.ts";
 
 const GH_TOOL_ID = "github_cli";
 
 export interface GhPreparationDependencies {
-  readonly runCommand: (command: string, args: readonly string[], options?: { readonly stdio?: "inherit" | ["ignore", "pipe", "pipe"] }) => Promise<{ readonly exitCode: number; readonly stdout: string; readonly stderr: string }>;
+  readonly platform: () => NodeJS.Platform;
+  readonly effectiveUserId: () => number | undefined;
+  readonly write: (value: string) => void;
+  readonly runCommand: (command: string, args: readonly string[], options?: { readonly stdio?: "inherit" | ["ignore", "pipe", "pipe"] | ["inherit", 2, 2] }) => Promise<{ readonly exitCode: number; readonly stdout: string; readonly stderr: string }>;
   readonly checkGhExists: () => Promise<{ readonly exists: boolean; readonly version: string | undefined }>;
   readonly checkGhAuth: () => Promise<{ readonly authenticated: boolean; readonly user: string | undefined }>;
   readonly runGhAuthLogin: () => Promise<boolean>;
@@ -20,19 +24,28 @@ export interface GhPreparationDependencies {
   readonly formatInstallGuidance: () => string;
 }
 
-function createDefaultDependencies(): GhPreparationDependencies {
-  const runCommand = (command: string, args: readonly string[], options?: { readonly stdio?: "inherit" | ["ignore", "pipe", "pipe"] }) =>
-    new Promise<{ readonly exitCode: number; readonly stdout: string; readonly stderr: string }>((resolve) => {
+function createDefaultDependencies(overrides: Partial<GhPreparationDependencies>): GhPreparationDependencies {
+  const effectiveUserId = overrides.effectiveUserId ?? (() => process.geteuid?.());
+  const currentPlatform = overrides.platform ?? platform;
+  const runCommand: GhPreparationDependencies["runCommand"] = overrides.runCommand ?? ((command: string, args: readonly string[], options?: { readonly stdio?: "inherit" | ["ignore", "pipe", "pipe"] | ["inherit", 2, 2] }) =>
+    new Promise<{ readonly exitCode: number; readonly stdout: string; readonly stderr: string }>((resolve, reject) => {
       const child = spawn(command, args, { stdio: options?.stdio ?? ["ignore", "pipe", "pipe"] });
       let stdout = "";
       let stderr = "";
       child.stdout?.on("data", (data: Buffer) => { stdout += data.toString(); });
       child.stderr?.on("data", (data: Buffer) => { stderr += data.toString(); });
-      child.on("close", (code: number | null) => resolve({ exitCode: code ?? 1, stdout, stderr }));
+      child.on("close", (code, signal) => {
+        if (signal === "SIGINT" || signal === "SIGTERM" || code === 130 || code === 143) {
+          reject(new InterruptedFailure(signal === "SIGTERM" || code === 143 ? "SIGTERM" : "SIGINT", "inspect", "NOT_REQUIRED"));
+        } else resolve({ exitCode: code ?? 1, stdout, stderr });
+      });
       child.on("error", () => resolve({ exitCode: 127, stdout, stderr: "command not found" }));
-    });
+    }));
 
   return {
+    platform: currentPlatform,
+    effectiveUserId,
+    write: value => { process.stderr.write(value); },
     runCommand,
 
     checkGhExists: async () => {
@@ -54,7 +67,7 @@ function createDefaultDependencies(): GhPreparationDependencies {
     },
 
     runGhAuthLogin: async () => {
-      const result = await runCommand("gh", ["auth", "login", "--web"], { stdio: "inherit" });
+      const result = await runCommand("gh", ["auth", "login", "--web", "--hostname", "github.com"], { stdio: ["inherit", 2, 2] });
       return result.exitCode === 0;
     },
 
@@ -83,17 +96,14 @@ function createDefaultDependencies(): GhPreparationDependencies {
       return result.exitCode === 0;
     },
 
-    checkAptPrivileges: async () => {
-      const result = await runCommand("apt", ["update"]);
-      return result.exitCode === 0;
-    },
+    checkAptPrivileges: async () => effectiveUserId() === 0,
 
     formatInstallGuidance: () => {
-      const currentPlatform = platform();
-      if (currentPlatform === "darwin") {
+      const detectedPlatform = currentPlatform();
+      if (detectedPlatform === "darwin") {
         return "Install via Homebrew: brew install gh";
       }
-      if (currentPlatform === "linux") {
+      if (detectedPlatform === "linux") {
         return "Install via apt: sudo apt update && sudo apt install -y gh";
       }
       return "No supported installation method for this platform. See https://cli.github.com/ for manual installation.";
@@ -102,7 +112,7 @@ function createDefaultDependencies(): GhPreparationDependencies {
 }
 
 function detectInstallMethod(deps: GhPreparationDependencies): { readonly command: string; readonly args: readonly string[] } | null {
-  const currentPlatform = platform();
+  const currentPlatform = deps.platform();
   if (currentPlatform === "darwin") {
     return { command: "brew", args: ["install", "gh"] };
   }
@@ -112,17 +122,8 @@ function detectInstallMethod(deps: GhPreparationDependencies): { readonly comman
   return null;
 }
 
-async function checkAptPrivileges(deps: GhPreparationDependencies): Promise<boolean> {
-  try {
-    const result = await deps.runCommand("apt", ["update"]);
-    return result.exitCode === 0;
-  } catch {
-    return false;
-  }
-}
-
 export function createGhPreparationModule(deps?: Partial<GhPreparationDependencies>): ToolPreparationModule {
-  const d = { ...createDefaultDependencies(), ...deps };
+  const d = { ...createDefaultDependencies(deps ?? {}), ...deps };
 
   return Object.freeze({
     toolId: GH_TOOL_ID,
@@ -157,7 +158,7 @@ export function createGhPreparationModule(deps?: Partial<GhPreparationDependenci
       const { authorizeInstall, authorizeLogin } = options;
 
       const theme = createTerminalTheme({ color: true });
-      const { exists, version } = await d.checkGhExists();
+      const { exists } = await d.checkGhExists();
 
       if (!exists) {
         if (!authorizeInstall) {
@@ -178,14 +179,14 @@ export function createGhPreparationModule(deps?: Partial<GhPreparationDependenci
         }
 
         // Verify package manager is available before mutation
-        const currentPlatform = platform();
+        const currentPlatform = d.platform();
         if (currentPlatform === "darwin") {
           const brewAvailable = await d.checkBrewAvailable();
           if (!brewAvailable) {
             return Object.freeze({
               toolId: GH_TOOL_ID,
               status: "UNAVAILABLE",
-              message: "Homebrew not found. Please install Homebrew first: https://brew.sh",
+              message: "Homebrew not found. Install gh manually using https://cli.github.com/ and rerun agent-governance init tools.",
             });
           }
         } else if (currentPlatform === "linux") {
@@ -194,7 +195,7 @@ export function createGhPreparationModule(deps?: Partial<GhPreparationDependenci
             return Object.freeze({
               toolId: GH_TOOL_ID,
               status: "UNAVAILABLE",
-              message: "apt not found. Cannot install gh on this system.",
+              message: "apt not found. Install gh manually using https://cli.github.com/ and rerun agent-governance init tools.",
             });
           }
           const aptPrivileges = await d.checkAptPrivileges();
@@ -202,13 +203,12 @@ export function createGhPreparationModule(deps?: Partial<GhPreparationDependenci
             return Object.freeze({
               toolId: GH_TOOL_ID,
               status: "UNAVAILABLE",
-              message: "Insufficient privileges to run apt. Please run with sudo or install gh manually.",
+              message: "Insufficient privileges to run apt. Install gh manually: sudo apt update && sudo apt install -y gh. Then rerun agent-governance init tools without elevating the governance CLI.",
             });
           }
         }
 
-        const { stderr } = process;
-        stderr.write(`${theme.cyan("USER:")} Starting gh installation via ${installMethod.command}...\n`);
+        d.write(`${theme.cyan("USER:")} Starting gh installation via ${installMethod.command}...\n`);
 
         let installed = false;
         if (currentPlatform === "darwin") {
@@ -228,7 +228,7 @@ export function createGhPreparationModule(deps?: Partial<GhPreparationDependenci
           });
         }
 
-        const { exists: reinstalled, version: newVersion } = await d.checkGhExists();
+        const { exists: reinstalled } = await d.checkGhExists();
         if (!reinstalled) {
           return Object.freeze({
             toolId: GH_TOOL_ID,
@@ -238,7 +238,7 @@ export function createGhPreparationModule(deps?: Partial<GhPreparationDependenci
         }
       }
 
-      const { authenticated, user } = await d.checkGhAuth();
+      const { authenticated } = await d.checkGhAuth();
       if (!authenticated) {
         if (!authorizeLogin) {
           return Object.freeze({
@@ -248,8 +248,7 @@ export function createGhPreparationModule(deps?: Partial<GhPreparationDependenci
           });
         }
 
-        const { stderr } = process;
-        stderr.write(`${theme.cyan("USER:")} Starting gh authentication via web flow (interactive)...\n`);
+        d.write(`${theme.cyan("USER:")} Starting gh authentication via web flow (interactive)...\n`);
         const loginSuccess = await d.runGhAuthLogin();
         if (!loginSuccess) {
           return Object.freeze({

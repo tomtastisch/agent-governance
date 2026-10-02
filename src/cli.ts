@@ -7,14 +7,14 @@ import { EXIT_CODES, exitCodeFor, type InstallerCommand, type InstallerRequest, 
 import { InstallerFailure, InterruptedFailure } from "./errors.ts";
 import { createAgntnHarnessesAdapter } from "./init/harnesses.ts";
 import { renderBranding } from "./init/branding.ts";
-import { runInit } from "./init/orchestrator.ts";
+import { runInit, runInitTools } from "./init/orchestrator.ts";
 import { resolveLatestRelease } from "./installer/latest.ts";
 import { createClackPrompt } from "./init/prompt.ts";
 import type { InitOptions, InitPrompt, InitResult } from "./init/types.ts";
-import { runToolPreparation } from "./init/tool-preparation/index.ts";
+import type { ToolPreparationResult } from "./init/tool-preparation/types.ts";
 import { InstallerTransaction } from "./transaction.ts";
 import { loadCommandCatalog } from "./command-catalog.ts";
-import { PUBLIC_COMMAND_HANDLERS, renderCommandHelp, renderGlobalHelp } from "./public-commands.ts";
+import { PUBLIC_COMMAND_HANDLERS, renderCommandHelp, renderGlobalHelp, parseInitInvocation } from "./public-commands.ts";
 import { createTerminalTheme } from "./terminal/theme.ts";
 
 type Writer = (value: string) => void;
@@ -23,6 +23,7 @@ export interface CliDependencies {
   readonly init?: () => Promise<InitResult>;
   readonly initOptions?: InitOptions;
   readonly initPrompt?: InitPrompt;
+  readonly prepareTools?: (skipTools: boolean) => Promise<readonly ToolPreparationResult[]>;
 }
 const VALUE_OPTIONS = new Set(["--target-root", "--entry-file", "--scope", "--installation-root", "--local-rules"]);
 
@@ -31,33 +32,7 @@ type InitSubcommand = "full" | "tools";
 function parse(argv: readonly string[], publicCommands: readonly PublicCommandId[]): { command: PublicCommandId; request?: InstallerRequest; json: boolean; initSubcommand?: InitSubcommand; skipTools?: boolean } {
   const command = argv[0]; if (command === undefined || !publicCommands.includes(command as PublicCommandId)) throw new Error("unknown or missing command");
   if (command === "init") {
-    let json = false;
-    let initSubcommand: InitSubcommand | undefined;
-    let skipTools = false;
-    for (let index = 1; index < argv.length; index += 1) {
-      const option = argv[index];
-      if (option === "--json") {
-        if (json) throw new Error("duplicate option --json");
-        json = true;
-        continue;
-      }
-      if (option === "--skip-tools") {
-        if (skipTools) throw new Error("duplicate option --skip-tools");
-        skipTools = true;
-        continue;
-      }
-      if (option === "--help" || option === "-h") {
-        // help is handled before parse, but allow it here for completeness
-        continue;
-      }
-      if (option === undefined || option.startsWith("--")) throw new Error(`unknown option ${String(option)}`);
-      if (initSubcommand !== undefined) throw new Error(`unknown option ${String(option)}`);
-      if (option !== "tools") throw new Error(`unknown subcommand ${option}`);
-      initSubcommand = "tools";
-    }
-    if (initSubcommand === "tools" && skipTools) throw new Error("INVALID_INVOCATION: 'init tools' and '--skip-tools' are mutually exclusive");
-    if (initSubcommand === undefined) initSubcommand = "full";
-    return { command, json, initSubcommand, skipTools };
+    return { command, ...parseInitInvocation(argv.slice(1)) };
   }
   const values = new Map<string, string>(); let json = false; let dryRun = false; let nonInteractive = false;
   for (let index = 1; index < argv.length; index += 1) { const option = argv[index]; if (option === "--json") { if (json) throw new Error("duplicate option --json"); json = true; continue; } if (option === "--dry-run") { if (dryRun) throw new Error("duplicate option --dry-run"); dryRun = true; continue; } if (option === "--non-interactive") { if (nonInteractive) throw new Error("duplicate option --non-interactive"); nonInteractive = true; continue; } if (option === undefined || !VALUE_OPTIONS.has(option)) throw new Error(`unknown option ${String(option)}`); if (values.has(option)) throw new Error(`duplicate option ${option}`); const value = argv[++index]; if (value === undefined || value.startsWith("--") || /[\0\r\n]/.test(value)) throw new Error(`missing or unsafe value for ${option}`); values.set(option, value); }
@@ -103,7 +78,7 @@ export async function runCli(argv: readonly string[], out: Writer = console.log,
       if (initArgError) { error(JSON.stringify({ schemaVersion: 1, outcome: "INVALID_INVOCATION", error: initArgError.message })); return EXIT_CODES.INVALID_INVOCATION; }
       out(renderCommandHelp("init", definitions, helpTheme)); return EXIT_CODES.SUCCESS;
     }
-  } else if (argv.length >= 2 && publicCommands.includes(argv[0] as PublicCommandId) && argv.some(isHelp)) {
+  } else if (argv.length === 2 && publicCommands.includes(argv[0] as PublicCommandId) && isHelp(argv[1])) {
     out(renderCommandHelp(argv[0] as PublicCommandId, definitions, helpTheme)); return EXIT_CODES.SUCCESS;
   }
   let parsed: ReturnType<typeof parse>; try { parsed = parse(argv, publicCommands); } catch (cause) { error(JSON.stringify({ schemaVersion: 1, outcome: "INVALID_INVOCATION", error: (cause as Error).message })); return EXIT_CODES.INVALID_INVOCATION; }
@@ -127,26 +102,7 @@ export async function runCli(argv: readonly string[], out: Writer = console.log,
       }
 
       if (parsed.initSubcommand === "tools") {
-        if (!initOptions.isTTY) {
-          result = Object.freeze({
-            schemaVersion: 1,
-            command: "init",
-            outcome: "INVALID_INVOCATION",
-            reason: "NON_TTY",
-            guidance: "Tool preparation requires a TTY.",
-            targets: [],
-          });
-        } else {
-          const preparationResults = await runToolPreparation(parsed.skipTools ?? false);
-          const hasFailedPrep = preparationResults.some(r => r.status === "UNAVAILABLE" || r.status === "AUTH_REQUIRED");
-          result = Object.freeze({
-            schemaVersion: 1,
-            command: "init",
-            outcome: hasFailedPrep ? "INVALID_INVOCATION" : "SUCCESS",
-            targets: [],
-            toolPreparation: preparationResults,
-          });
-        }
+        result = await runInitTools(initOptions, dependencies.prepareTools);
       } else {
         if (dependencies.init) {
           result = await dependencies.init();
@@ -157,6 +113,7 @@ export async function runCli(argv: readonly string[], out: Writer = console.log,
             prompt,
             createTransaction: dependencies.createTransaction ?? ((request) => new InstallerTransaction(request)),
             skipTools: parsed.skipTools ?? false,
+            ...(dependencies.prepareTools === undefined ? {} : { prepareTools: dependencies.prepareTools }),
           });
         }
       }

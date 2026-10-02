@@ -1,3 +1,5 @@
+import { InterruptedFailure } from "../errors.ts";
+import type { ToolPreparationResult } from "./tool-preparation/types.ts";
 import { join } from "node:path";
 import { lstat } from "node:fs/promises";
 
@@ -34,6 +36,35 @@ function cancelled(): InitResult {
     reason: "CANCELLED",
     targets: NO_TARGETS,
   });
+}
+
+function preparationFailure(results: readonly ToolPreparationResult[]): InitResult | undefined {
+  if (!results.some(({ status }) => status !== "READY" && status !== "SKIPPED")) return undefined;
+  return Object.freeze({
+    schemaVersion: 1,
+    command: "init",
+    outcome: "UNSAFE_STATE",
+    reason: "TOOL_PREPARATION_FAILED",
+    guidance: "Resolve the reported tool preparation failure and rerun agent-governance init tools.",
+    targets: NO_TARGETS,
+    toolPreparation: results,
+  });
+}
+
+export async function runInitTools(options: InitOptions, prepareTools = runToolPreparation): Promise<InitResult> {
+  if (!options.isTTY) return Object.freeze({
+    schemaVersion: 1, command: "init", outcome: "INVALID_INVOCATION", reason: "NON_TTY",
+    guidance: "Use an explicit transaction command with --non-interactive.", targets: NO_TARGETS,
+  });
+  try {
+    const results = await prepareTools(false);
+    return preparationFailure(results) ?? Object.freeze({
+      schemaVersion: 1, command: "init", outcome: "SUCCESS", targets: NO_TARGETS, toolPreparation: results,
+    });
+  } catch (cause) {
+    if (cause instanceof InterruptedFailure && cause.signal === "SIGINT") return cancelled();
+    throw cause;
+  }
 }
 
 function compareTargets(left: InitTarget, right: InitTarget): number {
@@ -145,10 +176,13 @@ export async function runInit(options: InitOptions, dependencies: InitDependenci
     if (new Set(keys).size !== keys.length) throw new Error("duplicate init target");
 
     // Step 3: Tools vorbereiten (only if not skipped)
-    let toolPreparationResults: readonly import("./tool-preparation/types.ts").ToolPreparationResult[] = Object.freeze([]);
+    let toolPreparationResults: readonly ToolPreparationResult[] = Object.freeze([]);
     if (!skipTools) {
       dependencies.prompt.step(steps[2]!);
-      toolPreparationResults = await runToolPreparation(false);
+      dependencies.prompt.dispose();
+      toolPreparationResults = await (dependencies.prepareTools ?? runToolPreparation)(false);
+      const failure = preparationFailure(toolPreparationResults);
+      if (failure !== undefined) return failure;
     }
 
     // Step 4 (or 3 if tools skipped): Prüfen und einrichten
@@ -201,6 +235,9 @@ export async function runInit(options: InitOptions, dependencies: InitDependenci
       targets: Object.freeze(completed),
       toolPreparation: toolPreparationResults,
     });
+  } catch (cause) {
+    if (cause instanceof InterruptedFailure && cause.signal === "SIGINT") return cancelled();
+    throw cause;
   } finally {
     dependencies.prompt.dispose();
   }

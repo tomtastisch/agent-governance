@@ -118,3 +118,14 @@ test("CLI default init rejects non-TTY before canonicalizing a missing home dire
   });
 });
 test("CLI maps structured failures and catchable signals without secret content", async () => { const original = InstallerTransaction.prototype.install; try { InstallerTransaction.prototype.install = async () => { throw new InstallerFailure("VERIFY", "verify", "entry-file", "VERIFICATION_ROLLED_BACK", "failed", "SUCCEEDED"); }; const errors: string[] = []; assert.equal(await runCli(await args("install"), () => {}, (value) => errors.push(value)), 5); assert.equal(JSON.parse(errors.at(-1)!).outcome, "VERIFICATION_ROLLED_BACK"); for (const [signal, code] of [["SIGINT", 130], ["SIGTERM", 143]] as const) { InstallerTransaction.prototype.install = async () => { throw new InterruptedFailure(signal, "activate", "SUCCEEDED"); }; assert.equal(await runCli(await args("install"), () => {}, (value) => errors.push(value)), code); assert.equal(JSON.parse(errors.at(-1)!).signal, signal); } assert.equal(errors.some((value) => /token|secret/i.test(value)), false); } finally { InstallerTransaction.prototype.install = original; } });
+
+test("transaction help rejects extra, duplicate and incomplete arguments", async () => {
+  for (const argv of [
+    ["install", "--unknown", "--help"],
+    ["install", "--help", "-h"],
+    ["install", "--target-root", "--help"],
+    ["install", "--skip-tools", "true", "--help"],
+  ]) {
+    assert.equal(await runCli(argv, () => {}, () => {}), 2, argv.join(" "));
+  }
+});

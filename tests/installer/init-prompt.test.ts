@@ -225,3 +225,16 @@ test("the real 60-column prompt keeps the manual fallback actionable with overfl
   assert.match(result.stdout, /FALLBACK_SEARCH_ACTION_VISIBLE/u);
   assert.match(result.stdout, /FALLBACK_PROMPT_CANCELLED/u);
 });
+
+test("production Clack progress keeps human presentation off stdout", () => {
+  const child = spawnSync(process.execPath, ["--experimental-strip-types", "--input-type=module", "-e", `
+    import { createClackPrompt } from './src/init/prompt.ts';
+    const prompt = createClackPrompt({ color: false });
+    prompt.step({ position: 3, total: 4, title: 'Tools vorbereiten' });
+    prompt.dispose();
+    console.log(JSON.stringify({ outcome: 'SUCCESS' }));
+  `], { cwd: process.cwd(), encoding: "utf8" });
+  assert.equal(child.status, 0, child.stderr);
+  assert.deepEqual(JSON.parse(child.stdout), { outcome: "SUCCESS" });
+  assert.match(child.stderr, /Tools vorbereiten/);
+});

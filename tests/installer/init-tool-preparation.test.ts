@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { runToolPreparation } from "../../src/init/tool-preparation/index.ts";
-import { ghPreparationModule } from "../../src/init/tool-preparation/gh.ts";
+import { runToolPreparation, createToolPreparationOrchestrator } from "../../src/init/tool-preparation/index.ts";
+import { createGhPreparationModule } from "../../src/init/tool-preparation/gh.ts";
 import type { ToolPreparationResult } from "../../src/init/tool-preparation/types.ts";
 
 test("runToolPreparation with skipTools returns empty array", async () => {
@@ -9,42 +9,30 @@ test("runToolPreparation with skipTools returns empty array", async () => {
   assert.deepEqual(results, []);
 });
 
-test("ghPreparationModule inspect returns structured result", async () => {
-  const result = await ghPreparationModule.inspect();
-  assert.equal(typeof result.toolId, "string");
-  assert.equal(result.toolId, "github_cli");
-  assert.ok(["READY", "MISSING", "AUTH_REQUIRED", "SKIPPED", "UNAVAILABLE"].includes(result.status));
-  assert.ok(result.message === undefined || typeof result.message === "string");
+test("gh module inspection and declined preparation use isolated dependencies", async () => {
+  const module = createGhPreparationModule({
+    checkGhExists: async () => ({ exists: false, version: undefined }),
+    runCommand: async () => { throw new Error("unexpected external process"); },
+  });
+  assert.equal((await module.inspect()).status, "MISSING");
+  assert.equal((await module.prepare({ authorizeInstall: false, authorizeLogin: false })).status, "SKIPPED");
 });
 
-test("ghPreparationModule prepare with authorizeInstall=false returns SKIPPED when gh missing", async () => {
-  // This test validates the authorization logic - when gh is missing and user declines install
-  // Since gh is typically installed in test environments, we verify the logic path exists
-  const result = await ghPreparationModule.prepare({ authorizeInstall: false, authorizeLogin: false });
-  assert.equal(result.toolId, "github_cli");
-  assert.ok(["READY", "AUTH_REQUIRED", "SKIPPED", "UNAVAILABLE"].includes(result.status));
-  if (result.status === "SKIPPED") {
-    assert.ok(["User declined gh installation.", "User declined gh authentication."].includes(result.message!));
-  }
+test("gh module decline login cannot install or authenticate", async () => {
+  const module = createGhPreparationModule({
+    checkGhExists: async () => ({ exists: true, version: "2.40.0" }),
+    checkGhAuth: async () => ({ authenticated: false, user: undefined }),
+    runCommand: async () => { throw new Error("unexpected external process"); },
+  });
+  assert.equal((await module.prepare({ authorizeInstall: true, authorizeLogin: false })).status, "SKIPPED");
 });
 
-test("ghPreparationModule prepare with authorizeLogin=false returns SKIPPED when auth required", async () => {
-  const result = await ghPreparationModule.prepare({ authorizeInstall: true, authorizeLogin: false });
-  assert.equal(result.toolId, "github_cli");
-  assert.ok(["SKIPPED", "READY", "AUTH_REQUIRED", "UNAVAILABLE"].includes(result.status));
-  if (result.status === "SKIPPED") {
-    assert.equal(result.message, "User declined gh authentication.");
-  }
-});
-
-test("runToolPreparation without skipTools returns results array", async () => {
-  const results = await runToolPreparation(false);
-  assert.ok(Array.isArray(results));
-  assert.ok(results.length > 0);
-  for (const result of results) {
-    assert.ok(typeof result.toolId === "string");
-    assert.ok(["READY", "MISSING", "AUTH_REQUIRED", "SKIPPED", "UNAVAILABLE"].includes(result.status));
-  }
+test("tool preparation uses registered fake modules without host authentication", async () => {
+  const runner = createToolPreparationOrchestrator({
+    modules: [{ toolId: "github_cli", inspect: async () => ({ toolId: "github_cli", status: "READY" }), prepare: async () => { throw new Error("READY must not mutate"); } }],
+    authorize: async () => { throw new Error("READY must not prompt"); },
+  });
+  assert.deepEqual(await runner.run({ skipTools: false }), [{ toolId: "github_cli", status: "READY" }]);
 });
 
 test("CLI parse rejects invalid combination: init tools --skip-tools", async () => {
@@ -104,4 +92,54 @@ test("INIT_STEPS_NO_TOOLS has 3 steps without Tools vorbereiten", async () => {
   assert.equal(INIT_STEPS_NO_TOOLS[0]!.title, "Umgebung prüfen");
   assert.equal(INIT_STEPS_NO_TOOLS[1]!.title, "Coding-Harnesses auswählen");
   assert.equal(INIT_STEPS_NO_TOOLS[2]!.title, "Prüfen und einrichten");
+});
+test("tools-only CLI runs just preparation with typed JSON, failures and cancellation", async () => {
+  const { runCli } = await import("../../src/cli.ts");
+  const { InterruptedFailure } = await import("../../src/errors.ts");
+  for (const status of ["READY", "SKIPPED", "UNAVAILABLE", "AUTH_REQUIRED"] as const) {
+    const output: string[] = [];
+    let prepared = 0;
+    const exit = await runCli(["init", "tools", "--json"], value => output.push(value), () => {}, {
+      initOptions: { isTTY: true, environment: { home: "/synthetic/home", platform: "linux" }, releaseRoot: "/synthetic/release" },
+      init: async () => { throw new Error("full init must not run"); },
+      createTransaction: () => { throw new Error("transaction must not run"); },
+      prepareTools: async () => { prepared++; return [{ toolId: "github_cli", status }]; },
+    });
+    assert.equal(prepared, 1);
+    assert.equal(output.length, 1);
+    const result = JSON.parse(output[0]!);
+    assert.deepEqual(result.targets, []);
+    assert.equal(result.outcome, status === "READY" || status === "SKIPPED" ? "SUCCESS" : "UNSAFE_STATE");
+    assert.equal(exit, status === "READY" || status === "SKIPPED" ? 0 : 4);
+    if (exit !== 0) { assert.equal(result.reason, "TOOL_PREPARATION_FAILED"); assert.match(result.guidance, /init tools/); }
+  }
+  const output: string[] = [];
+  assert.equal(await runCli(["init", "tools", "--json"], value => output.push(value), () => {}, {
+    initOptions: { isTTY: true, environment: { home: "/synthetic/home", platform: "linux" }, releaseRoot: "/synthetic/release" },
+    prepareTools: async () => { throw new InterruptedFailure("SIGINT", "inspect", "NOT_REQUIRED"); },
+  }), 130);
+  assert.equal(JSON.parse(output[0]!).reason, "CANCELLED");
+});
+
+test("tools-only CLI refuses non-TTY before preparation", async () => {
+  const { runCli } = await import("../../src/cli.ts");
+  const output: string[] = [];
+  assert.equal(await runCli(["init", "tools", "--json"], value => output.push(value), () => {}, {
+    initOptions: { isTTY: false, environment: { home: "/synthetic/home", platform: "linux" }, releaseRoot: "/synthetic/release" },
+    prepareTools: async () => { throw new Error("non-TTY must not prepare"); },
+  }), 2);
+  assert.equal(JSON.parse(output[0]!).reason, "NON_TTY");
+});
+
+test("init help validates duplicates and exposes the three supported variants", async () => {
+  const { runCli } = await import("../../src/cli.ts");
+  for (const args of [
+    ["init", "--help", "-h"], ["init", "tools", "tools", "--help"],
+    ["init", "--skip-tools", "tools", "--help"], ["init", "--unknown", "--help"],
+  ]) assert.equal(await runCli(args, () => {}, () => {}), 2, args.join(" "));
+  const output: string[] = [];
+  assert.equal(await runCli(["init", "--help"], value => output.push(value)), 0);
+  assert.match(output[0]!, /agent-governance init \[--json\]/);
+  assert.match(output[0]!, /agent-governance init --skip-tools \[--json\]/);
+  assert.match(output[0]!, /agent-governance init tools \[--json\]/);
 });
