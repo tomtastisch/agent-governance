@@ -41,7 +41,7 @@ test("gh module: MISSING + authorize install + install succeeds => READY", async
   let brewInstallCalled = false;
   let checkGhExistsCallCount = 0;
   const currentPlatform = "linux";
-  
+
   const deps = createMockDeps({
     checkGhExists: async () => {
       checkGhExistsCallCount++;

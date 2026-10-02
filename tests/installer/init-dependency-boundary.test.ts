@@ -30,11 +30,7 @@ test("the current release real init path never starts a package manager or depen
       configurable: true,
       value: (...args: unknown[]) => {
         const cmd = String(args[0]);
-        const cmdArgs = Array.isArray(args[1]) ? args[1].map(String) : [];
         if (method === "execFileSync" && cmd === "which") {
-          return (originals.get(method) as (...values: unknown[]) => unknown)(...args);
-        }
-        if (cmd === "gh" && cmdArgs.some((arg) => ["--version", "auth", "status", "login"].includes(arg))) {
           return (originals.get(method) as (...values: unknown[]) => unknown)(...args);
         }
         intercepted.push(`${method}:${cmd}`);
@@ -81,6 +77,7 @@ test("the current release real init path never starts a package manager or depen
         releaseRoot: repositoryRoot,
       },
       initPrompt: prompt,
+      prepareTools: async () => [{ toolId: "github_cli", status: "READY" }],
     },
   );
 
