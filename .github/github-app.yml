@@ -1,0 +1,25 @@
+# GitHub Copilot App Integration for Agent Governance
+# Dünne Copilot-App-Anbindung, die ausschließlich den Governance-Bootstrap verwendet
+
+# Optional: session.create Preflight zur Prüfung der kanonischen Governance-Quelle
+# Dieses Script ist read-only und verändert nichts
+session.create:
+  # Prüft, dass die kanonische Governance-Quelle und das Manifest im AKTIVEN Workspace vorhanden und lesbar sind
+  # Verwendet dokumentierte Copilot-Runtimevariablen
+  # Keine Secrets ausgabe, kein Netzwerkzugriff, keine Installation, keine Veränderung
+  # Keine Erzeugung von Governance-Dateien
+  script: |
+    # Prüfe existence of GOVERNANCE.md in the active workspace
+    if [ ! -f "$COPILOT_WORKSPACE_PATH/bundle/GOVERNANCE.md" ]; then
+      echo "Error: Canonical governance source not found at $COPILOT_WORKSPACE_PATH/bundle/GOVERNANCE.md"
+      exit 1
+    fi
+    
+    # Prüfe existence of manifest.toml
+    if [ ! -f "$COPILOT_WORKSPACE_PATH/bundle/agent-governance/manifest.toml" ]; then
+      echo "Error: Manifest not found at $COPILOT_WORKSPACE_PATH/bundle/agent-governance/manifest.toml"
+      exit 1
+    fi
+    
+    # Beide Dateien existieren und sind lesbar
+    exit 0
