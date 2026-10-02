@@ -118,6 +118,9 @@ besitzt einen eigenen Aufrufvertrag und orchestriert Auswahl, Tool-Preparation u
 ### `init`
 
 - **Art:** interaktiv und nach jeweils ausdrücklicher Bestätigung mutierend.
+
+#### Advanced: Init-Aufrufvarianten und Tool-Preparation
+
 - **Aufrufe:** `agent-governance init` führt Umgebung, Harness-Auswahl, Tool-Preparation und
   Einrichtung aus. `agent-governance init --skip-tools` überspringt ausschließlich die
   Tool-Preparation. `agent-governance init tools` führt nur die Tool-Preparation aus;
