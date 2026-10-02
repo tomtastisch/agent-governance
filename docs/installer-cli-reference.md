@@ -113,25 +113,50 @@ beobachtbare Parent-, Identitäts- und Snapshotwechsel brechen fail-closed ab. E
 lokale Tests ersetzen keine unabhängige QA/SEC und keine plattformübergreifende CI.
 
 Die acht Transaktionscommands verlangen denselben expliziten Pfadvertrag. Das interaktive `init`
-nimmt nur Hilfeoptionen an und orchestriert Auswahl und Transaktionen getrennt.
+besitzt einen eigenen Aufrufvertrag und orchestriert Auswahl, Tool-Preparation und Transaktionen getrennt.
 
 ### `init`
 
-- **Art:** interaktiv und nach Bestätigung mutierend.
-- **Optionen:** Nur die Hilfeoptionen `--help` und `-h`; keine Transaktionsoptionen.
-- **Zweck:** Unterstützt die Auswahl expliziter Ziele und orchestriert für jedes Ziel
-  `status -> plan -> [Bestätigung] -> install|update -> verify`.
-- **Ausgangszustand:** Ein TTY und mindestens ein bewusst ausgewähltes Ziel; ohne TTY wird der
-  Aufruf vor Discovery, Prompt und Mutation abgelehnt.
-- **Prüft:** Begrenzte lokale Kandidaten, manuelle Eingaben, Zielstatus und vollständige Pläne
-  vor einer gemeinsamen Bestätigung.
-- **Verändert:** Vor der Bestätigung nichts; danach ausschließlich die bestätigten expliziten
-  Ziele über dieselbe Transaktionsgrenze wie die Low-Level-Commands.
-- **Typisch:** Normaler öffentlicher Einstieg nach der Paketinstallation.
-- **Fail-closed:** Passive Discovery ist nur Auswahlunterstützung. Unterstützte Harnesses werden
-  als editierbarer Default vorausgewählt und ihre Zielpfade aus der Binding-SSOT abgeleitet; erst
-  die ausdrückliche Bestätigung autorisiert die Mutation. Keine implizite Harness-Mutation und
-  keine fachliche Authority.
+- **Art:** interaktiv und nach jeweils ausdrücklicher Bestätigung mutierend.
+
+#### Advanced: Init-Aufrufvarianten und Tool-Preparation
+
+- **Aufrufe:** `agent-governance init` führt Umgebung, Harness-Auswahl, Tool-Preparation und
+  Einrichtung aus. `agent-governance init --skip-tools` überspringt ausschließlich die
+  Tool-Preparation. `agent-governance init tools` führt nur die Tool-Preparation aus;
+  Harness-Discovery, Zielauswahl und Installationstransaktionen laufen dabei nicht.
+- **Optionen:** `--json` reserviert stdout für genau ein strukturiertes Init-Ergebnis;
+  interaktive Anzeigen, Autorisierungsfragen und Provider-Login-Ausgaben verwenden stderr.
+  `--help` und `-h` zeigen die Hilfe. Transaktionsoptionen werden nicht akzeptiert.
+  `tools` und `--skip-tools`, unbekannte Argumente und doppelte Optionen werden auch mit
+  einer Hilfeoption als `INVALID_INVOCATION` abgelehnt.
+- **Zweck:** Für ausgewählte Ziele gilt weiterhin
+  `status -> plan -> [gemeinsame Zielbestätigung] -> install|update -> verify`.
+  Der gemeinsame Tool-Preparation-Orchestrator bereitet ausschließlich GitHub CLI `gh` vor.
+- **Ausgangszustand:** Ein TTY; vollständiger Init verlangt mindestens ein ausgewähltes Ziel.
+  Ohne TTY wird vor Discovery, Prompt und Mutation mit `NON_TTY` abgelehnt.
+- **Tool-Preparation:** Existenz und aktive Anmeldung auf `github.com` werden read-only
+  geprüft. Installation und anschließender provider-nativer Web-Login verlangen getrennte
+  Freigaben mit `USER:`. Installation verwendet auf macOS vorhandenes Homebrew, auf Linux
+  vorhandenes apt mit bereits ausreichenden effektiven Rechten. Paketmanager werden nicht
+  installiert und Rechte nicht automatisch erhöht. Ohne geeigneten Pfad erscheint konkrete
+  manuelle Guidance; danach kann `agent-governance init tools` erneut ausgeführt werden.
+  Auf Linux gegebenenfalls ausschließlich die Paketinstallation manuell mit sudo ausführen,
+  anschließend den Governance-Init ohne Rechteerhöhung starten.
+- **Read-back:** Nach Installation/Login wird der tatsächliche Zustand frisch geprüft.
+  Exit-Code oder Browserabschluss allein begründen kein `READY`. Credentials verbleiben bei gh;
+  es gibt keinen eigenen Credential Store und keine persistente Tool-State-Authority.
+- **Verändert:** Tool-Installation/Login können im vollständigen Init bereits vor der
+  gemeinsamen Zielbestätigung stattfinden, ausschließlich nach der jeweiligen Tool-Freigabe.
+  Zielbindungen ändern sich erst nach ihrer gemeinsamen Bestätigung über die bestehenden
+  Transaktionen. Das Ablehnen einer Tool-Freigabe liefert `SKIPPED` und erlaubt die Zielplanung.
+- **Fehler und Abbruch:** Fehlgeschlagene Preparation liefert `UNSAFE_STATE` mit
+  `reason: "TOOL_PREPARATION_FAILED"`, Guidance und Tool-Ergebnissen; vollständiger Init stoppt
+  vor der Zielplanung/Einrichtung. Ctrl-C liefert `INTERRUPTED` / `CANCELLED` und Exit 130.
+  Tools-only-Ergebnisse enthalten stets `targets: []`.
+- **Fail-closed:** Passive Discovery unterstützt nur die Auswahl; keine implizite
+  Harness-Mutation und keine neue fachliche Authority. Resume startet keine mutierende
+  Preparation, sondern kann auf den expliziten Pfad `agent-governance init tools` verweisen.
 
 ### `inspect`
 

@@ -29,10 +29,11 @@ test("the current release real init path never starts a package manager or depen
     Object.defineProperty(childProcess, method, {
       configurable: true,
       value: (...args: unknown[]) => {
-        if (method === "execFileSync" && String(args[0]) === "which") {
+        const cmd = String(args[0]);
+        if (method === "execFileSync" && cmd === "which") {
           return (originals.get(method) as (...values: unknown[]) => unknown)(...args);
         }
-        intercepted.push(`${method}:${String(args[0])}`);
+        intercepted.push(`${method}:${cmd}`);
         throw new Error(`init attempted forbidden child process via ${method}`);
       },
       writable: true,
@@ -76,6 +77,7 @@ test("the current release real init path never starts a package manager or depen
         releaseRoot: repositoryRoot,
       },
       initPrompt: prompt,
+      prepareTools: async () => [{ toolId: "github_cli", status: "READY" }],
     },
   );
 
@@ -114,15 +116,17 @@ test("the boundary regression catches a package-manager spawn injected into defa
   t.after(() => rm(mutationRoot, { recursive: true, force: true }));
 
   const cliPath = join(mutationRoot, "src", "cli.ts");
-  const mutated = (await readFile(cliPath, "utf8"))
+  const originalSource = await readFile(cliPath, "utf8");
+  const mutated = originalSource
     .replace(
       'import { fileURLToPath } from "node:url";',
       'import { fileURLToPath } from "node:url";\nimport { spawnSync } from "node:child_process";',
     )
     .replace(
-      "  const isTTY = Boolean(process.stdin.isTTY && process.stdout.isTTY);",
-      '  spawnSync("npm", ["--version"]);\n  const isTTY = Boolean(process.stdin.isTTY && process.stdout.isTTY);',
+      "function defaultInitOptions(): InitOptions {",
+      'function defaultInitOptions(): InitOptions {\n  spawnSync("npm", ["--version"]);',
     );
+  assert.ok(mutated.includes('  spawnSync("npm", ["--version"]);'), "boundary mutation must be injected");
   await writeFile(cliPath, mutated, "utf8");
 
   const childProcess = require("node:child_process") as typeof import("node:child_process");

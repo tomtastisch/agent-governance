@@ -6,7 +6,7 @@
 ## Init-Onboarding und Dependency-Grenze
 
 Der normale öffentliche Einstieg ist exakt `npm i @tomtastisch/agent-governance` gefolgt von
-`npx agent-governance init`. `init` orchestriert ausschließlich die vorhandene Transaktion
+`npx agent-governance init`. Für die Harness-Ziele orchestriert `init` die vorhandene Transaktion
 `status -> plan -> [Bestätigung] -> install|update -> verify`; Runtime-Abhängigkeiten werden vorab
 durch die deklarativen
 `package.json.dependencies` und das Lockfile geliefert. Der Init-Pfad startet weder npm, pnpm,
@@ -17,7 +17,16 @@ Vor der Transaktion nutzt `init` eine begrenzte, passive und nicht mutierende Di
 Auswahlunterstützung. Unterstützte Harnesses werden als editierbarer Default vorausgewählt und
 ihre Zielpfade aus der Support-/Binding-SSOT abgeleitet. Die bewusste Auswahl erzeugt explizite
 Transaktionsziele; Status und Pläne werden für alle Ziele vor einer gemeinsamen Bestätigung
-ermittelt. Erst diese Bestätigung autorisiert die Mutation.
+ermittelt. Diese Bestätigung autorisiert ausschließlich die Mutation der Harness-Ziele.
+
+Zwischen Harness-Auswahl und Target-Plan bereitet der vollständige Init-Ablauf die GitHub CLI
+`gh` vor. Eine Installation über den unterstützten Homebrew-/apt-Pfad und der provider-native
+Web-Login benötigen jeweils eine eigene `USER:`-Freigabe und einen frischen Read-back.
+Diese Tool-Aktionen können bereits vor der Target-Bestätigung mutieren; ein späterer Abbruch
+der Target-Einrichtung macht sie nicht rückgängig. Das strukturierte Abbruchergebnis enthält
+die bereits abgeschlossenen Tool-Ergebnisse. `init --skip-tools` überspringt ausschließlich
+diese Preparation; `init tools` führt ausschließlich sie aus. Der Bootstrap-Ausschluss für
+Runtime-Abhängigkeiten bleibt bestehen.
 
 Die Installed-Harness-Erkennung des `init`-Screens ist auf einen einzelnen Adapter hinter
 `@agntn/harnesses` beschränkt, der ausschließlich `getAllHarnesses()` und `isInstalled()` nutzt und

@@ -89,12 +89,12 @@ export interface ClackPromptIO {
 }
 
 const DEFAULT_OPERATIONS: ClackPromptOperations = Object.freeze({
-  autocompleteMultiselect: (options: AutocompleteMultiSelectOptions) => clackAutocompleteMultiselect(options),
-  path: (options: PathOptions) => clackPath(options),
-  text: (options: TextOptions) => clackText(options),
-  confirm: (options: ConfirmOptions) => clackConfirm(options),
-  spinner: () => clackSpinner(),
-  cancel: (message?: string) => clackCancel(message),
+  autocompleteMultiselect: (options: AutocompleteMultiSelectOptions) => clackAutocompleteMultiselect({ ...options, output: process.stderr }),
+  path: (options: PathOptions) => clackPath({ ...options, output: process.stderr }),
+  text: (options: TextOptions) => clackText({ ...options, output: process.stderr }),
+  confirm: (options: ConfirmOptions) => clackConfirm({ ...options, output: process.stderr }),
+  spinner: () => clackSpinner({ output: process.stderr }),
+  cancel: (message?: string) => clackCancel(message, { output: process.stderr }),
   isCancel: clackIsCancel,
 });
 

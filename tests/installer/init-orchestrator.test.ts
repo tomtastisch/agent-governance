@@ -4,6 +4,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { resolveManualTarget, resolveTarget } from "../../src/init/bindings.ts";
+import { InterruptedFailure } from "../../src/errors.ts";
 import { runInit } from "../../src/init/orchestrator.ts";
 import {
   INIT_CANCELLED,
@@ -106,6 +107,7 @@ test("runInit discovers harnesses, resolves support and latest, and plans only s
   const pi: DiscoveredHarness = { id: "pi", displayName: "Pi Coding Agent" };
   const selections: readonly InitSelection[] = [{ harness: claude }];
   const deps: InitDependencies = {
+    prepareTools: async () => [{ toolId: "github_cli", status: "READY" }],
     async discoverHarnesses() { events.push("discover"); return [claude, pi]; },
     async resolveLatestRelease() { events.push("latest"); return "1.4.5"; },
     prompt: prompt(selections, events),
@@ -125,6 +127,7 @@ test("runInit discovers harnesses, resolves support and latest, and plans only s
 test("runInit returns before discovery, prompt, transaction, or mutation without a TTY", async () => {
   const events: string[] = [];
   const deps: InitDependencies = {
+    prepareTools: async () => [{ toolId: "github_cli", status: "READY" }],
     async discoverHarnesses() { events.push("discover"); return []; },
     async resolveLatestRelease() { events.push("latest"); return undefined; },
     prompt: prompt([], events),
@@ -145,6 +148,7 @@ test("runInit returns before discovery, prompt, transaction, or mutation without
 test("runInit cancellation in step two performs no mutation", async () => {
   const events: string[] = [];
   const deps: InitDependencies = {
+    prepareTools: async () => [{ toolId: "github_cli", status: "READY" }],
     async discoverHarnesses() { events.push("discover"); return [{ id: "claude", displayName: "Anthropic Claude Code" }]; },
     async resolveLatestRelease() { events.push("latest"); return undefined; },
     prompt: prompt(INIT_CANCELLED, events),
@@ -163,6 +167,7 @@ test("runInit creates no filesystem mutation when aggregate approval is declined
   await mkdir(join(root, ".claude"), { recursive: true });
   try {
     const result = await runInit(options(root, releaseRoot, installationRoot), {
+      prepareTools: async () => [{ toolId: "github_cli", status: "READY" }],
       async discoverHarnesses() { return [{ id: "claude", displayName: "Anthropic Claude Code" }]; },
       async resolveLatestRelease() { return undefined; },
       prompt: prompt([{ harness: { id: "claude", displayName: "Anthropic Claude Code" } }], [], false),
@@ -183,6 +188,7 @@ test("runInit installs and verifies a supported harness with the real transactio
   await mkdir(join(root, ".claude"), { recursive: true });
   try {
     const result = await runInit(options(root, releaseRoot, installationRoot), {
+      prepareTools: async () => [{ toolId: "github_cli", status: "READY" }],
       async discoverHarnesses() { return [{ id: "claude", displayName: "Anthropic Claude Code" }]; },
       async resolveLatestRelease() { return undefined; },
       prompt: prompt([{ harness: { id: "claude", displayName: "Anthropic Claude Code" } }], []),
@@ -199,6 +205,7 @@ test("runInit installs and verifies a supported harness with the real transactio
 test("runInit treats a throwing harness discovery as unavailable and never falls back to a heuristic", async () => {
   const events: string[] = [];
   const deps: InitDependencies = {
+    prepareTools: async () => [{ toolId: "github_cli", status: "READY" }],
     async discoverHarnesses(): Promise<DiscoveredHarness[]> { events.push("discover"); throw new Error("dependency failure"); },
     async resolveLatestRelease() { events.push("latest"); return undefined; },
     prompt: {
@@ -223,6 +230,7 @@ test("runInit keeps an OUTDATED binding on the update path and verifies it", asy
     const request: InstallerRequest = { targetRoot, entryFile: "CLAUDE.md", scope: "global", installationRoot, releaseRoot: oldRelease, dryRun: false, nonInteractive: false };
     await new InstallerTransaction(request).install();
     const result = await runInit(options(root, releaseRoot, installationRoot), {
+      prepareTools: async () => [{ toolId: "github_cli", status: "READY" }],
       async discoverHarnesses() { return [{ id: "claude", displayName: "Anthropic Claude Code" }]; },
       async resolveLatestRelease() { return "1.1.0"; },
       prompt: prompt([{ harness: { id: "claude", displayName: "Anthropic Claude Code" } }], []),
@@ -233,5 +241,74 @@ test("runInit keeps an OUTDATED binding on the update path and verifies it", asy
     assert.match(await readFile(join(targetRoot, "CLAUDE.md"), "utf8"), /1\.1\.0/);
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("full init stops its spinner before preparation and blocks setup on failure", async () => {
+  for (const status of ["UNAVAILABLE", "AUTH_REQUIRED", "MISSING"] as const) {
+    const events: string[] = [];
+    const result = await runInit(options("/synthetic/home"), {
+      discoverHarnesses: async () => [],
+      resolveLatestRelease: async () => undefined,
+      prompt: { ...prompt([{ manualInput: { targetRoot: "/synthetic/target", entryFile: "AGENTS.md" } }], events), dispose: () => { events.push("dispose"); } },
+      createTransaction: () => { throw new Error("setup must not run"); },
+      prepareTools: async () => {
+        assert.equal(events.at(-1), "dispose", "spinner must stop before tool interaction");
+        return [{ toolId: "github_cli", status }];
+      },
+    });
+    assert.equal(result.outcome, "UNSAFE_STATE");
+    assert.equal(result.reason, "TOOL_PREPARATION_FAILED");
+    assert.deepEqual(result.targets, []);
+    assert.deepEqual(result.toolPreparation, [{ toolId: "github_cli", status }]);
+  }
+});
+
+test("full init Ctrl-C in tools never reaches setup", async () => {
+  const result = await runInit(options("/synthetic/home"), {
+    discoverHarnesses: async () => [], resolveLatestRelease: async () => undefined,
+    prompt: prompt([{ manualInput: { targetRoot: "/synthetic/target", entryFile: "AGENTS.md" } }], []),
+    createTransaction: () => { throw new Error("setup must not run"); },
+    prepareTools: async () => { throw new InterruptedFailure("SIGINT", "inspect", "NOT_REQUIRED"); },
+  });
+  assert.equal(result.outcome, "INTERRUPTED");
+  assert.equal(result.reason, "CANCELLED");
+});
+
+test("full init preserves explicit skip and decline without skipping target verification", async () => {
+  for (const skipTools of [false, true]) {
+    const events: string[] = [];
+    let preparations = 0;
+    const result = await runInit(options("/synthetic/home"), {
+      discoverHarnesses: async () => [], resolveLatestRelease: async () => undefined,
+      prompt: prompt([{ manualInput: { targetRoot: "/synthetic/target", entryFile: "AGENTS.md" } }], events),
+      createTransaction: () => fakeTransaction(events, "/synthetic/target"),
+      skipTools,
+      prepareTools: async () => { preparations++; return [{ toolId: "github_cli", status: "SKIPPED" }]; },
+    });
+    assert.equal(result.outcome, "SUCCESS");
+    assert.equal(preparations, skipTools ? 0 : 1);
+    assert.ok(events.includes("verify:/synthetic/target"));
+    assert.equal(events.some(event => event.includes("Tools vorbereiten")), !skipTools);
+  }
+});
+
+test("later target cancellation retains completed tool preparation without target mutation", async () => {
+  for (const confirmation of [false, INIT_CANCELLED, "interrupt"] as const) {
+    const events: string[] = [];
+    const tools = [{ toolId: "github_cli", status: "READY" as const, message: "Installed and authenticated after consent." }];
+    const initPrompt = prompt([{ manualInput: { targetRoot: "/synthetic/target", entryFile: "AGENTS.md" } }], events, confirmation === "interrupt" ? true : confirmation);
+    const cancellationPrompt: InitPrompt = confirmation === "interrupt"
+      ? { ...initPrompt, confirm: async () => { throw new InterruptedFailure("SIGINT", "inspect", "NOT_REQUIRED"); } }
+      : initPrompt;
+    const result = await runInit(options("/synthetic/home"), {
+      discoverHarnesses: async () => [], resolveLatestRelease: async () => undefined,
+      prompt: cancellationPrompt, prepareTools: async () => tools,
+      createTransaction: () => fakeTransaction(events, "/synthetic/target"),
+    });
+    assert.equal(result.outcome, "INTERRUPTED");
+    assert.deepEqual(result.toolPreparation, tools);
+    assert.deepEqual(result.targets, []);
+    assert.equal(events.some(event => event.startsWith("install:") || event.startsWith("update:")), false);
   }
 });
