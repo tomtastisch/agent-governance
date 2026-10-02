@@ -5,6 +5,16 @@ const PREPARATION_MODULES: readonly ToolPreparationModule[] = Object.freeze([ghP
 
 async function promptUserAuthorization(module: ToolPreparationModule, message: string): Promise<boolean> {
   const { stdin, stdout } = process;
+  
+  // If not a TTY, skip interactively (safe default for CI/non-interactive environments)
+  if (!stdin.isTTY) {
+    const { createTerminalTheme } = await import("../../terminal/theme.ts");
+    const theme = createTerminalTheme({ color: true });
+    console.log(`${theme.cyan("USER:")} ${message}`);
+    console.log(`${theme.dim("Non-interactive environment, skipping preparation.")}`);
+    return false;
+  }
+  
   return new Promise(async (resolve) => {
     const { createTerminalTheme } = await import("../../terminal/theme.ts");
     const theme = createTerminalTheme({ color: true });
