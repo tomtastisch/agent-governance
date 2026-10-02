@@ -16,6 +16,7 @@ export interface GhPreparationDependencies {
   readonly runBrewInstall: (packageName: string) => Promise<boolean>;
   readonly checkAptAvailable: () => Promise<boolean>;
   readonly checkBrewAvailable: () => Promise<boolean>;
+  readonly checkAptPrivileges: () => Promise<boolean>;
   readonly formatInstallGuidance: () => string;
 }
 
@@ -44,7 +45,7 @@ function createDefaultDependencies(): GhPreparationDependencies {
     },
 
     checkGhAuth: async () => {
-      const result = await runCommand("gh", ["auth", "status"]);
+      const result = await runCommand("gh", ["auth", "status", "--active", "--hostname", "github.com"]);
       if (result.exitCode === 0) {
         const userMatch = result.stdout.match(/Logged in to (?:github\.com )?as (\S+)/);
         return { authenticated: true, user: userMatch?.[1] };
@@ -82,6 +83,11 @@ function createDefaultDependencies(): GhPreparationDependencies {
       return result.exitCode === 0;
     },
 
+    checkAptPrivileges: async () => {
+      const result = await runCommand("apt", ["update"]);
+      return result.exitCode === 0;
+    },
+
     formatInstallGuidance: () => {
       const currentPlatform = platform();
       if (currentPlatform === "darwin") {
@@ -104,6 +110,15 @@ function detectInstallMethod(deps: GhPreparationDependencies): { readonly comman
     return { command: "apt", args: ["update"] };
   }
   return null;
+}
+
+async function checkAptPrivileges(deps: GhPreparationDependencies): Promise<boolean> {
+  try {
+    const result = await deps.runCommand("apt", ["update"]);
+    return result.exitCode === 0;
+  } catch {
+    return false;
+  }
 }
 
 export function createGhPreparationModule(deps?: Partial<GhPreparationDependencies>): ToolPreparationModule {
@@ -182,9 +197,18 @@ export function createGhPreparationModule(deps?: Partial<GhPreparationDependenci
               message: "apt not found. Cannot install gh on this system.",
             });
           }
+          const aptPrivileges = await d.checkAptPrivileges();
+          if (!aptPrivileges) {
+            return Object.freeze({
+              toolId: GH_TOOL_ID,
+              status: "UNAVAILABLE",
+              message: "Insufficient privileges to run apt. Please run with sudo or install gh manually.",
+            });
+          }
         }
 
-        console.log(`${theme.cyan("USER:")} Starting gh installation via ${installMethod.command}...`);
+        const { stderr } = process;
+        stderr.write(`${theme.cyan("USER:")} Starting gh installation via ${installMethod.command}...\n`);
 
         let installed = false;
         if (currentPlatform === "darwin") {
@@ -224,7 +248,8 @@ export function createGhPreparationModule(deps?: Partial<GhPreparationDependenci
           });
         }
 
-        console.log(`${theme.cyan("USER:")} Starting gh authentication via web flow (interactive)...`);
+        const { stderr } = process;
+        stderr.write(`${theme.cyan("USER:")} Starting gh authentication via web flow (interactive)...\n`);
         const loginSuccess = await d.runGhAuthLogin();
         if (!loginSuccess) {
           return Object.freeze({

@@ -24,7 +24,7 @@ export interface CliDependencies {
   readonly initOptions?: InitOptions;
   readonly initPrompt?: InitPrompt;
 }
-const VALUE_OPTIONS = new Set(["--target-root", "--entry-file", "--scope", "--installation-root", "--local-rules", "--skip-tools"]);
+const VALUE_OPTIONS = new Set(["--target-root", "--entry-file", "--scope", "--installation-root", "--local-rules"]);
 
 type InitSubcommand = "full" | "tools";
 
@@ -44,6 +44,10 @@ function parse(argv: readonly string[], publicCommands: readonly PublicCommandId
       if (option === "--skip-tools") {
         if (skipTools) throw new Error("duplicate option --skip-tools");
         skipTools = true;
+        continue;
+      }
+      if (option === "--help" || option === "-h") {
+        // help is handled before parse, but allow it here for completeness
         continue;
       }
       if (option === undefined || option.startsWith("--")) throw new Error(`unknown option ${String(option)}`);
@@ -91,7 +95,17 @@ export async function runCli(argv: readonly string[], out: Writer = console.log,
   const publicCommands = definitions.map(({ id }) => id);
   const helpTheme = createTerminalTheme();
   if (argv.length === 1 && isHelp(argv[0])) { out(renderGlobalHelp(definitions, helpTheme)); return EXIT_CODES.SUCCESS; }
-  if (argv.length >= 2 && publicCommands.includes(argv[0] as PublicCommandId) && argv.some(isHelp)) { out(renderCommandHelp(argv[0] as PublicCommandId, definitions, helpTheme)); return EXIT_CODES.SUCCESS; }
+  // Validate init arguments before help short-circuit for init command
+  if (argv.length >= 2 && argv[0] === "init" && publicCommands.includes("init")) {
+    let initArgError: Error | undefined;
+    try { parse(argv, publicCommands); } catch (e) { if (e instanceof Error) initArgError = e; }
+    if (argv.some(isHelp)) {
+      if (initArgError) { error(JSON.stringify({ schemaVersion: 1, outcome: "INVALID_INVOCATION", error: initArgError.message })); return EXIT_CODES.INVALID_INVOCATION; }
+      out(renderCommandHelp("init", definitions, helpTheme)); return EXIT_CODES.SUCCESS;
+    }
+  } else if (argv.length >= 2 && publicCommands.includes(argv[0] as PublicCommandId) && argv.some(isHelp)) {
+    out(renderCommandHelp(argv[0] as PublicCommandId, definitions, helpTheme)); return EXIT_CODES.SUCCESS;
+  }
   let parsed: ReturnType<typeof parse>; try { parsed = parse(argv, publicCommands); } catch (cause) { error(JSON.stringify({ schemaVersion: 1, outcome: "INVALID_INVOCATION", error: (cause as Error).message })); return EXIT_CODES.INVALID_INVOCATION; }
   try {
     let transaction: InstallerTransaction | undefined;
@@ -104,7 +118,7 @@ export async function runCli(argv: readonly string[], out: Writer = console.log,
         environment: process.env,
       });
 
-      if (dependencies.initPrompt === undefined && initOptions.isTTY) {
+      if (dependencies.initPrompt === undefined && initOptions.isTTY && !parsed.json) {
         await renderBranding({
           write: (value) => out(value.trimEnd()),
           columns: Number.parseInt(process.env.COLUMNS ?? "", 10) || process.stdout.columns,
@@ -124,10 +138,12 @@ export async function runCli(argv: readonly string[], out: Writer = console.log,
           });
         } else {
           const preparationResults = await runToolPreparation(parsed.skipTools ?? false);
+          const hasFailedPrep = preparationResults.some(r => r.status === "UNAVAILABLE" || r.status === "AUTH_REQUIRED");
           result = Object.freeze({
             schemaVersion: 1,
             command: "init",
-            outcome: "SUCCESS",
+            outcome: hasFailedPrep ? "INVALID_INVOCATION" : "SUCCESS",
+            targets: [],
             toolPreparation: preparationResults,
           });
         }
@@ -157,7 +173,7 @@ export async function runCli(argv: readonly string[], out: Writer = console.log,
             columns: Number.parseInt(process.env.COLUMNS ?? "", 10) || process.stdout.columns,
             environment: process.env,
           });
-          if (dependencies.initPrompt === undefined && initOptions.isTTY) {
+          if (dependencies.initPrompt === undefined && initOptions.isTTY && !parsed.json) {
             await renderBranding({
               write: (value) => out(value.trimEnd()),
               columns: Number.parseInt(process.env.COLUMNS ?? "", 10) || process.stdout.columns,

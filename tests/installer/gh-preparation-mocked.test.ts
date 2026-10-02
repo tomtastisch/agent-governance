@@ -14,6 +14,7 @@ function createMockDeps(overrides: Partial<GhPreparationDependencies> = {}): GhP
     runBrewInstall: async () => true,
     checkAptAvailable: async () => true,
     checkBrewAvailable: async () => true,
+    checkAptPrivileges: async () => true,
     formatInstallGuidance: () => "Install guidance",
     ...overrides,
   };

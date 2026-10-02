@@ -4,24 +4,34 @@ import { ghPreparationModule } from "./gh.ts";
 const PREPARATION_MODULES: readonly ToolPreparationModule[] = Object.freeze([ghPreparationModule]);
 
 async function promptUserAuthorization(module: ToolPreparationModule, message: string): Promise<boolean> {
-  const { stdin, stdout } = process;
+  const { stdin, stdout, stderr } = process;
 
   // If not a TTY, skip interactively (safe default for CI/non-interactive environments)
   if (!stdin.isTTY) {
     const { createTerminalTheme } = await import("../../terminal/theme.ts");
     const theme = createTerminalTheme({ color: true });
-    console.log(`${theme.cyan("USER:")} ${message}`);
-    console.log(`${theme.dim("Non-interactive environment, skipping preparation.")}`);
+    stderr.write(`${theme.cyan("USER:")} ${message}\n`);
+    stderr.write(`${theme.dim("Non-interactive environment, skipping preparation.\n")}`);
     return false;
   }
 
   return new Promise(async (resolve) => {
     const { createTerminalTheme } = await import("../../terminal/theme.ts");
     const theme = createTerminalTheme({ color: true });
-    console.log(`${theme.cyan("USER:")} ${message}`);
-    console.log(`${theme.dim("Press 'y' to continue, any other key to skip:")}`);
+    stderr.write(`${theme.cyan("USER:")} ${message}\n`);
+    stderr.write(`${theme.dim("Press 'y' to continue, any other key to skip:\n")}`);
 
     const onData = (data: Buffer) => {
+      // Handle Ctrl+C (\x03) as cancellation
+      if (data[0] === 0x03) {
+        stdin.off("data", onData);
+        stdin.setRawMode(false);
+        stdin.pause();
+        stderr.write("\n");
+        resolve(false); // Treat Ctrl+C as cancellation
+        return;
+      }
+
       stdin.off("data", onData);
       stdin.setRawMode(false);
       stdin.pause();
