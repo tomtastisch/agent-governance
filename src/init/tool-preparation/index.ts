@@ -5,7 +5,7 @@ const PREPARATION_MODULES: readonly ToolPreparationModule[] = Object.freeze([ghP
 
 async function promptUserAuthorization(module: ToolPreparationModule, message: string): Promise<boolean> {
   const { stdin, stdout } = process;
-  
+
   // If not a TTY, skip interactively (safe default for CI/non-interactive environments)
   if (!stdin.isTTY) {
     const { createTerminalTheme } = await import("../../terminal/theme.ts");
@@ -14,20 +14,20 @@ async function promptUserAuthorization(module: ToolPreparationModule, message: s
     console.log(`${theme.dim("Non-interactive environment, skipping preparation.")}`);
     return false;
   }
-  
+
   return new Promise(async (resolve) => {
     const { createTerminalTheme } = await import("../../terminal/theme.ts");
     const theme = createTerminalTheme({ color: true });
     console.log(`${theme.cyan("USER:")} ${message}`);
     console.log(`${theme.dim("Press 'y' to continue, any other key to skip:")}`);
-    
+
     const onData = (data: Buffer) => {
       stdin.off("data", onData);
       stdin.setRawMode(false);
       stdin.pause();
       resolve(data.toString().toLowerCase().trim() === "y");
     };
-    
+
     stdin.setRawMode(true);
     stdin.resume();
     stdin.on("data", onData);
@@ -40,27 +40,36 @@ function createToolPreparationOrchestrator(): ToolPreparationOrchestrator {
       if (skipTools) {
         return Object.freeze([]);
       }
-      
+
       const results: ToolPreparationResult[] = [];
-      
+
       for (const module of PREPARATION_MODULES) {
         const inspectResult = await module.inspect();
-        
+
         if (inspectResult.status === "READY") {
           results.push(inspectResult);
           continue;
         }
-        
-        if (inspectResult.status === "MISSING" || inspectResult.status === "AUTH_REQUIRED") {
-          const userAuthorized = await promptUserAuthorization(module, inspectResult.message ?? `Prepare ${module.toolId}?`);
-          const prepareResult = await module.prepare({ userAuthorized });
-          results.push(prepareResult);
-          continue;
+
+        let authorizeInstall = false;
+        let authorizeLogin = false;
+
+        if (inspectResult.status === "MISSING") {
+          authorizeInstall = await promptUserAuthorization(module, inspectResult.message ?? `Install ${module.toolId}?`);
         }
-        
-        results.push(inspectResult);
+
+        if (inspectResult.status === "AUTH_REQUIRED" || (inspectResult.status === "MISSING" && authorizeInstall)) {
+          // Re-inspect after potential installation
+          const freshInspect = await module.inspect();
+          if (freshInspect.status === "AUTH_REQUIRED") {
+            authorizeLogin = await promptUserAuthorization(module, freshInspect.message ?? `Authenticate ${module.toolId}?`);
+          }
+        }
+
+        const prepareResult = await module.prepare({ authorizeInstall, authorizeLogin });
+        results.push(prepareResult);
       }
-      
+
       return Object.freeze(results);
     },
   });

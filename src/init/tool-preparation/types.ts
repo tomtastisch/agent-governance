@@ -9,7 +9,7 @@ export interface ToolPreparationResult {
 export interface ToolPreparationModule {
   readonly toolId: string;
   readonly inspect: () => Promise<ToolPreparationResult>;
-  readonly prepare: (options: { readonly userAuthorized: boolean }) => Promise<ToolPreparationResult>;
+  readonly prepare: (options: { readonly authorizeInstall: boolean; readonly authorizeLogin: boolean }) => Promise<ToolPreparationResult>;
 }
 
 export interface ToolPreparationOrchestrator {
