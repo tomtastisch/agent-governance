@@ -125,8 +125,10 @@ besitzt einen eigenen Aufrufvertrag und orchestriert Auswahl, Tool-Preparation u
   Einrichtung aus. `agent-governance init --skip-tools` überspringt ausschließlich die
   Tool-Preparation. `agent-governance init tools` führt nur die Tool-Preparation aus;
   Harness-Discovery, Zielauswahl und Installationstransaktionen laufen dabei nicht.
-- **Optionen:** `--json` reserviert stdout für genau ein strukturiertes Init-Ergebnis;
-  interaktive Anzeigen, Autorisierungsfragen und Provider-Login-Ausgaben verwenden stderr.
+- **Optionen:** Bei einem gültigen Init-Aufruf ohne Hilfeoption reserviert `--json` stdout
+  für genau ein strukturiertes Init-Ergebnis oder Fehlerobjekt. Fehler bei der Argumentprüfung
+  werden als JSON auf stderr ausgegeben. Interaktive Anzeigen, Autorisierungsfragen und
+  Provider-Login-Ausgaben verwenden stderr.
   `--help` und `-h` zeigen die Hilfe. Transaktionsoptionen werden nicht akzeptiert.
   `tools` und `--skip-tools`, unbekannte Argumente und doppelte Optionen werden auch mit
   einer Hilfeoption als `INVALID_INVOCATION` abgelehnt.
@@ -153,7 +155,8 @@ besitzt einen eigenen Aufrufvertrag und orchestriert Auswahl, Tool-Preparation u
 - **Fehler und Abbruch:** Fehlgeschlagene Preparation liefert `UNSAFE_STATE` mit
   `reason: "TOOL_PREPARATION_FAILED"`, Guidance und Tool-Ergebnissen; vollständiger Init stoppt
   vor der Zielplanung/Einrichtung. Ctrl-C liefert `INTERRUPTED` / `CANCELLED` und Exit 130.
-  Tools-only-Ergebnisse enthalten stets `targets: []`.
+  Reguläre Tools-only-Init-Ergebnisse enthalten `targets: []`; allgemeine strukturierte
+  Fehlerobjekte verwenden das Fehlerschema ohne dieses Feld.
 - **Fail-closed:** Passive Discovery unterstützt nur die Auswahl; keine implizite
   Harness-Mutation und keine neue fachliche Authority. Resume startet keine mutierende
   Preparation, sondern kann auf den expliziten Pfad `agent-governance init tools` verweisen.
