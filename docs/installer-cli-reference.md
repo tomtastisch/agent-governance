@@ -148,6 +148,8 @@ besitzt einen eigenen Aufrufvertrag und orchestriert Auswahl, Tool-Preparation u
 - **Read-back:** Nach Installation/Login wird der tatsächliche Zustand frisch geprüft.
   Exit-Code oder Browserabschluss allein begründen kein `READY`. Credentials verbleiben bei gh;
   es gibt keinen eigenen Credential Store und keine persistente Tool-State-Authority.
+  Erkennt eine ältere gh-Version `auth status --active` nicht, prüft ein read-only Aufruf von
+  `gh api user --hostname github.com --silent` die aktive Anmeldung ohne Antwortausgabe.
 - **Verändert:** Tool-Installation/Login können im vollständigen Init bereits vor der
   gemeinsamen Zielbestätigung stattfinden, ausschließlich nach der jeweiligen Tool-Freigabe.
   Zielbindungen ändern sich erst nach ihrer gemeinsamen Bestätigung über die bestehenden

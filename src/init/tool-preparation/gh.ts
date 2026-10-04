@@ -69,6 +69,12 @@ function createDefaultDependencies(overrides: Partial<GhPreparationDependencies>
 
     checkGhAuth: async () => {
       const result = await runCommand("gh", ["auth", "status", "--active", "--hostname", "github.com"]);
+      // Distribution packages before gh 2.57 lack --active. A silent /user GET
+      // checks only the active github.com credentials, never inactive accounts.
+      if (result.exitCode !== 0 && /^unknown flag: --active(?:\r?\n|$)/.test(result.stderr)) {
+        const probe = await runCommand("gh", ["api", "user", "--hostname", "github.com", "--silent"]);
+        return { authenticated: probe.exitCode === 0, user: undefined };
+      }
       if (result.exitCode === 0) {
         const userMatch = result.stdout.match(/Logged in to (?:github\.com )?as (\S+)/);
         return { authenticated: true, user: userMatch?.[1] };

@@ -286,3 +286,70 @@ test("authorized login fails when gh disappears after inspection without install
   exists = false;
   assert.equal((await module.prepare({ authorizeInstall: false, authorizeLogin: true })).status, "UNAVAILABLE");
 });
+
+test("legacy gh authenticates the active github.com account without exposing API output", async () => {
+  for (const exitCode of [0, 1]) {
+    const calls: string[] = [];
+    const module = createGhPreparationModule({
+      runCommand: async (command, args) => {
+        calls.push([command, ...args].join(" "));
+        if (args[0] === "--version") return { exitCode: 0, stdout: "gh version 2.45.0", stderr: "" };
+        if (args[0] === "auth") return { exitCode: 1, stdout: "", stderr: "unknown flag: --active\n\nUsage: gh auth status [flags]\n" };
+        assert.deepEqual(args, ["api", "user", "--hostname", "github.com", "--silent"]);
+        return { exitCode, stdout: "SYNTHETIC_PRIVATE_API_OUTPUT", stderr: "SYNTHETIC_PRIVATE_API_ERROR" };
+      },
+    });
+    const result = await module.inspect();
+    assert.equal(result.status, exitCode === 0 ? "READY" : "AUTH_REQUIRED");
+    assert.equal(calls.filter(call => call.startsWith("gh api ")).length, 1);
+    assert.doesNotMatch(JSON.stringify(result), /SYNTHETIC_PRIVATE_API/);
+  }
+});
+
+test("ordinary auth failures never activate the legacy compatibility path", async () => {
+  for (const stderr of ["authentication failed", "network timeout", "unknown flag: --hostname", "remote message: unknown flag: --active"]) {
+    const module = createGhPreparationModule({
+      runCommand: async (_command, args) => {
+        if (args[0] === "--version") return { exitCode: 0, stdout: "gh version 2.57.0", stderr: "" };
+        assert.equal(args[0], "auth", "a genuine auth failure must not fall back to another probe");
+        return { exitCode: 1, stdout: "", stderr };
+      },
+    });
+    assert.equal((await module.inspect()).status, "AUTH_REQUIRED");
+  }
+});
+
+test("apt-installed legacy gh reaches READY only after separately authorized login and fresh API read-back", async () => {
+  const { createToolPreparationOrchestrator } = await import("../../src/init/tool-preparation/index.ts");
+  for (const loginPersists of [false, true]) {
+    let installed = false; let authenticated = false;
+    const events: string[] = [];
+    const module = createGhPreparationModule({
+      platform: () => "linux", effectiveUserId: () => 0, write: () => {},
+      runCommand: async (command, args) => {
+        events.push([command, ...args].join(" "));
+        if (command === "which" || command === "apt") {
+          if (command === "apt" && args[0] === "install") installed = true;
+          return { exitCode: 0, stdout: "", stderr: "" };
+        }
+        if (args[0] === "--version") return { exitCode: installed ? 0 : 127, stdout: installed ? "gh version 2.45.0" : "", stderr: "" };
+        if (args[0] === "auth" && args[1] === "status") return { exitCode: 1, stdout: "", stderr: "unknown flag: --active\n" };
+        if (args[0] === "auth" && args[1] === "login") {
+          authenticated = loginPersists;
+          return { exitCode: 0, stdout: "", stderr: "" };
+        }
+        assert.deepEqual(args, ["api", "user", "--hostname", "github.com", "--silent"]);
+        return { exitCode: authenticated ? 0 : 1, stdout: "", stderr: "" };
+      },
+    });
+    const runner = createToolPreparationOrchestrator({ modules: [module], authorize: async () => { events.push("consent"); return true; } });
+    const result = await runner.run({ skipTools: false });
+    assert.equal(result[0]!.status, loginPersists ? "READY" : "UNAVAILABLE");
+    const install = events.indexOf("apt install -y gh");
+    const login = events.indexOf("gh auth login --web --hostname github.com");
+    assert.equal(events.filter(event => event === "consent").length, 2);
+    assert.ok(install > events.indexOf("consent"));
+    assert.ok(login > events.lastIndexOf("consent") && events.lastIndexOf("consent") > install);
+    assert.equal(events.at(-1), "gh api user --hostname github.com --silent");
+  }
+});
