@@ -1,6 +1,6 @@
 {
   "name": "@tomtastisch/agent-governance",
-  "version": "1.9.0",
+  "version": "1.9.1",
   "description": "Interactive and transactional Agent Governance CLI with resume, work-item, and forward-only replacement exports",
   "keywords": [
     "agent-governance",
@@ -85,7 +85,7 @@
     "provenance": true
   },
   "dependencies": {
-    "@clack/prompts": "1.7.0",
+    "@clack/prompts": "1.8.1",
     "@toon-format/toon": "4.1.1",
     "smol-toml": "1.9.0"
   }

@@ -3,10 +3,10 @@
 > Historische Evidenz - nicht normativ. Maßgeblich sind Lockfiles, Paketartefakte und der geprüfte
 > Exact Head des Pull Requests.
 
-## Runtime-Dependency-Projektion des Releasekandidaten 1.9.0
+## Runtime-Dependency-Projektion des Releasekandidaten 1.9.1
 
 `package.json.dependencies` und `package-lock.json` sind die einzige Runtime-Dependency-SSOT.
-Die drei direkten, exakt gepinnten Runtime-Pakete sind `@clack/prompts` `1.7.0` (MIT)
+Die drei direkten, exakt gepinnten Runtime-Pakete sind `@clack/prompts` `1.8.1` (MIT)
 für den interaktiven Prompt-Stack, `@toon-format/toon` `4.1.1` (MIT) für die deterministische
 Resume-TOON-Projektion und `smol-toml` `1.9.0` (BSD-3-Clause) für die direkt importierten
 Command- und Discovery-Kataloge. Der Lock löst exakt
@@ -15,7 +15,7 @@ Integritäten und Registry-URLs stehen im Lockfile. Production-Audit ab Moderate
 License-Allowlist, Projektionsprüfung und echter Tarball-Consumer sind Releasegates.
 
 Die Registry-Integritäten der direkten Pins sind für `@clack/prompts` exakt
-`sha512-y7/yvZ2TPAnR9+jnc00klvNNLkJiXFFrQA/hlLCcxA9a2A4zQIOimyFQ9XfwYKiGD1fb5GY8vbKIIgO8d5Tb2A==`,
+`sha512-dlT1m5e/0yUL0kRNcQn7yGLVThkgbB0Ga/1AmfDDC/8ik6AIiSf2QLQO2zPYvefsHP0aFgxO93cVLCCfDp7kzQ==`,
 für `@toon-format/toon` exakt
 `sha512-SGCkS7IjVpwRmGPgnY8ENKpAf0EdAnZDOQkvFW0d2cgOpdn9FEFl7sTgryESyypXrWr0YajHGpwsAUX4zw9ZvA==`
 und für `smol-toml` exakt
@@ -36,7 +36,7 @@ oder lädt keine Pakete nach und startet weder npm, pnpm, yarn noch bun.
 ## Eigene Paketabhängigkeiten
 
 Der Installer besitzt genau drei direkte Third-Party-Runtime-Abhängigkeiten:
-`@clack/prompts` `1.7.0`, `@toon-format/toon` `4.1.1` und
+`@clack/prompts` `1.8.1`, `@toon-format/toon` `4.1.1` und
 `smol-toml` `1.9.0`. Die schmale
 repository-eigene Node-API-C-Komponente nutzt ausschließlich OS- und stabile Node-API-Symbole;
 sie wird für Darwin/Linux auf arm64/x64 im Releaseworkflow gebaut und als vier Prebuilds im

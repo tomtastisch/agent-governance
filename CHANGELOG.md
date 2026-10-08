@@ -25,6 +25,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Breaking changes:** none
 
+## [1.9.1] — 2026-10-08
+
+### Added
+
+- Keine.
+
+### Changed
+
+- Keine.
+
+### Fixed
+
+- Prompt-Abhängigkeit exakt auf `@clack/prompts@1.8.1` aktualisiert; Versionsvertrag,
+  Lizenzprüfung und Herkunftsevidenz sind mit dem Lockfile synchronisiert (#161).
+
+### Removed
+
+- Keine.
+
+**Breaking changes:** none
+
 ## [1.9.0] — 2026-10-08
 
 ### Added
