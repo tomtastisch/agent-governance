@@ -75,7 +75,7 @@ interactive = false
 [[commands]]
 id = "init"
 path = ["init"]
-description = "Führt interaktiv durch Prüfung, Zielauswahl und Einrichtung."
+description = "Führt interaktiv durch Prüfung, Zielauswahl, Tool-Vorbereitung und Einrichtung."
 capability = "orchestration"
 effect = "write"
 orchestrates = true

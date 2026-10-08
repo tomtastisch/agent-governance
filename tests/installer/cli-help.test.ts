@@ -71,6 +71,6 @@ test("command help aligns option names and descriptions independent of ANSI", ()
 
 test("init command help uses the orchestration-specific invocation", () => {
   const plain = stripAnsi(renderCommandHelp("init", commands, colorTheme));
-  assert.match(plain, /^Usage: agent-governance init$/m);
+  assert.match(plain, /^Usage: agent-governance init /m);
   assert.match(plain, /-h, --help/);
 });

@@ -1094,12 +1094,15 @@ def _resolve_target_commitish(target, root):
 # ═══════════════════════════════════════════════════════════════════════
 
 def _parse_npm_scalar(output, field, r):
-    """Parst einen npm-view JSON-Skalar (String) fail-closed."""
+    """Parst einen npm-view String oder dessen eindeutige npm-12-Liste fail-closed."""
     try:
         value = json.loads(output)
     except json.JSONDecodeError:
         r.add_error(f"npm {field} ist kein gültiges JSON")
         return None
+    # npm 12 verpackt auch eine einzelne Feldantwort in eine JSON-Liste.
+    if isinstance(value, list) and len(value) == 1:
+        value = value[0]
     if not isinstance(value, str) or not value.strip():
         r.add_error(f"npm {field} muss ein nichtleerer String sein")
         return None

@@ -40,6 +40,17 @@ test("CLI routes init through its orchestration handler without constructing a t
   const output: string[] = [];
   const exitCode = await runCli(["init"], (value) => output.push(value), () => {}, {
     createTransaction: () => { transactionCalls += 1; throw new Error("transaction command must not back init"); },
+    initOptions: {
+      isTTY: true,
+      environment: { home: "/synthetic/home", platform: "linux" },
+      releaseRoot: "/synthetic/release",
+    },
+    initPrompt: {
+      dispose: () => {},
+      step: () => {},
+      selectTargets: async () => { return []; },
+      confirm: async () => { return true; },
+    },
     init: async () => {
       initCalls += 1;
       return { schemaVersion: 1, command: "init", outcome: "SUCCESS", targets: [] };
@@ -107,3 +118,33 @@ test("CLI default init rejects non-TTY before canonicalizing a missing home dire
   });
 });
 test("CLI maps structured failures and catchable signals without secret content", async () => { const original = InstallerTransaction.prototype.install; try { InstallerTransaction.prototype.install = async () => { throw new InstallerFailure("VERIFY", "verify", "entry-file", "VERIFICATION_ROLLED_BACK", "failed", "SUCCEEDED"); }; const errors: string[] = []; assert.equal(await runCli(await args("install"), () => {}, (value) => errors.push(value)), 5); assert.equal(JSON.parse(errors.at(-1)!).outcome, "VERIFICATION_ROLLED_BACK"); for (const [signal, code] of [["SIGINT", 130], ["SIGTERM", 143]] as const) { InstallerTransaction.prototype.install = async () => { throw new InterruptedFailure(signal, "activate", "SUCCEEDED"); }; assert.equal(await runCli(await args("install"), () => {}, (value) => errors.push(value)), code); assert.equal(JSON.parse(errors.at(-1)!).signal, signal); } assert.equal(errors.some((value) => /token|secret/i.test(value)), false); } finally { InstallerTransaction.prototype.install = original; } });
+
+test("transaction help rejects extra, duplicate and incomplete arguments", async () => {
+  for (const argv of [
+    ["install", "--unknown", "--help"],
+    ["install", "--help", "-h"],
+    ["install", "--target-root", "--help"],
+    ["install", "--skip-tools", "true", "--help"],
+  ]) {
+    assert.equal(await runCli(argv, () => {}, () => {}), 2, argv.join(" "));
+  }
+});
+
+test("init JSON serializes caught preparation and full-init failures only on stdout", async () => {
+  for (const toolsOnly of [false, true]) {
+    for (const cause of [new Error("synthetic failure"), new InstallerFailure("VERIFY", "verify", "installation", "UNSAFE_STATE", "synthetic failure"), new InterruptedFailure("SIGTERM", "activate", "SUCCEEDED")]) {
+      const output: string[] = []; const errors: string[] = [];
+      const exit = await runCli(["init", ...(toolsOnly ? ["tools"] : []), "--json"], value => output.push(value), value => errors.push(value), {
+        initOptions: { isTTY: true, environment: { home: "/synthetic/home", platform: "linux" }, releaseRoot: "/synthetic/release" },
+        initPrompt: { dispose() {}, step() {}, selectTargets: async () => [], confirm: async () => false },
+        init: async () => { throw cause; }, prepareTools: async () => { throw cause; },
+      });
+      assert.equal(exit, cause instanceof InterruptedFailure ? 143 : 4);
+      assert.equal(output.length, 1);
+      assert.equal(errors.length, 0);
+      const result = JSON.parse(output[0]!);
+      assert.equal(result.outcome, cause instanceof InterruptedFailure ? "INTERRUPTED" : "UNSAFE_STATE");
+      if (cause instanceof InterruptedFailure) assert.equal(result.rollbackStatus, "SUCCEEDED");
+    }
+  }
+});

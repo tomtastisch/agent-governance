@@ -22,6 +22,7 @@ export class SignalInterruption extends Error {
 export class SignalCoordinator {
   private readonly source: SignalSource;
   private readonly listeners: Readonly<Record<CatchableSignal, () => void>>;
+  private readonly abortController = new AbortController();
   private interruptedBy: CatchableSignal | undefined;
   private started = false;
 
@@ -32,6 +33,8 @@ export class SignalCoordinator {
       SIGTERM: () => this.latch("SIGTERM"),
     };
   }
+
+  get abortSignal(): AbortSignal { return this.abortController.signal; }
 
   start(): void {
     if (this.started) return;
@@ -54,6 +57,8 @@ export class SignalCoordinator {
   }
 
   private latch(signal: CatchableSignal): void {
-    this.interruptedBy ??= signal;
+    if (this.interruptedBy !== undefined) return;
+    this.interruptedBy = signal;
+    this.abortController.abort();
   }
 }

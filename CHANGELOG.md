@@ -25,6 +25,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Breaking changes:** none
 
+## [1.9.0] — 2026-10-08
+
+### Added
+
+- Tool-Preparation als dritter Schritt des vollständigen `init`-Ablaufs mit genau
+  einem Modul für GitHub CLI `gh`; `init tools` führt den Schritt separat aus,
+  `init --skip-tools` überspringt ausschließlich diesen Schritt (#154).
+- Getrennte Nutzerfreigaben für eine unterstützte Installation und den
+  provider-nativen Web-Login, jeweils mit frischer Zustandsprüfung; keine eigene
+  Credential-Verwaltung oder automatische Rechteausweitung.
+
+### Changed
+
+- Der geführte Init zeigt vier Schritte. Fehlgeschlagene Tool-Preparation stoppt
+  vor dem Target-Setup; Terminal-stdin bestimmt die Interaktivität.
+- Gültige Init-Aufrufe mit `--json` liefern Ergebnis und Laufzeitfehler auf stdout;
+  UI- und Provider-Ausgaben bleiben auf stderr. Unterbrechungen erhalten ihre
+  strukturierten Recovery-Metadaten und erreichen das direkt gestartete Kind.
+  Frühe Discovery und Auswahl behandeln SIGINT/SIGTERM ebenfalls strukturiert;
+  spätere Setupfehler erhalten Tool-Ergebnisse, verifizierte Ziele und Rollback-Metadaten.
+
+### Fixed
+
+- Direkten Runtime-TOML-Parser exakt auf `smol-toml@1.9.0` aktualisiert.
+  Die verwundbaren transitiven Kopien entfallen durch eine integritätsgeprüfte
+  Upstream-Datenprojektion hinter dem unveränderten passiven Discovery-Port.
+- Tägliche Dependency-Update-PRs und ein Production-Audit des frisch installierten
+  Tarballs schützen künftige Releases; Installation verändert keine Paketpins.
+- Der Registry-Releasecheck versteht auch die eindeutige Ein-Wert-JSON-Liste von npm 12;
+  mehrdeutige oder nicht textuelle Antworten bleiben blockiert.
+- Später SIGTERM-Abbruch im Target-Setup behält abgeschlossene Tool-Ergebnisse und
+  Recovery-Metadaten bei und liefert weiterhin Exitcode 143. Reale Signale werden auch
+  während lesender Target-Prüfungen und der interaktiven Bestätigung verarbeitet;
+  schreibende Transaktionen behalten ihre eigene Rollback-Behandlung.
+- Bei späterem Init-Abbruch bleiben bereits verifizierte Ziele im Ergebnis erhalten.
+  Unterbrochene externe Installation oder Anmeldung kennzeichnet ihren unverifizierten
+  Providerzustand und den nicht ausgeführten externen Rollback ausdrücklich.
+
+### Removed
+
+- Keine.
+
+**Breaking changes:** none
+
 ## [1.8.0] — 2026-09-30
 
 ### Added

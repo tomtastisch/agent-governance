@@ -1,25 +1,25 @@
-# Abhängigkeits- und Provenienzevidenz 0.6.0
+# Abhängigkeits- und Provenienzevidenz
 
 > Historische Evidenz - nicht normativ. Maßgeblich sind Lockfiles, Paketartefakte und der geprüfte
 > Exact Head des Pull Requests.
 
-## Runtime-Dependency-Projektion 1.2.0
+## Runtime-Dependency-Projektion des Releasekandidaten 1.9.0
 
 `package.json.dependencies` und `package-lock.json` sind die einzige Runtime-Dependency-SSOT.
-Die vier direkten, exakt gepinnten Runtime-Pakete sind `@agntn/harnesses` `0.3.0` (MIT) für die
-Installed-Harness-Erkennung, `@clack/prompts` `1.7.0` (MIT) für den interaktiven Prompt-Stack,
-`@toon-format/toon` `4.1.1` (MIT) für die deterministische Resume-TOON-Projektion und `smol-toml`
-`1.8.0` (BSD-3-Clause) für die direkt importierten Command- und Discovery-Kataloge. Der Lock löst
-exakt `111 = 1 Root + 107 Production ohne Root + 3 Development` Paketdatensätze auf. Alle
-Integrity- und Registry-URLs stehen unverändert im Lockfile; `npm audit --audit-level=high`, der
-License-Allowlist-Check und der echte Tarball-Consumer sind Releasegates.
+Die drei direkten, exakt gepinnten Runtime-Pakete sind `@clack/prompts` `1.7.0` (MIT)
+für den interaktiven Prompt-Stack, `@toon-format/toon` `4.1.1` (MIT) für die deterministische
+Resume-TOON-Projektion und `smol-toml` `1.9.0` (BSD-3-Clause) für die direkt importierten
+Command- und Discovery-Kataloge. Der Lock löst exakt
+`12 = 1 Root + 8 Production ohne Root + 3 Development` Paketdatensätze auf.
+Integritäten und Registry-URLs stehen im Lockfile. Production-Audit ab Moderate,
+License-Allowlist, Projektionsprüfung und echter Tarball-Consumer sind Releasegates.
 
 Die Registry-Integritäten der direkten Pins sind für `@clack/prompts` exakt
 `sha512-y7/yvZ2TPAnR9+jnc00klvNNLkJiXFFrQA/hlLCcxA9a2A4zQIOimyFQ9XfwYKiGD1fb5GY8vbKIIgO8d5Tb2A==`,
 für `@toon-format/toon` exakt
 `sha512-SGCkS7IjVpwRmGPgnY8ENKpAf0EdAnZDOQkvFW0d2cgOpdn9FEFl7sTgryESyypXrWr0YajHGpwsAUX4zw9ZvA==`
 und für `smol-toml` exakt
-`sha512-kCZr2V3ch9i00x8zXRhjUNVcjG9ijES5dDudkXvUVCT5QlJNQWElSJdZqyPemffHoLNUYwOcou0Fy+ojN0uHSQ==`.
+`sha512-hpd+HLON7HdZXqYchMM/+LaTTbdK0AU3NngIJ4KVyWbY9bfQqdL9cD+4yf6dUoU2Ap4VsU0JkQi6FxAI1B2mXQ==`.
 Die Projekte sind jeweils über ihre veröffentlichten Repository-URLs nachverfolgbar; Maintenance,
 Lizenz- und Auditstatus bleiben vor jedem Dependency-Update neu zu prüfen.
 
@@ -35,14 +35,14 @@ oder lädt keine Pakete nach und startet weder npm, pnpm, yarn noch bun.
 
 ## Eigene Paketabhängigkeiten
 
-Der Installer besitzt genau vier direkte Third-Party-Runtime-Abhängigkeiten:
-`@agntn/harnesses` `0.3.0`, `@clack/prompts` `1.7.0`, `@toon-format/toon` `4.1.1` und
-`smol-toml` `1.8.0`. Die schmale
+Der Installer besitzt genau drei direkte Third-Party-Runtime-Abhängigkeiten:
+`@clack/prompts` `1.7.0`, `@toon-format/toon` `4.1.1` und
+`smol-toml` `1.9.0`. Die schmale
 repository-eigene Node-API-C-Komponente nutzt ausschließlich OS- und stabile Node-API-Symbole;
 sie wird für Darwin/Linux auf arm64/x64 im Releaseworkflow gebaut und als vier Prebuilds im
 gleichen provenance-gebundenen npm-Tarball ausgeliefert. Exakt gelockte Entwicklungsabhängigkeiten
 sind TypeScript `5.9.2` und `@types/node` `24.3.0`; die Lockfile-Projektion umfasst wie oben
-beschrieben 111 Datensätze. Der lokale `npm audit --audit-level=high` meldete bei der Einführung null bekannte
+beschrieben 12 Datensätze. Der lokale `npm audit --audit-level=high` meldete bei der Einführung null bekannte
 Schwachstellen. Die direkten und Entwicklungsabhängigkeiten stammen aus der npm-Registry, ihre
 Integritätswerte stehen in `package-lock.json`; Entwicklungsabhängigkeiten werden nicht in das
 Laufzeitpaket gebündelt. Repository und Paket verwenden Apache-2.0.
@@ -75,16 +75,85 @@ Governance muss vor Klassifikation und Wirkung immer aktiv sein und darf nicht a
 modelliert werden. Das Paket wird deshalb unabhängig von seiner Lizenzkompatibilität nicht
 übernommen.
 
-## `@agntn/harnesses`
+## `@agntn/harnesses`: passive Discovery-Projektion
 
-Für die Installed-Harness-Erkennung des `init`-Screens wird `@agntn/harnesses` exakt auf `0.3.0`
-gepinnt (kein Range, kein Versions-Float). Die Registry nennt MIT und Git-Repository
-`https://github.com/agntn/harnesses`. Verwendet wird ausschließlich die Library-API
-`getAllHarnesses()` plus `Harness.isInstalled()`, die auf Unix lediglich `which <binary>` prüft und
-die gefundene Harness-CLI nicht startet. `harnesses detect`, `harness.version` und fremde
-`--version`-Probes werden für die Discovery nicht verwendet. Die Dependency beantwortet nur, ob
-mindestens eine deklarierte Coding-CLI auf dem PATH auflösbar ist; Support-, Binding- und
-Integritätsentscheidungen bleiben Agent-Governance-Authorities.
+Der unveränderte veröffentlichte Tarball `@agntn/harnesses@0.3.0` bleibt die Quelle für
+Discovery-Metadaten, ist aber keine Runtime-Abhängigkeit mehr. Das Archiv und sein
+[Herkunfts-Lock](../integrations/agntn-harnesses/upstream.lock.json) liegen außerhalb des
+npm-Paketinventars. Der Generator liest das kompilierte Upstream-JavaScript ausschließlich
+als Daten über die bereits vorhandene TypeScript-AST-API. Er führt weder Upstream-Code aus
+noch lädt er zur Laufzeit Pakete nach.
+
+Alle 13 Registry-Einträge werden in Originalreihenfolge mit `id`, `name` und `binaries`
+übernommen. Nichtliterale Felder, Konstruktoren, Discovery-Overrides, statische Blöcke, doppelte IDs und
+unbekannte Registry-/Metadatenstrukturen blockieren die Projektion. Der zusätzliche Digest der
+vollständigen Basis- und registrierten Klassen sowie der Registry-Funktionen erzwingt eine
+erneute Semantikprüfung bei Änderungen, auch an sonstigen Feldinitialisierungen.
+`npm run harnesses:check` prüft Archiv-SRI/SHA-256 und vergleicht die vollständige generierte
+Datei und MIT-Notice bytegenau. Der Check ist Teil von Build, CI und dem aktuellen Trusted-Publishpfad.
+Die Datei darf daher keine manuell gepflegte zweite Harnessliste werden.
+
+`HarnessDiscoveryPort` und `createAgntnHarnessesAdapter()` bleiben erhalten. Der Adapter
+prüft wie zuvor mit `which` beziehungsweise `where`, ob mindestens ein Upstream-Binärname
+auf dem PATH auflösbar ist. Keine Harness-CLI und keine Versionsprobe werden gestartet.
+Support, Bindings, Zielpfade und Integrität bleiben allein bei der bestehenden
+Agent-Governance-SSOT. Im npm-Paket liegen nur der kompilierte Datenauszug und die
+[MIT-Notice](../THIRD_PARTY_NOTICES.md), kein Upstream-Archiv, MCP SDK oder Harness-Runtimecode.
+
+Die Herkunft wurde am 2026-10-08 vor Entfernung der Runtime-Abhängigkeit mittels
+`npm audit signatures --json --include-attestations` verifiziert. Die harnesses-Attestation
+bindet den Tarball an Commit `c4a7cb28488cf9bf13a482cd730e83fa9796bdd2`, Tag `v0.3.0` und den
+[Upstream-Publish-Lauf](https://github.com/agntn/harnesses/actions/runs/35917252710/attempts/1).
+SRI und SHA-256 stehen im Herkunfts-Lock. Dieser historische Nachweis ersetzt nicht die
+Integritätsprüfung bei jedem Build oder eine frische Provenienzprüfung bei einem Pinwechsel.
+
+## Security- und Upstream-Entscheidung vom 2026-10-08
+
+Der direkte Parser ist exakt auf `smol-toml@1.9.0` aktualisiert und behebt damit
+[GHSA-r4xh-jqrq-34v2](https://github.com/advisories/GHSA-r4xh-jqrq-34v2).
+Die separate verwundbare TOML-Kopie und das von
+[GHSA-6qxp-vccf-f47h](https://github.com/advisories/GHSA-6qxp-vccf-f47h) betroffene SDK
+entfallen vollständig aus dem Runtime-Tree.
+
+Der vorgeschriebene Entscheidungsbaum wurde in dieser Reihenfolge angewendet:
+
+1. Der neueste veröffentlichte Stable-Release von harnesses ist `0.4.2`; er pinnt weiterhin
+   SDK `1.30.1` und TOML `1.8.0` und verlangt zusätzlich Node `>=26`. Damit ist er für den
+   sicheren Node-`>=24`-Produktvertrag ungeeignet.
+2. [Upstream-PR agntn/harnesses#97](https://github.com/agntn/harnesses/pull/97) enthält
+   SDK `1.32.0` und TOML `1.9.0`, ist aber am Prüftag noch nicht veröffentlicht.
+   Dies bleibt die dokumentierte Upstream-Abhängigkeit.
+3. Das Warten blockierte die autorisierte Veröffentlichung. Die
+   [Scope-Erweiterung von Issue #154](https://github.com/tomtastisch/agent-governance/issues/154#issuecomment-6056149303)
+   erlaubt deshalb einen consumerwirksamen eigenen Korrekturpfad. Der unabhängige
+   Architekturvergleich wählte die schmale Datenprojektion hinter dem bestehenden Port:
+   Sie bewahrt die gesamte bisherige Installed-Erkennung und entfernt ungenutzte Runtime-Fläche.
+4. Root-Overrides allein wären beim Downstream nicht wirksam. Override-Bundling ist ebenfalls
+   verworfen: npm 12 verweigert es mit `EBUNDLEOVERRIDE`; ein npm-11-Tarball behält ungültige
+   Dependency-Edges gegen Upstream-Exaktpins. Es gibt keine Overrides, Git-Pins, Downgrades,
+   CLI-Ausführung oder stille Entfernung der Discovery.
+
+## Künftige Updates und Installationen
+
+Dependabot prüft die npm-Abhängigkeiten täglich und schlägt Versionsanhebungen als PR vor.
+Direkte Production-Pins bleiben exakt; Versionsvertrag, Evidenz und Review müssen gemeinsam
+aktualisiert werden. Es gibt keinen automatischen Merge oder Publish. Der separate
+Discovery-Quellpin wird bewusst aktualisiert: sicheren Stable-Release und Node-Vertrag prüfen,
+Archiv und Provenienz verifizieren, Semantik reviewen, Lock ändern, `npm run harnesses:generate`
+ausführen und anschließend sämtliche Gates prüfen. Eine künftige Rückkehr zur Library ist
+nur nach erneutem Vertrags- und Supply-Chain-Nachweis zulässig.
+
+CI und Publish prüfen den Production-Tree ab Moderate. `npm run test:package` installiert
+zusätzlich den realen Tarball in einem frischen Consumer ohne Root-Lockfile oder Overrides,
+prüft `npm ls --all`, den Production-Audit und den Ausschluss von Harness-Runtime und SDK.
+So darf ein lokaler Scheinfix keine Veröffentlichung passieren.
+
+Installation und `init` verändern keine Paketpins und führen keinen Dependency-Reparaturprozess
+aus. Für eine neu veröffentlichte geprüfte Gesamtversion kann der Nutzer beispielsweise
+`npx --yes @tomtastisch/agent-governance@latest init` verwenden; bestehende Bindings folgen dem
+regulären geprüften Update-/Replacement-Vertrag. Automatisches Erhöhen einzelner Abhängigkeiten
+während einer Installation würde Reproduzierbarkeit und geprüften Releaseumfang aufheben.
+Eine sichere Korrektur wird deshalb vor der Installation als neue Gesamtversion veröffentlicht.
 
 ## Bekannte Grenzen der Evidenz
 

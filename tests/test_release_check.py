@@ -1515,6 +1515,17 @@ class RegistryLiveCheck(unittest.TestCase):
         r = check_registry(root=self.root, npm=_NpmStub(), gh=_GhStub())
         self.assertTrue(r.ok, r.errors)
 
+    def test_npm_12_single_value_array_is_accepted(self):
+        r = check_registry(root=self.root, npm=_NpmStub(latest=["9.9.9"]), gh=_GhStub())
+        self.assertTrue(r.ok, r.errors)
+
+    def test_ambiguous_or_non_string_npm_arrays_fail_closed(self):
+        for latest in ([], ["9.9.8", "9.9.9"], [7], [None], [["9.9.9"]], [{"version": "9.9.9"}]):
+            with self.subTest(latest=latest):
+                r = check_registry(root=self.root, npm=_NpmStub(latest=latest), gh=_GhStub())
+                self.assertFalse(r.ok)
+                self.assertTrue(any("dist-tags.latest" in error for error in r.errors))
+
     def test_already_published_version_is_rejected(self):
         r = check_registry(
             root=self.root,

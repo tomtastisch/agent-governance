@@ -1,4 +1,6 @@
-import type { InstallResult, InstallerCommand, InstallerRequest, InstallState } from "../contracts.ts";
+import type { InstallResult, InstallerCommand, InstallerRequest, InstallState, TerminalOutcome } from "../contracts.ts";
+import type { ToolPreparationResult } from "./tool-preparation/types.ts";
+import type { InstallerFailure, InterruptedFailure } from "../errors.ts";
 
 export interface InitEnvironment {
   readonly home: string;
@@ -38,12 +40,19 @@ export interface HarnessRow {
 }
 
 export interface InitStep {
-  readonly position: 1 | 2 | 3;
-  readonly total: 3;
-  readonly title: "Umgebung prüfen" | "Coding-Harnesses auswählen" | "Prüfen und einrichten";
+  readonly position: 1 | 2 | 3 | 4;
+  readonly total: 3 | 4;
+  readonly title: "Umgebung prüfen" | "Coding-Harnesses auswählen" | "Tools vorbereiten" | "Prüfen und einrichten";
 }
 
 export const INIT_STEPS: readonly InitStep[] = Object.freeze([
+  Object.freeze({ position: 1, total: 4, title: "Umgebung prüfen" }),
+  Object.freeze({ position: 2, total: 4, title: "Coding-Harnesses auswählen" }),
+  Object.freeze({ position: 3, total: 4, title: "Tools vorbereiten" }),
+  Object.freeze({ position: 4, total: 4, title: "Prüfen und einrichten" }),
+]);
+
+export const INIT_STEPS_NO_TOOLS: readonly InitStep[] = Object.freeze([
   Object.freeze({ position: 1, total: 3, title: "Umgebung prüfen" }),
   Object.freeze({ position: 2, total: 3, title: "Coding-Harnesses auswählen" }),
   Object.freeze({ position: 3, total: 3, title: "Prüfen und einrichten" }),
@@ -72,9 +81,11 @@ export interface InitPrompt {
   readonly dispose: () => void;
   readonly selectTargets: (
     rows: readonly HarnessRow[],
+    signal?: AbortSignal,
   ) => Promise<readonly InitSelection[] | typeof INIT_CANCELLED>;
   readonly confirm: (
     plans: readonly InitPlannedTarget[],
+    signal?: AbortSignal,
   ) => Promise<boolean | typeof INIT_CANCELLED>;
 }
 
@@ -85,6 +96,8 @@ export interface InitDependencies {
   readonly resolveLatestRelease: () => Promise<string | undefined>;
   readonly prompt: InitPrompt;
   readonly createTransaction: (request: InstallerRequest) => InitTransaction;
+  readonly skipTools?: boolean;
+  readonly prepareTools?: (skipTools: boolean) => Promise<readonly ToolPreparationResult[]>;
 }
 
 export interface InitOptions {
@@ -104,8 +117,31 @@ export type InitResult =
   | {
       readonly schemaVersion: 1;
       readonly command: "init";
+      readonly outcome: Exclude<TerminalOutcome, "SUCCESS" | "INTERRUPTED">;
+      readonly reason: "SETUP_FAILED";
+      readonly targets: readonly InitTargetResult[];
+      readonly toolPreparation: readonly ToolPreparationResult[];
+      readonly error: string;
+      readonly phase?: InstallerFailure["phase"];
+      readonly rollbackStatus?: InstallerFailure["rollbackStatus"];
+      readonly code?: string;
+      readonly resourceId?: string;
+    }
+  | {
+      readonly schemaVersion: 1;
+      readonly command: "init";
       readonly outcome: "SUCCESS";
       readonly targets: readonly InitTargetResult[];
+      readonly toolPreparation?: readonly ToolPreparationResult[];
+    }
+  | {
+      readonly schemaVersion: 1;
+      readonly command: "init";
+      readonly outcome: "UNSAFE_STATE";
+      readonly reason: "TOOL_PREPARATION_FAILED";
+      readonly guidance: string;
+      readonly targets: readonly [];
+      readonly toolPreparation: readonly ToolPreparationResult[];
     }
   | {
       readonly schemaVersion: 1;
@@ -120,5 +156,12 @@ export type InitResult =
       readonly command: "init";
       readonly outcome: "INTERRUPTED";
       readonly reason: "CANCELLED";
-      readonly targets: readonly [];
+      readonly targets: readonly InitTargetResult[];
+      readonly toolPreparation?: readonly ToolPreparationResult[];
+      readonly phase?: InterruptedFailure["phase"];
+      readonly rollbackStatus?: InterruptedFailure["rollbackStatus"];
+      readonly signal?: InterruptedFailure["signal"];
+      readonly code?: string;
+      readonly resourceId?: string;
+      readonly externalEffect?: InterruptedFailure["externalEffect"];
     };

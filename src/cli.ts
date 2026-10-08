@@ -7,13 +7,14 @@ import { EXIT_CODES, exitCodeFor, type InstallerCommand, type InstallerRequest, 
 import { InstallerFailure, InterruptedFailure } from "./errors.ts";
 import { createAgntnHarnessesAdapter } from "./init/harnesses.ts";
 import { renderBranding } from "./init/branding.ts";
-import { runInit } from "./init/orchestrator.ts";
+import { runInit, runInitTools } from "./init/orchestrator.ts";
 import { resolveLatestRelease } from "./installer/latest.ts";
 import { createClackPrompt } from "./init/prompt.ts";
 import type { InitOptions, InitPrompt, InitResult } from "./init/types.ts";
+import type { ToolPreparationResult } from "./init/tool-preparation/types.ts";
 import { InstallerTransaction } from "./transaction.ts";
 import { loadCommandCatalog } from "./command-catalog.ts";
-import { PUBLIC_COMMAND_HANDLERS, renderCommandHelp, renderGlobalHelp } from "./public-commands.ts";
+import { PUBLIC_COMMAND_HANDLERS, renderCommandHelp, renderGlobalHelp, parseInitInvocation } from "./public-commands.ts";
 import { createTerminalTheme } from "./terminal/theme.ts";
 
 type Writer = (value: string) => void;
@@ -22,13 +23,16 @@ export interface CliDependencies {
   readonly init?: () => Promise<InitResult>;
   readonly initOptions?: InitOptions;
   readonly initPrompt?: InitPrompt;
+  readonly prepareTools?: (skipTools: boolean) => Promise<readonly ToolPreparationResult[]>;
 }
 const VALUE_OPTIONS = new Set(["--target-root", "--entry-file", "--scope", "--installation-root", "--local-rules"]);
-function parse(argv: readonly string[], publicCommands: readonly PublicCommandId[]): { command: PublicCommandId; request?: InstallerRequest; json: boolean } {
+
+type InitSubcommand = "full" | "tools";
+
+function parse(argv: readonly string[], publicCommands: readonly PublicCommandId[]): { command: PublicCommandId; request?: InstallerRequest; json: boolean; initSubcommand?: InitSubcommand; skipTools?: boolean } {
   const command = argv[0]; if (command === undefined || !publicCommands.includes(command as PublicCommandId)) throw new Error("unknown or missing command");
   if (command === "init") {
-    if (argv.length !== 1) throw new Error(`unknown option ${String(argv[1])}`);
-    return { command, json: false };
+    return { command, ...parseInitInvocation(argv.slice(1)) };
   }
   const values = new Map<string, string>(); let json = false; let dryRun = false; let nonInteractive = false;
   for (let index = 1; index < argv.length; index += 1) { const option = argv[index]; if (option === "--json") { if (json) throw new Error("duplicate option --json"); json = true; continue; } if (option === "--dry-run") { if (dryRun) throw new Error("duplicate option --dry-run"); dryRun = true; continue; } if (option === "--non-interactive") { if (nonInteractive) throw new Error("duplicate option --non-interactive"); nonInteractive = true; continue; } if (option === undefined || !VALUE_OPTIONS.has(option)) throw new Error(`unknown option ${String(option)}`); if (values.has(option)) throw new Error(`duplicate option ${option}`); const value = argv[++index]; if (value === undefined || value.startsWith("--") || /[\0\r\n]/.test(value)) throw new Error(`missing or unsafe value for ${option}`); values.set(option, value); }
@@ -42,7 +46,7 @@ function isHelp(value: string | undefined): boolean { return value === "--help" 
 function isOutcome(value: unknown): value is TerminalOutcome { return typeof value === "string" && ["SUCCESS", "INVALID_INVOCATION", "UNSAFE_STATE", "VERIFICATION_ROLLED_BACK", "ROLLBACK_FAILED", "INTERRUPTED"].includes(value); }
 
 function defaultInitOptions(): InitOptions {
-  const isTTY = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+  const isTTY = Boolean(process.stdin.isTTY);
   const home = isTTY ? realpathSync(homedir()) : homedir();
   const releaseRoot = dirname(dirname(fileURLToPath(import.meta.url)));
   const xdgConfigHome = process.env.XDG_CONFIG_HOME;
@@ -66,41 +70,88 @@ export async function runCli(argv: readonly string[], out: Writer = console.log,
   const publicCommands = definitions.map(({ id }) => id);
   const helpTheme = createTerminalTheme();
   if (argv.length === 1 && isHelp(argv[0])) { out(renderGlobalHelp(definitions, helpTheme)); return EXIT_CODES.SUCCESS; }
-  if (argv.length === 2 && publicCommands.includes(argv[0] as PublicCommandId) && isHelp(argv[1])) { out(renderCommandHelp(argv[0] as PublicCommandId, definitions, helpTheme)); return EXIT_CODES.SUCCESS; }
+  // Validate init arguments before help short-circuit for init command
+  if (argv.length >= 2 && argv[0] === "init" && publicCommands.includes("init")) {
+    let initArgError: Error | undefined;
+    try { parse(argv, publicCommands); } catch (e) { if (e instanceof Error) initArgError = e; }
+    if (argv.some(isHelp)) {
+      if (initArgError) { error(JSON.stringify({ schemaVersion: 1, outcome: "INVALID_INVOCATION", error: initArgError.message })); return EXIT_CODES.INVALID_INVOCATION; }
+      out(renderCommandHelp("init", definitions, helpTheme)); return EXIT_CODES.SUCCESS;
+    }
+  } else if (argv.length === 2 && publicCommands.includes(argv[0] as PublicCommandId) && isHelp(argv[1])) {
+    out(renderCommandHelp(argv[0] as PublicCommandId, definitions, helpTheme)); return EXIT_CODES.SUCCESS;
+  }
   let parsed: ReturnType<typeof parse>; try { parsed = parse(argv, publicCommands); } catch (cause) { error(JSON.stringify({ schemaVersion: 1, outcome: "INVALID_INVOCATION", error: (cause as Error).message })); return EXIT_CODES.INVALID_INVOCATION; }
   try {
     let transaction: InstallerTransaction | undefined;
-    const result = await PUBLIC_COMMAND_HANDLERS[parsed.command]({
-      transaction: () => {
-        if (parsed.request === undefined) throw new Error("transaction request is unavailable");
-        transaction ??= (dependencies.createTransaction ?? ((request) => new InstallerTransaction(request)))(parsed.request);
-        return transaction;
-      },
-      init: dependencies.init ?? (async () => {
-        const initOptions = dependencies.initOptions ?? defaultInitOptions();
-        const prompt = dependencies.initPrompt ?? createClackPrompt({
+    let result: unknown;
+
+    if (parsed.command === "init") {
+      const initOptions = dependencies.initOptions ?? defaultInitOptions();
+      const prompt = dependencies.initPrompt ?? createClackPrompt({
+        columns: Number.parseInt(process.env.COLUMNS ?? "", 10) || process.stdout.columns,
+        environment: process.env,
+      });
+
+      if (dependencies.initPrompt === undefined && initOptions.isTTY && !parsed.json) {
+        await renderBranding({
+          write: (value) => out(value.trimEnd()),
           columns: Number.parseInt(process.env.COLUMNS ?? "", 10) || process.stdout.columns,
           environment: process.env,
         });
-        if (dependencies.initPrompt === undefined && initOptions.isTTY) {
-          await renderBranding({
-            write: (value) => out(value.trimEnd()),
+      }
+
+      if (parsed.initSubcommand === "tools") {
+        result = await runInitTools(initOptions, dependencies.prepareTools);
+      } else {
+        if (dependencies.init) {
+          result = await dependencies.init();
+        } else {
+          result = await runInit(initOptions, {
+            discoverHarnesses: createAgntnHarnessesAdapter().discover,
+            resolveLatestRelease,
+            prompt,
+            createTransaction: dependencies.createTransaction ?? ((request) => new InstallerTransaction(request)),
+            skipTools: parsed.skipTools ?? false,
+            ...(dependencies.prepareTools === undefined ? {} : { prepareTools: dependencies.prepareTools }),
+          });
+        }
+      }
+    } else {
+      result = await PUBLIC_COMMAND_HANDLERS[parsed.command]({
+        transaction: () => {
+          if (parsed.request === undefined) throw new Error("transaction request is unavailable");
+          transaction ??= (dependencies.createTransaction ?? ((request) => new InstallerTransaction(request)))(parsed.request);
+          return transaction;
+        },
+        init: dependencies.init ?? (async () => {
+          const initOptions = dependencies.initOptions ?? defaultInitOptions();
+          const prompt = dependencies.initPrompt ?? createClackPrompt({
             columns: Number.parseInt(process.env.COLUMNS ?? "", 10) || process.stdout.columns,
             environment: process.env,
           });
-        }
-        return runInit(initOptions, {
-          discoverHarnesses: createAgntnHarnessesAdapter().discover,
-          resolveLatestRelease,
-          prompt,
-          createTransaction: dependencies.createTransaction ?? ((request) => new InstallerTransaction(request)),
-        });
-      }),
-    });
+          if (dependencies.initPrompt === undefined && initOptions.isTTY && !parsed.json) {
+            await renderBranding({
+              write: (value) => out(value.trimEnd()),
+              columns: Number.parseInt(process.env.COLUMNS ?? "", 10) || process.stdout.columns,
+              environment: process.env,
+            });
+          }
+          return runInit(initOptions, {
+            discoverHarnesses: createAgntnHarnessesAdapter().discover,
+            resolveLatestRelease,
+            prompt,
+            createTransaction: dependencies.createTransaction ?? ((request) => new InstallerTransaction(request)),
+          });
+        }),
+      });
+    }
+
     const structured = typeof result === "object" && result !== null ? result as Record<string, unknown> : undefined;
     out(parsed.json ? JSON.stringify(result) : structured !== undefined && typeof structured.outcome === "string" && typeof structured.state === "string" && typeof structured.phase === "string" ? `${structured.outcome}: ${structured.state} (${structured.phase})` : JSON.stringify(result));
+    if (structured?.outcome === "INTERRUPTED" && structured.signal === "SIGTERM") return 143;
     return isOutcome(structured?.outcome) ? exitCodeFor(structured.outcome) : EXIT_CODES.SUCCESS;
   }
-  catch (cause) { if (cause instanceof InterruptedFailure) { error(JSON.stringify({ schemaVersion: 1, outcome: cause.outcome, phase: cause.phase, resourceId: cause.resourceId, rollbackStatus: cause.rollbackStatus, code: cause.code, signal: cause.signal, error: cause.message })); return cause.exitCode; } if (cause instanceof InstallerFailure) { error(JSON.stringify({ schemaVersion: 1, outcome: cause.outcome, phase: cause.phase, resourceId: cause.resourceId, rollbackStatus: cause.rollbackStatus, code: cause.code, error: cause.message })); return exitCodeFor(cause.outcome); } error(JSON.stringify({ schemaVersion: 1, outcome: "UNSAFE_STATE", error: (cause as Error).message })); return EXIT_CODES.UNSAFE_STATE; }
+  catch (cause) { const failureWriter = parsed.command === "init" && parsed.json ? out : error; if (cause instanceof InterruptedFailure) { failureWriter(JSON.stringify({ schemaVersion: 1, outcome: cause.outcome, phase: cause.phase, resourceId: cause.resourceId, rollbackStatus: cause.rollbackStatus, code: cause.code, signal: cause.signal, ...(cause.externalEffect === undefined ? {} : { externalEffect: cause.externalEffect }), error: cause.message })); return cause.exitCode; } if (cause instanceof InstallerFailure) { failureWriter(JSON.stringify({ schemaVersion: 1, outcome: cause.outcome, phase: cause.phase, resourceId: cause.resourceId, rollbackStatus: cause.rollbackStatus, code: cause.code, error: cause.message })); return exitCodeFor(cause.outcome); } failureWriter(JSON.stringify({ schemaVersion: 1, outcome: "UNSAFE_STATE", error: (cause as Error).message })); return EXIT_CODES.UNSAFE_STATE; }
 }
 if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) process.exitCode = await runCli(process.argv.slice(2));

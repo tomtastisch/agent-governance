@@ -1,11 +1,17 @@
+import type { InstallPhase } from "../contracts.ts";
+import { SignalCoordinator, SignalInterruption } from "../signals.ts";
+import { InstallerFailure, InterruptedFailure } from "../errors.ts";
+import type { ToolPreparationResult } from "./tool-preparation/types.ts";
 import { join } from "node:path";
 import { lstat } from "node:fs/promises";
 
 import { resolveTarget } from "./bindings.ts";
 import { resolveSupport } from "./support.ts";
+import { runToolPreparation } from "./tool-preparation/index.ts";
 import {
   INIT_CANCELLED,
   INIT_STEPS,
+  INIT_STEPS_NO_TOOLS,
   type DiscoveredHarness,
   type HarnessRow,
   type InitDependencies,
@@ -24,14 +30,71 @@ interface PreparedTarget extends InitPlannedTarget {
 
 const NO_TARGETS = Object.freeze([]) as readonly [];
 
-function cancelled(): InitResult {
+function cancelled(toolPreparation?: readonly ToolPreparationResult[], interruption?: InterruptedFailure, completed: readonly InitTargetResult[] = NO_TARGETS): InitResult {
   return Object.freeze({
     schemaVersion: 1,
     command: "init",
     outcome: "INTERRUPTED",
     reason: "CANCELLED",
-    targets: NO_TARGETS,
+    targets: Object.freeze([...completed]),
+    ...(toolPreparation === undefined ? {} : { toolPreparation }),
+    ...(interruption === undefined ? {} : {
+      phase: interruption.phase,
+      rollbackStatus: interruption.rollbackStatus,
+      signal: interruption.signal,
+      code: interruption.code,
+      resourceId: interruption.resourceId,
+      ...(interruption.externalEffect === undefined ? {} : { externalEffect: interruption.externalEffect }),
+    }),
   });
+}
+
+// Ausschließlich lesende Schritte; Mutationen behalten ihren Transaktions-Coordinator.
+async function readOnlyStage<T>(phase: InstallPhase, operation: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const coordinator = new SignalCoordinator();
+  coordinator.start();
+  try {
+    try {
+      return await operation(coordinator.abortSignal);
+    } finally {
+      // Ein empfangenes Signal bleibt auch bei anschließendem Lesefehler maßgeblich.
+      coordinator.checkpoint(phase);
+    }
+  } catch (cause) {
+    if (cause instanceof SignalInterruption) throw new InterruptedFailure(cause.signal, cause.phase, "NOT_REQUIRED");
+    throw cause;
+  } finally {
+    coordinator.dispose();
+  }
+}
+
+function preparationFailure(results: readonly ToolPreparationResult[]): InitResult | undefined {
+  if (!results.some(({ status }) => status !== "READY" && status !== "SKIPPED")) return undefined;
+  return Object.freeze({
+    schemaVersion: 1,
+    command: "init",
+    outcome: "UNSAFE_STATE",
+    reason: "TOOL_PREPARATION_FAILED",
+    guidance: "Resolve the reported tool preparation failure and rerun agent-governance init tools.",
+    targets: NO_TARGETS,
+    toolPreparation: results,
+  });
+}
+
+export async function runInitTools(options: InitOptions, prepareTools = runToolPreparation): Promise<InitResult> {
+  if (!options.isTTY) return Object.freeze({
+    schemaVersion: 1, command: "init", outcome: "INVALID_INVOCATION", reason: "NON_TTY",
+    guidance: "Use an explicit transaction command with --non-interactive.", targets: NO_TARGETS,
+  });
+  try {
+    const results = await prepareTools(false);
+    return preparationFailure(results) ?? Object.freeze({
+      schemaVersion: 1, command: "init", outcome: "SUCCESS", targets: NO_TARGETS, toolPreparation: results,
+    });
+  } catch (cause) {
+    if (cause instanceof InterruptedFailure && cause.signal === "SIGINT") return cancelled(undefined, cause);
+    throw cause;
+  }
 }
 
 function compareTargets(left: InitTarget, right: InitTarget): number {
@@ -119,16 +182,23 @@ export async function runInit(options: InitOptions, dependencies: InitDependenci
     });
   }
 
+  const skipTools = dependencies.skipTools ?? false;
+  const steps = skipTools ? INIT_STEPS_NO_TOOLS : INIT_STEPS;
+  let toolPreparationResults: readonly ToolPreparationResult[] = Object.freeze([]);
+  const completed: InitTargetResult[] = [];
+
   try {
     const installationRoot = options.installationRoot ?? join(options.environment.home, ".agent-governance");
 
-    dependencies.prompt.step(INIT_STEPS[0]!);
-    const discovered = await dependencies.discoverHarnesses({ environment: options.environment });
-    const latestVersion = await dependencies.resolveLatestRelease();
-    const rows = await buildRows(discovered, options, installationRoot, latestVersion, dependencies);
+    // Step 1: Umgebung prüfen
+    dependencies.prompt.step(steps[0]!);
+    const discovered = await readOnlyStage("inspect", () => dependencies.discoverHarnesses({ environment: options.environment }));
+    const latestVersion = await readOnlyStage("inspect", () => dependencies.resolveLatestRelease());
+    const rows = await readOnlyStage("inspect", () => buildRows(discovered, options, installationRoot, latestVersion, dependencies));
 
-    dependencies.prompt.step(INIT_STEPS[1]!);
-    const selections = await dependencies.prompt.selectTargets(rows);
+    // Step 2: Coding-Harnesses auswählen
+    dependencies.prompt.step(steps[1]!);
+    const selections = await readOnlyStage("plan", (signal) => dependencies.prompt.selectTargets(rows, signal));
     if (selections === INIT_CANCELLED) return cancelled();
     if (selections.length === 0) throw new Error("no init targets selected");
     const resolved = selections
@@ -137,7 +207,18 @@ export async function runInit(options: InitOptions, dependencies: InitDependenci
     const keys = resolved.map(({ target }) => targetKey(target));
     if (new Set(keys).size !== keys.length) throw new Error("duplicate init target");
 
-    dependencies.prompt.step(INIT_STEPS[2]!);
+    // Step 3: Tools vorbereiten (only if not skipped)
+    if (!skipTools) {
+      dependencies.prompt.step(steps[2]!);
+      dependencies.prompt.dispose();
+      toolPreparationResults = await (dependencies.prepareTools ?? runToolPreparation)(false);
+      const failure = preparationFailure(toolPreparationResults);
+      if (failure !== undefined) return failure;
+    }
+
+    // Step 4 (or 3 if tools skipped): Prüfen und einrichten
+    const setupStepIndex = skipTools ? 2 : 3;
+    dependencies.prompt.step(steps[setupStepIndex]!);
     const prepared: PreparedTarget[] = [];
     for (const { selection, target } of resolved) {
       const transaction = dependencies.createTransaction({
@@ -149,25 +230,24 @@ export async function runInit(options: InitOptions, dependencies: InitDependenci
         nonInteractive: false,
         releaseRoot: options.releaseRoot,
       });
-      const status = await transaction.status();
+      const status = await readOnlyStage("inspect", () => transaction.status());
       const operation = status.state === "OUTDATED" ? "update" : "install";
-      const plan = await transaction.plan(operation);
+      const plan = await readOnlyStage("plan", () => transaction.plan(operation));
       prepared.push(Object.freeze({ target, status, plan, displayName: selectionLabel(selection), transaction }));
     }
 
     const approvalPlans: readonly InitPlannedTarget[] = prepared.map(
       ({ target, status, plan, displayName }) => Object.freeze({ target, status, plan, displayName }),
     );
-    const approved = await dependencies.prompt.confirm(approvalPlans);
-    if (approved === INIT_CANCELLED || !approved) return cancelled();
+    const approved = await readOnlyStage("plan", (signal) => dependencies.prompt.confirm(approvalPlans, signal));
+    if (approved === INIT_CANCELLED || !approved) return cancelled(toolPreparationResults);
 
-    const completed: InitTargetResult[] = [];
     for (const item of prepared) {
       const installed = item.status.state === "OUTDATED"
         ? await item.transaction.update()
         : await item.transaction.install();
       if (installed.outcome !== "SUCCESS") throw new Error("init installation failed");
-      const verified = await item.transaction.verify();
+      const verified = await readOnlyStage("verify", () => item.transaction.verify());
       if (verified.outcome !== "SUCCESS" || verified.state !== "CURRENT") {
         throw new Error("init verification failed");
       }
@@ -183,7 +263,26 @@ export async function runInit(options: InitOptions, dependencies: InitDependenci
       command: "init",
       outcome: "SUCCESS",
       targets: Object.freeze(completed),
+      toolPreparation: toolPreparationResults,
     });
+  } catch (cause) {
+    if (cause instanceof InterruptedFailure) return cancelled(toolPreparationResults, cause, completed);
+    if (toolPreparationResults.length > 0 || completed.length > 0) return Object.freeze({
+      schemaVersion: 1,
+      command: "init",
+      outcome: cause instanceof InstallerFailure && cause.outcome !== "INTERRUPTED" ? cause.outcome : "UNSAFE_STATE",
+      reason: "SETUP_FAILED",
+      targets: Object.freeze([...completed]),
+      toolPreparation: toolPreparationResults,
+      error: cause instanceof Error ? cause.message : String(cause),
+      ...(cause instanceof InstallerFailure ? {
+        phase: cause.phase,
+        rollbackStatus: cause.rollbackStatus,
+        code: cause.code,
+        resourceId: cause.resourceId,
+      } : {}),
+    });
+    throw cause;
   } finally {
     dependencies.prompt.dispose();
   }

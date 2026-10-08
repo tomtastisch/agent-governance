@@ -37,6 +37,7 @@ interface PromptFilterOption {
 }
 
 interface AutocompleteMultiSelectOptions {
+  readonly signal?: AbortSignal;
   readonly message: string;
   readonly options: PromptOption[];
   readonly initialValues: string[];
@@ -45,6 +46,7 @@ interface AutocompleteMultiSelectOptions {
 }
 
 interface PathOptions {
+  readonly signal?: AbortSignal;
   readonly message: string;
   readonly root?: string;
   readonly initialValue?: string;
@@ -53,6 +55,7 @@ interface PathOptions {
 }
 
 interface TextOptions {
+  readonly signal?: AbortSignal;
   readonly message: string;
   readonly placeholder?: string;
   readonly initialValue?: string;
@@ -60,6 +63,7 @@ interface TextOptions {
 }
 
 interface ConfirmOptions {
+  readonly signal?: AbortSignal;
   readonly message: string;
   readonly active: string;
   readonly inactive: string;
@@ -89,12 +93,12 @@ export interface ClackPromptIO {
 }
 
 const DEFAULT_OPERATIONS: ClackPromptOperations = Object.freeze({
-  autocompleteMultiselect: (options: AutocompleteMultiSelectOptions) => clackAutocompleteMultiselect(options),
-  path: (options: PathOptions) => clackPath(options),
-  text: (options: TextOptions) => clackText(options),
-  confirm: (options: ConfirmOptions) => clackConfirm(options),
-  spinner: () => clackSpinner(),
-  cancel: (message?: string) => clackCancel(message),
+  autocompleteMultiselect: (options: AutocompleteMultiSelectOptions) => clackAutocompleteMultiselect({ ...options, output: process.stderr }),
+  path: (options: PathOptions) => clackPath({ ...options, output: process.stderr }),
+  text: (options: TextOptions) => clackText({ ...options, output: process.stderr }),
+  confirm: (options: ConfirmOptions) => clackConfirm({ ...options, output: process.stderr }),
+  spinner: () => clackSpinner({ output: process.stderr }),
+  cancel: (message?: string) => clackCancel(message, { output: process.stderr }),
   isCancel: clackIsCancel,
 });
 
@@ -201,8 +205,9 @@ export function createClackPrompt(io: ClackPromptIO = {}): InitPrompt {
     return assertPath(value);
   };
 
-  const askEntry = async (message: string, root: string): Promise<string | typeof INIT_CANCELLED> => {
+  const askEntry = async (message: string, root: string, signal?: AbortSignal): Promise<string | typeof INIT_CANCELLED> => {
     const value = await operations.text({
+      ...(signal === undefined ? {} : { signal }),
       message,
       placeholder: "AGENTS.md",
       validate: (entry) => validateEntry(root, entry),
@@ -223,7 +228,7 @@ export function createClackPrompt(io: ClackPromptIO = {}): InitPrompt {
       activeStep = step;
     },
 
-    async selectTargets(rows: readonly HarnessRow[]): Promise<readonly InitSelection[] | typeof INIT_CANCELLED> {
+    async selectTargets(rows: readonly HarnessRow[], signal?: AbortSignal): Promise<readonly InitSelection[] | typeof INIT_CANCELLED> {
       stopProgress();
       const byId = new Map(rows.map((row) => [row.id, row]));
       const options: PromptOption[] = [
@@ -236,6 +241,7 @@ export function createClackPrompt(io: ClackPromptIO = {}): InitPrompt {
         })),
       ];
       const result = await operations.autocompleteMultiselect({
+        ...(signal === undefined ? {} : { signal }),
         message: `Coding-Harnesses auswählen\nCoding-Harness nicht dabei? — ? tippen, Tab wählen\n${renderLegend(theme)}`,
         options,
         initialValues: rows
@@ -250,12 +256,13 @@ export function createClackPrompt(io: ClackPromptIO = {}): InitPrompt {
       for (const value of values) {
         if (value === CUSTOM_VALUE) {
           const targetRoot = await askPath({
+            ...(signal === undefined ? {} : { signal }),
             message: "Absoluter Root des weiteren Coding-Harness",
             directory: true,
             validate: validateAbsoluteRoot,
           });
           if (targetRoot === INIT_CANCELLED) return INIT_CANCELLED;
-          const entryValue = await askEntry("Relative Markdown-Entry-Datei", targetRoot);
+          const entryValue = await askEntry("Relative Markdown-Entry-Datei", targetRoot, signal);
           if (entryValue === INIT_CANCELLED) return INIT_CANCELLED;
           selections.push(Object.freeze({
             manualInput: Object.freeze({ targetRoot, entryFile: relativeEntry(targetRoot, entryValue) }),
@@ -270,11 +277,12 @@ export function createClackPrompt(io: ClackPromptIO = {}): InitPrompt {
       return Object.freeze(selections);
     },
 
-    async confirm(plans: readonly InitPlannedTarget[]): Promise<boolean | typeof INIT_CANCELLED> {
+    async confirm(plans: readonly InitPlannedTarget[], signal?: AbortSignal): Promise<boolean | typeof INIT_CANCELLED> {
       stopProgress();
       const targetCount = plans.length;
       const renderedPlan = renderApprovalPlan(plans);
       const result = await operations.confirm({
+        ...(signal === undefined ? {} : { signal }),
         message: [
           ...(renderedPlan === "" ? [] : ["Geplanter Ablauf:", renderedPlan, ""]),
           `${targetCount} Ziel${targetCount === 1 ? "" : "e"} jetzt einrichten und anschließend verifizieren?`,

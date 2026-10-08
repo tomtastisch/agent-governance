@@ -31,15 +31,19 @@ export class InstallerFailure extends Error {
 export class InterruptedFailure extends InstallerFailure {
   readonly signal: CatchableSignal;
   readonly exitCode: 130 | 143;
+  readonly externalEffect?: Readonly<{ readonly state: "UNVERIFIED"; readonly rollback: "NOT_ATTEMPTED"; readonly guidance: string }>;
 
   constructor(
     signal: CatchableSignal,
     phase: InstallPhase,
     rollbackStatus: "NOT_REQUIRED" | "SUCCEEDED" | "FAILED",
+    context?: { readonly resourceId: string; readonly externalEffect?: InterruptedFailure["externalEffect"] },
   ) {
-    super("INTERRUPTED", phase, "installation", "INTERRUPTED", `installation interrupted by ${signal}`, rollbackStatus);
+    const resourceId = context?.resourceId ?? "installation";
+    super("INTERRUPTED", phase, resourceId, "INTERRUPTED", `${resourceId} interrupted by ${signal}`, rollbackStatus);
     this.name = "InterruptedFailure";
     this.signal = signal;
     this.exitCode = signal === "SIGINT" ? 130 : 143;
+    if (context?.externalEffect !== undefined) this.externalEffect = context.externalEffect;
   }
 }

@@ -19,6 +19,21 @@ test -f "$tarball"
 npm install --ignore-scripts --no-audit --no-fund --prefix "$consumer" "$tarball"
 cd "$consumer"
 
+# Der Downstream-Consumer erbt weder Root-Lockfile noch Overrides.
+npm ls --all
+npm audit --omit=dev --audit-level=moderate
+node - <<'JS'
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const lock = JSON.parse(fs.readFileSync("package-lock.json", "utf8"));
+for (const [path, entry] of Object.entries(lock.packages)) {
+  assert.ok(!path.endsWith("node_modules/@agntn/harnesses"), "Harness-Runtime darf nicht ausgeliefert werden");
+  assert.ok(!path.endsWith("node_modules/@modelcontextprotocol/sdk"), "Unbenutztes SDK darf nicht ausgeliefert werden");
+  if (path.endsWith("node_modules/smol-toml")) assert.equal(entry.version, "1.9.0");
+}
+assert.ok(fs.existsSync("node_modules/@tomtastisch/agent-governance/THIRD_PARTY_NOTICES.md"));
+JS
+
 spawn_log="$fixture_root/init-spawn.log"
 manager_shims="$fixture_root/manager-shims"
 mkdir -p -- "$manager_shims"

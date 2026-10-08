@@ -33,9 +33,14 @@ class FakeSignals implements SignalSource {
 test("signal coordinator latches the first signal without running asynchronous work", () => {
   const source = new FakeSignals();
   const coordinator = new SignalCoordinator(source);
+  let aborts = 0;
+  coordinator.abortSignal.addEventListener("abort", () => { aborts++; });
+  assert.equal(coordinator.abortSignal.aborted, false);
   coordinator.start();
   source.emit("SIGTERM");
   source.emit("SIGINT");
+  assert.equal(coordinator.abortSignal.aborted, true);
+  assert.equal(aborts, 1);
   assert.throws(() => coordinator.checkpoint("activate"), (error: unknown) => {
     assert.equal(error instanceof SignalInterruption, true);
     assert.equal((error as SignalInterruption).signal, "SIGTERM");

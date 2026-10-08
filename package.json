@@ -1,6 +1,6 @@
 {
   "name": "@tomtastisch/agent-governance",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "description": "Interactive and transactional Agent Governance CLI with resume, work-item, and forward-only replacement exports",
   "keywords": [
     "agent-governance",
@@ -51,20 +51,23 @@
     "LICENSE",
     "README.md",
     "release.files.sha256",
-    "VERSION"
+    "VERSION",
+    "THIRD_PARTY_NOTICES.md"
   ],
   "engines": {
     "node": ">=24"
   },
   "scripts": {
     "build:native": "node tools/build-native.mjs",
-    "build": "npm run build:native && node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
+    "build": "npm run harnesses:check && npm run build:native && node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
     "test": "npm run build:native && node --experimental-strip-types --test tests/installer/*.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "tsc -p tsconfig.json --noEmit && git diff --check",
     "pack:check": "npm pack --dry-run --json | node tools/verify-pack.mjs",
     "test:package": "tests/e2e/run_package_consumers.sh",
-    "license:check": "node tools/verify-licenses.mjs"
+    "license:check": "node tools/verify-licenses.mjs",
+    "harnesses:check": "node --experimental-strip-types tools/project-harness-discovery.ts --check",
+    "harnesses:generate": "node --experimental-strip-types tools/project-harness-discovery.ts --write"
   },
   "devDependencies": {
     "@types/node": "24.3.0",
@@ -82,9 +85,8 @@
     "provenance": true
   },
   "dependencies": {
-    "@agntn/harnesses": "0.3.0",
     "@clack/prompts": "1.7.0",
     "@toon-format/toon": "4.1.1",
-    "smol-toml": "1.8.0"
+    "smol-toml": "1.9.0"
   }
 }
