@@ -3,7 +3,7 @@
 > Historische Evidenz - nicht normativ. Maßgeblich sind Lockfiles, Paketartefakte und der geprüfte
 > Exact Head des Pull Requests.
 
-## Runtime-Dependency-Projektion des Releasekandidaten 1.9.1
+## Runtime-Dependency-Projektion des Releasekandidaten 1.9.2
 
 `package.json.dependencies` und `package-lock.json` sind die einzige Runtime-Dependency-SSOT.
 Die drei direkten, exakt gepinnten Runtime-Pakete sind `@clack/prompts` `1.8.1` (MIT)
@@ -41,7 +41,7 @@ Der Installer besitzt genau drei direkte Third-Party-Runtime-Abhängigkeiten:
 repository-eigene Node-API-C-Komponente nutzt ausschließlich OS- und stabile Node-API-Symbole;
 sie wird für Darwin/Linux auf arm64/x64 im Releaseworkflow gebaut und als vier Prebuilds im
 gleichen provenance-gebundenen npm-Tarball ausgeliefert. Exakt gelockte Entwicklungsabhängigkeiten
-sind TypeScript `5.9.2` und `@types/node` `24.3.0`; die Lockfile-Projektion umfasst wie oben
+sind TypeScript `5.9.2` und `@types/node` `24.19.1`; die Lockfile-Projektion umfasst wie oben
 beschrieben 12 Datensätze. Der lokale `npm audit --audit-level=high` meldete bei der Einführung null bekannte
 Schwachstellen. Die direkten und Entwicklungsabhängigkeiten stammen aus der npm-Registry, ihre
 Integritätswerte stehen in `package-lock.json`; Entwicklungsabhängigkeiten werden nicht in das
@@ -136,6 +136,8 @@ Der vorgeschriebene Entscheidungsbaum wurde in dieser Reihenfolge angewendet:
 ## Künftige Updates und Installationen
 
 Dependabot prüft die npm-Abhängigkeiten täglich und schlägt Versionsanhebungen als PR vor.
+`@types/node` bleibt auf der unterstützten Node-24-Basis; Major-Updates dieser
+Entwicklungsabhängigkeit sind ausgeschlossen, bis die minimale Laufzeit bewusst angehoben wird.
 Direkte Production-Pins bleiben exakt; Versionsvertrag, Evidenz und Review müssen gemeinsam
 aktualisiert werden. Es gibt keinen automatischen Merge oder Publish. Der separate
 Discovery-Quellpin wird bewusst aktualisiert: sicheren Stable-Release und Node-Vertrag prüfen,

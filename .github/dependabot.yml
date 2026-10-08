@@ -6,3 +6,7 @@ updates:
       interval: daily
     versioning-strategy: increase
     open-pull-requests-limit: 5
+    ignore:
+      # Typen bleiben auf der kleinsten unterstützten Node-Hauptversion.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]

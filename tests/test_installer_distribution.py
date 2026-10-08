@@ -48,7 +48,7 @@ class InstallerPackageContract(unittest.TestCase):
         self.assertNotIn("boxen", package["dependencies"])
         self.assertNotIn("log-update", package["dependencies"])
         self.assertEqual(package["devDependencies"]["typescript"], "5.9.2")
-        self.assertEqual(package["devDependencies"]["@types/node"], "24.3.0")
+        self.assertEqual(package["devDependencies"]["@types/node"], "24.19.1")
         self.assertEqual(package["bin"]["agent-governance"], "dist/cli.js")
         self.assertNotIn("integrations", package["files"])
         self.assertTrue(package["publishConfig"]["provenance"])
