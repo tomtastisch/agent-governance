@@ -21,8 +21,11 @@ Fehlerausgaben besitzen ebenfalls `schemaVersion` und einen geschlossenen Outcom
 Transaktionsfehler kommen Phase, abstrakte Ressourcen-ID, Rollbackstatus und Fehlercode hinzu.
 Entry- oder Regelinhalt und daraus abgeleitete Fingerprints erscheinen nie im Schema.
 
-Init-Ergebnisse verwenden den eigenen typisierten `InitResult`-Vertrag. Bei Unterbrechung enthält
-`targets` die bereits vollständig eingerichteten und verifizierten Ziele. Unterbrochene externe
+Init-Ergebnisse verwenden den eigenen typisierten `InitResult`-Vertrag. Bei Unterbrechung oder
+späterem Setupfehler enthält `targets` die bereits vollständig eingerichteten und verifizierten
+Ziele. Setupfehler mit vorhandenen Tool- oder Zielergebnissen erhalten diese zusammen mit
+`reason: "SETUP_FAILED"`, `error` und den ursprünglichen Transaktionsfehler-Metadaten.
+Unterbrochene externe
 Tool-Mutationen einschließlich ihres Read-backs ergänzen optional `externalEffect` mit
 `state: "UNVERIFIED"`, `rollback: "NOT_ATTEMPTED"` und `guidance`. Die abstrakte `resourceId`
 unterscheidet `github_cli:inspect`, `github_cli:install` und `github_cli:login`. Dieser optionale

@@ -157,8 +157,12 @@ besitzt einen eigenen Aufrufvertrag und orchestriert Auswahl, Tool-Preparation u
 - **Fehler und Abbruch:** Fehlgeschlagene Preparation liefert `UNSAFE_STATE` mit
   `reason: "TOOL_PREPARATION_FAILED"`, Guidance und Tool-Ergebnissen; vollständiger Init stoppt
   vor der Zielplanung/Einrichtung. Ctrl-C liefert `INTERRUPTED` / `CANCELLED` und Exit 130.
-  SIGTERM liefert Exit 143. Bereits erfolgreich eingerichtete und verifizierte Ziele bleiben
-  bei einem späteren Abbruch in `targets` erhalten. Ein Abbruch der Tool-Installation oder
+  SIGTERM liefert Exit 143, auch während Discovery, Release-Abfrage und Zielauswahl.
+  Bereits erfolgreich eingerichtete und verifizierte Ziele bleiben bei einem späteren Abbruch
+  oder Setupfehler in `targets` erhalten. Gewöhnliche Setupfehler nach Tool-Preparation oder
+  abgeschlossenen Zielen liefern `reason: "SETUP_FAILED"` mit `toolPreparation` und `error`;
+  vorhandene Fehlercodes, Phasen und Transaktions-Rollback-Ergebnisse bleiben erhalten.
+  Ein Abbruch der Tool-Installation oder
   Anmeldung benennt `github_cli:install` beziehungsweise `github_cli:login`, Phase `activate`
   während der Mutation, `verify` beim anschließenden Read-back oder `plan` während einer
   nachfolgenden separaten Freigabe. Der Effektkontext bleibt über diese Schritte erhalten.

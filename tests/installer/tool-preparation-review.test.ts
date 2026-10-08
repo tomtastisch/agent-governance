@@ -318,3 +318,63 @@ test("Installationseffekt bleibt zwischen Modul-Read-back und separater Loginfre
     }
   }
 });
+
+test("frühe Init-Schritte und alle Auswahlprompts behandeln echte OS-Signale strukturiert", async () => {
+  const { spawn } = await import("node:child_process");
+  const { mkdir, rm } = await import("node:fs/promises");
+  const { join } = await import("node:path");
+  const { createTestRoot } = await import("../fixtures/installer/workspace.ts");
+  const root = await createTestRoot("init-early-signals-");
+  await mkdir(join(root, ".claude"));
+  try {
+    for (const stage of ["discovery", "latest", "row-status", "row-version", "selection", "manual-root", "manual-entry"] as const) {
+      for (const signal of ["SIGINT", "SIGTERM"] as const) {
+        const child = spawn(process.execPath, ["--experimental-strip-types", "--input-type=module", "-e", `
+          import * as clack from '@clack/prompts';
+          import { runCli } from './src/cli.ts';
+          import { runInit } from './src/init/orchestrator.ts';
+          import { createClackPrompt } from './src/init/prompt.ts';
+          import { INIT_CANCELLED } from './src/init/types.ts';
+          const stage = ${JSON.stringify(stage)}; const home = ${JSON.stringify(root)};
+          const ready = pending => { process.stderr.write('EARLY_READY\\n'); return pending; };
+          const pause = async current => { if (stage === current) await ready(new Promise(resolve => setTimeout(resolve, 200))); };
+          const real = createClackPrompt({ prompts: {
+            autocompleteMultiselect: options => stage === 'selection' ? ready(clack.autocompleteMultiselect({ ...options, output: process.stderr })) : Promise.resolve(['__custom__']),
+            path: options => stage === 'manual-root' ? ready(clack.path({ ...options, output: process.stderr })) : Promise.resolve(home),
+            text: options => ready(clack.text({ ...options, output: process.stderr })),
+            confirm: async () => { throw new Error('confirmation must not start'); },
+            spinner: () => ({ start() {}, stop() {} }), cancel() {}, isCancel: clack.isCancel,
+          } });
+          const prompt = { ...real, selectTargets: (rows, signal) => ['selection','manual-root','manual-entry'].includes(stage) ? real.selectTargets(rows, signal) : Promise.resolve(INIT_CANCELLED) };
+          const options = { isTTY: true, environment: { home, platform: 'linux' }, releaseRoot: home + '/release' };
+          const transaction = { status: async () => { await pause('row-status'); return { state: 'FRESH' }; }, localVersion: async () => { await pause('row-version'); }, plan: async () => { throw new Error('plan must not start'); } };
+          process.exitCode = await runCli(['init','--json'], console.log, console.error, { init: () => runInit(options, {
+            discoverHarnesses: async () => { await pause('discovery'); return stage.startsWith('row-') ? [{ id: 'claude', displayName: 'Claude' }] : []; },
+            resolveLatestRelease: async () => { await pause('latest'); }, prompt, createTransaction: () => transaction,
+            prepareTools: async () => { throw new Error('tool mutation must not start'); },
+          }) });
+          process.stderr.write('LISTENERS=' + process.listenerCount('SIGINT') + ',' + process.listenerCount('SIGTERM') + '\\n');
+        `], { stdio: ["pipe", "pipe", "pipe"] });
+        let output = ""; let errors = ""; let sent = false;
+        const closed = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
+          child.once("error", reject); child.once("close", (code, signal) => resolve({ code, signal }));
+        });
+        const timer = setTimeout(() => child.kill("SIGKILL"), 5000);
+        child.stdout.on("data", chunk => { output += chunk; });
+        child.stderr.on("data", chunk => { errors += chunk; if (!sent && errors.includes("EARLY_READY")) { sent = true; child.kill(signal); } });
+        let result;
+        try { result = await closed; } finally { clearTimeout(timer); }
+        assert.equal(sent, true);
+        assert.equal(result.signal, null, `${stage}:${signal}: ${errors}`);
+        assert.equal(result.code, signal === "SIGINT" ? 130 : 143, errors);
+        const value = JSON.parse(output);
+        assert.equal(value.outcome, "INTERRUPTED");
+        assert.equal(value.signal, signal);
+        assert.equal(value.phase, ["selection", "manual-root", "manual-entry"].includes(stage) ? "plan" : "inspect");
+        assert.deepEqual(value.targets, []);
+        assert.deepEqual(value.toolPreparation, []);
+        assert.match(errors, /LISTENERS=0,0/);
+      }
+    }
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

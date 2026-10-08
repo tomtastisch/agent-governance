@@ -394,3 +394,44 @@ test("Unterbrechung eines späteren Ziels erhält bereits installierte und verif
     assert.ok(Object.isFrozen(result.targets));
   }
 });
+
+test("Gewöhnliche Setupfehler erhalten Tool-Ergebnisse, abgeschlossene Ziele und Recovery-Felder", async () => {
+  const { InstallerFailure } = await import("../../src/errors.ts");
+  const { runCli } = await import("../../src/cli.ts");
+  for (const stage of ["status", "plan", "install", "verify"] as const) {
+    for (const typed of [false, true]) {
+      const first = "/synthetic/a";
+      const second = "/synthetic/b";
+      const tools = [{ toolId: "github_cli", status: "READY" as const }];
+      const input = options("/synthetic/home");
+      const result = () => runInit(input, {
+        discoverHarnesses: async () => [], resolveLatestRelease: async () => undefined,
+        prepareTools: async () => tools,
+        prompt: prompt([first, second].map(targetRoot => ({ manualInput: { targetRoot, entryFile: "AGENTS.md" } })), []),
+        createTransaction: request => {
+          const transaction = fakeTransaction([], request.targetRoot);
+          return request.targetRoot === first ? transaction : { ...transaction, [stage]: async () => {
+            if (typed) throw new InstallerFailure("SYNTHETIC", "verify", "release", "VERIFICATION_ROLLED_BACK", "synthetischer Fehler", "SUCCEEDED");
+            throw new Error("synthetischer Fehler");
+          } };
+        },
+      });
+      const output: string[] = [];
+      const exit = await runCli(["init", "--json"], value => output.push(value), () => {}, { init: result, initOptions: input });
+      assert.equal(exit, typed ? 5 : 4);
+      assert.equal(output.length, 1);
+      const value = JSON.parse(output[0]!);
+      assert.equal(value.reason, "SETUP_FAILED");
+      assert.deepEqual(value.toolPreparation, tools);
+      assert.deepEqual(value.targets.map((entry: { target: { targetRoot: string } }) => entry.target.targetRoot), stage === "status" || stage === "plan" ? [] : [first]);
+      assert.equal(value.error, "synthetischer Fehler");
+      if (typed) {
+        assert.equal(value.outcome, "VERIFICATION_ROLLED_BACK");
+        assert.equal(value.rollbackStatus, "SUCCEEDED");
+        assert.equal(value.phase, "verify");
+        assert.equal(value.code, "SYNTHETIC");
+        assert.equal(value.resourceId, "release");
+      }
+    }
+  }
+});

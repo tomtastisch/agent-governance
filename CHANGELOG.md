@@ -43,6 +43,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Gültige Init-Aufrufe mit `--json` liefern Ergebnis und Laufzeitfehler auf stdout;
   UI- und Provider-Ausgaben bleiben auf stderr. Unterbrechungen erhalten ihre
   strukturierten Recovery-Metadaten und erreichen das direkt gestartete Kind.
+  Frühe Discovery und Auswahl behandeln SIGINT/SIGTERM ebenfalls strukturiert;
+  spätere Setupfehler erhalten Tool-Ergebnisse, verifizierte Ziele und Rollback-Metadaten.
 
 ### Fixed
 

@@ -1,6 +1,6 @@
 import type { InstallPhase } from "../contracts.ts";
 import { SignalCoordinator, SignalInterruption } from "../signals.ts";
-import { InterruptedFailure } from "../errors.ts";
+import { InstallerFailure, InterruptedFailure } from "../errors.ts";
 import type { ToolPreparationResult } from "./tool-preparation/types.ts";
 import { join } from "node:path";
 import { lstat } from "node:fs/promises";
@@ -192,13 +192,13 @@ export async function runInit(options: InitOptions, dependencies: InitDependenci
 
     // Step 1: Umgebung prüfen
     dependencies.prompt.step(steps[0]!);
-    const discovered = await dependencies.discoverHarnesses({ environment: options.environment });
-    const latestVersion = await dependencies.resolveLatestRelease();
-    const rows = await buildRows(discovered, options, installationRoot, latestVersion, dependencies);
+    const discovered = await readOnlyStage("inspect", () => dependencies.discoverHarnesses({ environment: options.environment }));
+    const latestVersion = await readOnlyStage("inspect", () => dependencies.resolveLatestRelease());
+    const rows = await readOnlyStage("inspect", () => buildRows(discovered, options, installationRoot, latestVersion, dependencies));
 
     // Step 2: Coding-Harnesses auswählen
     dependencies.prompt.step(steps[1]!);
-    const selections = await dependencies.prompt.selectTargets(rows);
+    const selections = await readOnlyStage("plan", (signal) => dependencies.prompt.selectTargets(rows, signal));
     if (selections === INIT_CANCELLED) return cancelled();
     if (selections.length === 0) throw new Error("no init targets selected");
     const resolved = selections
@@ -267,6 +267,21 @@ export async function runInit(options: InitOptions, dependencies: InitDependenci
     });
   } catch (cause) {
     if (cause instanceof InterruptedFailure) return cancelled(toolPreparationResults, cause, completed);
+    if (toolPreparationResults.length > 0 || completed.length > 0) return Object.freeze({
+      schemaVersion: 1,
+      command: "init",
+      outcome: cause instanceof InstallerFailure && cause.outcome !== "INTERRUPTED" ? cause.outcome : "UNSAFE_STATE",
+      reason: "SETUP_FAILED",
+      targets: Object.freeze([...completed]),
+      toolPreparation: toolPreparationResults,
+      error: cause instanceof Error ? cause.message : String(cause),
+      ...(cause instanceof InstallerFailure ? {
+        phase: cause.phase,
+        rollbackStatus: cause.rollbackStatus,
+        code: cause.code,
+        resourceId: cause.resourceId,
+      } : {}),
+    });
     throw cause;
   } finally {
     dependencies.prompt.dispose();

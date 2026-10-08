@@ -1,6 +1,6 @@
-import type { InstallResult, InstallerCommand, InstallerRequest, InstallState } from "../contracts.ts";
+import type { InstallResult, InstallerCommand, InstallerRequest, InstallState, TerminalOutcome } from "../contracts.ts";
 import type { ToolPreparationResult } from "./tool-preparation/types.ts";
-import type { InterruptedFailure } from "../errors.ts";
+import type { InstallerFailure, InterruptedFailure } from "../errors.ts";
 
 export interface InitEnvironment {
   readonly home: string;
@@ -81,6 +81,7 @@ export interface InitPrompt {
   readonly dispose: () => void;
   readonly selectTargets: (
     rows: readonly HarnessRow[],
+    signal?: AbortSignal,
   ) => Promise<readonly InitSelection[] | typeof INIT_CANCELLED>;
   readonly confirm: (
     plans: readonly InitPlannedTarget[],
@@ -113,6 +114,19 @@ export interface InitTargetResult {
 }
 
 export type InitResult =
+  | {
+      readonly schemaVersion: 1;
+      readonly command: "init";
+      readonly outcome: Exclude<TerminalOutcome, "SUCCESS" | "INTERRUPTED">;
+      readonly reason: "SETUP_FAILED";
+      readonly targets: readonly InitTargetResult[];
+      readonly toolPreparation: readonly ToolPreparationResult[];
+      readonly error: string;
+      readonly phase?: InstallerFailure["phase"];
+      readonly rollbackStatus?: InstallerFailure["rollbackStatus"];
+      readonly code?: string;
+      readonly resourceId?: string;
+    }
   | {
       readonly schemaVersion: 1;
       readonly command: "init";
