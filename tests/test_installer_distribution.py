@@ -19,10 +19,9 @@ class InstallerPackageContract(unittest.TestCase):
         self.assertEqual(
             package["dependencies"],
             {
-                "@agntn/harnesses": "0.3.0",
                 "@clack/prompts": "1.7.0",
                 "@toon-format/toon": "4.1.1",
-                "smol-toml": "1.8.0",
+                "smol-toml": "1.9.0",
             },
         )
         self.assertEqual(
@@ -62,10 +61,10 @@ class InstallerPackageContract(unittest.TestCase):
         production = [metadata for path, metadata in packages.items() if path and not metadata.get("dev", False)]
         development = [metadata for path, metadata in packages.items() if path and metadata.get("dev", False)]
         evidence = (ROOT / "docs" / "dependency-evidence.md").read_text(encoding="utf-8")
-        self.assertEqual(len(packages), 111)
-        self.assertEqual(len(production), 107)
+        self.assertEqual(len(packages), 12)
+        self.assertEqual(len(production), 8)
         self.assertEqual(len(development), 3)
-        self.assertIn("111 = 1 Root + 107 Production ohne Root + 3 Development", evidence)
+        self.assertIn("12 = 1 Root + 8 Production ohne Root + 3 Development", evidence)
 
     def test_dependency_evidence_matches_declared_runtime_dependencies(self):
         package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))

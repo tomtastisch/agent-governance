@@ -25,6 +25,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Breaking changes:** none
 
+## [1.9.0] — 2026-10-08
+
+### Added
+
+- Tool-Preparation als dritter Schritt des vollständigen `init`-Ablaufs mit genau
+  einem Modul für GitHub CLI `gh`; `init tools` führt den Schritt separat aus,
+  `init --skip-tools` überspringt ausschließlich diesen Schritt (#154).
+- Getrennte Nutzerfreigaben für eine unterstützte Installation und den
+  provider-nativen Web-Login, jeweils mit frischer Zustandsprüfung; keine eigene
+  Credential-Verwaltung oder automatische Rechteausweitung.
+
+### Changed
+
+- Der geführte Init zeigt vier Schritte. Fehlgeschlagene Tool-Preparation stoppt
+  vor dem Target-Setup; Terminal-stdin bestimmt die Interaktivität.
+- Gültige Init-Aufrufe mit `--json` liefern Ergebnis und Laufzeitfehler auf stdout;
+  UI- und Provider-Ausgaben bleiben auf stderr. Unterbrechungen erhalten ihre
+  strukturierten Recovery-Metadaten und erreichen das direkt gestartete Kind.
+
+### Fixed
+
+- Direkten Runtime-TOML-Parser exakt auf `smol-toml@1.9.0` aktualisiert.
+  Die verwundbaren transitiven Kopien entfallen durch eine integritätsgeprüfte
+  Upstream-Datenprojektion hinter dem unveränderten passiven Discovery-Port.
+- Tägliche Dependency-Update-PRs und ein Production-Audit des frisch installierten
+  Tarballs schützen künftige Releases; Installation verändert keine Paketpins.
+
+### Removed
+
+- Keine.
+
+**Breaking changes:** none
+
 ## [1.8.0] — 2026-09-30
 
 ### Added

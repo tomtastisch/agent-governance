@@ -31,3 +31,33 @@ test("the adapter reports installed harnesses by id and display name without exe
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("alle Upstream-Harnesses und alternativen Binärnamen bleiben rein passiv erkennbar", async () => {
+  const { HARNESS_DISCOVERY } = await import("../../src/init/harness-discovery.generated.ts");
+  const { execFileSync } = await import("node:child_process");
+  const { symlink } = await import("node:fs/promises");
+  const which = execFileSync("which", ["which"], { encoding: "utf8" }).trim();
+  const root = await mkdtemp(join(tmpdir(), "governance-all-harnesses-"));
+  const executed = join(root, "executed");
+  const previousPath = process.env.PATH;
+  try {
+    for (const alternative of [false, true]) {
+      const bin = join(root, alternative ? "alternatives" : "primary");
+      await mkdir(bin);
+      await symlink(which, join(bin, "which"));
+      process.env.PATH = bin;
+      assert.deepEqual(await createAgntnHarnessesAdapter().discover(), []);
+      for (const harness of HARNESS_DISCOVERY) {
+        const binary = alternative ? harness.binaries.at(-1)! : harness.binaries[0];
+        const path = join(bin, binary);
+        await writeFile(path, `#!/bin/sh\necho executed >> '${executed}'\nexit 1\n`, { mode: 0o755 });
+      }
+      assert.deepEqual(await createAgntnHarnessesAdapter().discover(), HARNESS_DISCOVERY.map(({ id, displayName }) => ({ id, displayName })));
+      await assert.rejects(readFile(executed), /ENOENT/u);
+    }
+  } finally {
+    if (previousPath === undefined) delete process.env.PATH;
+    else process.env.PATH = previousPath;
+    await rm(root, { recursive: true, force: true });
+  }
+});

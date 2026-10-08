@@ -1,0 +1,18 @@
+{
+  "package": "@agntn/harnesses",
+  "resolvedVersion": "0.3.0",
+  "repository": "https://github.com/agntn/harnesses",
+  "archiveUrl": "https://registry.npmjs.org/@agntn/harnesses/-/harnesses-0.3.0.tgz",
+  "integrity": "sha512-OWXpZgN1Mi8AtXgm8m0jbZdnYfy1ONLM0ohvWKB69DYdnOaqS4K+jkAICqwQcKYZIeFd9LklkGFmvjTzvYu7Ww==",
+  "archiveSha256": "b4fcf4464f74c240d1803511f5a551e22da59459bf833d16d7d4b1192a17ae2b",
+  "reviewedDiscoveryBehaviorSha256": "e2fb0bed2cb183853b48414e33021ccdf36dcbb48462e6cba5915668c930c091",
+  "license": "MIT",
+  "provenance": {
+    "verifiedAt": "2026-10-08T09:01:29Z",
+    "method": "npm audit signatures --json --include-attestations",
+    "commit": "c4a7cb28488cf9bf13a482cd730e83fa9796bdd2",
+    "ref": "refs/tags/v0.3.0",
+    "workflow": ".github/workflows/publish.yml",
+    "run": "https://github.com/agntn/harnesses/actions/runs/35917252710/attempts/1"
+  }
+}

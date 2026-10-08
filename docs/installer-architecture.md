@@ -29,8 +29,11 @@ diese Preparation; `init tools` führt ausschließlich sie aus. Der Bootstrap-Au
 Runtime-Abhängigkeiten bleibt bestehen.
 
 Die Installed-Harness-Erkennung des `init`-Screens ist auf einen einzelnen Adapter hinter
-`@agntn/harnesses` beschränkt, der ausschließlich `getAllHarnesses()` und `isInstalled()` nutzt und
-keine erkannte Harness-CLI startet. Welcher erkannte Harness automatisch unterstützt wird und
+`HarnessDiscoveryPort` beschränkt. Dessen generierte Metadaten stammen aus dem exakt
+geprüften veröffentlichten `@agntn/harnesses`-Archiv; die passive `which`-/`where`-Prüfung
+erhält die bisherige `getAllHarnesses()`-/`isInstalled()`-Semantik ohne Fremd-Runtime.
+Der verpflichtende Projektionscheck verhindert eine manuell gepflegte zweite Liste.
+Keine erkannte Harness-CLI wird gestartet. Welcher erkannte Harness automatisch unterstützt wird und
 welches Binding-/Entry-Ziel zulässig ist, entscheidet allein die Agent-Governance-Support-/Binding-SSOT;
 Daten oder Pfade aus der Dependency werden niemals automatisch als Binding-Ziel übernommen.
 

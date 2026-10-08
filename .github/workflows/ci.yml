@@ -101,6 +101,8 @@ jobs:
           npm test
           npm run build
           python3 tools/release_manifest.py check
+          npm run harnesses:check
+          npm audit --omit=dev --audit-level=moderate
           npm audit --audit-level=high
           npm run license:check
           npm run pack:check

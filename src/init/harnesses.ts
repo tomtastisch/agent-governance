@@ -1,3 +1,5 @@
+import { execFileSync } from "node:child_process";
+import { HARNESS_DISCOVERY } from "./harness-discovery.generated.ts";
 import type { DiscoveredHarness } from "./types.ts";
 
 export interface HarnessDiscoveryPort {
@@ -7,11 +9,17 @@ export interface HarnessDiscoveryPort {
 export function createAgntnHarnessesAdapter(): HarnessDiscoveryPort {
   return Object.freeze({
     async discover(): Promise<readonly DiscoveredHarness[]> {
-      const { getAllHarnesses } = await import("@agntn/harnesses");
       return Object.freeze(
-        getAllHarnesses()
-          .filter((harness) => harness.isInstalled())
-          .map((harness) => Object.freeze({ id: harness.id, displayName: harness.name })),
+        HARNESS_DISCOVERY
+          .filter((harness) => harness.binaries.some((binary) => {
+            try {
+              execFileSync(process.platform === "win32" ? "where" : "which", [binary], { stdio: "pipe" });
+              return true;
+            } catch {
+              return false;
+            }
+          }))
+          .map((harness) => Object.freeze({ id: harness.id, displayName: harness.displayName })),
       );
     },
   });
