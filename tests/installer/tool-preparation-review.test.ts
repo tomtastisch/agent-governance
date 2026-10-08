@@ -88,6 +88,14 @@ exit 99
       const result = JSON.parse(child.stdout);
       assert.equal(result.outcome, cancel ? "INTERRUPTED" : "SUCCESS");
       assert.deepEqual(result.targets, []);
+      assert.equal(child.stdout.includes("effectContext"), false, "interner Effekttransport bleibt außerhalb des öffentlichen Ergebnisses");
+      if (cancel) {
+        assert.equal(result.phase, "activate");
+        assert.equal(result.resourceId, "github_cli:login");
+        assert.equal(result.externalEffect.state, "UNVERIFIED");
+        assert.equal(result.externalEffect.rollback, "NOT_ATTEMPTED");
+        assert.match(result.externalEffect.guidance, /provider|Provider/);
+      }
       assert.match(child.stderr, /SYNTHETIC_DEVICE_CODE/);
       assert.match(child.stderr, /SYNTHETIC_PROVIDER_GUIDANCE/);
       assert.equal(child.stderr.includes("SYNTHETIC_PRIVATE_AUTH_OUTPUT"), false);
@@ -160,7 +168,12 @@ test("signals sent only to the CLI reach preparation children and wait for child
       assert.equal(result.code, signal === "SIGINT" ? 130 : 143, errors);
       assert.match(errors, /CHILD_SIGNAL_RECEIVED/);
       assert.match(errors, /CHILD_STOPPED/);
-      assert.equal(JSON.parse(output).signal, signal);
+      const value = JSON.parse(output);
+      assert.equal(value.signal, signal);
+      assert.equal(value.phase, "activate");
+      assert.equal(value.resourceId, "github_cli:login");
+      assert.equal(value.externalEffect.state, "UNVERIFIED");
+      assert.equal(value.externalEffect.rollback, "NOT_ATTEMPTED");
     }
   } finally { await rm(root, { recursive: true, force: true }); }
 });
@@ -208,6 +221,100 @@ test("reale Signale nach Tool-Preparation erhalten JSON bei lesenden Prüfungen 
       assert.deepEqual(value.toolPreparation, [{ toolId: "github_cli", status: "READY", message: "completed" }]);
       assert.match(errors, /LISTENERS=0,0/u);
       if (operation !== "verify") assert.doesNotMatch(errors, /TARGET_MUTATION/u);
+    }
+  }
+});
+
+test("Tool-Abbruch unterscheidet Inspektion, externe Mutation und deren unverifizierten Read-back", async () => {
+  const { createGhPreparationModule } = await import("../../src/init/tool-preparation/gh.ts");
+  for (const stage of ["inspect", "apt-update", "apt-install", "brew-install", "login", "install-readback", "login-readback"] as const) {
+    for (const signal of ["SIGINT", "SIGTERM"] as const) {
+      let versionReads = 0;
+      let authReads = 0;
+      let mutated = false;
+      const commands: string[] = [];
+      const login = stage === "login" || stage === "login-readback";
+      const module = createGhPreparationModule({
+        platform: () => stage.startsWith("apt") ? "linux" : "darwin",
+        effectiveUserId: () => 0, write: () => {},
+        runCommand: async (command, args) => {
+          const invocation = `${command} ${args.join(" ")}`;
+          commands.push(invocation);
+          const interrupt = (): never => { throw new InterruptedFailure(signal, "inspect", "NOT_REQUIRED"); };
+          if (invocation === "gh --version") {
+            versionReads++;
+            if (stage === "inspect" || (stage === "install-readback" && versionReads === 2)) interrupt();
+            return { exitCode: login || mutated ? 0 : 1, stdout: "gh version 2.60.0", stderr: "" };
+          }
+          if (invocation.startsWith("gh auth status")) {
+            authReads++;
+            if (stage === "login-readback" && authReads === 2) interrupt();
+            return { exitCode: 1, stdout: "", stderr: "" };
+          }
+          if (command === "which") return { exitCode: 0, stdout: "", stderr: "" };
+          mutated = true;
+          if ((stage === "apt-update" && invocation === "apt update") ||
+              (stage === "apt-install" && invocation === "apt install -y gh") ||
+              (stage === "brew-install" && invocation === "brew install gh") ||
+              (stage === "login" && invocation.startsWith("gh auth login"))) interrupt();
+          return { exitCode: 0, stdout: "", stderr: "" };
+        },
+      });
+      await assert.rejects(stage === "inspect" ? module.inspect() : module.prepare({ authorizeInstall: !login, authorizeLogin: login }), (cause: unknown) => {
+        assert.ok(cause instanceof InterruptedFailure);
+        assert.equal(cause.signal, signal);
+        assert.equal(cause.phase, stage === "inspect" ? "inspect" : stage.endsWith("readback") ? "verify" : "activate");
+        assert.equal(cause.resourceId, `github_cli:${stage === "inspect" ? "inspect" : login ? "login" : "install"}`);
+        assert.equal(cause.rollbackStatus, "NOT_REQUIRED");
+        assert.equal(cause.externalEffect?.state, mutated ? "UNVERIFIED" : undefined);
+        assert.equal(cause.externalEffect?.rollback, mutated ? "NOT_ATTEMPTED" : undefined);
+        if (mutated) assert.match(cause.externalEffect!.guidance, /kein externer Rollback/);
+        return true;
+      });
+      if (stage === "apt-update") assert.ok(!commands.some(command => command.startsWith("apt install")));
+    }
+  }
+});
+
+test("Installationseffekt bleibt zwischen Modul-Read-back und separater Loginfreigabe erhalten", async () => {
+  const { createGhPreparationModule } = await import("../../src/init/tool-preparation/gh.ts");
+  const { runCli } = await import("../../src/cli.ts");
+  for (const stage of ["inspect-after-install", "login-approval", "login-precheck"] as const) {
+    for (const signal of ["SIGINT", "SIGTERM"] as const) {
+      let existsCalls = 0;
+      let installed = false;
+      let loginStarted = false;
+      const module = createGhPreparationModule({
+        platform: () => "darwin", write: () => {}, checkBrewAvailable: async () => true,
+        checkGhExists: async () => {
+          existsCalls++;
+          if ((stage === "inspect-after-install" && existsCalls === 4) || (stage === "login-precheck" && existsCalls === 5)) throw new InterruptedFailure(signal, "inspect", "NOT_REQUIRED");
+          return { exists: installed, version: "synthetic" };
+        },
+        runBrewInstall: async () => { installed = true; return true; },
+        checkGhAuth: async () => ({ authenticated: false, user: undefined }),
+        runGhAuthLogin: async () => { loginStarted = true; return true; },
+      });
+      let authorizations = 0;
+      const runner = preparation.createToolPreparationOrchestrator({ modules: [module], authorize: async () => {
+        authorizations++;
+        if (authorizations === 2 && stage === "login-approval") throw new InterruptedFailure(signal, "inspect", "NOT_REQUIRED");
+        return true;
+      } });
+      const output: string[] = [];
+      const exit = await runCli(["init", "tools", "--json"], value => output.push(value), () => {}, {
+        initOptions: { isTTY: true, environment: { home: "/synthetic/home", platform: "darwin" }, releaseRoot: "/synthetic/release" },
+        prepareTools: skipTools => runner.run({ skipTools }),
+      });
+      assert.equal(exit, signal === "SIGINT" ? 130 : 143);
+      assert.equal(installed, true);
+      assert.equal(loginStarted, false);
+      assert.equal(output.length, 1);
+      const result = JSON.parse(output[0]!);
+      assert.equal(result.resourceId, "github_cli:install");
+      assert.equal(result.externalEffect.state, "UNVERIFIED");
+      assert.equal(result.externalEffect.rollback, "NOT_ATTEMPTED");
+      assert.equal(result.phase, stage === "login-approval" ? "plan" : "verify");
     }
   }
 });

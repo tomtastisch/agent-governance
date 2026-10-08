@@ -30,13 +30,13 @@ interface PreparedTarget extends InitPlannedTarget {
 
 const NO_TARGETS = Object.freeze([]) as readonly [];
 
-function cancelled(toolPreparation?: readonly ToolPreparationResult[], interruption?: InterruptedFailure): InitResult {
+function cancelled(toolPreparation?: readonly ToolPreparationResult[], interruption?: InterruptedFailure, completed: readonly InitTargetResult[] = NO_TARGETS): InitResult {
   return Object.freeze({
     schemaVersion: 1,
     command: "init",
     outcome: "INTERRUPTED",
     reason: "CANCELLED",
-    targets: NO_TARGETS,
+    targets: Object.freeze([...completed]),
     ...(toolPreparation === undefined ? {} : { toolPreparation }),
     ...(interruption === undefined ? {} : {
       phase: interruption.phase,
@@ -44,6 +44,7 @@ function cancelled(toolPreparation?: readonly ToolPreparationResult[], interrupt
       signal: interruption.signal,
       code: interruption.code,
       resourceId: interruption.resourceId,
+      ...(interruption.externalEffect === undefined ? {} : { externalEffect: interruption.externalEffect }),
     }),
   });
 }
@@ -184,6 +185,7 @@ export async function runInit(options: InitOptions, dependencies: InitDependenci
   const skipTools = dependencies.skipTools ?? false;
   const steps = skipTools ? INIT_STEPS_NO_TOOLS : INIT_STEPS;
   let toolPreparationResults: readonly ToolPreparationResult[] = Object.freeze([]);
+  const completed: InitTargetResult[] = [];
 
   try {
     const installationRoot = options.installationRoot ?? join(options.environment.home, ".agent-governance");
@@ -240,7 +242,6 @@ export async function runInit(options: InitOptions, dependencies: InitDependenci
     const approved = await readOnlyStage("plan", (signal) => dependencies.prompt.confirm(approvalPlans, signal));
     if (approved === INIT_CANCELLED || !approved) return cancelled(toolPreparationResults);
 
-    const completed: InitTargetResult[] = [];
     for (const item of prepared) {
       const installed = item.status.state === "OUTDATED"
         ? await item.transaction.update()
@@ -265,7 +266,7 @@ export async function runInit(options: InitOptions, dependencies: InitDependenci
       toolPreparation: toolPreparationResults,
     });
   } catch (cause) {
-    if (cause instanceof InterruptedFailure) return cancelled(toolPreparationResults, cause);
+    if (cause instanceof InterruptedFailure) return cancelled(toolPreparationResults, cause, completed);
     throw cause;
   } finally {
     dependencies.prompt.dispose();

@@ -1,6 +1,7 @@
+import type { InstallPhase } from "../../contracts.ts";
 import { InterruptedFailure } from "../../errors.ts";
 import { createTerminalTheme } from "../../terminal/theme.ts";
-import type { ToolPreparationModule, ToolPreparationOrchestrator, ToolPreparationResult } from "./types.ts";
+import type { ToolPreparationEffectContext, ToolPreparationModule, ToolPreparationOrchestrator, ToolPreparationResult } from "./types.ts";
 import { ghPreparationModule } from "./gh.ts";
 
 const PREPARATION_MODULES: readonly ToolPreparationModule[] = Object.freeze([ghPreparationModule]);
@@ -64,6 +65,10 @@ export async function promptUserAuthorization(
   });
 }
 
+function publicResult({ effectContext: _effectContext, ...result }: ToolPreparationResult): ToolPreparationResult {
+  return Object.freeze(result);
+}
+
 export function createToolPreparationOrchestrator(dependencies: {
   readonly modules?: readonly ToolPreparationModule[];
   readonly authorize?: typeof promptUserAuthorization;
@@ -75,21 +80,34 @@ export function createToolPreparationOrchestrator(dependencies: {
       if (skipTools) return Object.freeze([]);
       const results: ToolPreparationResult[] = [];
       for (const module of modules) {
-        let state = await module.inspect();
-        if (state.status === "MISSING") {
-          const allowed = await authorize(module, `${state.message ?? module.toolId}\nAuthorize installation of ${module.toolId}?`);
-          const installed = await module.prepare({ authorizeInstall: allowed, authorizeLogin: false });
-          if (!allowed || installed.status === "UNAVAILABLE" || installed.status === "MISSING") {
-            results.push(installed);
-            continue;
+        let effectContext: ToolPreparationEffectContext | undefined;
+        let phase: InstallPhase = "inspect";
+        try {
+          let state = await module.inspect();
+          if (state.status === "MISSING") {
+            const allowed = await authorize(module, `${state.message ?? module.toolId}\nAuthorize installation of ${module.toolId}?`);
+            const installed = await module.prepare({ authorizeInstall: allowed, authorizeLogin: false });
+            effectContext = installed.effectContext;
+            if (!allowed || installed.status === "UNAVAILABLE" || installed.status === "MISSING") {
+              results.push(publicResult(installed));
+              continue;
+            }
+            phase = "verify";
+            state = await module.inspect();
           }
-          state = await module.inspect();
+          if (state.status === "AUTH_REQUIRED") {
+            phase = "plan";
+            const allowed = await authorize(module, `${state.message ?? module.toolId}\nAuthorize provider web login for ${module.toolId}?`);
+            phase = "verify";
+            state = await module.prepare({ authorizeInstall: false, authorizeLogin: allowed });
+          }
+          results.push(publicResult(state));
+        } catch (cause) {
+          if (cause instanceof InterruptedFailure && cause.externalEffect === undefined && effectContext !== undefined) {
+            throw new InterruptedFailure(cause.signal, phase, cause.rollbackStatus, effectContext);
+          }
+          throw cause;
         }
-        if (state.status === "AUTH_REQUIRED") {
-          const allowed = await authorize(module, `${state.message ?? module.toolId}\nAuthorize provider web login for ${module.toolId}?`);
-          state = await module.prepare({ authorizeInstall: false, authorizeLogin: allowed });
-        }
-        results.push(state);
       }
       return Object.freeze(results);
     },

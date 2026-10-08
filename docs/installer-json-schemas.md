@@ -21,6 +21,13 @@ Fehlerausgaben besitzen ebenfalls `schemaVersion` und einen geschlossenen Outcom
 Transaktionsfehler kommen Phase, abstrakte Ressourcen-ID, Rollbackstatus und Fehlercode hinzu.
 Entry- oder Regelinhalt und daraus abgeleitete Fingerprints erscheinen nie im Schema.
 
+Init-Ergebnisse verwenden den eigenen typisierten `InitResult`-Vertrag. Bei Unterbrechung enthält
+`targets` die bereits vollständig eingerichteten und verifizierten Ziele. Unterbrochene externe
+Tool-Mutationen einschließlich ihres Read-backs ergänzen optional `externalEffect` mit
+`state: "UNVERIFIED"`, `rollback: "NOT_ATTEMPTED"` und `guidance`. Die abstrakte `resourceId`
+unterscheidet `github_cli:inspect`, `github_cli:install` und `github_cli:login`. Dieser optionale
+Kontext führt keine persistente Tool-State-Authority und keine externe Rollbackzusage ein.
+
 ## Feldsemantik
 
 - `schemaVersion` versioniert die Ausgabestruktur; Verbraucher dürfen nur Schema `1` als diesen

@@ -142,11 +142,12 @@ export type InitResult =
       readonly command: "init";
       readonly outcome: "INTERRUPTED";
       readonly reason: "CANCELLED";
-      readonly targets: readonly [];
+      readonly targets: readonly InitTargetResult[];
       readonly toolPreparation?: readonly ToolPreparationResult[];
       readonly phase?: InterruptedFailure["phase"];
       readonly rollbackStatus?: InterruptedFailure["rollbackStatus"];
       readonly signal?: InterruptedFailure["signal"];
       readonly code?: string;
       readonly resourceId?: string;
+      readonly externalEffect?: InterruptedFailure["externalEffect"];
     };

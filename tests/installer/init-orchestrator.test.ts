@@ -364,3 +364,33 @@ test("späte SIGINT-/SIGTERM-Unterbrechung erhält Tool-Ergebnisse, Recovery und
     }
   }
 });
+
+test("Unterbrechung eines späteren Ziels erhält bereits installierte und verifizierte Ziele", async () => {
+  for (const signal of ["SIGINT", "SIGTERM"] as const) {
+    const events: string[] = [];
+    const first = "/synthetic/a";
+    const second = "/synthetic/b";
+    const tools = [{ toolId: "github_cli", status: "READY" as const }];
+    const result = await runInit(options("/synthetic/home"), {
+      discoverHarnesses: async () => [], resolveLatestRelease: async () => undefined,
+      prepareTools: async () => tools,
+      prompt: prompt([first, second].map(targetRoot => ({ manualInput: { targetRoot, entryFile: "AGENTS.md" } })), events),
+      createTransaction: request => {
+        const transaction = fakeTransaction(events, request.targetRoot);
+        return request.targetRoot === first ? transaction : {
+          ...transaction,
+          install: async () => { throw new InterruptedFailure(signal, "activate", "SUCCEEDED"); },
+        };
+      },
+    });
+    assert.equal(result.outcome, "INTERRUPTED");
+    assert.deepEqual(result.targets, [{ target: { targetRoot: first, entryFile: "AGENTS.md" }, previousState: "FRESH", state: "CURRENT" }]);
+    assert.deepEqual(result.toolPreparation, tools);
+    if (result.outcome !== "INTERRUPTED") throw new Error("interrupted result expected");
+    assert.equal(result.signal, signal);
+    assert.equal(result.rollbackStatus, "SUCCEEDED");
+    assert.ok(events.includes(`verify:${first}`));
+    assert.ok(!events.includes(`verify:${second}`));
+    assert.ok(Object.isFrozen(result.targets));
+  }
+});

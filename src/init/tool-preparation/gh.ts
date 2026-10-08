@@ -1,9 +1,10 @@
+import type { InstallPhase } from "../../contracts.ts";
 import { InterruptedFailure } from "../../errors.ts";
 import { spawn } from "node:child_process";
 import { platform } from "node:os";
 
 import { createTerminalTheme } from "../../terminal/theme.ts";
-import type { ToolPreparationModule, ToolPreparationResult } from "./types.ts";
+import type { ToolPreparationEffectContext, ToolPreparationModule, ToolPreparationResult } from "./types.ts";
 
 const GH_TOOL_ID = "github_cli";
 
@@ -127,6 +128,23 @@ function createDefaultDependencies(overrides: Partial<GhPreparationDependencies>
   };
 }
 
+function toolEffectContext(operation: "install" | "login"): ToolPreparationEffectContext {
+  return Object.freeze({
+    resourceId: `${GH_TOOL_ID}:${operation}`,
+    externalEffect: Object.freeze({
+      state: "UNVERIFIED",
+      rollback: "NOT_ATTEMPTED",
+      guidance: "Der externe Paket- oder Anmeldestatus kann verändert sein. Es wurde kein externer Rollback ausgeführt. Zustand beim Provider prüfen und danach agent-governance init tools erneut ausführen.",
+    }),
+  });
+}
+
+function toolInterruption(cause: unknown, phase: InstallPhase, operation?: "install" | "login"): never {
+  if (!(cause instanceof InterruptedFailure)) throw cause;
+  throw new InterruptedFailure(cause.signal, phase, cause.rollbackStatus,
+    operation === undefined ? { resourceId: `${GH_TOOL_ID}:inspect` } : toolEffectContext(operation));
+}
+
 function detectInstallMethod(deps: GhPreparationDependencies): { readonly command: string; readonly args: readonly string[] } | null {
   const currentPlatform = deps.platform();
   if (currentPlatform === "darwin") {
@@ -145,159 +163,175 @@ export function createGhPreparationModule(deps?: Partial<GhPreparationDependenci
     toolId: GH_TOOL_ID,
 
     async inspect(): Promise<ToolPreparationResult> {
-      const { exists, version } = await d.checkGhExists();
-      if (!exists) {
-        return Object.freeze({
-          toolId: GH_TOOL_ID,
-          status: "MISSING",
-          message: `GitHub CLI (gh) not found. ${d.formatInstallGuidance()}`,
-        });
-      }
-
-      const { authenticated, user } = await d.checkGhAuth();
-      if (!authenticated) {
-        return Object.freeze({
-          toolId: GH_TOOL_ID,
-          status: "AUTH_REQUIRED",
-          message: `GitHub CLI (gh) ${version ?? "unknown"} found but not authenticated. Run 'gh auth login' to authenticate.`,
-        });
-      }
-
-      return Object.freeze({
-        toolId: GH_TOOL_ID,
-        status: "READY",
-        message: `GitHub CLI (gh) ${version ?? "unknown"} authenticated as ${user ?? "unknown"}.`,
-      });
-    },
-
-    async prepare(options: { readonly authorizeInstall: boolean; readonly authorizeLogin: boolean }): Promise<ToolPreparationResult> {
-      const { authorizeInstall, authorizeLogin } = options;
-
-      const theme = createTerminalTheme({ color: true });
-      const { exists } = await d.checkGhExists();
-
-      if (!exists) {
-        if (authorizeLogin && !authorizeInstall) {
+      try {
+        const { exists, version } = await d.checkGhExists();
+        if (!exists) {
           return Object.freeze({
             toolId: GH_TOOL_ID,
-            status: "UNAVAILABLE",
-            message: `gh disappeared before the authorized login. ${d.formatInstallGuidance()}`,
-          });
-        }
-        if (!authorizeInstall) {
-          return Object.freeze({
-            toolId: GH_TOOL_ID,
-            status: "SKIPPED",
-            message: "User declined gh installation.",
+            status: "MISSING",
+            message: `GitHub CLI (gh) not found. ${d.formatInstallGuidance()}`,
           });
         }
 
-        const installMethod = detectInstallMethod(d);
-        if (installMethod === null) {
-          return Object.freeze({
-            toolId: GH_TOOL_ID,
-            status: "UNAVAILABLE",
-            message: `Cannot install gh on this platform. ${d.formatInstallGuidance()}`,
-          });
-        }
-
-        // Verify package manager is available before mutation
-        const currentPlatform = d.platform();
-        if (currentPlatform === "darwin") {
-          const brewAvailable = await d.checkBrewAvailable();
-          if (!brewAvailable) {
-            return Object.freeze({
-              toolId: GH_TOOL_ID,
-              status: "UNAVAILABLE",
-              message: "Homebrew not found. Install gh manually using https://cli.github.com/ and rerun agent-governance init tools.",
-            });
-          }
-        } else if (currentPlatform === "linux") {
-          const aptAvailable = await d.checkAptAvailable();
-          if (!aptAvailable) {
-            return Object.freeze({
-              toolId: GH_TOOL_ID,
-              status: "UNAVAILABLE",
-              message: "apt not found. Install gh manually using https://cli.github.com/ and rerun agent-governance init tools.",
-            });
-          }
-          const aptPrivileges = await d.checkAptPrivileges();
-          if (!aptPrivileges) {
-            return Object.freeze({
-              toolId: GH_TOOL_ID,
-              status: "UNAVAILABLE",
-              message: "Insufficient privileges to run apt. Install gh manually: sudo apt update && sudo apt install -y gh. Then rerun agent-governance init tools without elevating the governance CLI.",
-            });
-          }
-        }
-
-        d.write(`${theme.cyan("USER:")} Starting gh installation via ${installMethod.command}...\n`);
-
-        let installed = false;
-        if (currentPlatform === "darwin") {
-          installed = await d.runBrewInstall("gh");
-        } else if (currentPlatform === "linux") {
-          const aptUpdateOk = await d.runAptUpdate();
-          if (aptUpdateOk) {
-            installed = await d.runAptInstall("gh");
-          }
-        }
-
-        if (!installed) {
-          return Object.freeze({
-            toolId: GH_TOOL_ID,
-            status: "UNAVAILABLE",
-            message: `gh installation failed. ${d.formatInstallGuidance()}`,
-          });
-        }
-
-        const { exists: reinstalled } = await d.checkGhExists();
-        if (!reinstalled) {
-          return Object.freeze({
-            toolId: GH_TOOL_ID,
-            status: "UNAVAILABLE",
-            message: "gh was installed but cannot be verified.",
-          });
-        }
-      }
-
-      const { authenticated } = await d.checkGhAuth();
-      if (!authenticated) {
-        if (!authorizeLogin) {
-          return Object.freeze({
-            toolId: GH_TOOL_ID,
-            status: "SKIPPED",
-            message: "User declined gh authentication.",
-          });
-        }
-
-        d.write(`${theme.cyan("USER:")} Starting gh authentication via web flow (interactive)...\n`);
-        const loginSuccess = await d.runGhAuthLogin();
-        if (!loginSuccess) {
+        const { authenticated, user } = await d.checkGhAuth();
+        if (!authenticated) {
           return Object.freeze({
             toolId: GH_TOOL_ID,
             status: "AUTH_REQUIRED",
-            message: "gh authentication failed or was cancelled.",
+            message: `GitHub CLI (gh) ${version ?? "unknown"} found but not authenticated. Run 'gh auth login' to authenticate.`,
           });
         }
-      }
 
-      const { exists: finalExists, version: finalVersion } = await d.checkGhExists();
-      const { authenticated: finalAuth, user: finalUser } = await d.checkGhAuth();
-
-      if (finalExists && finalAuth) {
         return Object.freeze({
           toolId: GH_TOOL_ID,
           status: "READY",
-          message: `GitHub CLI (gh) ${finalVersion ?? "unknown"} authenticated as ${finalUser ?? "unknown"}.`,
+          message: `GitHub CLI (gh) ${version ?? "unknown"} authenticated as ${user ?? "unknown"}.`,
         });
-      }
+      } catch (cause) { return toolInterruption(cause, "inspect"); }
+    },
 
-      return Object.freeze({
-        toolId: GH_TOOL_ID,
-        status: "UNAVAILABLE",
-        message: "gh preparation incomplete after installation and authentication.",
+    async prepare(options: { readonly authorizeInstall: boolean; readonly authorizeLogin: boolean }): Promise<ToolPreparationResult> {
+      let operation: "install" | "login" | undefined;
+      let phase: InstallPhase = "inspect";
+      const preparedResult = (result: ToolPreparationResult): ToolPreparationResult => Object.freeze({
+        ...result,
+        ...(operation === undefined ? {} : { effectContext: toolEffectContext(operation) }),
       });
+      try {
+        const { authorizeInstall, authorizeLogin } = options;
+
+        const theme = createTerminalTheme({ color: true });
+        const { exists } = await d.checkGhExists();
+
+        if (!exists) {
+          if (authorizeLogin && !authorizeInstall) {
+            return preparedResult({
+              toolId: GH_TOOL_ID,
+              status: "UNAVAILABLE",
+              message: `gh disappeared before the authorized login. ${d.formatInstallGuidance()}`,
+            });
+          }
+          if (!authorizeInstall) {
+            return preparedResult({
+              toolId: GH_TOOL_ID,
+              status: "SKIPPED",
+              message: "User declined gh installation.",
+            });
+          }
+
+          const installMethod = detectInstallMethod(d);
+          if (installMethod === null) {
+            return preparedResult({
+              toolId: GH_TOOL_ID,
+              status: "UNAVAILABLE",
+              message: `Cannot install gh on this platform. ${d.formatInstallGuidance()}`,
+            });
+          }
+
+          // Verify package manager is available before mutation
+          const currentPlatform = d.platform();
+          if (currentPlatform === "darwin") {
+            const brewAvailable = await d.checkBrewAvailable();
+            if (!brewAvailable) {
+              return preparedResult({
+                toolId: GH_TOOL_ID,
+                status: "UNAVAILABLE",
+                message: "Homebrew not found. Install gh manually using https://cli.github.com/ and rerun agent-governance init tools.",
+              });
+            }
+          } else if (currentPlatform === "linux") {
+            const aptAvailable = await d.checkAptAvailable();
+            if (!aptAvailable) {
+              return preparedResult({
+                toolId: GH_TOOL_ID,
+                status: "UNAVAILABLE",
+                message: "apt not found. Install gh manually using https://cli.github.com/ and rerun agent-governance init tools.",
+              });
+            }
+            const aptPrivileges = await d.checkAptPrivileges();
+            if (!aptPrivileges) {
+              return preparedResult({
+                toolId: GH_TOOL_ID,
+                status: "UNAVAILABLE",
+                message: "Insufficient privileges to run apt. Install gh manually: sudo apt update && sudo apt install -y gh. Then rerun agent-governance init tools without elevating the governance CLI.",
+              });
+            }
+          }
+
+          d.write(`${theme.cyan("USER:")} Starting gh installation via ${installMethod.command}...\n`);
+
+          operation = "install";
+          phase = "activate";
+          let installed = false;
+          if (currentPlatform === "darwin") {
+            installed = await d.runBrewInstall("gh");
+          } else if (currentPlatform === "linux") {
+            const aptUpdateOk = await d.runAptUpdate();
+            if (aptUpdateOk) {
+              installed = await d.runAptInstall("gh");
+            }
+          }
+
+          if (!installed) {
+            return preparedResult({
+              toolId: GH_TOOL_ID,
+              status: "UNAVAILABLE",
+              message: `gh installation failed. ${d.formatInstallGuidance()}`,
+            });
+          }
+
+          phase = "verify";
+          const { exists: reinstalled } = await d.checkGhExists();
+          if (!reinstalled) {
+            return preparedResult({
+              toolId: GH_TOOL_ID,
+              status: "UNAVAILABLE",
+              message: "gh was installed but cannot be verified.",
+            });
+          }
+        }
+
+        const { authenticated } = await d.checkGhAuth();
+        if (!authenticated) {
+          if (!authorizeLogin) {
+            return preparedResult({
+              toolId: GH_TOOL_ID,
+              status: "SKIPPED",
+              message: "User declined gh authentication.",
+            });
+          }
+
+          d.write(`${theme.cyan("USER:")} Starting gh authentication via web flow (interactive)...\n`);
+          operation = "login";
+          phase = "activate";
+          const loginSuccess = await d.runGhAuthLogin();
+          phase = "verify";
+          if (!loginSuccess) {
+            return preparedResult({
+              toolId: GH_TOOL_ID,
+              status: "AUTH_REQUIRED",
+              message: "gh authentication failed or was cancelled.",
+            });
+          }
+        }
+
+        const { exists: finalExists, version: finalVersion } = await d.checkGhExists();
+        const { authenticated: finalAuth, user: finalUser } = await d.checkGhAuth();
+
+        if (finalExists && finalAuth) {
+          return preparedResult({
+            toolId: GH_TOOL_ID,
+            status: "READY",
+            message: `GitHub CLI (gh) ${finalVersion ?? "unknown"} authenticated as ${finalUser ?? "unknown"}.`,
+          });
+        }
+
+        return preparedResult({
+          toolId: GH_TOOL_ID,
+          status: "UNAVAILABLE",
+          message: "gh preparation incomplete after installation and authentication.",
+        });
+      } catch (cause) { return toolInterruption(cause, phase, operation); }
     },
   });
 }

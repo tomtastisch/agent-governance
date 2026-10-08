@@ -57,6 +57,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Recovery-Metadaten bei und liefert weiterhin Exitcode 143. Reale Signale werden auch
   während lesender Target-Prüfungen und der interaktiven Bestätigung verarbeitet;
   schreibende Transaktionen behalten ihre eigene Rollback-Behandlung.
+- Bei späterem Init-Abbruch bleiben bereits verifizierte Ziele im Ergebnis erhalten.
+  Unterbrochene externe Installation oder Anmeldung kennzeichnet ihren unverifizierten
+  Providerzustand und den nicht ausgeführten externen Rollback ausdrücklich.
 
 ### Removed
 
