@@ -84,6 +84,7 @@ export interface InitPrompt {
   ) => Promise<readonly InitSelection[] | typeof INIT_CANCELLED>;
   readonly confirm: (
     plans: readonly InitPlannedTarget[],
+    signal?: AbortSignal,
   ) => Promise<boolean | typeof INIT_CANCELLED>;
 }
 

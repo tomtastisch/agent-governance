@@ -1,3 +1,5 @@
+import type { InstallPhase } from "../contracts.ts";
+import { SignalCoordinator, SignalInterruption } from "../signals.ts";
 import { InterruptedFailure } from "../errors.ts";
 import type { ToolPreparationResult } from "./tool-preparation/types.ts";
 import { join } from "node:path";
@@ -44,6 +46,25 @@ function cancelled(toolPreparation?: readonly ToolPreparationResult[], interrupt
       resourceId: interruption.resourceId,
     }),
   });
+}
+
+// Ausschließlich lesende Schritte; Mutationen behalten ihren Transaktions-Coordinator.
+async function readOnlyStage<T>(phase: InstallPhase, operation: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const coordinator = new SignalCoordinator();
+  coordinator.start();
+  try {
+    try {
+      return await operation(coordinator.abortSignal);
+    } finally {
+      // Ein empfangenes Signal bleibt auch bei anschließendem Lesefehler maßgeblich.
+      coordinator.checkpoint(phase);
+    }
+  } catch (cause) {
+    if (cause instanceof SignalInterruption) throw new InterruptedFailure(cause.signal, cause.phase, "NOT_REQUIRED");
+    throw cause;
+  } finally {
+    coordinator.dispose();
+  }
 }
 
 function preparationFailure(results: readonly ToolPreparationResult[]): InitResult | undefined {
@@ -207,16 +228,16 @@ export async function runInit(options: InitOptions, dependencies: InitDependenci
         nonInteractive: false,
         releaseRoot: options.releaseRoot,
       });
-      const status = await transaction.status();
+      const status = await readOnlyStage("inspect", () => transaction.status());
       const operation = status.state === "OUTDATED" ? "update" : "install";
-      const plan = await transaction.plan(operation);
+      const plan = await readOnlyStage("plan", () => transaction.plan(operation));
       prepared.push(Object.freeze({ target, status, plan, displayName: selectionLabel(selection), transaction }));
     }
 
     const approvalPlans: readonly InitPlannedTarget[] = prepared.map(
       ({ target, status, plan, displayName }) => Object.freeze({ target, status, plan, displayName }),
     );
-    const approved = await dependencies.prompt.confirm(approvalPlans);
+    const approved = await readOnlyStage("plan", (signal) => dependencies.prompt.confirm(approvalPlans, signal));
     if (approved === INIT_CANCELLED || !approved) return cancelled(toolPreparationResults);
 
     const completed: InitTargetResult[] = [];
@@ -225,7 +246,7 @@ export async function runInit(options: InitOptions, dependencies: InitDependenci
         ? await item.transaction.update()
         : await item.transaction.install();
       if (installed.outcome !== "SUCCESS") throw new Error("init installation failed");
-      const verified = await item.transaction.verify();
+      const verified = await readOnlyStage("verify", () => item.transaction.verify());
       if (verified.outcome !== "SUCCESS" || verified.state !== "CURRENT") {
         throw new Error("init verification failed");
       }

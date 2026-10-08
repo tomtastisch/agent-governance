@@ -60,6 +60,7 @@ interface TextOptions {
 }
 
 interface ConfirmOptions {
+  readonly signal?: AbortSignal;
   readonly message: string;
   readonly active: string;
   readonly inactive: string;
@@ -270,11 +271,12 @@ export function createClackPrompt(io: ClackPromptIO = {}): InitPrompt {
       return Object.freeze(selections);
     },
 
-    async confirm(plans: readonly InitPlannedTarget[]): Promise<boolean | typeof INIT_CANCELLED> {
+    async confirm(plans: readonly InitPlannedTarget[], signal?: AbortSignal): Promise<boolean | typeof INIT_CANCELLED> {
       stopProgress();
       const targetCount = plans.length;
       const renderedPlan = renderApprovalPlan(plans);
       const result = await operations.confirm({
+        ...(signal === undefined ? {} : { signal }),
         message: [
           ...(renderedPlan === "" ? [] : ["Geplanter Ablauf:", renderedPlan, ""]),
           `${targetCount} Ziel${targetCount === 1 ? "" : "e"} jetzt einrichten und anschließend verifizieren?`,

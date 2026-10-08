@@ -164,3 +164,50 @@ test("signals sent only to the CLI reach preparation children and wait for child
     }
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test("reale Signale nach Tool-Preparation erhalten JSON bei lesenden Prüfungen und echtem Confirm-Prompt", async () => {
+  const { spawn } = await import("node:child_process");
+  for (const operation of ["status", "plan", "verify", "confirm", "plan-error"] as const) {
+    for (const signal of ["SIGINT", "SIGTERM"] as const) {
+      const child = spawn(process.execPath, ["--experimental-strip-types", "--input-type=module", "-e", `
+        import { runCli } from './src/cli.ts';
+        import { runInit } from './src/init/orchestrator.ts';
+        import { createClackPrompt } from './src/init/prompt.ts';
+        const operation = ${JSON.stringify(operation)};
+        const options = { isTTY: true, environment: { home: '/synthetic/home', platform: 'linux' }, releaseRoot: '/synthetic/release' };
+        const realPrompt = createClackPrompt();
+        const prompt = { step() {}, dispose() { realPrompt.dispose(); }, async selectTargets() { return [{ manualInput: { targetRoot: '/synthetic/target', entryFile: 'AGENTS.md' } }]; }, async confirm(plans, signal) { if (operation !== 'confirm') return true; const pending = realPrompt.confirm(plans, signal); process.stderr.write('READ_READY\\n'); return pending; } };
+        const result = command => ({ schemaVersion: 1, command, outcome: 'SUCCESS', state: command === 'status' ? 'FRESH' : 'CURRENT', phase: command === 'plan' ? 'plan' : command === 'verify' ? 'verify' : 'inspect', rollbackStatus: 'NOT_REQUIRED', capabilities: [], plan: { command: 'install', resources: [] } });
+        const read = async command => { if (operation === command || (operation === 'plan-error' && command === 'plan')) { process.stderr.write('READ_READY\\n'); await new Promise(resolve => setTimeout(resolve, 200)); if (operation === 'plan-error') throw new Error('synthetic read failure after signal'); } return result(command); };
+        const transaction = { status: () => read('status'), plan: () => read('plan'), verify: () => read('verify'), localVersion: async () => undefined, install: async () => { process.stderr.write('TARGET_MUTATION\\n'); return result('install'); }, update: async () => result('update') };
+        process.exitCode = await runCli(['init', '--json'], console.log, console.error, { initOptions: options, initPrompt: prompt,
+          init: () => runInit(options, { discoverHarnesses: async () => [], resolveLatestRelease: async () => undefined, prompt, prepareTools: async () => [{ toolId: 'github_cli', status: 'READY', message: 'completed' }], createTransaction: () => transaction }) });
+        process.stderr.write('LISTENERS=' + process.listenerCount('SIGINT') + ',' + process.listenerCount('SIGTERM') + '\\n');
+      `], { stdio: ["pipe", "pipe", "pipe"] });
+      let output = ""; let errors = ""; let sent = false;
+      const closed = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
+        child.once("error", reject);
+        child.once("close", (code, signal) => resolve({ code, signal }));
+      });
+      const timer = setTimeout(() => child.kill("SIGKILL"), 5000);
+      child.stdout.on("data", chunk => { output += chunk; });
+      child.stderr.on("data", chunk => {
+        errors += chunk;
+        if (!sent && errors.includes("READ_READY")) { sent = true; child.kill(signal); }
+      });
+      let result;
+      try { result = await closed; } finally { clearTimeout(timer); }
+      assert.equal(sent, true);
+      assert.equal(result.signal, null, `${signal}:${operation}: ${errors}`);
+      assert.equal(result.code, signal === "SIGINT" ? 130 : 143, errors);
+      const value = JSON.parse(output);
+      assert.equal(value.outcome, "INTERRUPTED");
+      assert.equal(value.signal, signal);
+      assert.equal(value.phase, operation === "status" ? "inspect" : operation === "verify" ? "verify" : "plan");
+      assert.equal(value.rollbackStatus, "NOT_REQUIRED");
+      assert.deepEqual(value.toolPreparation, [{ toolId: "github_cli", status: "READY", message: "completed" }]);
+      assert.match(errors, /LISTENERS=0,0/u);
+      if (operation !== "verify") assert.doesNotMatch(errors, /TARGET_MUTATION/u);
+    }
+  }
+});

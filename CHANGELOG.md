@@ -54,7 +54,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Der Registry-Releasecheck versteht auch die eindeutige Ein-Wert-JSON-Liste von npm 12;
   mehrdeutige oder nicht textuelle Antworten bleiben blockiert.
 - Später SIGTERM-Abbruch im Target-Setup behält abgeschlossene Tool-Ergebnisse und
-  Recovery-Metadaten bei und liefert weiterhin Exitcode 143.
+  Recovery-Metadaten bei und liefert weiterhin Exitcode 143. Reale Signale werden auch
+  während lesender Target-Prüfungen und der interaktiven Bestätigung verarbeitet;
+  schreibende Transaktionen behalten ihre eigene Rollback-Behandlung.
 
 ### Removed
 
