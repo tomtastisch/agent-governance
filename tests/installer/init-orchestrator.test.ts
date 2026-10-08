@@ -330,3 +330,37 @@ test("full init preserves target transaction interruption recovery metadata", as
     assert.equal(result.signal, "SIGINT");
   }
 });
+
+test("späte SIGINT-/SIGTERM-Unterbrechung erhält Tool-Ergebnisse, Recovery und CLI-Exitcode", async () => {
+  const { runCli } = await import("../../src/cli.ts");
+  const tools = [{ toolId: "github_cli", status: "READY" as const, message: "Installation und Login bereits abgeschlossen." }];
+  for (const signal of ["SIGINT", "SIGTERM"] as const) {
+    for (const operation of ["plan", "install", "update", "verify", "confirm"] as const) {
+      const transaction = fakeTransaction([], "/synthetic/target", operation === "update" ? "OUTDATED" : "FRESH");
+      const failure = new InterruptedFailure(signal, operation === "plan" || operation === "confirm" ? "plan" : "activate", "SUCCEEDED");
+      const initPrompt = prompt([{ manualInput: { targetRoot: "/synthetic/target", entryFile: "AGENTS.md" } }], []);
+      const output: string[] = [];
+      const errors: string[] = [];
+      const code = await runCli(["init", "--json"], value => output.push(value), value => errors.push(value), {
+        initOptions: options("/synthetic/home"), initPrompt,
+        init: () => runInit(options("/synthetic/home"), {
+          discoverHarnesses: async () => [], resolveLatestRelease: async () => undefined,
+          prepareTools: async () => tools,
+          prompt: operation === "confirm" ? { ...initPrompt, confirm: async () => { throw failure; } } : initPrompt,
+          createTransaction: () => operation === "confirm" ? transaction : { ...transaction, [operation]: async () => { throw failure; } },
+        }),
+      });
+      assert.equal(code, signal === "SIGINT" ? 130 : 143, `${signal}:${operation}`);
+      assert.deepEqual(errors, []);
+      assert.equal(output.length, 1);
+      const result = JSON.parse(output[0]!);
+      assert.deepEqual(result.toolPreparation, tools, `${signal}:${operation}`);
+      assert.equal(result.signal, signal);
+      assert.equal(result.phase, failure.phase);
+      assert.equal(result.rollbackStatus, "SUCCEEDED");
+      assert.equal(result.code, failure.code);
+      assert.equal(result.resourceId, failure.resourceId);
+      assert.deepEqual(result.targets, []);
+    }
+  }
+});

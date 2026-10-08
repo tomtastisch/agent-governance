@@ -51,6 +51,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Upstream-Datenprojektion hinter dem unveränderten passiven Discovery-Port.
 - Tägliche Dependency-Update-PRs und ein Production-Audit des frisch installierten
   Tarballs schützen künftige Releases; Installation verändert keine Paketpins.
+- Der Registry-Releasecheck versteht auch die eindeutige Ein-Wert-JSON-Liste von npm 12;
+  mehrdeutige oder nicht textuelle Antworten bleiben blockiert.
+- Später SIGTERM-Abbruch im Target-Setup behält abgeschlossene Tool-Ergebnisse und
+  Recovery-Metadaten bei und liefert weiterhin Exitcode 143.
 
 ### Removed
 

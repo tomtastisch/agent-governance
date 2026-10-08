@@ -149,6 +149,7 @@ export async function runCli(argv: readonly string[], out: Writer = console.log,
 
     const structured = typeof result === "object" && result !== null ? result as Record<string, unknown> : undefined;
     out(parsed.json ? JSON.stringify(result) : structured !== undefined && typeof structured.outcome === "string" && typeof structured.state === "string" && typeof structured.phase === "string" ? `${structured.outcome}: ${structured.state} (${structured.phase})` : JSON.stringify(result));
+    if (structured?.outcome === "INTERRUPTED" && structured.signal === "SIGTERM") return 143;
     return isOutcome(structured?.outcome) ? exitCodeFor(structured.outcome) : EXIT_CODES.SUCCESS;
   }
   catch (cause) { const failureWriter = parsed.command === "init" && parsed.json ? out : error; if (cause instanceof InterruptedFailure) { failureWriter(JSON.stringify({ schemaVersion: 1, outcome: cause.outcome, phase: cause.phase, resourceId: cause.resourceId, rollbackStatus: cause.rollbackStatus, code: cause.code, signal: cause.signal, error: cause.message })); return cause.exitCode; } if (cause instanceof InstallerFailure) { failureWriter(JSON.stringify({ schemaVersion: 1, outcome: cause.outcome, phase: cause.phase, resourceId: cause.resourceId, rollbackStatus: cause.rollbackStatus, code: cause.code, error: cause.message })); return exitCodeFor(cause.outcome); } failureWriter(JSON.stringify({ schemaVersion: 1, outcome: "UNSAFE_STATE", error: (cause as Error).message })); return EXIT_CODES.UNSAFE_STATE; }

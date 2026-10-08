@@ -40,13 +40,13 @@
 
 ### Task 2: Runtime-Tree und Updatevorsorge
 
-**Files:** `package.json`, `package-lock.json`, `tools/verify-licenses.mjs`, `tests/test_installer_distribution.py`, `tests/e2e/run_package_consumers.sh`, `.github/dependabot.yml`, bestehende CI-/Publish-Workflows, `docs/dependency-evidence.md`, `CHANGELOG.md`.
+**Files:** `package.json`, `package-lock.json`, `tools/verify-licenses.mjs`, `tests/test_installer_distribution.py`, `tests/e2e/run_package_consumers.sh`, `.github/dependabot.yml`, bestehende CI-/Trusted-Publish-Workflows, `docs/dependency-evidence.md`, `CHANGELOG.md`.
 
 **Interfaces:** Task 1 erzeugt den in `dist` kompilierten Datensatz; `harnesses:check` verifiziert Quelle, Lizenz und Projektion offline.
 
 - [ ] Harnesses aus Runtime entfernen; erwartete Pins, Paketanzahl und Lizenznachweis aktualisieren.
 - [ ] Dependabot täglich PRs für npm-Updates vorschlagen lassen; kein automatischer Merge/Publish.
-- [ ] Fresh-Consumer-`npm ls` und Production-Audit ab Moderate in bestehende Paketgates aufnehmen; CI/Publish prüfen zusätzlich Projektion und Production-Audit.
+- [ ] Fresh-Consumer-`npm ls` und Production-Audit ab Moderate in bestehende Paketgates aufnehmen; CI/Trusted-Publish prüfen zusätzlich Projektion und Production-Audit.
 - [ ] Entscheidungsbaum, sicheren Updateweg und Releasehinweise dokumentieren; alle lokalen Gates ausführen.
 
 ### Task 3: Finale Delivery

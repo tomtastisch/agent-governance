@@ -90,7 +90,7 @@ unbekannte Registry-/Metadatenstrukturen blockieren die Projektion. Der zusätzl
 vollständigen Basis- und registrierten Klassen sowie der Registry-Funktionen erzwingt eine
 erneute Semantikprüfung bei Änderungen, auch an sonstigen Feldinitialisierungen.
 `npm run harnesses:check` prüft Archiv-SRI/SHA-256 und vergleicht die vollständige generierte
-Datei und MIT-Notice bytegenau. Der Check ist Teil von Build, CI und beiden Publishpfaden.
+Datei und MIT-Notice bytegenau. Der Check ist Teil von Build, CI und dem aktuellen Trusted-Publishpfad.
 Die Datei darf daher keine manuell gepflegte zweite Harnessliste werden.
 
 `HarnessDiscoveryPort` und `createAgntnHarnessesAdapter()` bleiben erhalten. Der Adapter

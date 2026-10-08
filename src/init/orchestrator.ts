@@ -244,7 +244,7 @@ export async function runInit(options: InitOptions, dependencies: InitDependenci
       toolPreparation: toolPreparationResults,
     });
   } catch (cause) {
-    if (cause instanceof InterruptedFailure && cause.signal === "SIGINT") return cancelled(toolPreparationResults, cause);
+    if (cause instanceof InterruptedFailure) return cancelled(toolPreparationResults, cause);
     throw cause;
   } finally {
     dependencies.prompt.dispose();

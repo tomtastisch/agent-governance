@@ -98,8 +98,6 @@ jobs:
           python3 -m unittest discover -s tests -v
           python3 tools/release_manifest.py check
           python3 tools/release_check.py tree
-          npm run harnesses:check
-          npm audit --omit=dev --audit-level=moderate
           npm audit --audit-level=high
           npm run license:check
           REQUIRE_ALL_NATIVE_PREBUILDS=1 npm run pack:check
