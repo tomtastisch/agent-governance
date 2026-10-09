@@ -25,6 +25,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Breaking changes:** none
 
+## [1.9.2] — 2026-10-08
+
+### Added
+
+- Keine.
+
+### Changed
+
+- Keine.
+
+### Fixed
+
+- Node-Typdefinitionen auf `@types/node@24.19.1` aktualisiert und mit der unterstützten
+  Node-24-Basis ausgerichtet; Dependabot schlägt dafür keine Major-Sprünge mehr vor (#163).
+
+### Removed
+
+- Keine.
+
+**Breaking changes:** none
+
 ## [1.9.1] — 2026-10-08
 
 ### Added
