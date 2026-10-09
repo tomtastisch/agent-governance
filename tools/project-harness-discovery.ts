@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const digest = (value: string | Buffer, algorithm = "sha256", encoding: "hex" | "base64" = "hex") =>

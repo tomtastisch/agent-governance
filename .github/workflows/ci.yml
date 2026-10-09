@@ -69,7 +69,7 @@ jobs:
       - name: Assemble and consume the complete native package
         run: |
           npm ci --ignore-scripts
-          ./node_modules/.bin/tsc -p tsconfig.build.json
+          node node_modules/typescript/bin/tsc -p tsconfig.build.json
           file prebuilds/*/agent_governance_fs.node
           REQUIRE_ALL_NATIVE_PREBUILDS=1 npm run pack:check
           npm run test:package
