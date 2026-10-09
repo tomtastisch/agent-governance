@@ -25,6 +25,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Breaking changes:** none
 
+## [1.9.3] — 2026-10-09
+
+### Added
+
+- Keine.
+
+### Changed
+
+- Keine.
+
+### Fixed
+
+- TypeScript `7.0.2` mit expliziten Node-Typen und eindeutigem Compilerpfad in Build,
+  CI und Publish eingebunden; die passive Discovery-Projektion nutzt die offizielle
+  TypeScript-6-AST-Kompatibilität ausschließlich zur Entwicklung (#162).
+
+### Removed
+
+- Keine.
+
+**Breaking changes:** none
+
 ## [1.9.2] — 2026-10-08
 
 ### Added

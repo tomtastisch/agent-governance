@@ -1,6 +1,6 @@
 {
   "name": "@tomtastisch/agent-governance",
-  "version": "1.9.2",
+  "version": "1.9.3",
   "description": "Interactive and transactional Agent Governance CLI with resume, work-item, and forward-only replacement exports",
   "keywords": [
     "agent-governance",
@@ -59,10 +59,10 @@
   },
   "scripts": {
     "build:native": "node tools/build-native.mjs",
-    "build": "npm run harnesses:check && npm run build:native && node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
+    "build": "npm run harnesses:check && npm run build:native && node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && node node_modules/typescript/bin/tsc -p tsconfig.build.json",
     "test": "npm run build:native && node --experimental-strip-types --test tests/installer/*.test.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "tsc -p tsconfig.json --noEmit && git diff --check",
+    "typecheck": "node node_modules/typescript/bin/tsc -p tsconfig.json --noEmit",
+    "lint": "node node_modules/typescript/bin/tsc -p tsconfig.json --noEmit && git diff --check",
     "pack:check": "npm pack --dry-run --json | node tools/verify-pack.mjs",
     "test:package": "tests/e2e/run_package_consumers.sh",
     "license:check": "node tools/verify-licenses.mjs",
@@ -71,6 +71,7 @@
   },
   "devDependencies": {
     "@types/node": "24.19.1",
+    "@typescript/typescript6": "6.0.2",
     "typescript": "7.0.2"
   },
   "license": "Apache-2.0",

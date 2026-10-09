@@ -3,14 +3,14 @@
 > Historische Evidenz - nicht normativ. Maßgeblich sind Lockfiles, Paketartefakte und der geprüfte
 > Exact Head des Pull Requests.
 
-## Runtime-Dependency-Projektion des Releasekandidaten 1.9.2
+## Runtime-Dependency-Projektion des Releasekandidaten 1.9.3
 
 `package.json.dependencies` und `package-lock.json` sind die einzige Runtime-Dependency-SSOT.
 Die drei direkten, exakt gepinnten Runtime-Pakete sind `@clack/prompts` `1.8.1` (MIT)
 für den interaktiven Prompt-Stack, `@toon-format/toon` `4.1.1` (MIT) für die deterministische
 Resume-TOON-Projektion und `smol-toml` `1.9.0` (BSD-3-Clause) für die direkt importierten
 Command- und Discovery-Kataloge. Der Lock löst exakt
-`12 = 1 Root + 8 Production ohne Root + 3 Development` Paketdatensätze auf.
+`34 = 1 Root + 8 Production ohne Root + 25 Development` Paketdatensätze auf.
 Integritäten und Registry-URLs stehen im Lockfile. Production-Audit ab Moderate,
 License-Allowlist, Projektionsprüfung und echter Tarball-Consumer sind Releasegates.
 
@@ -41,11 +41,30 @@ Der Installer besitzt genau drei direkte Third-Party-Runtime-Abhängigkeiten:
 repository-eigene Node-API-C-Komponente nutzt ausschließlich OS- und stabile Node-API-Symbole;
 sie wird für Darwin/Linux auf arm64/x64 im Releaseworkflow gebaut und als vier Prebuilds im
 gleichen provenance-gebundenen npm-Tarball ausgeliefert. Exakt gelockte Entwicklungsabhängigkeiten
-sind TypeScript `5.9.2` und `@types/node` `24.19.1`; die Lockfile-Projektion umfasst wie oben
-beschrieben 12 Datensätze. Der lokale `npm audit --audit-level=high` meldete bei der Einführung null bekannte
+sind TypeScript `7.0.2`, `@typescript/typescript6` `6.0.2` und `@types/node` `24.19.1`;
+die Lockfile-Projektion umfasst wie oben beschrieben 34 Datensätze. Der lokale `npm audit --audit-level=high` meldete bei der Einführung null bekannte
 Schwachstellen. Die direkten und Entwicklungsabhängigkeiten stammen aus der npm-Registry, ihre
 Integritätswerte stehen in `package-lock.json`; Entwicklungsabhängigkeiten werden nicht in das
 Laufzeitpaket gebündelt. Repository und Paket verwenden Apache-2.0.
+
+## TypeScript 7 und die bestehende AST-API
+
+TypeScript `7.0.2` übernimmt Typecheck und Build. Seit TypeScript 7 sind globale Typen
+explizit auszuwählen; `types: ["node"]` erhält die Typprüfung gegen die unterstützte
+Node-Laufzeit. Die klassische JavaScript-Compiler-API ist in TypeScript 7 nicht enthalten.
+Für den passiven Discovery-Parser wird deshalb das von Microsoft bereitgestellte
+[Kompatibilitätspaket](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/)
+`@typescript/typescript6@6.0.2` verwendet. Es löst im Lockfile `@typescript/old` als
+`typescript@6.0.3` auf. Beide Pakete stehen unter Apache-2.0 und sind ausschließlich
+Entwicklungsabhängigkeiten. Die Parserlogik und ihre Sicherheitsprüfungen bleiben erhalten.
+
+Der transitive Legacy-Compiler kann bei der npm-Installation ebenfalls den Binärnamen `tsc` belegen.
+Die npm-Scripts und sämtliche CI-/Publish-Builds rufen deshalb ausdrücklich
+`node node_modules/typescript/bin/tsc` auf. Ein ausführbarer Regressionstest prüft die
+wirkliche Compiler-Version des Typecheck-Scripts gegen den deklarierten TypeScript-Pin.
+Die 25 Development-Datensätze enthalten auch die 20 optionalen Plattformpakete von
+TypeScript 7; pro Installation wird nur das passende native Compilerpaket benötigt.
+Production-Closure und Node-Mindestversion bleiben unverändert.
 
 ## `neon-solutions/add-mcp`
 
@@ -81,7 +100,7 @@ Der unveränderte veröffentlichte Tarball `@agntn/harnesses@0.3.0` bleibt die Q
 Discovery-Metadaten, ist aber keine Runtime-Abhängigkeit mehr. Das Archiv und sein
 [Herkunfts-Lock](../integrations/agntn-harnesses/upstream.lock.json) liegen außerhalb des
 npm-Paketinventars. Der Generator liest das kompilierte Upstream-JavaScript ausschließlich
-als Daten über die bereits vorhandene TypeScript-AST-API. Er führt weder Upstream-Code aus
+als Daten über die TypeScript-6-AST-API des Development-Pakets `@typescript/typescript6`. Er führt weder Upstream-Code aus
 noch lädt er zur Laufzeit Pakete nach.
 
 Alle 13 Registry-Einträge werden in Originalreihenfolge mit `id`, `name` und `binaries`

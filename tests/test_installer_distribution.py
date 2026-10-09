@@ -47,7 +47,8 @@ class InstallerPackageContract(unittest.TestCase):
         self.assertNotIn("chalk", package["dependencies"])
         self.assertNotIn("boxen", package["dependencies"])
         self.assertNotIn("log-update", package["dependencies"])
-        self.assertEqual(package["devDependencies"]["typescript"], "5.9.2")
+        self.assertEqual(package["devDependencies"]["typescript"], "7.0.2")
+        self.assertEqual(package["devDependencies"]["@typescript/typescript6"], "6.0.2")
         self.assertEqual(package["devDependencies"]["@types/node"], "24.19.1")
         self.assertEqual(package["bin"]["agent-governance"], "dist/cli.js")
         self.assertNotIn("integrations", package["files"])
@@ -61,10 +62,10 @@ class InstallerPackageContract(unittest.TestCase):
         production = [metadata for path, metadata in packages.items() if path and not metadata.get("dev", False)]
         development = [metadata for path, metadata in packages.items() if path and metadata.get("dev", False)]
         evidence = (ROOT / "docs" / "dependency-evidence.md").read_text(encoding="utf-8")
-        self.assertEqual(len(packages), 12)
+        self.assertEqual(len(packages), 34)
         self.assertEqual(len(production), 8)
-        self.assertEqual(len(development), 3)
-        self.assertIn("12 = 1 Root + 8 Production ohne Root + 3 Development", evidence)
+        self.assertEqual(len(development), 25)
+        self.assertIn("34 = 1 Root + 8 Production ohne Root + 25 Development", evidence)
 
     def test_dependency_evidence_matches_declared_runtime_dependencies(self):
         package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))

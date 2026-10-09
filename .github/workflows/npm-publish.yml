@@ -128,7 +128,7 @@ jobs:
           npm run lint
           npm test
           node -e "require('node:fs').rmSync('dist',{recursive:true,force:true})"
-          ./node_modules/.bin/tsc -p tsconfig.build.json
+          node node_modules/typescript/bin/tsc -p tsconfig.build.json
           python3 -m unittest discover -s tests -v
           python3 tools/release_manifest.py check
           python3 tools/release_check.py tree
