@@ -1,6 +1,6 @@
 {
   "name": "@tomtastisch/agent-governance",
-  "version": "1.9.1",
+  "version": "1.9.2",
   "description": "Interactive and transactional Agent Governance CLI with resume, work-item, and forward-only replacement exports",
   "keywords": [
     "agent-governance",
@@ -70,7 +70,7 @@
     "harnesses:generate": "node --experimental-strip-types tools/project-harness-discovery.ts --write"
   },
   "devDependencies": {
-    "@types/node": "24.3.0",
+    "@types/node": "24.19.1",
     "typescript": "7.0.2"
   },
   "license": "Apache-2.0",
