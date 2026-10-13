@@ -70,7 +70,7 @@
     "harnesses:generate": "node --experimental-strip-types tools/project-harness-discovery.ts --write"
   },
   "devDependencies": {
-    "@types/node": "24.19.1",
+    "@types/node": "24.19.2",
     "@typescript/typescript6": "6.0.2",
     "typescript": "7.0.2"
   },
