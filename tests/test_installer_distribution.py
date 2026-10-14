@@ -88,6 +88,7 @@ class InstallerPackageContract(unittest.TestCase):
             "npm run build",
             "npm test",
             "npm audit --audit-level=high",
+            "npm audit signatures --json --include-attestations",
             "npm run pack:check",
             "npm run test:package",
             "npm run license:check",

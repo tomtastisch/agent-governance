@@ -64,6 +64,8 @@ Domänenvalidierung der Resume-Projektion wird nicht geändert.
 
 Vor Veröffentlichung bleiben frische Registry-/Signatur-/Provenienznachweise,
 Production-Audit ab Moderate, Gesamtaudit ab High und unabhängige QA/SEC erforderlich.
+Die Installer-CI prüft zusätzlich mit `npm audit signatures --json --include-attestations`
+Registry-Signaturen und vorhandene Provenienz-Attestierungen auf dem installierten Paketbaum.
 Die Versionsverträge in Lizenzprüfung und Tests werden auf die neuen exakten Pins aktualisiert;
 kein Gate wird entfernt oder abgeschwächt.
 

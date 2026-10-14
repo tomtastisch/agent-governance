@@ -104,6 +104,7 @@ jobs:
           npm run harnesses:check
           npm audit --omit=dev --audit-level=moderate
           npm audit --audit-level=high
+          npm audit signatures --json --include-attestations
           npm run license:check
           npm run pack:check
           npm run test:package

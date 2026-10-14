@@ -41,6 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `@types/node@24.19.2` mit synchronisiertem Versionsvertrag, Lizenzprüfung und
   Abhängigkeitsevidenz (#164–#166); die Node-24-Basis und der Ausschluss der
   entfernten verwundbaren Harness-/SDK-Runtime bleiben erhalten.
+- Die Installer-CI verifiziert Registry-Signaturen und vorhandene Provenienz-Attestierungen
+  der installierten Abhängigkeiten zusätzlich zu Integritäts- und Schwachstellenprüfungen.
 
 ### Removed
 
