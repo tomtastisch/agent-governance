@@ -56,6 +56,40 @@ test("encode then decode round-trips to a semantically identical state", () => {
   assert.deepEqual(decoded, state);
 });
 
+test("a persisted TOON 4.1.1 projection remains readable with its checkpoint binding", () => {
+  // Frozen output from the integrity-checked @toon-format/toon@4.1.1 tarball.
+  // Do not regenerate this fixture with the current encoder.
+  const legacy = String.raw`taskId: legacy-1
+objective: "Prüfung: \"quoted\", 中文"
+scope[2]: bundle,tests
+exactHead: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+checkpointFingerprint: cp-legacy
+evidence[1]:
+  - id: qa
+    bindings[1]: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    status: REUSE
+incompleteEvidence: []
+openFindings: []
+nextAtomicAction: SEC prüfen`;
+  const expected: ResumeProjection = {
+    taskId: "legacy-1",
+    objective: 'Prüfung: "quoted", 中文',
+    scope: ["bundle", "tests"],
+    exactHead: "a".repeat(40),
+    checkpointFingerprint: "cp-legacy",
+    evidence: [{ id: "qa", bindings: ["a".repeat(40)], status: "REUSE" }],
+    incompleteEvidence: [],
+    openFindings: [],
+    nextAtomicAction: "SEC prüfen",
+  };
+  assert.deepEqual(decodeResumeProjection(legacy, { expectedCheckpoint: "cp-legacy" }), expected);
+  assert.throws(
+    () => decodeResumeProjection(legacy, { expectedCheckpoint: "different-checkpoint" }),
+    ResumeProjectionError,
+  );
+  assert.throws(() => decodeResumeProjection(`${legacy}\ncheckpointFingerprint: different-checkpoint`));
+});
+
 test("a real .toon file can be written and read back", async () => {
   const dir = await mkdtemp(join(tmpdir(), "resume-toon-"));
   try {

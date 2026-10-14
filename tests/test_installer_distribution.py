@@ -20,8 +20,8 @@ class InstallerPackageContract(unittest.TestCase):
             package["dependencies"],
             {
                 "@clack/prompts": "1.8.1",
-                "@toon-format/toon": "4.1.1",
-                "smol-toml": "1.9.0",
+                "@toon-format/toon": "4.4.0",
+                "smol-toml": "1.9.1",
             },
         )
         self.assertEqual(
@@ -49,7 +49,7 @@ class InstallerPackageContract(unittest.TestCase):
         self.assertNotIn("log-update", package["dependencies"])
         self.assertEqual(package["devDependencies"]["typescript"], "7.0.2")
         self.assertEqual(package["devDependencies"]["@typescript/typescript6"], "6.0.2")
-        self.assertEqual(package["devDependencies"]["@types/node"], "24.19.1")
+        self.assertEqual(package["devDependencies"]["@types/node"], "24.19.2")
         self.assertEqual(package["bin"]["agent-governance"], "dist/cli.js")
         self.assertNotIn("integrations", package["files"])
         self.assertTrue(package["publishConfig"]["provenance"])
