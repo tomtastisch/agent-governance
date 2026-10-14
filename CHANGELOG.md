@@ -25,6 +25,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Breaking changes:** none
 
+## [1.9.4] — 2026-10-14
+
+### Added
+
+- Keine.
+
+### Changed
+
+- Keine.
+
+### Fixed
+
+- Dependabot-Updates auf `smol-toml@1.9.1`, `@toon-format/toon@4.4.0` und
+  `@types/node@24.19.2` mit synchronisiertem Versionsvertrag, Lizenzprüfung und
+  Abhängigkeitsevidenz (#164–#166); die Node-24-Basis und der Ausschluss der
+  entfernten verwundbaren Harness-/SDK-Runtime bleiben erhalten.
+- Die Installer-CI verifiziert Registry-Signaturen und vorhandene Provenienz-Attestierungen
+  der installierten Abhängigkeiten zusätzlich zu Integritäts- und Schwachstellenprüfungen.
+
+### Removed
+
+- Keine.
+
+**Breaking changes:** none
+
 ## [1.9.3] — 2026-10-09
 
 ### Added
