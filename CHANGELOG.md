@@ -37,6 +37,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Neuen autorisierten SSH-Release-Signierer für Versionen ab 1.9.4 exakt gepinnt;
+  der bisherige Schlüssel wird ausschließlich für historische Tags bis 1.9.3 verifiziert.
+
 - Dependabot-Updates auf `smol-toml@1.9.1`, `@toon-format/toon@4.4.0` und
   `@types/node@24.19.2` mit synchronisiertem Versionsvertrag, Lizenzprüfung und
   Abhängigkeitsevidenz (#164–#166); die Node-24-Basis und der Ausschluss der

@@ -92,11 +92,15 @@ def _write_documentation_tree(root, readme=None):
 
 _RELEASE_SIGNER_PRINCIPAL = "82227609+tomtastisch@users.noreply.github.com"
 _RELEASE_SIGNER_KEY = (
-    "AAAAC3NzaC1lZDI1NTE5AAAAIJJqgiZKUWTznfSu2g34z5dJoK0GLqv+fiIX/i6hzYCB"
+    "AAAAC3NzaC1lZDI1NTE5AAAAIGS6WbUabvHFczW4hGJowC6UkoNTcX5tangTKzdIkgGS"
 )
 _RELEASE_ALLOWED_SIGNER = (
     f'{_RELEASE_SIGNER_PRINCIPAL} namespaces="git" '
     f"ssh-ed25519 {_RELEASE_SIGNER_KEY}\n"
+)
+_LEGACY_RELEASE_ALLOWED_SIGNER = (
+    f'{_RELEASE_SIGNER_PRINCIPAL} namespaces="git" '
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJJqgiZKUWTznfSu2g34z5dJoK0GLqv+fiIX/i6hzYCB\n"
 )
 
 
@@ -1096,7 +1100,7 @@ class ReleaseTrustAnchorTests(unittest.TestCase):
         with mock.patch.object(
             GitRunner, "run", return_value=("Good signature", "", 0)
         ) as git_run:
-            result = GitRunner.verify_signature("v0.3.1", self.root)
+            result = GitRunner.verify_signature("v2.0.0", self.root)
         return result, git_run
 
     def test_missing_trust_anchor_is_rejected_before_git(self):
@@ -1166,6 +1170,49 @@ class ReleaseTrustAnchorTests(unittest.TestCase):
         self.assertEqual(error, "")
         self.assertEqual(path, os.path.abspath(self.allowed_signers))
 
+    def test_old_signer_is_not_accepted_for_new_releases(self):
+        self._write_allowed_signers(_LEGACY_RELEASE_ALLOWED_SIGNER)
+        (ok, _detail), git_run = self._verify_with_successful_git()
+        self.assertFalse(ok)
+        git_run.assert_not_called()
+
+    def test_historical_signature_uses_separate_legacy_anchor(self):
+        self._write_allowed_signers(_RELEASE_ALLOWED_SIGNER)
+        legacy = os.path.join(self.root, ".github", "signing", "legacy_allowed_signers")
+        _write(legacy, _LEGACY_RELEASE_ALLOWED_SIGNER)
+        with mock.patch.object(GitRunner, "run", return_value=("Good signature", "", 0)) as git_run:
+            ok, detail = GitRunner.verify_signature("v1.9.3", self.root)
+        self.assertTrue(ok, detail)
+        git_run.assert_called_once_with(
+            ["-c", f"gpg.ssh.allowedSignersFile={legacy}", "tag", "-v", "v1.9.3"], self.root,
+        )
+
+    def test_historical_anchor_rejects_current_key(self):
+        self._write_allowed_signers(_RELEASE_ALLOWED_SIGNER)
+        _write(os.path.join(self.root, ".github", "signing", "legacy_allowed_signers"), _RELEASE_ALLOWED_SIGNER)
+        with mock.patch.object(GitRunner, "run") as git_run:
+            ok, _detail = GitRunner.verify_signature("v1.9.3", self.root)
+        self.assertFalse(ok)
+        git_run.assert_not_called()
+
+    def test_new_prerelease_uses_only_current_anchor(self):
+        self._write_allowed_signers(_RELEASE_ALLOWED_SIGNER)
+        with mock.patch.object(GitRunner, "run", return_value=("Good signature", "", 0)) as git_run:
+            ok, detail = GitRunner.verify_signature("refs/tags/v2.0.0-rc.1", self.root)
+        self.assertTrue(ok, detail)
+        self.assertIn(f"gpg.ssh.allowedSignersFile={self.allowed_signers}", git_run.call_args.args[0])
+
+    def test_legacy_anchor_symlink_is_rejected(self):
+        target = os.path.join(self.root, "legacy-material")
+        _write(target, _LEGACY_RELEASE_ALLOWED_SIGNER)
+        legacy = os.path.join(self.root, ".github", "signing", "legacy_allowed_signers")
+        os.makedirs(os.path.dirname(legacy), exist_ok=True)
+        os.symlink(target, legacy)
+        with mock.patch.object(GitRunner, "run") as git_run:
+            ok, _detail = GitRunner.verify_signature("v1.9.3", self.root)
+        self.assertFalse(ok)
+        git_run.assert_not_called()
+
     def test_git_uses_absolute_allowed_signers_path_per_invocation(self):
         self._write_allowed_signers(_RELEASE_ALLOWED_SIGNER)
         (ok, detail), git_run = self._verify_with_successful_git()
@@ -1176,7 +1223,7 @@ class ReleaseTrustAnchorTests(unittest.TestCase):
                 f"gpg.ssh.allowedSignersFile={os.path.abspath(self.allowed_signers)}",
                 "tag",
                 "-v",
-                "v0.3.1",
+                "v2.0.0",
             ],
             self.root,
         )

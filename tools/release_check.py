@@ -75,8 +75,15 @@ RELEASE_SIGNER_PRINCIPAL = "82227609+tomtastisch@users.noreply.github.com"
 RELEASE_SIGNER_NAMESPACE = "git"
 RELEASE_SIGNER_KEY_TYPE = "ssh-ed25519"
 RELEASE_SIGNER_FINGERPRINT = (
+    "SHA256:uyjvWTdBhXoi36eShLst/4GUNvvgOzUr2/B2XRFL1eM"
+)
+LEGACY_RELEASE_ALLOWED_SIGNERS_REL = os.path.join(
+    ".github", "signing", "legacy_allowed_signers"
+)
+LEGACY_RELEASE_SIGNER_FINGERPRINT = (
     "SHA256:Ltw3DKt+a7felQ4r3C+iKSqeo3/4F9XyqO5sJMP1+TM"
 )
+LEGACY_RELEASE_MAX_VERSION = "1.9.3"
 
 VENDORED_UPSTREAM_REL = os.path.join(
     "integrations", "microsoft-agent-governance-toolkit", "upstream"
@@ -145,7 +152,13 @@ class GitRunner:
     @staticmethod
     def verify_signature(tag_ref, root):
         """Prüft die Signatur eines Tags. Gibt (success: bool, detail: str)."""
-        allowed_signers, trust_error = _validate_release_trust_anchor(root)
+        tag_name = tag_ref.removeprefix("refs/tags/")
+        legacy = (
+            tag_name.startswith("v")
+            and _is_valid_semver(tag_name[1:])
+            and _semver_cmp(tag_name[1:], LEGACY_RELEASE_MAX_VERSION) <= 0
+        )
+        allowed_signers, trust_error = _validate_release_trust_anchor(root, legacy=legacy)
         if trust_error:
             return False, trust_error
 
@@ -252,16 +265,16 @@ def _exists(rel, root):
     return os.path.exists(os.path.join(root, rel))
 
 
-def _validate_release_trust_anchor(root):
-    """Validiert den versionierten SSH-Release-Trust-Anchor fail-closed."""
-    allowed_signers = os.path.abspath(
-        os.path.join(root, RELEASE_ALLOWED_SIGNERS_REL)
-    )
+def _validate_release_trust_anchor(root, *, legacy=False):
+    """Validiert genau einen gepinnten, aktiven oder historischen SSH-Signierer."""
+    relative_path = LEGACY_RELEASE_ALLOWED_SIGNERS_REL if legacy else RELEASE_ALLOWED_SIGNERS_REL
+    expected_fingerprint = LEGACY_RELEASE_SIGNER_FINGERPRINT if legacy else RELEASE_SIGNER_FINGERPRINT
+    allowed_signers = os.path.abspath(os.path.join(root, relative_path))
 
     try:
         file_stat = os.lstat(allowed_signers)
     except OSError:
-        return "", f"Release trust anchor fehlt: {RELEASE_ALLOWED_SIGNERS_REL}"
+        return "", f"Release trust anchor fehlt: {relative_path}"
 
     if stat.S_ISLNK(file_stat.st_mode) or not stat.S_ISREG(file_stat.st_mode):
         return "", "Release trust anchor muss eine reguläre Nicht-Symlink-Datei sein"
@@ -299,7 +312,7 @@ def _validate_release_trust_anchor(root):
     fingerprint = "SHA256:" + base64.b64encode(
         hashlib.sha256(decoded_key).digest()
     ).decode("ascii").rstrip("=")
-    if fingerprint != RELEASE_SIGNER_FINGERPRINT:
+    if fingerprint != expected_fingerprint:
         return "", "Release trust anchor stimmt nicht mit dem genehmigten Fingerprint überein"
 
     return allowed_signers, ""

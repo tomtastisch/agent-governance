@@ -97,3 +97,23 @@ der geschützte PR-/Merge-Weg, der signierte `v<VERSION>`-Tag und der Workflow
 vorgesehenen Dist-Tag ausgeführt. Veröffentlichung und Provenance benötigen
 Remote-Readbacks. Ein Zenodo-Record oder DOI gilt erst nach öffentlicher
 Verifikation als vorhanden; die CFF allein belegt keine abgeschlossene Archivierung.
+
+## Release-Signierer ab 1.9.4
+
+Der aktive ED25519-Signierer besitzt den öffentlichen Fingerprint
+`SHA256:uyjvWTdBhXoi36eShLst/4GUNvvgOzUr2/B2XRFL1eM`.
+`.github/signing/allowed_signers` und der Release-Verifier pinnen ausschließlich diesen
+Schlüssel an den vorhandenen Principal und den Namespace `git`. Ab Version 1.9.4,
+einschließlich ihrer Prereleases, wird der bisherige Schlüssel nicht mehr akzeptiert.
+
+Bestehende Tags bleiben unverändert. Für Tags bis einschließlich 1.9.3 verwendet der
+Verifier ausschließlich `.github/signing/legacy_allowed_signers` mit dem exakt gepinnten
+öffentlichen historischen Schlüssel. Dieser historische Prüfnachweis erteilt keine
+Signierberechtigung für neue Versionen. Fehlende, doppelte, unbekannte, symlinkte oder falsch
+gebundene Vertrauensanker werden weiterhin abgewiesen.
+
+Private Schlüssel verbleiben lokal beziehungsweise im SSH-Agent. `gh` führt GitHub-Operationen
+und Workflow-Dispatches aus; lokale Signaturerzeugung und -prüfung erfolgen mit Git/SSH.
+Eine GitHub-Anmeldung ersetzt keine kryptografische Signieridentität. Vor Veröffentlichung
+muss der bestehende Trusted Release Tag Gate auf `main` erfolgreich sein; danach folgen
+GitHub Release, Trusted npm Publish und deren Readbacks.
