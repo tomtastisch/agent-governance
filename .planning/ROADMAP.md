@@ -78,5 +78,15 @@ Plans:
 | 13. BLOCKER-B-002-Verifikation | 0/1 | Not started | - |
 | 14. W-003-Schema-Version-Verifikation | 0/1 | Not started | - |
 
+### Phase 15: Work-Item Lifecycle (Issue #54)
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 14
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 15 to break down)
+
 ---\
 *Letzte Aktualisierung: 2026-10-29 nach Intel-Synthese aus .planning/intel/*
