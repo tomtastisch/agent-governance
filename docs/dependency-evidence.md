@@ -36,7 +36,7 @@ oder lädt keine Pakete nach und startet weder npm, pnpm, yarn noch bun.
 ## Eigene Paketabhängigkeiten
 
 Der Installer besitzt genau drei direkte Third-Party-Runtime-Abhängigkeiten:
-`@clack/prompts` `1.8.1`, `@toon-format/toon` `4.4.0` und
+`@clack/prompts` `1.9.0`, `@toon-format/toon` `4.4.0` und
 `smol-toml` `1.9.1`. Die schmale
 repository-eigene Node-API-C-Komponente nutzt ausschließlich OS- und stabile Node-API-Symbole;
 sie wird für Darwin/Linux auf arm64/x64 im Releaseworkflow gebaut und als vier Prebuilds im
@@ -46,6 +46,17 @@ die Lockfile-Projektion umfasst wie oben beschrieben 34 Datensätze. Der lokale 
 Schwachstellen. Die direkten und Entwicklungsabhängigkeiten stammen aus der npm-Registry, ihre
 Integritätswerte stehen in `package-lock.json`; Entwicklungsabhängigkeiten werden nicht in das
 Laufzeitpaket gebündelt. Repository und Paket verwenden Apache-2.0.
+
+
+## Änderungskandidat `@clack/prompts` 1.9.0 (PR #170)
+
+Die direkte Runtime-Abhängigkeit wird exakt von `1.8.1` auf `1.9.0` angehoben.
+Der Lockfile-Graph enthält dazu `@clack/core` `1.6.0` und `sisteransi` `2.0.0`
+(ESM-only). Der Node-Vertrag `>=24`, die übrigen direkten Pins und die
+Lizenz-Whitelist bleiben unverändert. Die historischen Provenienz- und Auditangaben
+zum Release 1.9.4 belegen diesen neuen Paketstand ausdrücklich nicht.
+Für eine Integrations- oder Releaseentscheidung müssen die relevanten Paket-,
+Registry-, CI-, QA- und SEC-Gates auf dem finalen Exact Head geprüft werden.
 
 ## Dependency-Update-Kandidat 1.9.4 vom 2026-10-14
 
