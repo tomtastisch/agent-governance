@@ -13,7 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Keine.
+- `@clack/prompts` von `1.8.1` auf `1.9.0` aktualisiert und den exakten
+  Laufzeitversionsvertrag, die Lizenzprüfung sowie die Abhängigkeitsnachweise
+  synchronisiert (PR #170).
 
 ### Fixed
 

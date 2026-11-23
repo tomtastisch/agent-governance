@@ -19,7 +19,7 @@ class InstallerPackageContract(unittest.TestCase):
         self.assertEqual(
             package["dependencies"],
             {
-                "@clack/prompts": "1.8.1",
+                "@clack/prompts": "1.9.0",
                 "@toon-format/toon": "4.4.0",
                 "smol-toml": "1.9.1",
             },
