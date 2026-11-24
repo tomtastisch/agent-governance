@@ -113,6 +113,31 @@ jobs:
       - name: Run release-verifier fixture (benign OS metadata)
         run: tests/e2e/run_release_verifier_fixture.sh
 
+  dependency-validation:
+    name: Dependency- & Kompatibilitätsvalidierung (blockierend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Install exact package toolchain
+        run: npm ci --ignore-scripts
+      - name: Validate lockfile integrity and dependency consistency
+        run: |
+          npm audit --omit=dev --audit-level=moderate
+          npm audit --audit-level=high
+          npm audit signatures --json --include-attestations
+          npm run license:check
+      - name: Check for outdated dependencies (advisory)
+        run: |
+          npm outdated --json || true
+      - name: Verify package integrity and packaging capability
+        run: |
+          npm run pack:check
+          npm run test:package
+
   consistency-tests:
     name: Konsistenz- & Drift-Tests (blockierend)
     runs-on: ubuntu-latest

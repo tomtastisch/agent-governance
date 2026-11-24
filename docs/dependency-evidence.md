@@ -6,20 +6,14 @@
 ## Runtime-Dependency-Projektion des Releasekandidaten 1.9.4
 
 `package.json.dependencies` und `package-lock.json` sind die einzige Runtime-Dependency-SSOT.
-Die drei direkten, exakt gepinnten Runtime-Pakete sind `@clack/prompts` `1.8.1` (MIT)
-für den interaktiven Prompt-Stack, `@toon-format/toon` `4.4.0` (MIT) für die deterministische
-Resume-TOON-Projektion und `smol-toml` `1.9.1` (BSD-3-Clause) für die direkt importierten
-Command- und Discovery-Kataloge. Der Lock löst exakt
+Die drei direkten, exakt gepinnten Runtime-Pakete werden aus `package.json.dependencies` abgeleitet
+(aktuell: `@clack/prompts`, `@toon-format/toon`, `smol-toml` — genaue Versionen im Lockfile).
+Der Lock löst exakt
 `34 = 1 Root + 8 Production ohne Root + 25 Development` Paketdatensätze auf.
 Integritäten und Registry-URLs stehen im Lockfile. Production-Audit ab Moderate,
 License-Allowlist, Projektionsprüfung und echter Tarball-Consumer sind Releasegates.
 
-Die im Dependabot-Lockfile deklarierten Integritäten der direkten Pins sind für `@clack/prompts` exakt
-`sha512-dlT1m5e/0yUL0kRNcQn7yGLVThkgbB0Ga/1AmfDDC/8ik6AIiSf2QLQO2zPYvefsHP0aFgxO93cVLCCfDp7kzQ==`,
-für `@toon-format/toon` exakt
-`sha512-A6UcsVoWbNdhdLNhJbe6JpRlocmf/DZGG57fur3bd8oQtsjBaKWo2hHbOU2zTuy+byUmLIOyP1xJeitopCZzpQ==`
-und für `smol-toml` exakt
-`sha512-j7WyPdf0CJoutMzMoPLF/bVXHtKZIT9Rb4eGeEbWw8X2t5oirjPgpL+OpaENZrILYaXqYwnVH+qgUwVbl+pUJQ==`.
+Die im Lockfile deklarierten Integritäten der direkten Pins stehen in `package-lock.json`.
 Die Projekte sind jeweils über ihre veröffentlichten Repository-URLs nachverfolgbar; Maintenance,
 Lizenz- und Auditstatus bleiben vor jedem Dependency-Update neu zu prüfen.
 
@@ -35,13 +29,12 @@ oder lädt keine Pakete nach und startet weder npm, pnpm, yarn noch bun.
 
 ## Eigene Paketabhängigkeiten
 
-Der Installer besitzt genau drei direkte Third-Party-Runtime-Abhängigkeiten:
-`@clack/prompts` `1.9.0`, `@toon-format/toon` `4.4.0` und
-`smol-toml` `1.9.1`. Die schmale
-repository-eigene Node-API-C-Komponente nutzt ausschließlich OS- und stabile Node-API-Symbole;
+Der Installer besitzt genau drei direkte Third-Party-Runtime-Abhängigkeiten, die exakt aus
+`package.json.dependencies` (SSOT) und `package-lock.json` abgeleitet werden.
+Die schmale repository-eigene Node-API-C-Komponente nutzt ausschließlich OS- und stabile Node-API-Symbole;
 sie wird für Darwin/Linux auf arm64/x64 im Releaseworkflow gebaut und als vier Prebuilds im
 gleichen provenance-gebundenen npm-Tarball ausgeliefert. Exakt gelockte Entwicklungsabhängigkeiten
-sind TypeScript `7.0.2`, `@typescript/typescript6` `6.0.2` und `@types/node` `24.19.2`;
+werden aus `package.json.devDependencies` und `package-lock.json` abgeleitet;
 die Lockfile-Projektion umfasst wie oben beschrieben 34 Datensätze. Der lokale `npm audit --audit-level=high` meldete bei der Einführung null bekannte
 Schwachstellen. Die direkten und Entwicklungsabhängigkeiten stammen aus der npm-Registry, ihre
 Integritätswerte stehen in `package-lock.json`; Entwicklungsabhängigkeiten werden nicht in das
